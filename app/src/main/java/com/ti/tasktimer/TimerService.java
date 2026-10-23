@@ -67,6 +67,7 @@ public class TimerService extends Service {
             TimerState.stop(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
+            FloatingWindow.hide();
             handler.removeCallbacks(ticker);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
@@ -98,12 +99,25 @@ public class TimerService extends Service {
     private void tick() {
         if (!TimerState.isRunning(this)) return;
         long now = System.currentTimeMillis();
+        // 悬浮窗：计时中显示任务与倒计时；检查页将弹出时让位；到点等待确认时隐藏
+        if (TimerState.endFired(this)) {
+            FloatingWindow.hide();
+        } else {
+            FloatingWindow.ensureShown(this);
+            long remainSec = Math.max(0, (TimerState.endAt(this) - now) / 1000);
+            String remain = remainSec >= 3600
+                    ? String.format("%d:%02d:%02d", remainSec / 3600, (remainSec % 3600) / 60, remainSec % 60)
+                    : String.format("%d:%02d", remainSec / 60, remainSec % 60);
+            FloatingWindow.update(this, remain);
+        }
         if (!TimerState.halfFired(this) && now >= TimerState.halfAt(this)) {
             TimerState.markHalfFired(this);
+            FloatingWindow.setSuppressed(true);
             AlertHelper.fire(this, AlertHelper.TYPE_HALF);
         }
         if (!TimerState.endFired(this) && now >= TimerState.endAt(this)) {
             TimerState.markEndFired(this);
+            FloatingWindow.setSuppressed(true);
             AlertHelper.fire(this, AlertHelper.TYPE_END);
         }
         // 倒计时数字由通知的 chronometer 显示，文本每 tick 刷新一次当前阶段
@@ -120,6 +134,7 @@ public class TimerService extends Service {
             if (TimerState.endFired(c)) return;
             TimerState.markEndFired(c);
         }
+        FloatingWindow.setSuppressed(true);
         AlertHelper.fire(c, type);
     }
 
@@ -183,6 +198,7 @@ public class TimerService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(ticker);
+        FloatingWindow.hide();
         super.onDestroy();
     }
 }

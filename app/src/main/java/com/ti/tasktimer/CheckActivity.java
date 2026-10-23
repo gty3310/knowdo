@@ -49,6 +49,12 @@ public class CheckActivity extends Activity {
         else showEnd();
     }
 
+    @Override
+    protected void onDestroy() {
+        FloatingWindow.setSuppressed(false); // 检查页关闭，悬浮窗可以回来了（计时还在走时）
+        super.onDestroy();
+    }
+
     private String taskName() { return TimerState.taskTitle(this); }
 
     // ---------- 过半页 ----------

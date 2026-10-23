@@ -85,6 +85,25 @@ public class PermActivity extends Activity {
             i.setData(Uri.parse("package:" + getPackageName()));
             startActivity(i);
         });
+
+        // 计时悬浮窗开关（依赖上面的“上层显示”授权）
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(18), 0, dp(6));
+        TextView t = new TextView(this);
+        t.setText("计时悬浮窗（任务 + 倒计时 + 笔记）");
+        t.setTextSize(17);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(t);
+        Button toggle = new Button(this);
+        boolean on = FloatingWindow.enabled(this);
+        toggle.setText(on ? "已开" : "已关");
+        toggle.setOnClickListener(v -> {
+            FloatingWindow.setEnabled(this, !FloatingWindow.enabled(this));
+            buildUi();
+        });
+        row.addView(toggle);
+        root.addView(row);
     }
 
     private void addRow(LinearLayout root, String name, boolean ok, View.OnClickListener go) {
