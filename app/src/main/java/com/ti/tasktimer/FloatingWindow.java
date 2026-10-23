@@ -48,6 +48,27 @@ public class FloatingWindow {
         if (!on) hide();
     }
 
+    /** 预览（权限页用）：无需计时，直接显示 10 秒样例卡片，方便确认悬浮效果与权限是否生效。 */
+    public static void showPreview(final Context c) {
+        if (!AlertHelper.canDrawOverlays(c)) {
+            android.widget.Toast.makeText(c, "先把上面的「上层显示」权限开成 ✓，悬浮窗才能显示", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        hide();
+        build(c.getApplicationContext());
+        if (rootView == null) {
+            android.widget.Toast.makeText(c, "悬浮窗创建失败，请把现象告诉 Muse", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (titleView != null) titleView.setText("预览：这里显示当前任务名");
+        if (timeView != null) timeView.setText("24:59");
+        if (noteView != null) noteView.setText("这是预览。真正计时开始后，这张卡片会自动出现，笔记也能在这里写。");
+        if (pillView != null) pillView.setText("⏱ 24:59");
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!TimerState.isRunning(c)) hide();
+        }, 10_000);
+    }
+
     /** 检查页在前台时让位；检查页销毁后由 TimerService 的节拍自动恢复显示。 */
     public static void setSuppressed(boolean s) {
         suppressed = s;

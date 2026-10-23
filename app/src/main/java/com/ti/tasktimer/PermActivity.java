@@ -141,6 +141,17 @@ public class PermActivity extends Activity {
         });
         row.addView(toggle);
         root.addView(row);
+
+        Button preview = new Button(this);
+        preview.setText("预览悬浮窗（显示 10 秒，不用先开始计时）");
+        preview.setOnClickListener(v -> FloatingWindow.showPreview(this));
+        root.addView(preview);
+        TextView hint = new TextView(this);
+        hint.setText("正式用法：悬浮窗不用手动开——在任务列表点任意任务的 ▶ 开始计时后，它会自动出现在任何界面之上；计时结束自动消失。");
+        hint.setTextSize(13);
+        hint.setTextColor(Color.DKGRAY);
+        hint.setPadding(0, dp(6), 0, 0);
+        root.addView(hint);
     }
 
     private void addRow(LinearLayout root, String name, boolean ok, View.OnClickListener go) {
