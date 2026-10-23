@@ -219,6 +219,7 @@ public class MainActivity extends Activity {
     // ---------------- 任务行 ----------------
     private class TaskAdapter extends BaseAdapter {
         List<TaskItem> visible = new ArrayList<>();
+        final java.util.Set<String> expandedNotes = new java.util.HashSet<>();
 
         TaskAdapter() { reload(); }
 
@@ -233,19 +234,39 @@ public class MainActivity extends Activity {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             final TaskItem t = visible.get(position);
+            LinearLayout col = new LinearLayout(MainActivity.this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            boolean done = t.isDoneToday();
+            col.setBackgroundColor(done ? Color.rgb(245, 245, 245) : Color.WHITE);
             LinearLayout row = new LinearLayout(MainActivity.this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(6), dp(8), dp(6), dp(8));
-            boolean done = t.isDoneToday();
-            row.setBackgroundColor(done ? Color.rgb(245, 245, 245) : Color.WHITE);
+            col.addView(row);
 
             Button play = new Button(MainActivity.this);
             play.setText(TimerState.isRunning(MainActivity.this) && t.id.equals(TimerState.taskId(MainActivity.this)) ? "■" : "▶");
             play.setTextSize(15);
-            play.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48)));
+            play.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(48)));
             play.setOnClickListener(v -> onPlay(t));
             row.addView(play);
+
+            boolean hasNote = t.note != null && !t.note.trim().isEmpty();
+            if (hasNote) {
+                TextView tri = new TextView(MainActivity.this);
+                boolean open = expandedNotes.contains(t.id);
+                tri.setText(open ? "▼" : "▶");
+                tri.setTextSize(13);
+                tri.setTextColor(Color.rgb(21, 101, 192));
+                tri.setGravity(Gravity.CENTER);
+                tri.setLayoutParams(new LinearLayout.LayoutParams(dp(28), dp(48)));
+                tri.setOnClickListener(v -> {
+                    if (expandedNotes.contains(t.id)) expandedNotes.remove(t.id);
+                    else expandedNotes.add(t.id);
+                    notifyDataSetChanged();
+                });
+                row.addView(tri);
+            }
 
             TextView titleCell = new TextView(MainActivity.this);
             String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title;
@@ -261,7 +282,7 @@ public class MainActivity extends Activity {
             scCell.setText(t.scenarios.isEmpty() ? "＋情景" : String.join("、", t.scenarios));
             scCell.setTextSize(13);
             scCell.setTextColor(t.scenarios.isEmpty() ? Color.GRAY : Color.rgb(21, 101, 192));
-            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(74), LinearLayout.LayoutParams.WRAP_CONTENT));
+            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(66), LinearLayout.LayoutParams.WRAP_CONTENT));
             scCell.setOnClickListener(v -> dialogScenarios(t));
             row.addView(scCell);
 
@@ -269,7 +290,7 @@ public class MainActivity extends Activity {
             dlCell.setText("daily".equals(t.repeat) ? "每日" : (t.deadline == null ? "＋日期" : t.deadline.substring(5)));
             dlCell.setTextSize(13);
             dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
-            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(70), LinearLayout.LayoutParams.WRAP_CONTENT));
+            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
             dlCell.setOnClickListener(v -> dialogDeadline(t));
             row.addView(dlCell);
 
@@ -277,7 +298,7 @@ public class MainActivity extends Activity {
             duCell.setText(t.durationMinutes + " 分");
             duCell.setTextSize(13);
             duCell.setTextColor(Color.rgb(21, 101, 192));
-            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(48), LinearLayout.LayoutParams.WRAP_CONTENT));
+            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
             duCell.setOnClickListener(v -> dialogDuration(t));
             row.addView(duCell);
 
@@ -286,10 +307,20 @@ public class MainActivity extends Activity {
             foCell.setTextSize(12);
             foCell.setMaxLines(2);
             foCell.setTextColor("off".equals(t.focusMode) ? Color.GRAY : Color.rgb(198, 40, 40));
-            foCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
+            foCell.setLayoutParams(new LinearLayout.LayoutParams(dp(56), LinearLayout.LayoutParams.WRAP_CONTENT));
             foCell.setOnClickListener(v -> dialogFocus(t));
             row.addView(foCell);
-            return row;
+
+            if (hasNote && expandedNotes.contains(t.id)) {
+                TextView noteArea = new TextView(MainActivity.this);
+                noteArea.setText("📝 " + t.note);
+                noteArea.setTextSize(13);
+                noteArea.setTextColor(Color.rgb(66, 66, 66));
+                noteArea.setPadding(dp(52), dp(2), dp(10), dp(10));
+                noteArea.setOnClickListener(v -> dialogNote(t));
+                col.addView(noteArea);
+            }
+            return col;
         }
     }
 
@@ -581,6 +612,25 @@ public class MainActivity extends Activity {
                     target.clear();
                     target.addAll(sel);
                     onDone.run();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogNote(final TaskItem t) {
+        EditText input = new EditText(this);
+        input.setText(t.note == null ? "" : t.note);
+        input.setSelection(input.getText().length());
+        input.setMinLines(3);
+        input.setGravity(Gravity.TOP);
+        new AlertDialog.Builder(this)
+                .setTitle("笔记 · " + t.title)
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    t.note = input.getText().toString().trim();
+                    t.touch();
+                    store.save();
+                    adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
