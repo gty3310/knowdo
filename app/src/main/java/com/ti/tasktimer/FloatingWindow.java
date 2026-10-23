@@ -21,32 +21,34 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * 计时悬浮窗（借鉴 Floating Notes 一类应用的做法）：
- * 三种模式——卡片（任务名+大字倒计时+笔记+按钮）、紧凑条（一行：任务名+时间）、药丸（只剩时间）。
- * 整张悬浮窗除按钮与输入框外处处可拖动；药丸轻点展开回卡片。
- * 笔记在悬浮窗里写即自动保存（随桥同步），不用点保存。
- * 全屏检查页弹出时自动让位隐藏，检查页关掉后自动回来。
- * 依赖「上层显示」权限，未授权时静默不显示。
+ * 计时悬浮窗（以 Floating Notes 的交互为模板）：
+ * 三种模式——
+ *  吸附 DOCK：贴在屏幕侧边的小标签，只有一个 ⏱；点它展开，拖离边缘也展开，沿边缘拖动换高度。
+ *  小展开 MINI：半透明小窗，只显示任务名 + 倒计时 + 一个「!」；点内容区或「!」直接进入编辑；
+ *               拖到屏幕左/右边缘松手就吸附成 DOCK。
+ *  编辑 EDIT：不透明度更高的大卡片，笔记就是输入框本身——点笔记区直接打字（无「笔记」按钮），
+ *               停笔自动保存（随桥同步）；另有打开知行 / 完成 / 收起。
+ * 全屏检查页弹出时自动让位，关掉后自动回来。依赖「上层显示」权限，未授权静默不显示。
  */
 public class FloatingWindow {
-    public static final int MODE_CARD = 0;
-    public static final int MODE_BAR = 1;
-    public static final int MODE_PILL = 2;
+    public static final int MODE_EDIT = 0;
+    public static final int MODE_MINI = 1;
+    public static final int MODE_DOCK = 2;
 
     private static WindowManager wm;
     private static WindowManager.LayoutParams lp;
     private static LinearLayout rootView;
     private static LinearLayout bodyBox;
-    private static LinearLayout barBox;
-    private static LinearLayout editBox;
+    private static LinearLayout miniBox;
+    private static TextView dockView;
     private static TextView titleView;
     private static TextView timeView;
-    private static TextView noteView;
-    private static TextView barText;
-    private static TextView pillView;
+    private static TextView miniTitle;
+    private static TextView miniTime;
     private static TextView saveStateView;
-    private static EditText editText;
-    private static boolean editing = false;
+    private static EditText noteEdit;
+    private static boolean editing = false;     // 键盘编辑中（窗口可聚焦）
+    private static boolean settingText = false; // 程序matic 设置笔记文本时抑制自动保存
     private static boolean suppressed = false;
     private static boolean noteDirty = false;
     private static String cachedTaskId = null;
@@ -64,28 +66,56 @@ public class FloatingWindow {
     }
 
     private static int mode(Context c) {
-        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("float_mode", MODE_CARD);
+        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("float_mode2", MODE_MINI);
     }
 
     private static void setMode(Context c, int m) {
-        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putInt("float_mode", m).apply();
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putInt("float_mode2", m).apply();
+        if (m != MODE_EDIT) endEditFocus(c);
         applyMode(c);
+    }
+
+    private static int dockSide(Context c) {
+        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("float_dock_side", 1); // 0 左 1 右
+    }
+
+    private static void setDockSide(Context c, int s) {
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putInt("float_dock_side", s).apply();
     }
 
     private static void applyMode(Context c) {
         if (rootView == null || lp == null) return;
         int m = mode(c);
-        bodyBox.setVisibility(m == MODE_CARD ? View.VISIBLE : View.GONE);
-        barBox.setVisibility(m == MODE_BAR ? View.VISIBLE : View.GONE);
-        pillView.setVisibility(m == MODE_PILL ? View.VISIBLE : View.GONE);
         float d = c.getResources().getDisplayMetrics().density;
-        lp.width = m == MODE_CARD ? (int) (292 * d)
-                : m == MODE_BAR ? (int) (236 * d)
-                : WindowManager.LayoutParams.WRAP_CONTENT;
+        bodyBox.setVisibility(m == MODE_EDIT ? View.VISIBLE : View.GONE);
+        miniBox.setVisibility(m == MODE_MINI ? View.VISIBLE : View.GONE);
+        dockView.setVisibility(m == MODE_DOCK ? View.VISIBLE : View.GONE);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(m == MODE_EDIT ? Color.argb(240, 33, 33, 33)
+                : m == MODE_MINI ? Color.argb(148, 33, 33, 33)
+                : Color.argb(170, 33, 33, 33));
+        bg.setCornerRadius((m == MODE_DOCK ? 14 : 16) * d);
+        rootView.setBackground(bg);
+        if (m == MODE_DOCK) rootView.setPadding((int) (4 * d), (int) (10 * d), (int) (4 * d), (int) (10 * d));
+        else if (m == MODE_MINI) rootView.setPadding((int) (10 * d), (int) (7 * d), (int) (10 * d), (int) (7 * d));
+        else {
+            int pad = (int) (12 * d);
+            rootView.setPadding(pad, (int) (8 * d), pad, pad);
+        }
+        lp.width = m == MODE_EDIT ? (int) (292 * d)
+                : m == MODE_MINI ? (int) (244 * d)
+                : (int) (46 * d);
+        if (m == MODE_DOCK) lp.x = dockX(c);
         try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
     }
 
-    /** 预览（权限页用）：无需计时，直接显示 10 秒样例，方便确认悬浮效果与权限是否生效。 */
+    private static int dockX(Context c) {
+        int w = c.getResources().getDisplayMetrics().widthPixels;
+        float d = c.getResources().getDisplayMetrics().density;
+        return dockSide(c) == 0 ? 0 : w - (int) (46 * d);
+    }
+
+    /** 预览（权限页用）：无需计时，显示 10 秒样例。 */
     public static void showPreview(final Context c) {
         if (!AlertHelper.canDrawOverlays(c)) {
             android.widget.Toast.makeText(c, "先把上面的「上层显示」权限开成 ✓，悬浮窗才能显示", android.widget.Toast.LENGTH_LONG).show();
@@ -99,9 +129,11 @@ public class FloatingWindow {
         }
         if (titleView != null) titleView.setText("预览：这里显示当前任务名");
         if (timeView != null) timeView.setText("24:59");
-        if (noteView != null) noteView.setText("这是预览。可以按住任意空白处拖动它；「收起」变紧凑条，再缩成小药丸；笔记写完自动保存。");
-        if (barText != null) barText.setText("预览任务 · 24:59");
-        if (pillView != null) pillView.setText("⏱ 24:59");
+        if (miniTitle != null) miniTitle.setText("预览任务");
+        if (miniTime != null) miniTime.setText("24:59");
+        settingText = true;
+        if (noteEdit != null) noteEdit.setText("这是预览。现在默认是「小展开」模式：点它直接进来写字，停笔自动保存；拖到屏幕边缘松手就吸附。");
+        settingText = false;
         ui.postDelayed(() -> { if (!TimerState.isRunning(c)) hide(); }, 10_000);
     }
 
@@ -122,19 +154,18 @@ public class FloatingWindow {
         if (rootView == null) return;
         String title = TimerState.taskTitle(c);
         if (titleView != null) titleView.setText(title);
-        if (timeView != null && !editing) timeView.setText(remainText);
-        if (pillView != null) pillView.setText("⏱ " + remainText);
-        if (barText != null) barText.setText(shortTitle(title) + " · " + remainText);
+        if (timeView != null) timeView.setText(remainText);
+        if (miniTitle != null) miniTitle.setText(title);
+        if (miniTime != null) miniTime.setText(remainText);
+        // 任务切换时才重载笔记，避免打断正在输入的内容
         String id = TimerState.taskId(c);
-        if (noteView != null && !editing && (cachedTaskId == null || !cachedTaskId.equals(id))) {
+        if (noteEdit != null && (cachedTaskId == null || !cachedTaskId.equals(id))) {
             cachedTaskId = id;
-            noteView.setText(noteText(c));
+            TaskItem t = currentTask(c);
+            settingText = true;
+            noteEdit.setText(t == null || t.note == null ? "" : t.note);
+            settingText = false;
         }
-    }
-
-    private static String shortTitle(String t) {
-        if (t == null) return "";
-        return t.length() > 10 ? t.substring(0, 10) + "…" : t;
     }
 
     public static void hide() {
@@ -153,12 +184,6 @@ public class FloatingWindow {
         cachedTaskId = null;
     }
 
-    private static String noteText(Context c) {
-        TaskItem t = currentTask(c);
-        String n = t == null ? "" : t.note;
-        return (n == null || n.trim().isEmpty()) ? "点「笔记」给这个任务写点什么（自动保存）" : n;
-    }
-
     private static TaskItem currentTask(Context c) {
         String id = TimerState.taskId(c);
         if (id == null || id.isEmpty()) return null;
@@ -173,40 +198,45 @@ public class FloatingWindow {
 
         rootView = new LinearLayout(c);
         rootView.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(238, 33, 33, 33));
-        bg.setCornerRadius(16 * d);
-        rootView.setBackground(bg);
-        int pad = (int) (12 * d);
-        rootView.setPadding(pad, (int) (8 * d), pad, pad);
 
-        // —— 药丸模式 ——
-        pillView = new TextView(c);
-        pillView.setTextColor(Color.WHITE);
-        pillView.setTextSize(15);
-        pillView.setVisibility(View.GONE);
-        rootView.addView(pillView);
+        // —— 吸附模式：边缘小标签 ——
+        dockView = new TextView(c);
+        dockView.setText("⏱");
+        dockView.setTextColor(Color.WHITE);
+        dockView.setTextSize(17);
+        dockView.setGravity(Gravity.CENTER);
+        dockView.setVisibility(View.GONE);
+        rootView.addView(dockView);
 
-        // —— 紧凑条模式 ——
-        barBox = new LinearLayout(c);
-        barBox.setOrientation(LinearLayout.HORIZONTAL);
-        barBox.setGravity(Gravity.CENTER_VERTICAL);
-        barBox.setVisibility(View.GONE);
-        barText = new TextView(c);
-        barText.setTextColor(Color.WHITE);
-        barText.setTextSize(14);
-        barText.setMaxLines(1);
-        barText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        barBox.addView(barText);
-        TextView barOpen = smallLabel(c, "展开");
-        barOpen.setOnClickListener(v -> setMode(c, MODE_CARD));
-        barBox.addView(barOpen);
-        TextView barMin = smallLabel(c, "缩到最小");
-        barMin.setOnClickListener(v -> setMode(c, MODE_PILL));
-        barBox.addView(barMin);
-        rootView.addView(barBox);
+        // —— 小展开模式：任务名 + 倒计时 + ! ——
+        miniBox = new LinearLayout(c);
+        miniBox.setOrientation(LinearLayout.HORIZONTAL);
+        miniBox.setGravity(Gravity.CENTER_VERTICAL);
+        miniBox.setVisibility(View.GONE);
+        miniTitle = new TextView(c);
+        miniTitle.setTextColor(Color.WHITE);
+        miniTitle.setTextSize(13);
+        miniTitle.setMaxLines(1);
+        miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        miniTitle.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        miniBox.addView(miniTitle);
+        miniTime = new TextView(c);
+        miniTime.setTextColor(Color.WHITE);
+        miniTime.setTextSize(16);
+        miniTime.setTypeface(miniTime.getTypeface(), android.graphics.Typeface.BOLD);
+        miniTime.setPadding(dp(c, 6), 0, dp(c, 2), 0);
+        miniBox.addView(miniTime);
+        TextView bang = new TextView(c);
+        bang.setText("!");
+        bang.setTextColor(Color.rgb(255, 193, 7));
+        bang.setTextSize(19);
+        bang.setTypeface(bang.getTypeface(), android.graphics.Typeface.BOLD);
+        bang.setPadding(dp(c, 8), dp(c, 2), dp(c, 4), dp(c, 2));
+        bang.setOnClickListener(v -> openEdit(c));
+        miniBox.addView(bang);
+        rootView.addView(miniBox);
 
-        // —— 卡片模式 ——
+        // —— 编辑模式：完整卡片，笔记即输入框 ——
         bodyBox = new LinearLayout(c);
         bodyBox.setOrientation(LinearLayout.VERTICAL);
         rootView.addView(bodyBox);
@@ -221,7 +251,7 @@ public class FloatingWindow {
         tag.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         head.addView(tag);
         TextView shrinkBtn = smallLabel(c, "收起 —");
-        shrinkBtn.setOnClickListener(v -> setMode(c, MODE_BAR));
+        shrinkBtn.setOnClickListener(v -> setMode(c, MODE_MINI));
         head.addView(shrinkBtn);
         bodyBox.addView(head);
 
@@ -238,28 +268,24 @@ public class FloatingWindow {
         timeView.setTypeface(timeView.getTypeface(), android.graphics.Typeface.BOLD);
         bodyBox.addView(timeView);
 
-        noteView = new TextView(c);
-        noteView.setTextColor(Color.rgb(200, 200, 200));
-        noteView.setTextSize(13);
-        noteView.setMaxLines(3);
-        bodyBox.addView(noteView);
-
-        // 笔记编辑区（自动保存，无保存按钮）
-        editBox = new LinearLayout(c);
-        editBox.setOrientation(LinearLayout.VERTICAL);
-        editBox.setVisibility(View.GONE);
-        editText = new EditText(c);
-        editText.setTextColor(Color.WHITE);
-        editText.setHintTextColor(Color.GRAY);
-        editText.setHint("写笔记：要点、卡点、灵感……（自动保存）");
-        editText.setTextSize(14);
-        editText.setMinLines(2);
-        editText.setGravity(Gravity.TOP);
-        editText.addTextChangedListener(new TextWatcher() {
+        noteEdit = new EditText(c);
+        noteEdit.setTextColor(Color.WHITE);
+        noteEdit.setHintTextColor(Color.rgb(150, 150, 150));
+        noteEdit.setHint("点这里直接写笔记（自动保存）");
+        noteEdit.setTextSize(14);
+        noteEdit.setMinLines(2);
+        noteEdit.setGravity(Gravity.TOP);
+        noteEdit.setBackgroundColor(Color.TRANSPARENT);
+        noteEdit.setPadding(0, dp(c, 4), 0, 0);
+        noteEdit.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN && !editing) beginEditFocus(c);
+            return false; // 让 EditText 自己处理（放光标、选字）
+        });
+        noteEdit.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int n) { }
             @Override public void afterTextChanged(Editable s) {
-                if (!editing) return;
+                if (settingText || !editing) return;
                 noteDirty = true;
                 if (saveStateView != null) saveStateView.setText("正在保存…");
                 if (pendingSave != null) ui.removeCallbacks(pendingSave);
@@ -267,27 +293,16 @@ public class FloatingWindow {
                 ui.postDelayed(pendingSave, 700);
             }
         });
-        editBox.addView(editText);
-        LinearLayout editRow = new LinearLayout(c);
-        editRow.setOrientation(LinearLayout.HORIZONTAL);
-        editRow.setGravity(Gravity.CENTER_VERTICAL);
+        bodyBox.addView(noteEdit);
+
         saveStateView = new TextView(c);
-        saveStateView.setText("笔记会自动保存");
+        saveStateView.setText("点笔记区直接写，停笔自动保存");
         saveStateView.setTextColor(Color.rgb(150, 150, 150));
         saveStateView.setTextSize(11);
-        saveStateView.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        editRow.addView(saveStateView);
-        Button doneEditBtn = smallButton(c, "写完");
-        doneEditBtn.setOnClickListener(v -> endEdit(c));
-        editRow.addView(doneEditBtn);
-        editBox.addView(editRow);
-        bodyBox.addView(editBox);
+        bodyBox.addView(saveStateView);
 
         LinearLayout btns = new LinearLayout(c);
         btns.setOrientation(LinearLayout.HORIZONTAL);
-        Button noteBtn = smallButton(c, "笔记");
-        noteBtn.setOnClickListener(v -> beginEdit(c));
-        btns.addView(noteBtn);
         Button openBtn = smallButton(c, "打开知行");
         openBtn.setOnClickListener(v -> {
             Intent i = new Intent(c, MainActivity.class);
@@ -304,13 +319,16 @@ public class FloatingWindow {
             c.startActivity(i);
         });
         btns.addView(doneBtn);
+        Button miniBtn = smallButton(c, "收起");
+        miniBtn.setOnClickListener(v -> setMode(c, MODE_MINI));
+        btns.addView(miniBtn);
         bodyBox.addView(btns);
 
         int type = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
         lp = new WindowManager.LayoutParams(
-                (int) (292 * d), WindowManager.LayoutParams.WRAP_CONTENT, type,
+                (int) (244 * d), WindowManager.LayoutParams.WRAP_CONTENT, type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
@@ -318,8 +336,6 @@ public class FloatingWindow {
         lp.x = (int) (14 * d);
         lp.y = (int) (110 * d);
 
-        // 整窗拖动：挂在根视图上。按钮与输入框会自己消费触摸（不触发拖动），
-        // 其余区域（标题、时间、笔记文字、空白）按下拖动即可移动；药丸轻点（几乎没位移）视为展开。
         rootView.setOnTouchListener(new Dragger(c));
         try {
             wm.addView(rootView, lp);
@@ -330,7 +346,61 @@ public class FloatingWindow {
         applyMode(c);
     }
 
-    /** 拖动处理器：位移超过阈值才算拖动；药丸模式下轻点 = 展开回卡片。 */
+    /** 进入编辑：展开卡片 + 笔记输入框立刻获得焦点并弹键盘（Floating Notes 式点即写）。 */
+    private static void openEdit(Context c) {
+        setMode(c, MODE_EDIT);
+        ui.postDelayed(() -> beginEditFocus(c), 60);
+    }
+
+    private static void beginEditFocus(Context c) {
+        if (rootView == null || noteEdit == null) return;
+        if (mode(c) != MODE_EDIT) setMode(c, MODE_EDIT);
+        editing = true;
+        lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE;
+        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        noteEdit.requestFocus();
+        noteEdit.setSelection(noteEdit.getText().length());
+        InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) ui.postDelayed(() -> imm.showSoftInput(noteEdit, InputMethodManager.SHOW_IMPLICIT), 80);
+    }
+
+    private static void endEditFocus(Context c) {
+        if (!editing) return;
+        if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
+        persistNote(c, true);
+        editing = false;
+        noteDirty = false;
+        if (lp == null || rootView == null) return;
+        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        lp.softInputMode = 0;
+        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(rootView.getWindowToken(), 0);
+    }
+
+    private static void persistNote(Context c, boolean fromEnd) {
+        if (noteEdit == null) return;
+        String id = TimerState.taskId(c);
+        if (id == null || id.isEmpty()) return;
+        TaskStore store = new TaskStore(c);
+        TaskItem t = store.byId(id);
+        if (t == null) return;
+        String v = noteEdit.getText().toString().trim();
+        if (!v.equals(t.note == null ? "" : t.note)) {
+            t.note = v;
+            t.touch();
+            store.save();
+        }
+        if (saveStateView != null) saveStateView.setText("已保存 ✓");
+        if (fromEnd && noteDirty) {
+            TimerState.logEvent(c, "悬浮窗笔记[" + t.title + "]：" + v);
+            final Context app = c.getApplicationContext();
+            new Thread(() -> SyncManager.syncNow(app, new TaskStore(app))).start();
+        }
+    }
+
+    /** 拖动：三模式共用。EDIT 只移动；MINI 点按=进编辑、拖到边缘=吸附；DOCK 点按/拖离=展开。 */
     private static class Dragger implements View.OnTouchListener {
         private final Context c;
         private int startX, startY;
@@ -356,68 +426,53 @@ public class FloatingWindow {
                     try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    if (!moved && mode(c) == MODE_PILL) setMode(c, MODE_CARD);
+                    onUp(dx(), dy());
                     return true;
                 default:
                     return false;
             }
         }
-    }
 
-    // ---------- 笔记编辑（自动保存） ----------
-    private static void beginEdit(Context c) {
-        if (rootView == null) return;
-        TaskItem t = currentTask(c);
-        if (t == null) return;
-        editing = true;
-        noteDirty = false;
-        editText.setText(t.note == null ? "" : t.note);
-        editText.setSelection(editText.getText().length());
-        if (saveStateView != null) saveStateView.setText("笔记会自动保存");
-        editBox.setVisibility(View.VISIBLE);
-        noteView.setVisibility(View.GONE);
-        lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE;
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
-        editText.requestFocus();
-    }
+        private int dx() { return lp.x - startX; }
+        private int dy() { return lp.y - startY; }
 
-    private static void persistNote(Context c, boolean fromEnd) {
-        if (editText == null) return;
-        String id = TimerState.taskId(c);
-        if (id == null || id.isEmpty()) return;
-        TaskStore store = new TaskStore(c);
-        TaskItem t = store.byId(id);
-        if (t == null) return;
-        String v = editText.getText().toString().trim();
-        if (!v.equals(t.note == null ? "" : t.note)) {
-            t.note = v;
-            t.touch();
-            store.save();
+        private void onUp(int dx, int dy) {
+            int m = mode(c);
+            float d = c.getResources().getDisplayMetrics().density;
+            int screenW = c.getResources().getDisplayMetrics().widthPixels;
+            int viewW = rootView.getWidth();
+            if (m == MODE_DOCK) {
+                int side = dockSide(c);
+                boolean inward = side == 1 ? dx < -(int) (60 * d) : dx > (int) (60 * d);
+                if (!moved) expandFromDock(c);
+                else if (inward) {
+                    setMode(c, MODE_MINI);
+                } else {
+                    lp.x = dockX(c); // 弹回边缘
+                    try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+                }
+            } else if (m == MODE_MINI) {
+                if (!moved) { openEdit(c); return; }
+                if (lp.x <= (int) (18 * d)) {
+                    setDockSide(c, 0);
+                    lp.y = Math.max(0, lp.y);
+                    setMode(c, MODE_DOCK);
+                } else if (lp.x + viewW >= screenW - (int) (18 * d)) {
+                    setDockSide(c, 1);
+                    lp.y = Math.max(0, lp.y);
+                    setMode(c, MODE_DOCK);
+                }
+            }
+            // EDIT：只移动，不做模式切换
         }
-        if (saveStateView != null) saveStateView.setText("已保存 ✓");
-        if (fromEnd && noteDirty) {
-            TimerState.logEvent(c, "悬浮窗笔记[" + t.title + "]：" + v);
-            final Context app = c.getApplicationContext();
-            new Thread(() -> SyncManager.syncNow(app, new TaskStore(app))).start();
-        }
-    }
 
-    private static void endEdit(Context c) {
-        if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
-        persistNote(c, true);
-        editing = false;
-        noteDirty = false;
-        if (rootView == null) return;
-        editBox.setVisibility(View.GONE);
-        noteView.setVisibility(View.VISIBLE);
-        cachedTaskId = null; // 强制 update 重读笔记
-        noteView.setText(noteText(c));
-        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        lp.softInputMode = 0;
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
-        InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) imm.hideSoftInputFromWindow(rootView.getWindowToken(), 0);
+        private void expandFromDock(Context c) {
+            float d = c.getResources().getDisplayMetrics().density;
+            int screenW = c.getResources().getDisplayMetrics().widthPixels;
+            if (dockSide(c) == 1) lp.x = screenW - (int) (244 * d) - (int) (10 * d);
+            else lp.x = (int) (10 * d);
+            setMode(c, MODE_MINI);
+        }
     }
 
     // ---------- 小件 ----------
