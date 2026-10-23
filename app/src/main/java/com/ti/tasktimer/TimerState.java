@@ -108,6 +108,22 @@ public final class TimerState {
     public static void markHalfFired(Context c) { sp(c).edit().putBoolean("halfFired", true).apply(); }
     public static void markEndFired(Context c) { sp(c).edit().putBoolean("endFired", true).apply(); }
 
+    // ---------- 暂停提醒（暂停时约好多久后叫回来） ----------
+    public static void setRemind(Context c, String taskId, long atMs) {
+        sp(c).edit().putString("r_taskId", taskId == null ? "" : taskId).putLong("r_at", atMs).apply();
+    }
+
+    public static void clearRemind(Context c) {
+        sp(c).edit().remove("r_taskId").remove("r_at").apply();
+    }
+
+    public static long remindAt(Context c) { return sp(c).getLong("r_at", 0); }
+
+    public static String remindTaskId(Context c) {
+        String s = sp(c).getString("r_taskId", "");
+        return s == null ? "" : s;
+    }
+
     /** 把用户的每次点按结果记成一行日志，测试后回主界面可核对。 */
     public static void logEvent(Context c, String text) {
         SharedPreferences p = sp(c);

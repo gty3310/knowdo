@@ -8,10 +8,12 @@ import android.content.Intent;
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())
-                && SyncManager.realtimeEnabled(context)
-                && SyncManager.getUri(context) != null) {
-            SyncService.start(context);
+        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+            if (SyncManager.realtimeEnabled(context)
+                    && SyncManager.getUri(context) != null) {
+                SyncService.start(context);
+            }
+            if (FloatingWindow.enabled(context)) FloatService.start(context);
         }
     }
 }

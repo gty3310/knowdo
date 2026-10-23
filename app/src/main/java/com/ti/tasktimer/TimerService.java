@@ -22,7 +22,9 @@ public class TimerService extends Service {
     public static final String ACTION_STOP = "com.ti.tasktimer.STOP";
     public static final String ACTION_EXTEND = "com.ti.tasktimer.EXTEND";
     public static final String ACTION_PAUSE = "com.ti.tasktimer.PAUSE";
+    public static final String ACTION_PAUSE_REMIND = "com.ti.tasktimer.PAUSE_REMIND";
     public static final String ACTION_RESUME = "com.ti.tasktimer.RESUME";
+    public static final String EXTRA_DELAY_MS = "delay_ms";
     public static final String EXTRA_TOTAL_SEC = "total_sec";
     public static final String EXTRA_REMAIN_SEC = "remain_sec";
     public static final String EXTRA_ADD_SEC = "add_sec";
@@ -67,6 +69,14 @@ public class TimerService extends Service {
         c.startService(i);
     }
 
+    /** 暂停并约好多久后叫回（悬浮窗暂停菜单用）。 */
+    public static void pauseWithReminder(Context c, long delayMs) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_PAUSE_REMIND);
+        i.putExtra(EXTRA_DELAY_MS, delayMs);
+        c.startService(i);
+    }
+
     public static void resumeTimer(Context c, int totalSec, int remainSec, String taskId, String taskTitle) {
         Intent i = new Intent(c, TimerService.class);
         i.setAction(ACTION_RESUME);
@@ -81,11 +91,17 @@ public class TimerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         AlertHelper.createChannels(this);
         String action = intent == null ? null : intent.getAction();
-        if (ACTION_PAUSE.equals(action)) {
+        if (ACTION_PAUSE.equals(action) || ACTION_PAUSE_REMIND.equals(action)) {
             long remain = TimerState.endAt(this) - System.currentTimeMillis();
+            boolean saved = false;
             if (TimerState.isRunning(this) && remain > 0 && !TimerState.endFired(this)) {
                 TimerState.setPaused(this, remain);
+                saved = true;
                 TimerState.logEvent(this, "已暂停：" + TimerState.taskTitle(this) + "，剩余 " + (remain / 1000) + " 秒");
+            }
+            if (saved && ACTION_PAUSE_REMIND.equals(action)) {
+                long delay = intent.getLongExtra(EXTRA_DELAY_MS, 0);
+                if (delay > 0) ResumeReminder.schedule(this, TimerState.pausedTaskId(this), delay);
             }
             TimerState.stop(this);
             ScreenCaptureService.onTimerStopped(this);
@@ -110,6 +126,7 @@ public class TimerService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_RESUME.equals(action)) {
+            ResumeReminder.cancel(this);
             TimerState.startResumed(this,
                     intent.getIntExtra(EXTRA_TOTAL_SEC, 60), intent.getIntExtra(EXTRA_REMAIN_SEC, 60),
                     intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
@@ -118,6 +135,7 @@ public class TimerService extends Service {
             ScreenCaptureService.onTimerStarted(this);
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
         } else if (ACTION_START.equals(action)) {
+            ResumeReminder.cancel(this);
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
             String sid = intent.getStringExtra(EXTRA_TASK_ID);
             if (sid != null && sid.equals(TimerState.pausedTaskId(this))) TimerState.clearPaused(this);

@@ -112,5 +112,36 @@
         <receiver
             android:name=".AlertReceiver"
             android:exported="false" />
+
+        <!-- 常驻悬浮窗服务：打开过知行后一直维持悬浮窗（当前第一要务） -->
+        <service
+            android:name=".FloatService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="常驻悬浮窗：显示当前第一要务，可直接开始、暂停与记录" />
+        </service>
+
+        <!-- 暂停提醒：到点叫回继续任务 -->
+        <receiver
+            android:name=".ResumeReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".ResumeRemindActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- AI 按钮中转页：复制任务信息到剪贴板并打开设定的 AI 助手 -->
+        <activity
+            android:name=".AiLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

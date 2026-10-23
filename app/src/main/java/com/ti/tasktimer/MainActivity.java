@@ -58,6 +58,8 @@ public class MainActivity extends Activity {
         store = new TaskStore(this);
         AlertHelper.createChannels(this);
         buildUi();
+        // 常驻悬浮窗：打开过知行就一直在（开关在权限页；没给悬浮权限时服务空转等待授权）
+        if (FloatingWindow.enabled(this)) FloatService.start(this);
         if (getIntent() != null && getIntent().getBooleanExtra("pick_bridge", false)) {
             launchBridgePicker();
         } else if (SyncManager.getUri(this) != null) {

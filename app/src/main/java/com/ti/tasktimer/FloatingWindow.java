@@ -18,22 +18,31 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
- * 计时悬浮窗（以 Floating Notes 的交互为模板）：
+ * 常驻悬浮窗（交互模板来自 Floating Notes，用户打开过知行后由 FloatService 一直维持）：
+ * 永远显示「当前第一要务」——正在计时的任务 ＞ 刚暂停的任务 ＞ 列表第一名（未完成、必要优先）。
  * 三种模式——
- *  吸附 DOCK：贴在屏幕侧边的小标签，只显示剩余分钟数（向上取整，最多 99+）；点它展开，拖离边缘也展开，沿边缘拖动换高度。
- *  小展开 MINI：半透明小窗，只显示任务名 + 倒计时 + 一个 ✏️；点内容区或 ✏️ 直接进入编辑；
- *               拖到屏幕左/右边缘松手就吸附成 DOCK。
- *  编辑 EDIT：不透明度更高的大卡片，笔记就是输入框本身——点笔记区直接打字（无「笔记」按钮），
- *               停笔自动保存（随桥同步）；另有打开知行 / 完成 / 收起。
- * 全屏检查页弹出时自动让位，关掉后自动回来。依赖「上层显示」权限，未授权静默不显示。
+ *  吸附 DOCK：贴屏幕侧边的小标签，只显示分钟数（计时/暂停=剩余分钟，待开始=计划分钟，封顶 99+）；
+ *            没有任何按钮，不能暂停；点它或拖离边缘展开。
+ *  小展开 MINI：半透明小窗：任务名 + 时间 + ▶/⏸ + ✎；点内容区或 ✎ 进编辑；
+ *            拖到屏幕左/右边缘松手吸附成 DOCK。
+ *  编辑 EDIT：更不透明的大卡片：开始/暂停、AI（复制任务信息并打开助手）、完成、打开知行、收起；
+ *            笔记就是输入框本身，点开直接写、停笔自动保存。
+ * 暂停不直接生效（MINI/EDIT 点 ⏸ 时）：先弹暂停菜单，选多久后提醒（1/3/5/10/15/20/30/60 分钟、
+ * 2 小时、自定义），或「立刻暂停」（不提醒）。到点由 ResumeRemindActivity 全屏叫回。
  */
 public class FloatingWindow {
     public static final int MODE_EDIT = 0;
     public static final int MODE_MINI = 1;
     public static final int MODE_DOCK = 2;
+
+    public static final int ST_NONE = 0;
+    public static final int ST_IDLE = 1;
+    public static final int ST_RUNNING = 2;
+    public static final int ST_PAUSED = 3;
 
     private static WindowManager wm;
     private static WindowManager.LayoutParams lp;
@@ -45,15 +54,72 @@ public class FloatingWindow {
     private static TextView timeView;
     private static TextView miniTitle;
     private static TextView miniTime;
+    private static TextView miniPlay;
+    private static TextView stateView;
     private static TextView saveStateView;
+    private static Button playPauseBtn;
+    private static Button doneBtn;
     private static EditText noteEdit;
-    private static boolean editing = false;     // 键盘编辑中（窗口可聚焦）
-    private static boolean settingText = false; // 程序matic 设置笔记文本时抑制自动保存
+    private static boolean editing = false;
+    private static boolean settingText = false;
     private static boolean suppressed = false;
     private static boolean noteDirty = false;
     private static String cachedTaskId = null;
+    private static String displayTaskId = null;
     private static final Handler ui = new Handler(Looper.getMainLooper());
     private static Runnable pendingSave;
+
+    // ---------- 显示对象：当前第一要务 ----------
+    public static class Display {
+        public int state = ST_NONE;
+        public TaskItem task;
+        public String title = "暂无任务";
+        public long remainMs = 0;
+    }
+
+    public static Display resolveDisplay(Context c) {
+        Display d = new Display();
+        TaskStore store = new TaskStore(c);
+        if (TimerState.isRunning(c)) {
+            d.state = ST_RUNNING;
+            d.task = store.byId(TimerState.taskId(c));
+            d.title = TimerState.taskTitle(c);
+            d.remainMs = Math.max(0, TimerState.endAt(c) - System.currentTimeMillis());
+            return d;
+        }
+        if (TimerState.isPaused(c)) {
+            d.state = ST_PAUSED;
+            d.task = store.byId(TimerState.pausedTaskId(c));
+            d.title = TimerState.pausedTitle(c);
+            if (d.title == null || d.title.isEmpty()) d.title = d.task != null ? d.task.title : "已暂停的任务";
+            d.remainMs = TimerState.pausedRemainMs(c);
+            return d;
+        }
+        for (TaskItem t : store.visibleSorted()) {
+            if (!t.isDoneToday()) {
+                d.state = ST_IDLE;
+                d.task = t;
+                d.title = t.title;
+                return d;
+            }
+        }
+        return d;
+    }
+
+    public static String displaySummary(Context c) {
+        Display d = resolveDisplay(c);
+        if (d.state == ST_RUNNING) return "「" + d.title + "」计时中，剩余 " + fmt(d.remainMs);
+        if (d.state == ST_PAUSED) return "「" + d.title + "」已暂停，剩余 " + fmt(d.remainMs);
+        if (d.state == ST_IDLE) return "下一件：「" + d.title + "」（" + d.task.durationMinutes + " 分钟）";
+        return "暂无未完成任务";
+    }
+
+    private static String fmt(long ms) {
+        long sec = Math.max(0, ms / 1000);
+        return sec >= 3600
+                ? String.format("%d:%02d:%02d", sec / 3600, (sec % 3600) / 60, sec % 60)
+                : String.format("%d:%02d", sec / 60, sec % 60);
+    }
 
     // ---------- 开关与模式 ----------
     public static boolean enabled(Context c) {
@@ -62,7 +128,12 @@ public class FloatingWindow {
 
     public static void setEnabled(Context c, boolean on) {
         c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putBoolean("float_enabled", on).apply();
-        if (!on) hide();
+        if (!on) {
+            hide();
+            FloatService.stop(c);
+        } else {
+            FloatService.start(c);
+        }
     }
 
     private static int mode(Context c) {
@@ -103,7 +174,7 @@ public class FloatingWindow {
             rootView.setPadding(pad, (int) (8 * d), pad, pad);
         }
         lp.width = m == MODE_EDIT ? (int) (292 * d)
-                : m == MODE_MINI ? (int) (244 * d)
+                : m == MODE_MINI ? (int) (262 * d)
                 : (int) (46 * d);
         if (m == MODE_DOCK) lp.x = dockX(c);
         try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
@@ -115,7 +186,7 @@ public class FloatingWindow {
         return dockSide(c) == 0 ? 0 : w - (int) (46 * d);
     }
 
-    /** 预览（权限页用）：无需计时，显示 10 秒样例。 */
+    /** 预览（权限页用）：无需计时，显示 10 秒样例；常驻服务在跑时预览会被实时内容覆盖，属正常。 */
     public static void showPreview(final Context c) {
         if (!AlertHelper.canDrawOverlays(c)) {
             android.widget.Toast.makeText(c, "先把上面的「上层显示」权限开成 ✓，悬浮窗才能显示", android.widget.Toast.LENGTH_LONG).show();
@@ -127,49 +198,72 @@ public class FloatingWindow {
             android.widget.Toast.makeText(c, "悬浮窗创建失败，请把现象告诉 Muse", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
-        if (titleView != null) titleView.setText("预览：这里显示当前任务名");
+        if (titleView != null) titleView.setText("预览：这里显示当前第一要务");
         if (timeView != null) timeView.setText("24:59");
         if (miniTitle != null) miniTitle.setText("预览任务");
         if (miniTime != null) miniTime.setText("24:59");
         if (dockView != null) dockView.setText("25");
         settingText = true;
-        if (noteEdit != null) noteEdit.setText("这是预览。现在默认是「小展开」模式：点它直接进来写字，停笔自动保存；拖到屏幕边缘松手就吸附。");
+        if (noteEdit != null) noteEdit.setText("这是预览。悬浮窗现在是常驻的：没计时时显示第一要务，可以直接开始、暂停（先选多久后提醒）、点 AI 把任务发给助手。");
         settingText = false;
         ui.postDelayed(() -> { if (!TimerState.isRunning(c)) hide(); }, 10_000);
     }
 
-    /** 检查页在前台时让位；检查页销毁后由 TimerService 的节拍自动恢复显示。 */
+    /** 检查页在前台时让位；检查页销毁后由常驻服务自动恢复显示。 */
     public static void setSuppressed(boolean s) {
         suppressed = s;
         if (s) hideInternal();
     }
 
-    // ---------- 显示/隐藏 ----------
+    // ---------- 显示/隐藏/刷新 ----------
     public static void ensureShown(Context c) {
         if (!enabled(c) || suppressed || rootView != null) return;
         if (!AlertHelper.canDrawOverlays(c)) return;
         build(c.getApplicationContext());
     }
 
+    /** TimerService 的旧入口：统一走 refresh 渲染。 */
     public static void update(Context c, String remainText) {
+        refresh(c);
+    }
+
+    public static void refresh(Context c) {
         if (rootView == null) return;
-        String title = TimerState.taskTitle(c);
-        if (titleView != null) titleView.setText(title);
-        if (timeView != null) timeView.setText(remainText);
-        if (miniTitle != null) miniTitle.setText(title);
-        if (miniTime != null) miniTime.setText(remainText);
-        if (dockView != null) {
-            long remainMs = TimerState.endAt(c) - System.currentTimeMillis();
-            long mins = Math.max(1, (remainMs + 59_999) / 60_000);
-            dockView.setText(mins > 99 ? "99+" : String.valueOf(mins));
+        if (PauseMenu.isOpen() && !TimerState.isRunning(c)) PauseMenu.close();
+        Display d = resolveDisplay(c);
+        displayTaskId = d.task != null ? d.task.id : null;
+        String timeText;
+        if (d.state == ST_RUNNING || d.state == ST_PAUSED) timeText = fmt(d.remainMs);
+        else if (d.state == ST_IDLE) timeText = d.task.durationMinutes + "分";
+        else timeText = "--:--";
+        if (titleView != null) titleView.setText(d.title);
+        if (timeView != null) timeView.setText(timeText);
+        if (miniTitle != null) miniTitle.setText(d.title);
+        if (miniTime != null) miniTime.setText(timeText);
+        if (miniPlay != null) miniPlay.setText(d.state == ST_RUNNING ? "⏸" : "▶");
+        if (stateView != null) {
+            stateView.setText(d.state == ST_RUNNING ? "计时中"
+                    : d.state == ST_PAUSED ? "已暂停，点 ▶ 继续"
+                    : d.state == ST_IDLE ? "第一要务，点 ▶ 开始" : "今天的任务都完成了");
         }
-        // 任务切换时才重载笔记，避免打断正在输入的内容
-        String id = TimerState.taskId(c);
-        if (noteEdit != null && (cachedTaskId == null || !cachedTaskId.equals(id))) {
-            cachedTaskId = id;
-            TaskItem t = currentTask(c);
+        if (playPauseBtn != null) {
+            playPauseBtn.setText(d.state == ST_RUNNING ? "⏸ 暂停"
+                    : d.state == ST_PAUSED ? "▶ 继续" : "▶ 开始");
+            playPauseBtn.setEnabled(d.state != ST_NONE);
+        }
+        if (doneBtn != null) doneBtn.setVisibility(d.state == ST_RUNNING ? View.VISIBLE : View.GONE);
+        if (dockView != null) {
+            long mins;
+            if (d.state == ST_RUNNING || d.state == ST_PAUSED) mins = Math.max(1, (d.remainMs + 59_999) / 60_000);
+            else if (d.state == ST_IDLE) mins = d.task.durationMinutes;
+            else mins = 0;
+            dockView.setText(d.state == ST_NONE ? "✓" : mins > 99 ? "99+" : String.valueOf(mins));
+        }
+        // 笔记绑定到当前显示的任务；任务变了才重载，避免打断输入
+        if (noteEdit != null && (cachedTaskId == null || !cachedTaskId.equals(displayTaskId))) {
+            cachedTaskId = displayTaskId;
             settingText = true;
-            noteEdit.setText(t == null || t.note == null ? "" : t.note);
+            noteEdit.setText(d.task == null || d.task.note == null ? "" : d.task.note);
             settingText = false;
         }
     }
@@ -180,6 +274,7 @@ public class FloatingWindow {
     }
 
     private static void hideInternal() {
+        PauseMenu.close();
         if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
         if (wm != null && rootView != null) {
             try { wm.removeView(rootView); } catch (Exception ignored) { }
@@ -188,12 +283,22 @@ public class FloatingWindow {
         editing = false;
         noteDirty = false;
         cachedTaskId = null;
+        displayTaskId = null;
     }
 
-    private static TaskItem currentTask(Context c) {
-        String id = TimerState.taskId(c);
-        if (id == null || id.isEmpty()) return null;
-        return new TaskStore(c).byId(id);
+    // ---------- 开始 / 暂停 / 继续 ----------
+    private static void onPlayPause(Context c) {
+        Display d = resolveDisplay(c);
+        if (d.state == ST_RUNNING) {
+            PauseMenu.show(c, d.title);
+        } else if (d.state == ST_PAUSED && d.task != null) {
+            int total = TimerState.pausedTotalSec(c);
+            if (total <= 0) total = Math.max(1, d.task.durationMinutes) * 60;
+            int remain = (int) Math.max(1, TimerState.pausedRemainMs(c) / 1000);
+            TimerService.resumeTimer(c, total, remain, d.task.id, d.task.title);
+        } else if (d.state == ST_IDLE && d.task != null) {
+            TimerService.startTimer(c, Math.max(1, d.task.durationMinutes) * 60, d.task.id, d.task.title);
+        }
     }
 
     // ---------- 构建 ----------
@@ -205,7 +310,7 @@ public class FloatingWindow {
         rootView = new LinearLayout(c);
         rootView.setOrientation(LinearLayout.VERTICAL);
 
-        // —— 吸附模式：边缘小标签 ——
+        // —— 吸附模式：边缘分钟数标签（无按钮，不能暂停） ——
         dockView = new TextView(c);
         dockView.setText("25");
         dockView.setTextColor(Color.WHITE);
@@ -215,7 +320,7 @@ public class FloatingWindow {
         dockView.setVisibility(View.GONE);
         rootView.addView(dockView);
 
-        // —— 小展开模式：任务名 + 倒计时 + ! ——
+        // —— 小展开模式：任务名 + 时间 + ▶/⏸ + ✎ ——
         miniBox = new LinearLayout(c);
         miniBox.setOrientation(LinearLayout.HORIZONTAL);
         miniBox.setGravity(Gravity.CENTER_VERTICAL);
@@ -233,16 +338,23 @@ public class FloatingWindow {
         miniTime.setTypeface(miniTime.getTypeface(), android.graphics.Typeface.BOLD);
         miniTime.setPadding(dp(c, 6), 0, dp(c, 2), 0);
         miniBox.addView(miniTime);
+        miniPlay = new TextView(c);
+        miniPlay.setText("▶");
+        miniPlay.setTextColor(Color.WHITE);
+        miniPlay.setTextSize(16);
+        miniPlay.setPadding(dp(c, 8), dp(c, 4), dp(c, 4), dp(c, 4));
+        miniPlay.setOnClickListener(v -> onPlayPause(c));
+        miniBox.addView(miniPlay);
         TextView bang = new TextView(c);
         bang.setText("✎");
         bang.setTextColor(Color.rgb(220, 220, 220));
         bang.setTextSize(17);
-        bang.setPadding(dp(c, 8), dp(c, 2), dp(c, 4), dp(c, 2));
+        bang.setPadding(dp(c, 6), dp(c, 2), dp(c, 4), dp(c, 2));
         bang.setOnClickListener(v -> openEdit(c));
         miniBox.addView(bang);
         rootView.addView(miniBox);
 
-        // —— 编辑模式：完整卡片，笔记即输入框 ——
+        // —— 编辑模式：完整卡片 ——
         bodyBox = new LinearLayout(c);
         bodyBox.setOrientation(LinearLayout.VERTICAL);
         rootView.addView(bodyBox);
@@ -251,7 +363,7 @@ public class FloatingWindow {
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView tag = new TextView(c);
-        tag.setText("知行 · 计时中");
+        tag.setText("知行 · 当前第一要务");
         tag.setTextColor(Color.rgb(176, 176, 176));
         tag.setTextSize(11);
         tag.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -268,11 +380,20 @@ public class FloatingWindow {
         titleView.setMaxLines(2);
         bodyBox.addView(titleView);
 
+        LinearLayout timeRow = new LinearLayout(c);
+        timeRow.setOrientation(LinearLayout.HORIZONTAL);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
         timeView = new TextView(c);
         timeView.setTextColor(Color.WHITE);
         timeView.setTextSize(32);
         timeView.setTypeface(timeView.getTypeface(), android.graphics.Typeface.BOLD);
-        bodyBox.addView(timeView);
+        timeRow.addView(timeView);
+        stateView = new TextView(c);
+        stateView.setTextColor(Color.rgb(176, 176, 176));
+        stateView.setTextSize(12);
+        stateView.setPadding(dp(c, 10), 0, 0, 0);
+        timeRow.addView(stateView);
+        bodyBox.addView(timeRow);
 
         noteEdit = new EditText(c);
         noteEdit.setTextColor(Color.WHITE);
@@ -285,7 +406,7 @@ public class FloatingWindow {
         noteEdit.setPadding(0, dp(c, 4), 0, 0);
         noteEdit.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_DOWN && !editing) beginEditFocus(c);
-            return false; // 让 EditText 自己处理（放光标、选字）
+            return false;
         });
         noteEdit.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) { }
@@ -309,14 +430,23 @@ public class FloatingWindow {
 
         LinearLayout btns = new LinearLayout(c);
         btns.setOrientation(LinearLayout.HORIZONTAL);
-        Button openBtn = smallButton(c, "打开知行");
-        openBtn.setOnClickListener(v -> {
-            Intent i = new Intent(c, MainActivity.class);
+        playPauseBtn = smallButton(c, "▶ 开始");
+        playPauseBtn.setOnClickListener(v -> onPlayPause(c));
+        btns.addView(playPauseBtn);
+        Button aiBtn = smallButton(c, "AI");
+        aiBtn.setOnClickListener(v -> {
+            Display dd = resolveDisplay(c);
+            if (dd.task == null) {
+                android.widget.Toast.makeText(c, "现在没有可发送的任务", android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Intent i = new Intent(c, AiLaunchActivity.class);
+            i.putExtra(AiLaunchActivity.EXTRA_TASK_ID, dd.task.id);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             c.startActivity(i);
         });
-        btns.addView(openBtn);
-        Button doneBtn = smallButton(c, "完成");
+        btns.addView(aiBtn);
+        doneBtn = smallButton(c, "完成");
         doneBtn.setOnClickListener(v -> {
             setSuppressed(true);
             Intent i = new Intent(c, CheckActivity.class);
@@ -325,16 +455,27 @@ public class FloatingWindow {
             c.startActivity(i);
         });
         btns.addView(doneBtn);
+        bodyBox.addView(btns);
+
+        LinearLayout btns2 = new LinearLayout(c);
+        btns2.setOrientation(LinearLayout.HORIZONTAL);
+        Button openBtn = smallButton(c, "打开知行");
+        openBtn.setOnClickListener(v -> {
+            Intent i = new Intent(c, MainActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+        });
+        btns2.addView(openBtn);
         Button miniBtn = smallButton(c, "收起");
         miniBtn.setOnClickListener(v -> setMode(c, MODE_MINI));
-        btns.addView(miniBtn);
-        bodyBox.addView(btns);
+        btns2.addView(miniBtn);
+        bodyBox.addView(btns2);
 
         int type = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
         lp = new WindowManager.LayoutParams(
-                (int) (244 * d), WindowManager.LayoutParams.WRAP_CONTENT, type,
+                (int) (262 * d), WindowManager.LayoutParams.WRAP_CONTENT, type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
@@ -350,9 +491,10 @@ public class FloatingWindow {
             return;
         }
         applyMode(c);
+        refresh(c);
     }
 
-    /** 进入编辑：展开卡片 + 笔记输入框立刻获得焦点并弹键盘（Floating Notes 式点即写）。 */
+    /** 进入编辑：展开卡片 + 笔记输入框立刻获得焦点并弹键盘。 */
     private static void openEdit(Context c) {
         setMode(c, MODE_EDIT);
         ui.postDelayed(() -> beginEditFocus(c), 60);
@@ -386,11 +528,9 @@ public class FloatingWindow {
     }
 
     private static void persistNote(Context c, boolean fromEnd) {
-        if (noteEdit == null) return;
-        String id = TimerState.taskId(c);
-        if (id == null || id.isEmpty()) return;
+        if (noteEdit == null || displayTaskId == null) return;
         TaskStore store = new TaskStore(c);
-        TaskItem t = store.byId(id);
+        TaskItem t = store.byId(displayTaskId);
         if (t == null) return;
         String v = noteEdit.getText().toString().trim();
         if (!v.equals(t.note == null ? "" : t.note)) {
@@ -432,17 +572,14 @@ public class FloatingWindow {
                     try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    onUp(dx(), dy());
+                    onUp(lp.x - startX);
                     return true;
                 default:
                     return false;
             }
         }
 
-        private int dx() { return lp.x - startX; }
-        private int dy() { return lp.y - startY; }
-
-        private void onUp(int dx, int dy) {
+        private void onUp(int dx) {
             int m = mode(c);
             float d = c.getResources().getDisplayMetrics().density;
             int screenW = c.getResources().getDisplayMetrics().widthPixels;
@@ -451,33 +588,171 @@ public class FloatingWindow {
                 int side = dockSide(c);
                 boolean inward = side == 1 ? dx < -(int) (60 * d) : dx > (int) (60 * d);
                 if (!moved) expandFromDock(c);
-                else if (inward) {
-                    setMode(c, MODE_MINI);
-                } else {
-                    lp.x = dockX(c); // 弹回边缘
+                else if (inward) setMode(c, MODE_MINI);
+                else {
+                    lp.x = dockX(c);
                     try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
                 }
             } else if (m == MODE_MINI) {
                 if (!moved) { openEdit(c); return; }
                 if (lp.x <= (int) (18 * d)) {
                     setDockSide(c, 0);
-                    lp.y = Math.max(0, lp.y);
                     setMode(c, MODE_DOCK);
                 } else if (lp.x + viewW >= screenW - (int) (18 * d)) {
                     setDockSide(c, 1);
-                    lp.y = Math.max(0, lp.y);
                     setMode(c, MODE_DOCK);
                 }
             }
-            // EDIT：只移动，不做模式切换
         }
 
         private void expandFromDock(Context c) {
             float d = c.getResources().getDisplayMetrics().density;
             int screenW = c.getResources().getDisplayMetrics().widthPixels;
-            if (dockSide(c) == 1) lp.x = screenW - (int) (244 * d) - (int) (10 * d);
+            if (dockSide(c) == 1) lp.x = screenW - (int) (262 * d) - (int) (10 * d);
             else lp.x = (int) (10 * d);
             setMode(c, MODE_MINI);
+        }
+    }
+
+    // ---------- 暂停菜单（选提醒时间） ----------
+    private static class PauseMenu {
+        private static WindowManager mwm;
+        private static View menuView;
+        private static LinearLayout listBox;
+        private static LinearLayout customBox;
+        private static EditText hourInput;
+        private static EditText minInput;
+
+        static boolean isOpen() { return menuView != null; }
+
+        static void show(final Context c, String taskTitle) {
+            close();
+            mwm = (WindowManager) c.getSystemService(Context.WINDOW_SERVICE);
+            if (mwm == null) return;
+            float d = c.getResources().getDisplayMetrics().density;
+
+            LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(Color.argb(245, 28, 28, 28));
+            bg.setCornerRadius(16 * d);
+            card.setBackground(bg);
+            int pad = (int) (16 * d);
+            card.setPadding(pad, pad, pad, pad);
+
+            TextView title = new TextView(c);
+            title.setText("暂停「" + taskTitle + "」\n多久之后提醒你回来？");
+            title.setTextColor(Color.WHITE);
+            title.setTextSize(16);
+            card.addView(title);
+
+            listBox = new LinearLayout(c);
+            listBox.setOrientation(LinearLayout.VERTICAL);
+            for (int i = 0; i < ResumeReminder.LABELS.length; i++) {
+                final long delay = ResumeReminder.DELAYS_MS[i];
+                listBox.addView(menuRow(c, ResumeReminder.LABELS[i], v -> {
+                    TimerService.pauseWithReminder(c, delay);
+                    close();
+                }));
+            }
+            listBox.addView(menuRow(c, "自定义…", v -> {
+                listBox.setVisibility(View.GONE);
+                customBox.setVisibility(View.VISIBLE);
+            }));
+            listBox.addView(menuRow(c, "立刻暂停（不提醒）", v -> {
+                TimerService.pauseTimer(c);
+                close();
+            }));
+            listBox.addView(menuRow(c, "取消", v -> close()));
+            ScrollView scroll = new ScrollView(c);
+            scroll.addView(listBox);
+            card.addView(scroll);
+
+            customBox = new LinearLayout(c);
+            customBox.setOrientation(LinearLayout.VERTICAL);
+            customBox.setVisibility(View.GONE);
+            LinearLayout inputs = new LinearLayout(c);
+            inputs.setOrientation(LinearLayout.HORIZONTAL);
+            inputs.setGravity(Gravity.CENTER);
+            hourInput = menuInput(c, "小时");
+            minInput = menuInput(c, "分钟");
+            inputs.addView(hourInput);
+            TextView colon = new TextView(c);
+            colon.setText(" : ");
+            colon.setTextColor(Color.WHITE);
+            colon.setTextSize(18);
+            inputs.addView(colon);
+            inputs.addView(minInput);
+            customBox.addView(inputs);
+            customBox.addView(menuRow(c, "确定", v -> {
+                int h = parse(hourInput), m = parse(minInput);
+                long ms = (h * 60L + m) * 60_000L;
+                if (ms < 60_000L) ms = 60_000L;
+                TimerService.pauseWithReminder(c, ms);
+                close();
+            }));
+            customBox.addView(menuRow(c, "返回", v -> {
+                customBox.setVisibility(View.GONE);
+                listBox.setVisibility(View.VISIBLE);
+            }));
+            card.addView(customBox);
+
+            int type = Build.VERSION.SDK_INT >= 26
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+            WindowManager.LayoutParams mlp = new WindowManager.LayoutParams(
+                    (int) (280 * d), WindowManager.LayoutParams.WRAP_CONTENT, type,
+                    WindowManager.LayoutParams.FLAG_DIM_BEHIND, PixelFormat.TRANSLUCENT);
+            mlp.gravity = Gravity.CENTER;
+            mlp.dimAmount = 0.45f;
+            mlp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+            try {
+                mwm.addView(card, mlp);
+                menuView = card;
+            } catch (Exception e) {
+                menuView = null;
+            }
+        }
+
+        static void close() {
+            if (mwm != null && menuView != null) {
+                try { mwm.removeView(menuView); } catch (Exception ignored) { }
+            }
+            menuView = null;
+            listBox = null;
+            customBox = null;
+        }
+
+        private static TextView menuRow(Context c, String s, View.OnClickListener onClick) {
+            TextView t = new TextView(c);
+            t.setText(s);
+            t.setTextColor(Color.WHITE);
+            t.setTextSize(16);
+            t.setGravity(Gravity.CENTER);
+            float d = c.getResources().getDisplayMetrics().density;
+            t.setPadding(0, (int) (11 * d), 0, (int) (11 * d));
+            t.setOnClickListener(onClick);
+            return t;
+        }
+
+        private static EditText menuInput(Context c, String hint) {
+            EditText e = new EditText(c);
+            e.setHint(hint);
+            e.setHintTextColor(Color.GRAY);
+            e.setTextColor(Color.WHITE);
+            e.setTextSize(18);
+            e.setGravity(Gravity.CENTER);
+            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            e.setLayoutParams(new LinearLayout.LayoutParams(dpC(c, 84), LinearLayout.LayoutParams.WRAP_CONTENT));
+            return e;
+        }
+
+        private static int parse(EditText e) {
+            try { return Integer.parseInt(e.getText().toString().trim()); } catch (Exception ex) { return 0; }
+        }
+
+        private static int dpC(Context c, int v) {
+            return (int) (v * c.getResources().getDisplayMetrics().density + 0.5f);
         }
     }
 
