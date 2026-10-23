@@ -77,6 +77,7 @@ public class TimerService extends Service {
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
             TimerState.start(this, total,
                     intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
+            FocusGuard.reset(this);
             TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);
@@ -120,6 +121,7 @@ public class TimerService extends Service {
             FloatingWindow.setSuppressed(true);
             AlertHelper.fire(this, AlertHelper.TYPE_END);
         }
+        FocusGuard.tick(this);
         // 倒计时数字由通知的 chronometer 显示，文本每 tick 刷新一次当前阶段
         startInForeground();
     }

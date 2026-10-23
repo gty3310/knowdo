@@ -13,6 +13,7 @@
     <!-- 关键：持有此权限是官方认可的后台启动页面豁免之一，亮屏时可直接弹出全屏页，不必经通知 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 
     <application
         android:label="知行 KnowDo"
@@ -53,6 +54,20 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <activity
+            android:name=".CurrentTaskActivity"
+            android:exported="false" />
+
+        <!-- 专注守卫问询页：与全屏检查页同样的展示属性 -->
+        <activity
+            android:name=".GuardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
 
         <!-- 全屏检查页：压锁屏显示、点亮屏幕、独立任务、不进最近任务 -->
         <activity

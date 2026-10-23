@@ -25,6 +25,7 @@ public final class AlertHelper {
 
     public static final int TYPE_HALF = 1;
     public static final int TYPE_END = 2;
+    public static final int NOTIF_GUARD = 201;
 
     private AlertHelper() {}
 
@@ -109,5 +110,47 @@ public final class AlertHelper {
     public static void cancelAlert(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(NOTIF_ALERT);
+    }
+
+    /** 专注守卫问询页的统一出口：与计时提醒同一策略（亮屏直接启动，锁屏走 FSI 通知）。 */
+    public static void fireGuard(Context c, String fgPkg) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, GuardActivity.class);
+                direct.putExtra(GuardActivity.EXTRA_PKG, fgPkg);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                TimerState.logEvent(c, "已直接弹出专注守卫页（亮屏路径）");
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "守卫页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        Intent intent = new Intent(c, GuardActivity.class);
+        intent.putExtra(GuardActivity.EXTRA_PKG, fgPkg);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_GUARD, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("你是在做正确的任务吗？")
+                .setContentText("检测到你打开了「" + AppLister.labelOf(c, fgPkg) + "」，点开确认")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_GUARD, b.build());
+    }
+
+    public static void cancelGuard(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_GUARD);
     }
 }

@@ -23,6 +23,12 @@ public class TaskItem {
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
     public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
     public String note = "";           // 任务笔记，可在计时悬浮窗里随手写，随桥同步
+    // ---- 专注守卫 ----
+    public String focusRule = "";      // 自然语言规则（人读的，App 不解析；结构化名单才执行）
+    public String focusMode = "off";   // off / block（拦 blockedApps）/ allow（只许 allowedApps）
+    public List<String> blockedApps = new ArrayList<>();
+    public List<String> allowedApps = new ArrayList<>();
+    public String primaryApp;          // 指定的主软件包名：被拦下时跳回它；为空则跳知行「当前任务页」
     public List<String> doneDates = new ArrayList<>();
     public boolean deleted = false;
     public long createdAtMs;
@@ -82,6 +88,15 @@ public class TaskItem {
         o.put("status", status);
         o.put("autoStart", autoStart);
         o.put("note", note);
+        o.put("focusRule", focusRule);
+        o.put("focusMode", focusMode);
+        JSONArray ba = new JSONArray();
+        for (String s : blockedApps) ba.put(s);
+        o.put("blockedApps", ba);
+        JSONArray aa = new JSONArray();
+        for (String s : allowedApps) aa.put(s);
+        o.put("allowedApps", aa);
+        o.put("primaryApp", primaryApp == null ? JSONObject.NULL : primaryApp);
         JSONArray dd = new JSONArray();
         for (String s : doneDates) dd.put(s);
         o.put("doneDates", dd);
@@ -108,6 +123,14 @@ public class TaskItem {
         t.status = o.optString("status", "todo");
         t.autoStart = o.optBoolean("autoStart", false);
         t.note = o.optString("note", "");
+        t.focusRule = o.optString("focusRule", "");
+        t.focusMode = o.optString("focusMode", "off");
+        JSONArray ba = o.optJSONArray("blockedApps");
+        if (ba != null) for (int i = 0; i < ba.length(); i++) t.blockedApps.add(ba.getString(i));
+        JSONArray aa = o.optJSONArray("allowedApps");
+        if (aa != null) for (int i = 0; i < aa.length(); i++) t.allowedApps.add(aa.getString(i));
+        t.primaryApp = o.isNull("primaryApp") ? null : o.optString("primaryApp", null);
+        if (t.primaryApp != null && t.primaryApp.isEmpty()) t.primaryApp = null;
         JSONArray dd = o.optJSONArray("doneDates");
         if (dd != null) for (int i = 0; i < dd.length(); i++) t.doneDates.add(dd.getString(i));
         t.deleted = o.optBoolean("deleted", false);

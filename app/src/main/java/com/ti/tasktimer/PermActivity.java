@@ -86,6 +86,43 @@ public class PermActivity extends Activity {
             startActivity(i);
         });
 
+        boolean usageOk = FocusGuard.detectorReady(this);
+        addRow(root, "使用情况访问（检测分神软件）", usageOk, v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+            } catch (Exception e) {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+            }
+        });
+
+        // 「回到 Muse」的目标应用（当前任务页的按钮跳它；与 Muse 对话不被守卫拦截）
+        LinearLayout museRow = new LinearLayout(this);
+        museRow.setOrientation(LinearLayout.HORIZONTAL);
+        museRow.setPadding(0, dp(10), 0, dp(6));
+        TextView mt = new TextView(this);
+        String mp = FocusGuard.musePackage(this);
+        mt.setText("「回到 Muse」指向：" + (mp == null ? "未设置" : AppLister.labelOf(this, mp)));
+        mt.setTextSize(15);
+        mt.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        museRow.addView(mt);
+        Button pickMuse = new Button(this);
+        pickMuse.setText("选择");
+        pickMuse.setOnClickListener(v -> {
+            final java.util.List<AppLister.AppInfo> apps = AppLister.launchableApps(this);
+            String[] labels = new String[apps.size()];
+            for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).label;
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("哪个是 Muse？")
+                    .setItems(labels, (d, which) -> {
+                        FocusGuard.setMusePackage(this, apps.get(which).pkg);
+                        buildUi();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        });
+        museRow.addView(pickMuse);
+        root.addView(museRow);
+
         // 计时悬浮窗开关（依赖上面的“上层显示”授权）
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);

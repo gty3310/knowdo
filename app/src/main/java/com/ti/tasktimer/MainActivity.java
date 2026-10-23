@@ -186,9 +186,10 @@ public class MainActivity extends Activity {
         h.setPadding(dp(6), dp(6), dp(6), dp(6));
         h.addView(headerCell("", 44));
         h.addView(headerCell("任务", 0));
-        h.addView(headerCell("情景", 92));
-        h.addView(headerCell("截止", 84));
-        h.addView(headerCell("时长", 58));
+        h.addView(headerCell("情景", 74));
+        h.addView(headerCell("截止", 70));
+        h.addView(headerCell("时长", 48));
+        h.addView(headerCell("专注", 62));
         return h;
     }
 
@@ -260,7 +261,7 @@ public class MainActivity extends Activity {
             scCell.setText(t.scenarios.isEmpty() ? "＋情景" : String.join("、", t.scenarios));
             scCell.setTextSize(13);
             scCell.setTextColor(t.scenarios.isEmpty() ? Color.GRAY : Color.rgb(21, 101, 192));
-            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(92), LinearLayout.LayoutParams.WRAP_CONTENT));
+            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(74), LinearLayout.LayoutParams.WRAP_CONTENT));
             scCell.setOnClickListener(v -> dialogScenarios(t));
             row.addView(scCell);
 
@@ -268,7 +269,7 @@ public class MainActivity extends Activity {
             dlCell.setText("daily".equals(t.repeat) ? "每日" : (t.deadline == null ? "＋日期" : t.deadline.substring(5)));
             dlCell.setTextSize(13);
             dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
-            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(84), LinearLayout.LayoutParams.WRAP_CONTENT));
+            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(70), LinearLayout.LayoutParams.WRAP_CONTENT));
             dlCell.setOnClickListener(v -> dialogDeadline(t));
             row.addView(dlCell);
 
@@ -276,11 +277,32 @@ public class MainActivity extends Activity {
             duCell.setText(t.durationMinutes + " 分");
             duCell.setTextSize(13);
             duCell.setTextColor(Color.rgb(21, 101, 192));
-            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(58), LinearLayout.LayoutParams.WRAP_CONTENT));
+            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(48), LinearLayout.LayoutParams.WRAP_CONTENT));
             duCell.setOnClickListener(v -> dialogDuration(t));
             row.addView(duCell);
+
+            TextView foCell = new TextView(MainActivity.this);
+            foCell.setText(focusCellText(t));
+            foCell.setTextSize(12);
+            foCell.setMaxLines(2);
+            foCell.setTextColor("off".equals(t.focusMode) ? Color.GRAY : Color.rgb(198, 40, 40));
+            foCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
+            foCell.setOnClickListener(v -> dialogFocus(t));
+            row.addView(foCell);
             return row;
         }
+    }
+
+    private String focusCellText(TaskItem t) {
+        if ("block".equals(t.focusMode)) {
+            return t.blockedApps.isEmpty() ? "禁（未选）"
+                    : "禁:" + AppLister.labelOf(this, t.blockedApps.get(0)) + (t.blockedApps.size() > 1 ? "+" + (t.blockedApps.size() - 1) : "");
+        }
+        if ("allow".equals(t.focusMode)) {
+            return t.allowedApps.isEmpty() ? "仅（未选）"
+                    : "仅:" + AppLister.labelOf(this, t.allowedApps.get(0)) + (t.allowedApps.size() > 1 ? "+" + (t.allowedApps.size() - 1) : "");
+        }
+        return (t.focusRule == null || t.focusRule.isEmpty()) ? "＋专注" : "规则";
     }
 
     private void onPlay(final TaskItem t) {
@@ -445,6 +467,120 @@ public class MainActivity extends Activity {
                         int m = Integer.parseInt(input.getText().toString().trim());
                         if (m > 0) { t.durationMinutes = m; t.touch(); store.save(); adapter.notifyDataSetChanged(); }
                     } catch (NumberFormatException ignored) { }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogFocus(final TaskItem t) {
+        final List<AppLister.AppInfo> apps = AppLister.launchableApps(this);
+        final String[] labels = new String[apps.size()];
+        for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).label;
+        final String[] mode = {t.focusMode == null ? "off" : t.focusMode};
+        final List<String> blocked = new ArrayList<>(t.blockedApps);
+        final List<String> allowed = new ArrayList<>(t.allowedApps);
+        final String[] primary = {t.primaryApp};
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+
+        final EditText ruleInput = new EditText(this);
+        ruleInput.setHint("自然语言规则，如：读经典只用时习，不要开微信和浏览器");
+        ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
+        ruleInput.setMinLines(2);
+        ruleInput.setTextSize(15);
+        box.addView(ruleInput);
+
+        final TextView summary = new TextView(this);
+        summary.setTextSize(13);
+        summary.setTextColor(Color.DKGRAY);
+        summary.setPadding(0, dp(8), 0, dp(4));
+
+        final Button[] modeBtns = new Button[3];
+        final String[] modeVals = {"off", "block", "allow"};
+        final String[] modeNames = {"不监测", "黑名单", "白名单"};
+        final Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            for (int i = 0; i < 3; i++) {
+                modeBtns[i].setBackgroundColor(modeVals[i].equals(mode[0])
+                        ? Color.rgb(46, 125, 50) : Color.rgb(189, 189, 189));
+                modeBtns[i].setTextColor(Color.WHITE);
+            }
+            summary.setText("拦截 " + blocked.size() + " 个 · 允许 " + allowed.size() + " 个 · 主软件："
+                    + (primary[0] == null ? "无（跳回当前任务页）" : AppLister.labelOf(this, primary[0])));
+        };
+        LinearLayout modeRow = new LinearLayout(this);
+        modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            modeBtns[i] = new Button(this);
+            modeBtns[i].setText(modeNames[i]);
+            modeBtns[i].setTextSize(14);
+            modeBtns[i].setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            modeBtns[i].setOnClickListener(v -> { mode[0] = modeVals[idx]; refresh[0].run(); });
+            modeRow.addView(modeBtns[i]);
+        }
+        box.addView(modeRow);
+        box.addView(summary);
+
+        Button pickBlocked = new Button(this);
+        pickBlocked.setText("选择要拦截的软件（黑名单）");
+        pickBlocked.setOnClickListener(v -> pickAppsMulti("拦截这些软件", apps, labels, blocked, refresh[0]));
+        box.addView(pickBlocked);
+        Button pickAllowed = new Button(this);
+        pickAllowed.setText("选择只允许用的软件（白名单）");
+        pickAllowed.setOnClickListener(v -> pickAppsMulti("只允许这些软件", apps, labels, allowed, refresh[0]));
+        box.addView(pickAllowed);
+        Button pickPrimary = new Button(this);
+        pickPrimary.setText("选择主软件（被拦下时跳回它）");
+        pickPrimary.setOnClickListener(v -> {
+            String[] items = new String[labels.length + 1];
+            items[0] = "无（跳回知行的当前任务页）";
+            System.arraycopy(labels, 0, items, 1, labels.length);
+            new AlertDialog.Builder(this)
+                    .setTitle("主软件")
+                    .setItems(items, (d, which) -> {
+                        primary[0] = which == 0 ? null : apps.get(which - 1).pkg;
+                        refresh[0].run();
+                    })
+                    .show();
+        });
+        box.addView(pickPrimary);
+        refresh[0].run();
+
+        new AlertDialog.Builder(this)
+                .setTitle("专注规则")
+                .setView(box)
+                .setPositiveButton("保存", (d, w) -> {
+                    t.focusRule = ruleInput.getText().toString().trim();
+                    t.focusMode = mode[0];
+                    t.blockedApps = new ArrayList<>(blocked);
+                    t.allowedApps = new ArrayList<>(allowed);
+                    t.primaryApp = primary[0];
+                    t.touch();
+                    store.save();
+                    adapter.notifyDataSetChanged();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void pickAppsMulti(String title, List<AppLister.AppInfo> apps, String[] labels,
+                               List<String> target, Runnable onDone) {
+        final Set<String> sel = new LinkedHashSet<>(target);
+        boolean[] checked = new boolean[apps.size()];
+        for (int i = 0; i < apps.size(); i++) checked[i] = sel.contains(apps.get(i).pkg);
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> {
+                    if (isChecked) sel.add(apps.get(which).pkg);
+                    else sel.remove(apps.get(which).pkg);
+                })
+                .setPositiveButton("确定", (d, w) -> {
+                    target.clear();
+                    target.addAll(sel);
+                    onDone.run();
                 })
                 .setNegativeButton("取消", null)
                 .show();
