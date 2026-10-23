@@ -13,7 +13,7 @@ public final class TimerState {
         return c.getSharedPreferences(PREF, Context.MODE_PRIVATE);
     }
 
-    public static void start(Context c, int totalSec) {
+    public static void start(Context c, int totalSec, String taskId, String taskTitle) {
         long now = System.currentTimeMillis();
         sp(c).edit()
             .putBoolean("running", true)
@@ -21,9 +21,17 @@ public final class TimerState {
             .putLong("halfAt", now + totalSec * 500L)
             .putLong("endAt", now + totalSec * 1000L)
             .putInt("totalSec", totalSec)
+            .putString("taskId", taskId == null ? "" : taskId)
+            .putString("taskTitle", taskTitle == null ? "" : taskTitle)
             .putBoolean("halfFired", false)
             .putBoolean("endFired", false)
             .apply();
+    }
+
+    public static String taskId(Context c) { return sp(c).getString("taskId", ""); }
+    public static String taskTitle(Context c) {
+        String t = sp(c).getString("taskTitle", "");
+        return t == null || t.isEmpty() ? "当前任务" : t;
     }
 
     public static void extend(Context c, int addSec) {

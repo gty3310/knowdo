@@ -16,9 +16,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * 全屏检查页：由 FullScreenIntent 拉起，压锁屏显示并点亮屏幕。
+ * 全屏检查页：由 AlertHelper 拉起（熄屏走 FSI，亮屏走直接启动），两种状态同一个页面。
  * 过半页：能做完 / 做不完→写下办法。
- * 结束页：做完了→回列表；没做完→加时（验证版用秒，正式版换分钟与百分比）。
+ * 结束页：做完了→回写任务完成状态并回列表；没做完→加时（+50% / +5 / +10 / +15 分钟 / 自定义）。
  */
 public class CheckActivity extends Activity {
     public static final String EXTRA_TYPE = "type";
@@ -49,14 +49,16 @@ public class CheckActivity extends Activity {
         else showEnd();
     }
 
+    private String taskName() { return TimerState.taskTitle(this); }
+
     // ---------- 过半页 ----------
     private void showHalfStage1() {
         clear();
         title("你的时间过了一半了");
-        subtitle("剩下的时间还够你做完吗？");
+        subtitle("任务：" + taskName() + "\n剩下的时间还够你做完吗？");
         Button ok = bigButton("能做完", Color.rgb(46, 125, 50));
         ok.setOnClickListener(v -> {
-            TimerState.logEvent(this, "过半检查：点了「能做完」");
+            TimerState.logEvent(this, "过半检查[" + taskName() + "]：能做完");
             finish();
         });
         root.addView(ok);
@@ -79,7 +81,7 @@ public class CheckActivity extends Activity {
         spacer();
         Button go = bigButton("想好了，继续", Color.rgb(46, 125, 50));
         go.setOnClickListener(v -> {
-            TimerState.logEvent(this, "过半检查：「做不完」，办法=" + input.getText().toString().trim());
+            TimerState.logEvent(this, "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim());
             finish();
         });
         root.addView(go);
@@ -89,10 +91,14 @@ public class CheckActivity extends Activity {
     private void showEnd() {
         clear();
         title("时间到了");
-        subtitle("我们看一下：这个任务做完了吗？");
+        subtitle("我们看一下：「" + taskName() + "」做完了吗？");
         Button done = bigButton("做完了，做下一个任务", Color.rgb(46, 125, 50));
         done.setOnClickListener(v -> {
-            TimerState.logEvent(this, "结束检查：点了「做完了」");
+            // 回写完成状态（一次性任务置 done，每日任务记今日完成）
+            TaskStore store = new TaskStore(this);
+            TaskItem t = store.byId(TimerState.taskId(this));
+            if (t != null) { t.markDone(); store.save(); }
+            TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
             TimerService.stopTimer(this);
             Intent i = new Intent(this, MainActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -102,42 +108,42 @@ public class CheckActivity extends Activity {
         root.addView(done);
         spacer();
         TextView label = new TextView(this);
-        label.setText("没做完？加一点时间（验证版按秒，正式版是分钟）：");
+        label.setText("没做完？加一点时间：");
         label.setTextSize(17);
         root.addView(label);
         spacerSmall();
-        root.addView(extendButton("+50%", -1));
+        int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
+        root.addView(extendButton("+50%（+" + Math.max(1, totalMin / 2) + " 分钟）", Math.max(1, totalMin / 2) * 60));
         spacerSmall();
-        root.addView(extendButton("+30 秒", 30));
+        root.addView(extendButton("+5 分钟", 300));
         spacerSmall();
-        root.addView(extendButton("+60 秒", 60));
+        root.addView(extendButton("+10 分钟", 600));
+        spacerSmall();
+        root.addView(extendButton("+15 分钟", 900));
         spacerSmall();
         final EditText custom = new EditText(this);
-        custom.setHint("或输入想加的秒数");
+        custom.setHint("或输入想加的分钟数");
         custom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         custom.setTextSize(17);
         root.addView(custom);
         Button customBtn = bigButton("按输入加时", Color.rgb(21, 101, 192));
         customBtn.setOnClickListener(v -> {
             try {
-                int sec = Integer.parseInt(custom.getText().toString().trim());
-                if (sec > 0) doExtend(sec);
+                int min = Integer.parseInt(custom.getText().toString().trim());
+                if (min > 0) doExtend(min * 60);
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
     }
 
-    private Button extendButton(String text, final int fixedSec) {
+    private Button extendButton(String text, final int addSec) {
         Button b = bigButton(text, Color.rgb(21, 101, 192));
-        b.setOnClickListener(v -> {
-            int add = fixedSec > 0 ? fixedSec
-                    : Math.max(1, TimerState.totalSec(this) / 2);
-            doExtend(add);
-        });
+        b.setOnClickListener(v -> doExtend(addSec));
         return b;
     }
 
     private void doExtend(int addSec) {
+        TimerState.logEvent(this, "结束检查[" + taskName() + "]：加时 " + (addSec / 60) + " 分钟");
         TimerService.extendTimer(this, addSec);
         finish();
     }

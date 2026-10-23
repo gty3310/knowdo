@@ -17,22 +17,34 @@ If not, extend the timer or write down how you will finish.
 
 ## 当前状态 / Status
 
-当前仓库为 **v0.1.3 全屏验证版**：验证核心机制——倒计时结束/过半时，
-在熄屏与亮屏两种状态下都能弹出同一个全屏检查页。
+当前版本 **v1.0.0**（验证版 v0.1.x 的全屏机制已全部并入）：
 
-* 熄屏/锁屏：Full-Screen Intent 通知拉起全屏页（已在 Pixel 10 Pro / Android 16 真机验证）。
-* 亮屏未锁：FSI 按系统设计只给横幅，故改走官方后台启动豁免路线——
-  用户授予“在其他应用上层显示”（SYSTEM_ALERT_WINDOW）后，计时服务直接启动同一个全屏页，不经通知。
+* **Excel 式任务表**：每行四列可直接点按编辑——任务名（可设“必要”★）、
+  情景（多选面板，可自由新增标签）、截止（日期选择，或勾选“每日重复”）、
+  时长（分钟）；每行左侧 ▶ 开始该任务的计时；长按一行可标记完成或删除。
+* **全屏检查页**（过半 / 结束同一个页面，熄屏与亮屏一致）：
+  熄屏/锁屏走 Full-Screen Intent 拉起；亮屏未锁时 FSI 按系统设计只给横幅，
+  故走官方后台启动豁免路线——用户授予“在其他应用上层显示”（SYSTEM_ALERT_WINDOW）后，
+  计时服务直接启动全屏页，不经通知（两条路径均已在 Pixel 10 Pro / Android 16 真机验证前者、后者待复测）。
+  过半页问“还够做完吗”，做不完可写下办法；结束页点“做完了”会回写任务完成状态，
+  没做完可 +50% / +5 / +10 / +15 分钟或自定义加时。
+* **与 Google Drive 同步（当作“桥”）**：任务清单以 tasks.json（schema 见 `sync/tasks.json`）
+  存放在使用者的 Drive「_电子大脑 / task list」文件夹；App 通过系统文件选择器（SAF）
+  一次授权后即可双向同步——在 App 里增改，或由 Muse 直接改桥文件，另一端同步即达。
+  合并规则：按任务 id 对齐、updatedAtMs 新者胜、删除走墓碑标记防复活。
+  计时记录只存本地，不进桥文件。
 * 倒计时由前台服务（specialUse 类型）驱动，只存绝对结束时间，进程被杀不漂移；
-  AlarmManager 精确闹钟在过半点/结束点兜底。
-* 首页有五项权限体检（通知 / 全屏通知 / 精确闹钟 / 电池优化豁免 / 上层显示），逐项可跳转开启。
+  AlarmManager 精确闹钟在过半点/结束点兜底。权限体检独立成页（五项逐项可跳转开启）。
 
 完整设计与调研见 [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md)。
-正式版（任务表格、情景多选、统计）按该报告的 Kotlin + Compose + Room 可扩展架构开发中。
 
-This repo currently holds the v0.1.3 full-screen verification build (plain Android/Java,
-zero dependencies, built with the included `build-manual.sh` against the Android SDK).
-The production version follows the scalable architecture in the research doc.
+实现说明：为在无 Gradle 守护进程的环境中可复现构建，v1 仍用零依赖的原生 Java/Views 实现，
+但分层与研究报告一致（TaskStore 数据层 / SyncManager 同步层 / TimerService 计时层 / 界面层），
+日后迁移 Kotlin + Compose + Room 时只换实现、不动数据格式。
+
+v1.0.0: spreadsheet-like task table (editable columns, scenario multi-select,
+per-task timer), the verified dual-path full-screen check-in pages, and two-way sync
+with a Google Drive `tasks.json` bridge via the Storage Access Framework.
 
 ## 构建 / Build
 

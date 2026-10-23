@@ -1,199 +1,469 @@
 package com.ti.tasktimer;
 
 import android.app.Activity;
-import android.app.AlarmManager;
-import android.content.Context;
+import android.app.AlertDialog;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
-import android.provider.Settings;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.DatePicker;
+import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
- * 验证版主界面：四项权限体检 + 开始/停止测试 + 测试日志。
- * 实测流程：先把下面四项都变成 ✓，点「开始 60 秒测试」，立刻按电源键息屏放下手机。
+ * 知行 KnowDo 主界面：Excel 式任务表。
+ * 每行：▶ 开始计时 | 任务（点按改名）| 情景（点按多选）| 截止（点按选日期/每日重复）| 时长（点按改分钟）
+ * 长按一行：标记完成 / 删除。与 Drive 的 tasks.json 通过「同步」双向合并。
  */
 public class MainActivity extends Activity {
-    private LinearLayout root;
+    private static final int REQ_PICK_BRIDGE = 42;
+
+    private TaskStore store;
+    private ListView listView;
+    private TaskAdapter adapter;
     private TextView statusView;
-    private TextView logView;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable refreshLoop = new Runnable() {
-        @Override public void run() {
-            refreshStatus();
-            handler.postDelayed(this, 700);
-        }
+    private final Runnable statusLoop = new Runnable() {
+        @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        store = new TaskStore(this);
         AlertHelper.createChannels(this);
         buildUi();
+        if (getIntent() != null && getIntent().getBooleanExtra("pick_bridge", false)) {
+            launchBridgePicker();
+        } else if (SyncManager.getUri(this) != null) {
+            runSync(false); // 打开即自动同步一次
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        buildUi(); // 回到本页时重画权限状态
-        handler.removeCallbacks(refreshLoop);
-        handler.post(refreshLoop);
+        store.load();
+        adapter.notifyDataSetChanged();
+        handler.removeCallbacks(statusLoop);
+        handler.post(statusLoop);
     }
 
     @Override
     protected void onPause() {
-        handler.removeCallbacks(refreshLoop);
+        handler.removeCallbacks(statusLoop);
         super.onPause();
     }
 
+    // ---------------- UI 骨架 ----------------
     private void buildUi() {
-        ScrollView scroll = new ScrollView(this);
-        root = new LinearLayout(this);
+        LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(20);
-        root.setPadding(pad, dp(28), pad, pad);
-        scroll.addView(root);
-        setContentView(scroll);
+        root.setBackgroundColor(Color.WHITE);
+        setContentView(root);
 
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.VERTICAL);
+        head.setPadding(dp(16), dp(18), dp(16), dp(6));
         TextView title = new TextView(this);
-        title.setText("知行 KnowDo · 全屏验证版");
+        title.setText("知行 KnowDo");
         title.setTextSize(24);
-        root.addView(title);
-
-        TextView intro = new TextView(this);
-        intro.setText("验证目标：熄屏和亮屏两种状态下，过半和结束时都直接弹同一个全屏页。\n"
-                + "步骤：①下面五项权限全 ✓ → ②点开始 → ③分别在熄屏和亮屏各测一次。");
-        intro.setTextSize(15);
-        intro.setPadding(0, dp(8), 0, dp(16));
-        root.addView(intro);
-
-        // ---- 权限体检 ----
-        boolean notifOk = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < 33;
-        addPermRow("通知权限", notifOk, "去开启", v -> {
-            if (Build.VERSION.SDK_INT >= 33) {
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
-            }
-        });
-
-        boolean fsiOk = AlertHelper.canUseFullScreen(this);
-        addPermRow("全屏通知（最关键）", fsiOk, "去开启", v -> {
-            Intent i = new Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT");
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        });
-
-        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        boolean exactOk = Build.VERSION.SDK_INT < 31 || (am != null && am.canScheduleExactAlarms());
-        addPermRow("精确闹钟", exactOk, "去开启", v -> {
-            Intent i = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        });
-
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        boolean batteryOk = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
-        addPermRow("电池优化豁免", batteryOk, "去开启", v -> {
-            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        });
-
-        boolean overlayOk = AlertHelper.canDrawOverlays(this);
-        addPermRow("上层显示（亮屏全屏的关键）", overlayOk, "去开启", v -> {
-            Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        });
-
-        spacer(18);
-        Button start60 = bigButton("开始 60 秒测试", Color.rgb(46, 125, 50));
-        start60.setOnClickListener(v -> TimerService.startTimer(this, 60));
-        root.addView(start60);
-        spacer(10);
-        Button start30 = bigButton("开始 30 秒测试", Color.rgb(21, 101, 192));
-        start30.setOnClickListener(v -> TimerService.startTimer(this, 30));
-        root.addView(start30);
-        spacer(10);
-        Button stop = bigButton("停止测试", Color.rgb(120, 120, 120));
-        stop.setOnClickListener(v -> TimerService.stopTimer(this));
-        root.addView(stop);
-
-        spacer(18);
+        title.setTextColor(Color.BLACK);
+        head.addView(title);
         statusView = new TextView(this);
-        statusView.setTextSize(16);
-        root.addView(statusView);
+        statusView.setTextSize(13);
+        statusView.setTextColor(Color.DKGRAY);
+        head.addView(statusView);
+        root.addView(head);
 
-        spacer(10);
-        TextView logTitle = new TextView(this);
-        logTitle.setText("测试日志（每次点按都有记录）：");
-        logTitle.setTextSize(15);
-        root.addView(logTitle);
-        logView = new TextView(this);
-        logView.setTextSize(13);
-        root.addView(logView);
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setPadding(dp(12), dp(4), dp(12), dp(8));
+        bar.addView(barButton("＋ 新增任务", v -> dialogNewTask()));
+        bar.addView(barButton("同步", v -> {
+            if (SyncManager.getUri(this) == null) launchBridgePicker();
+            else runSync(true);
+        }));
+        bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
+        bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
+        root.addView(bar);
+
+        root.addView(headerRow());
+
+        listView = new ListView(this);
+        adapter = new TaskAdapter();
+        listView.setAdapter(adapter);
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            dialogRowMenu(adapter.visible.get(position));
+            return true;
+        });
+        root.addView(listView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         refreshStatus();
     }
 
-    private void addPermRow(String name, boolean ok, String btnText, View.OnClickListener go) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(4), 0, dp(4));
+    private Button barButton(String s, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setTextSize(15);
+        b.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lp.setMargins(dp(3), 0, dp(3), 0);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private View headerRow() {
+        LinearLayout h = new LinearLayout(this);
+        h.setOrientation(LinearLayout.HORIZONTAL);
+        h.setBackgroundColor(Color.rgb(238, 238, 238));
+        h.setPadding(dp(6), dp(6), dp(6), dp(6));
+        h.addView(headerCell("", 44));
+        h.addView(headerCell("任务", 0));
+        h.addView(headerCell("情景", 92));
+        h.addView(headerCell("截止", 84));
+        h.addView(headerCell("时长", 58));
+        return h;
+    }
+
+    private TextView headerCell(String s, int widthDp) {
         TextView t = new TextView(this);
-        t.setText((ok ? "✓ " : "✗ ") + name);
-        t.setTextSize(17);
-        t.setTextColor(ok ? Color.rgb(46, 125, 50) : Color.rgb(198, 40, 40));
-        t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(t);
-        if (!ok) {
-            Button b = new Button(this);
-            b.setText(btnText);
-            b.setOnClickListener(go);
-            row.addView(b);
-        }
-        root.addView(row);
+        t.setText(s);
+        t.setTextSize(13);
+        t.setTextColor(Color.DKGRAY);
+        if (widthDp == 0) t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        else t.setLayoutParams(new LinearLayout.LayoutParams(dp(widthDp), LinearLayout.LayoutParams.WRAP_CONTENT));
+        return t;
     }
 
     private void refreshStatus() {
         if (statusView == null) return;
+        StringBuilder sb = new StringBuilder();
         if (TimerState.isRunning(this)) {
             long remain = Math.max(0, (TimerState.endAt(this) - System.currentTimeMillis()) / 1000);
-            statusView.setText(TimerState.endFired(this)
-                    ? "状态：时间已到，等你确认"
-                    : "状态：计时中，剩余 " + remain + " 秒（现在可以息屏了）");
-        } else {
-            statusView.setText("状态：未在计时");
+            sb.append("计时中：「").append(TimerState.taskTitle(this)).append("」剩余 ")
+              .append(remain / 60).append(":").append(String.format("%02d", remain % 60)).append("  ");
         }
-        String log = TimerState.log(this);
-        logView.setText(log.isEmpty() ? "（暂无）" : log);
+        String last = SyncManager.lastResult(this);
+        sb.append(last.isEmpty() ? "点「同步」连接 Drive 的 tasks.json" : last);
+        statusView.setText(sb.toString());
     }
 
-    private Button bigButton(String s, int bg) {
-        Button b = new Button(this);
-        b.setText(s);
-        b.setTextSize(19);
-        b.setTextColor(Color.WHITE);
-        b.setBackgroundColor(bg);
-        b.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(64)));
-        return b;
+    // ---------------- 任务行 ----------------
+    private class TaskAdapter extends BaseAdapter {
+        List<TaskItem> visible = new ArrayList<>();
+
+        TaskAdapter() { reload(); }
+
+        void reload() { visible = store.visibleSorted(); }
+
+        @Override public int getCount() { return visible.size(); }
+        @Override public Object getItem(int p) { return visible.get(p); }
+        @Override public long getItemId(int p) { return p; }
+
+        @Override public void notifyDataSetChanged() { reload(); super.notifyDataSetChanged(); }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            final TaskItem t = visible.get(position);
+            LinearLayout row = new LinearLayout(MainActivity.this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(6), dp(8), dp(6), dp(8));
+            boolean done = t.isDoneToday();
+            row.setBackgroundColor(done ? Color.rgb(245, 245, 245) : Color.WHITE);
+
+            Button play = new Button(MainActivity.this);
+            play.setText(TimerState.isRunning(MainActivity.this) && t.id.equals(TimerState.taskId(MainActivity.this)) ? "■" : "▶");
+            play.setTextSize(15);
+            play.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(48)));
+            play.setOnClickListener(v -> onPlay(t));
+            row.addView(play);
+
+            TextView titleCell = new TextView(MainActivity.this);
+            String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title;
+            titleCell.setText(done ? titleText + " ✓" : titleText);
+            titleCell.setTextSize(16);
+            titleCell.setTextColor(done ? Color.GRAY : Color.BLACK);
+            if (done) titleCell.setPaintFlags(titleCell.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+            titleCell.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            titleCell.setOnClickListener(v -> dialogTitle(t));
+            row.addView(titleCell);
+
+            TextView scCell = new TextView(MainActivity.this);
+            scCell.setText(t.scenarios.isEmpty() ? "＋情景" : String.join("、", t.scenarios));
+            scCell.setTextSize(13);
+            scCell.setTextColor(t.scenarios.isEmpty() ? Color.GRAY : Color.rgb(21, 101, 192));
+            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(92), LinearLayout.LayoutParams.WRAP_CONTENT));
+            scCell.setOnClickListener(v -> dialogScenarios(t));
+            row.addView(scCell);
+
+            TextView dlCell = new TextView(MainActivity.this);
+            dlCell.setText("daily".equals(t.repeat) ? "每日" : (t.deadline == null ? "＋日期" : t.deadline.substring(5)));
+            dlCell.setTextSize(13);
+            dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
+            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(84), LinearLayout.LayoutParams.WRAP_CONTENT));
+            dlCell.setOnClickListener(v -> dialogDeadline(t));
+            row.addView(dlCell);
+
+            TextView duCell = new TextView(MainActivity.this);
+            duCell.setText(t.durationMinutes + " 分");
+            duCell.setTextSize(13);
+            duCell.setTextColor(Color.rgb(21, 101, 192));
+            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(58), LinearLayout.LayoutParams.WRAP_CONTENT));
+            duCell.setOnClickListener(v -> dialogDuration(t));
+            row.addView(duCell);
+            return row;
+        }
     }
 
-    private void spacer(int h) {
-        View v = new View(this);
-        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(h)));
-        root.addView(v);
+    private void onPlay(final TaskItem t) {
+        if (TimerState.isRunning(this)) {
+            String runningId = TimerState.taskId(this);
+            if (t.id.equals(runningId)) {
+                toast("这个任务正在计时中");
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("已有任务在计时")
+                    .setMessage("「" + TimerState.taskTitle(this) + "」正在计时，切换到「" + t.title + "」吗？")
+                    .setPositiveButton("切换", (d, w) -> {
+                        TimerService.stopTimer(this);
+                        startTaskTimer(t);
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+        startTaskTimer(t);
     }
+
+    private void startTaskTimer(TaskItem t) {
+        TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
+        toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
+        adapter.notifyDataSetChanged();
+    }
+
+    // ---------------- 编辑对话框 ----------------
+    private void dialogNewTask() {
+        final EditText input = new EditText(this);
+        input.setHint("任务名称");
+        new AlertDialog.Builder(this)
+                .setTitle("新增任务")
+                .setView(input)
+                .setPositiveButton("添加", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) return;
+                    store.add(TaskItem.create(name));
+                    adapter.notifyDataSetChanged();
+                    toast("已添加，点各列补全情景、截止和时长");
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogTitle(final TaskItem t) {
+        final EditText input = new EditText(this);
+        input.setText(t.title);
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle("任务名称")
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (!name.isEmpty()) { t.title = name; t.touch(); store.save(); adapter.notifyDataSetChanged(); }
+                })
+                .setNeutralButton("设为必要/取消必要", (d, w) -> {
+                    t.priority = "must".equals(t.priority) ? null : "must";
+                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogScenarios(final TaskItem t) {
+        LinkedHashSet<String> knownSet = new LinkedHashSet<>();
+        knownSet.add("有网");
+        knownSet.add("无网");
+        knownSet.add("跟 AI 聊天");
+        knownSet.addAll(store.allScenarios());
+        knownSet.addAll(t.scenarios);
+        final List<String> known = new ArrayList<>(knownSet);
+        final Set<String> sel = new LinkedHashSet<>(t.scenarios);
+        boolean[] checked = new boolean[known.size()];
+        for (int i = 0; i < known.size(); i++) checked[i] = sel.contains(known.get(i));
+        new AlertDialog.Builder(this)
+                .setTitle("情景（可多选）")
+                .setMultiChoiceItems(known.toArray(new String[0]), checked,
+                        (d, which, isChecked) -> {
+                            if (isChecked) sel.add(known.get(which));
+                            else sel.remove(known.get(which));
+                        })
+                .setPositiveButton("保存", (d, w) -> {
+                    t.scenarios = new ArrayList<>(sel);
+                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                })
+                .setNeutralButton("＋新增情景", (d, w) -> {
+                    final EditText input = new EditText(this);
+                    input.setHint("如：在书院、早上、跟 AI 聊天");
+                    new AlertDialog.Builder(this)
+                            .setTitle("新增情景")
+                            .setView(input)
+                            .setPositiveButton("添加", (d2, w2) -> {
+                                String s = input.getText().toString().trim();
+                                if (!s.isEmpty() && !t.scenarios.contains(s)) {
+                                    t.scenarios.add(s);
+                                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogDeadline(final TaskItem t) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+        final CheckBox repeatBox = new CheckBox(this);
+        repeatBox.setText("每日重复任务");
+        repeatBox.setChecked("daily".equals(t.repeat));
+        box.addView(repeatBox);
+        final DatePicker picker = new DatePicker(this);
+        Calendar cal = Calendar.getInstance();
+        if (t.deadline != null) {
+            try {
+                String[] p = t.deadline.split("-");
+                cal.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]));
+            } catch (Exception ignored) { }
+        }
+        picker.init(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH), null);
+        box.addView(picker);
+        repeatBox.setOnCheckedChangeListener((b, isChecked) -> picker.setEnabled(!isChecked));
+        picker.setEnabled(!repeatBox.isChecked());
+        new AlertDialog.Builder(this)
+                .setTitle("截止日期")
+                .setView(box)
+                .setPositiveButton("保存", (d, w) -> {
+                    if (repeatBox.isChecked()) {
+                        t.repeat = "daily";
+                        t.deadline = null;
+                    } else {
+                        t.repeat = "none";
+                        t.deadline = String.format("%04d-%02d-%02d",
+                                picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
+                    }
+                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                })
+                .setNeutralButton("清除日期", (d, w) -> {
+                    t.repeat = "none";
+                    t.deadline = null;
+                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogDuration(final TaskItem t) {
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(t.durationMinutes));
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle("时长（分钟）")
+                .setView(input)
+                .setPositiveButton("保存", (d, w) -> {
+                    try {
+                        int m = Integer.parseInt(input.getText().toString().trim());
+                        if (m > 0) { t.durationMinutes = m; t.touch(); store.save(); adapter.notifyDataSetChanged(); }
+                    } catch (NumberFormatException ignored) { }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void dialogRowMenu(final TaskItem t) {
+        String[] items = {t.isDoneToday() ? "取消完成标记" : "标记完成", "删除任务"};
+        new AlertDialog.Builder(this)
+                .setTitle(t.title)
+                .setItems(items, (d, which) -> {
+                    if (which == 0) {
+                        if (t.isDoneToday()) t.markUndone(); else t.markDone();
+                        store.save(); adapter.notifyDataSetChanged();
+                    } else {
+                        new AlertDialog.Builder(this)
+                                .setTitle("删除任务")
+                                .setMessage("确定删除「" + t.title + "」吗？")
+                                .setPositiveButton("删除", (d2, w2) -> {
+                                    store.remove(t);
+                                    adapter.notifyDataSetChanged();
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
+                    }
+                })
+                .show();
+    }
+
+    // ---------------- Drive 同步 ----------------
+    private void launchBridgePicker() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/json");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, REQ_PICK_BRIDGE);
+        toast("请在 Google Drive 里打开 _电子大脑/task list/ 并选中 tasks.json");
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_PICK_BRIDGE && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ignored) { }
+            SyncManager.setUri(this, uri);
+            runSync(true);
+        }
+    }
+
+    private void runSync(final boolean verbose) {
+        new Thread(() -> {
+            String result = SyncManager.syncNow(this, store);
+            SyncManager.setLastResult(this, result);
+            handler.post(() -> {
+                store.load();
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+                if (verbose) toast(result);
+            });
+        }).start();
+    }
+
+    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);

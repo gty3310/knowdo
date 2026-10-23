@@ -23,6 +23,8 @@ public class TimerService extends Service {
     public static final String ACTION_EXTEND = "com.ti.tasktimer.EXTEND";
     public static final String EXTRA_TOTAL_SEC = "total_sec";
     public static final String EXTRA_ADD_SEC = "add_sec";
+    public static final String EXTRA_TASK_ID = "task_id";
+    public static final String EXTRA_TASK_TITLE = "task_title";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable ticker = new Runnable() {
@@ -34,10 +36,12 @@ public class TimerService extends Service {
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
-    public static void startTimer(Context c, int totalSec) {
+    public static void startTimer(Context c, int totalSec, String taskId, String taskTitle) {
         Intent i = new Intent(c, TimerService.class);
         i.setAction(ACTION_START);
         i.putExtra(EXTRA_TOTAL_SEC, totalSec);
+        i.putExtra(EXTRA_TASK_ID, taskId);
+        i.putExtra(EXTRA_TASK_TITLE, taskTitle);
         c.startForegroundService(i);
     }
 
@@ -70,9 +74,9 @@ public class TimerService extends Service {
         }
         if (ACTION_START.equals(action)) {
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
-            TimerState.start(this, total);
-            TimerState.clearLog(this);
-            TimerState.logEvent(this, "开始计时 " + total + " 秒");
+            TimerState.start(this, total,
+                    intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
+            TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);
             TimerState.extend(this, add);
@@ -127,7 +131,7 @@ public class TimerService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, AlertHelper.CHANNEL_RUNNING)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("测试任务 · 计时中")
+                .setContentTitle(TimerState.taskTitle(this) + " · 计时中")
                 .setContentText(TimerState.endFired(this) ? "时间到，等待你确认" : "剩余约 " + remainSec + " 秒")
                 .setContentIntent(pi)
                 .setOngoing(true)
