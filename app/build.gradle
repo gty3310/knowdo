@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace 'com.ti.tasktimer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.ti.tasktimer'
+        minSdk 26
+        targetSdk 34
+        versionCode 22
+        versionName '1.4.0'
+        ndk {
+            // 只打 Pixel 在用的 arm64，避免 ONNX Runtime 四个 ABI 把包撑大
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    signingConfigs {
+        // 与手工构建时代同一把 debug.keystore，保证可覆盖安装旧版
+        knowdo {
+            // 注意用环境变量 HOME：构建进程以 root 跑时 user.home 是 /root，与 $HOME 不一致
+            storeFile file("${System.getenv('HOME')}/workspace/tools/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.knowdo
+            minifyEnabled false
+            shrinkResources false
+        }
+        debug {
+            signingConfig signingConfigs.knowdo
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    packagingOptions {
+        // ML Kit 与 ONNX Runtime 都自带 libc++_shared.so，同名取一份即可
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+    }
+}
+
+dependencies {
+    // 屏幕内容守卫一级：ML Kit 文字识别 v2（bundled 版，模型随包，不依赖 Play 服务下载）
+    implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'
+    implementation 'com.google.mlkit:text-recognition-japanese:16.0.0'
+    // 屏幕内容守卫二级：ONNX Runtime（跑 NudeNet 320n.onnx）
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+}

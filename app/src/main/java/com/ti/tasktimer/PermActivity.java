@@ -17,8 +17,9 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** 权限体检页：五项权限逐项显示状态，未开的一键跳转开启。 */
+/** 权限体检页：六项权限逐项显示状态，未开的一键跳转开启；另有 Muse 应用、悬浮窗与屏幕内容守卫设置。 */
 public class PermActivity extends Activity {
+    private static final int REQ_SG_AUTH = 77;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -152,6 +153,95 @@ public class PermActivity extends Activity {
         hint.setTextColor(Color.DKGRAY);
         hint.setPadding(0, dp(6), 0, 0);
         root.addView(hint);
+
+        addScreenGuardSection(root);
+    }
+
+    // ---------------- 屏幕内容守卫 ----------------
+    private void addScreenGuardSection(LinearLayout root) {
+        TextView header = new TextView(this);
+        header.setText("屏幕内容守卫（看屏幕内容抓分神）");
+        header.setTextSize(19);
+        header.setPadding(0, dp(26), 0, dp(4));
+        root.addView(header);
+        TextView intro = new TextView(this);
+        intro.setText("专注守卫只能看“在用哪个应用”；这个守卫看屏幕内容，抓在浏览器里购物、刷短视频网页版、看黄色内容这类分神。"
+                + "只在计时中采样，截图只在本机分析、分析完立刻销毁，绝不保存、绝不上传。详见主界面「帮助」第七节。");
+        intro.setTextSize(13);
+        intro.setTextColor(Color.DKGRAY);
+        root.addView(intro);
+
+        addToggleRow(root, "屏幕内容守卫总开关（默认关）", ScreenGuardPrefs.enabled(this), on -> {
+            ScreenGuardPrefs.setEnabled(this, on);
+            if (on && TimerState.isRunning(this)) ScreenCaptureService.onTimerStarted(this);
+            if (!on) ScreenCaptureService.onTimerStopped(this);
+            buildUi();
+        });
+
+        addToggleRow(root, "黄色/暴露内容一张即触发（关掉则也要连中两张）", ScreenGuardPrefs.nsfwOneShot(this), on -> {
+            ScreenGuardPrefs.setNsfwOneShot(this, on);
+            buildUi();
+        });
+
+        LinearLayout authRow = new LinearLayout(this);
+        authRow.setOrientation(LinearLayout.HORIZONTAL);
+        authRow.setPadding(0, dp(10), 0, dp(6));
+        TextView at = new TextView(this);
+        at.setText("截图授权：" + (ScreenCaptureService.isAuthorized(this) ? "已有可用授权" : "暂无（开始计时时系统会请求）"));
+        at.setTextSize(15);
+        at.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        authRow.addView(at);
+        Button authBtn = new Button(this);
+        authBtn.setText("授权/重新授权");
+        authBtn.setOnClickListener(v -> {
+            android.media.projection.MediaProjectionManager mpm =
+                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            if (mpm != null) startActivityForResult(mpm.createScreenCaptureIntent(), REQ_SG_AUTH);
+        });
+        authRow.addView(authBtn);
+        root.addView(authRow);
+
+        TextView note = new TextView(this);
+        note.setText("说明：安卓 14 起每次截图会话都要授权一次——正式流程是开始计时时顺手点一次“允许”，"
+                + "整个计时期间持续采样，计时结束授权即失效。这里的按钮是提前授权/换授权用："
+                + "授权在被用掉（开始一次带守卫的计时）之前一直有效；自动开始（autoStart）的任务没有授权时不会采样，会在记录里留一行说明。");
+        note.setTextSize(13);
+        note.setTextColor(Color.DKGRAY);
+        note.setPadding(0, dp(4), 0, 0);
+        root.addView(note);
+    }
+
+    private interface ToggleAction { void run(boolean on); }
+
+    private void addToggleRow(LinearLayout root, String label, boolean on, ToggleAction action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(10), 0, dp(6));
+        TextView t = new TextView(this);
+        t.setText(label);
+        t.setTextSize(16);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(t);
+        Button b = new Button(this);
+        b.setText(on ? "已开" : "已关");
+        b.setOnClickListener(v -> action.run(!on));
+        row.addView(b);
+        root.addView(row);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_SG_AUTH) {
+            if (resultCode == RESULT_OK && data != null) {
+                ProjectionAuth.store(resultCode, data);
+                android.widget.Toast.makeText(this, "已授权：下一次开着守卫的计时会用它采样", android.widget.Toast.LENGTH_LONG).show();
+                if (TimerState.isRunning(this)) ScreenCaptureService.onTimerStarted(this);
+            } else {
+                android.widget.Toast.makeText(this, "未获得截图授权", android.widget.Toast.LENGTH_LONG).show();
+            }
+            buildUi();
+        }
     }
 
     private void addRow(LinearLayout root, String name, boolean ok, View.OnClickListener go) {

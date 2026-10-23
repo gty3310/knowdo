@@ -1,0 +1,100 @@
+package com.ti.tasktimer;
+
+import android.content.Context;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * 屏幕内容守卫的判定事件记录：本地存应用私有文件 guard_events.json，
+ * 同步时并入桥 tasks.json 顶层 guardEvents 数组（只含时间/类别/置信度/证据文字，
+ * 绝不含截图原图——原图从不落盘，见 ScreenCaptureService）。
+ * 上限 200 条，超出丢最旧的。
+ */
+public final class GuardEvents {
+    private static final String FILE = "guard_events.json";
+    private static final int MAX = 200;
+
+    private GuardEvents() {}
+
+    private static File file(Context c) { return new File(c.getFilesDir(), FILE); }
+
+    public static synchronized void add(Context c, TaskItem task, String category, float confidence, String detail) {
+        try {
+            JSONArray arr = loadArray(c);
+            JSONObject e = new JSONObject();
+            long now = System.currentTimeMillis();
+            e.put("ts", now);
+            e.put("time", TaskItem.nowIso());
+            e.put("taskId", task == null ? "" : task.id);
+            e.put("taskTitle", task == null ? "" : task.title);
+            e.put("category", category);
+            e.put("confidence", Math.round(confidence * 100.0) / 100.0);
+            e.put("detail", detail == null ? "" : detail);
+            arr.put(e);
+            saveArray(c, trim(arr));
+        } catch (Exception ignored) { }
+    }
+
+    public static synchronized JSONArray loadArray(Context c) {
+        try {
+            File f = file(c);
+            if (!f.exists()) return new JSONArray();
+            String s = TaskStore.readAll(new FileInputStream(f));
+            return new JSONArray(s);
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    /** 与桥上的 guardEvents 合并（按 ts+类别+任务去重），结果写回本地并返回（供回写桥）。 */
+    public static synchronized JSONArray merge(Context c, JSONArray remote) {
+        try {
+            List<JSONObject> all = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            collect(loadArray(c), all, seen);
+            if (remote != null) collect(remote, all, seen);
+            all.sort(Comparator.comparingLong(o -> o.optLong("ts", 0)));
+            JSONArray out = new JSONArray();
+            int from = Math.max(0, all.size() - MAX);
+            for (int i = from; i < all.size(); i++) out.put(all.get(i));
+            saveArray(c, out);
+            return out;
+        } catch (Exception e) {
+            return loadArray(c);
+        }
+    }
+
+    private static void collect(JSONArray arr, List<JSONObject> all, Set<String> seen) throws Exception {
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.getJSONObject(i);
+            String key = o.optLong("ts", 0) + "|" + o.optString("category", "") + "|" + o.optString("taskId", "");
+            if (seen.add(key)) all.add(o);
+        }
+    }
+
+    private static JSONArray trim(JSONArray arr) throws Exception {
+        if (arr.length() <= MAX) return arr;
+        JSONArray out = new JSONArray();
+        for (int i = arr.length() - MAX; i < arr.length(); i++) out.put(arr.get(i));
+        return out;
+    }
+
+    private static void saveArray(Context c, JSONArray arr) {
+        try {
+            FileOutputStream out = new FileOutputStream(file(c));
+            out.write(arr.toString().getBytes(StandardCharsets.UTF_8));
+            out.close();
+        } catch (Exception ignored) { }
+    }
+}

@@ -17,8 +17,14 @@ import android.widget.TextView;
  */
 public class GuardActivity extends Activity {
     public static final String EXTRA_PKG = "fg_pkg";
+    /** 屏幕内容守卫模式（EXTRA_SOURCE="content"）：按内容类别问询，证据在 EXTRA_DETAIL。 */
+    public static final String EXTRA_SOURCE = "source";
+    public static final String EXTRA_CATEGORY = "category";
+    public static final String EXTRA_DETAIL = "detail";
 
     private String fgPkg;
+    private boolean contentMode;
+    private String category = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,6 +36,11 @@ public class GuardActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         fgPkg = getIntent().getStringExtra(EXTRA_PKG);
         if (fgPkg == null) fgPkg = "";
+        contentMode = "content".equals(getIntent().getStringExtra(EXTRA_SOURCE));
+        if (contentMode) {
+            String cat = getIntent().getStringExtra(EXTRA_CATEGORY);
+            category = cat == null ? "" : cat;
+        }
         AlertHelper.cancelGuard(this);
         Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vib != null) vib.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE));
@@ -48,8 +59,16 @@ public class GuardActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        String appLabel = AppLister.labelOf(this, fgPkg);
-        sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n你打开了「" + appLabel + "」，它不在这个任务的专注规则里。");
+        if (contentMode) {
+            String detail = getIntent().getStringExtra(EXTRA_DETAIL);
+            sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n屏幕内容守卫检测到「"
+                    + ContentAnalyzer.label(category) + "」："
+                    + (detail == null ? "" : detail)
+                    + "\n截图只在本机分析、已经销毁，不会保存或上传。");
+        } else {
+            String appLabel = AppLister.labelOf(this, fgPkg);
+            sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n你打开了「" + appLabel + "」，它不在这个任务的专注规则里。");
+        }
         sub.setTextSize(18);
         sub.setTextColor(Color.DKGRAY);
         sub.setPadding(0, dp(12), 0, dp(30));
@@ -57,7 +76,8 @@ public class GuardActivity extends Activity {
 
         Button now = bigButton("立即回到任务", Color.rgb(46, 125, 50));
         now.setOnClickListener(v -> {
-            FocusGuard.chooseImmediate(this);
+            if (contentMode) VerdictEngine.contentImmediate(this);
+            else FocusGuard.chooseImmediate(this);
             finish();
         });
         root.addView(now);
@@ -65,7 +85,8 @@ public class GuardActivity extends Activity {
 
         Button g30 = bigButton("给我 30 秒收尾", Color.rgb(21, 101, 192));
         g30.setOnClickListener(v -> {
-            FocusGuard.chooseGrace(this, fgPkg, 30);
+            if (contentMode) VerdictEngine.contentGrace(this, category, 30);
+            else FocusGuard.chooseGrace(this, fgPkg, 30);
             finish();
         });
         root.addView(g30);
@@ -73,15 +94,17 @@ public class GuardActivity extends Activity {
 
         Button g60 = bigButton("给我 60 秒收尾", Color.rgb(21, 101, 192));
         g60.setOnClickListener(v -> {
-            FocusGuard.chooseGrace(this, fgPkg, 60);
+            if (contentMode) VerdictEngine.contentGrace(this, category, 60);
+            else FocusGuard.chooseGrace(this, fgPkg, 60);
             finish();
         });
         root.addView(g60);
         spacer(root, 24);
 
-        Button allow = bigButton("这是误判，本次放行它", Color.rgb(117, 117, 117));
+        Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
         allow.setOnClickListener(v -> {
-            FocusGuard.chooseAllow(this, fgPkg);
+            if (contentMode) VerdictEngine.contentAllow(this, category);
+            else FocusGuard.chooseAllow(this, fgPkg);
             finish();
         });
         root.addView(allow);

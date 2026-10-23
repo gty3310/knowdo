@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ti.tasktimer">
+<!-- 包名由 Gradle 的 namespace/applicationId 提供（com.ti.tasktimer，与旧版一致，可覆盖安装） -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 屏幕内容守卫：MediaProjection 采集前台服务类型（安卓 14+ 必须声明） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -45,6 +47,16 @@
         <activity
             android:name=".LogActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".HelpActivity"
+            android:exported="false" />
+
+        <!-- 屏幕内容守卫采集服务：计时期间随机采样屏幕（MediaProjection，仅本机分析） -->
+        <service
+            android:name=".ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- 实时同步服务：每 30 秒轮询 Drive 桥文件，有新任务自动合并、带标记的自动开始计时 -->
         <service

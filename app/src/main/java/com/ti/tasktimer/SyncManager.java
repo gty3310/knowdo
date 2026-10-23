@@ -70,6 +70,7 @@ public class SyncManager {
         try {
             // 1) 读远端
             Map<String, TaskItem> remote = new HashMap<>();
+            JSONArray remoteEvents = null;
             try {
                 InputStream in = c.getContentResolver().openInputStream(uri);
                 if (in != null) {
@@ -80,6 +81,7 @@ public class SyncManager {
                         TaskItem t = TaskItem.fromJson(arr.getJSONObject(i));
                         remote.put(t.id, t);
                     }
+                    remoteEvents = root.optJSONArray("guardEvents");
                 }
             } catch (Exception e) {
                 return "读取桥文件失败：" + e.getMessage();
@@ -93,10 +95,14 @@ public class SyncManager {
             store.tasks.clear();
             store.tasks.addAll(merged.values());
             store.save();
+            // 2.5) 屏幕守卫事件与桥上的 guardEvents 合并（只含时间/类别/置信度/证据文字，无截图）
+            JSONArray mergedEvents = GuardEvents.merge(c, remoteEvents);
             // 3) 回写远端
             OutputStream out = c.getContentResolver().openOutputStream(uri, "wt");
             if (out == null) return "合并完成，但回写桥文件失败（未能打开输出流）";
-            out.write(store.toRootJson().toString(2).getBytes(StandardCharsets.UTF_8));
+            JSONObject outRoot = store.toRootJson();
+            outRoot.put("guardEvents", mergedEvents);
+            out.write(outRoot.toString(2).getBytes(StandardCharsets.UTF_8));
             out.close();
             int visible = 0;
             for (TaskItem t : store.tasks) if (!t.deleted) visible++;

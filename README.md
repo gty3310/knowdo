@@ -17,7 +17,7 @@ If not, extend the timer or write down how you will finish.
 
 ## 当前状态 / Status
 
-当前版本 **v1.3.0**（验证版 v0.1.x 的全屏机制已全部并入）：
+当前版本 **v1.4.0**（验证版 v0.1.x 的全屏机制已全部并入）：
 
 * **Excel 式任务表**：每行四列可直接点按编辑——任务名（可设“必要”★）、
   情景（多选面板，可自由新增标签）、截止（日期选择，或勾选“每日重复”）、
@@ -42,23 +42,38 @@ If not, extend the timer or write down how you will finish.
   架构为强力版留了扩展点：检测层是 `ForegroundDetector` 接口（现为 UsageStats 轮询实现，
   强力版可换无障碍事件实现），执行层是 `GuardActions`（现为跳转实现，强力版可加
   模拟 Home/返回与全屏遮罩），状态机 `FocusGuard` 不变。
-* **计时悬浮窗**（v1.2.0，借鉴 Floating Notes 一类悬浮笔记应用）：计时开始后在任何界面之上
-  显示一张可拖动的深色卡片——任务名、大字倒计时、任务笔记；可收起成只显示时间的小药丸；
-  点「笔记」可直接在悬浮窗里写并保存（笔记是任务字段 `note`，随桥同步）；
+* **计时悬浮窗**（v1.2.0 引入，v1.3.4 起按 Floating Notes 交互重做）：三种模式——
+  「吸附」贴屏幕侧边的小标签，只显示剩余分钟数，点它展开、沿边缘拖动换高度；
+  「小展开」半透明小窗，任务名 + 倒计时 + 一个浅灰单色字符「✎」，点内容区或 ✎ 直接进编辑并弹键盘，
+  拖到屏幕左右边缘松手自动吸附；「编辑」更不透明的完整卡片，笔记就是输入框本身，
+  点笔记区直接打字、停笔自动保存（笔记是任务字段 `note`，随桥同步）。
   点「完成」直达结束检查页；全屏检查页弹出时悬浮窗自动让位、检查页关闭后自动回来。
-  权限页可开关此功能（依赖“上层显示”授权）。
+  权限页可开关与预览此功能（依赖“上层显示”授权）。任务若有笔记，主列表任务名旁有小三角可展开查看。
+* **屏幕内容守卫**（v1.4.0）：专注守卫看不见的分神（在允许用的浏览器里购物、刷短视频网页版、
+  看黄色内容）由它补位。仅计时中 + 亮屏解锁时工作，随机每 45–170 秒截一张图
+  （开始计时时经系统授权一次）；分析全在端侧：NudeNet 小模型（ONNX）看图抓黄色/暴露内容
+  （按作者定义，穿得少也算）→ 前台包名类别 → ML Kit OCR（中/日/英）+ 关键词规则判与任务是否相关。
+  同类连续命中 2 张才弹与专注守卫同一张问询页（黄色类可设一张即触发）。
+  隐私红线：截图只在内存分析、判完即销毁，不落盘、不上云；同步进桥的只有
+  顶层 `guardEvents` 事件记录（时间/类别/置信度/证据文字，上限 200 条）。
+* **帮助页**（v1.4.0）：主界面「帮助」入口，把全部功能用法、设计理念与
+  “提到过但暂不做 / 决定不做”的清单（Firebase 秒级推送、云端判图、强力版无障碍守卫、
+  端侧大模型深判等）都写在 App 里，随时可翻。
 * **实时同步与自动开始**（v1.1.0）：前台同步服务每 30 秒轮询桥文件（低打扰常驻通知，
   主界面可开关，开机自启），桥端变化即自动合并、界面自动刷新，无需手动同步；
   桥协议含 `autoStart` 标记——外部（如 Muse）写入带标记的任务，App 在下一轮轮询
   （≤30 秒）即自动开始其倒计时（已有计时在跑时排队等空闲），启动后回写清除标记防重复。
 * 倒计时由前台服务（specialUse 类型）驱动，只存绝对结束时间，进程被杀不漂移；
-  AlarmManager 精确闹钟在过半点/结束点兜底。权限体检独立成页（五项逐项可跳转开启）。
+  AlarmManager 精确闹钟在过半点/结束点兜底。权限体检独立成页（六项逐项可跳转开启，
+  另有 Muse 应用选择、悬浮窗与屏幕内容守卫设置）。
 
-完整设计与调研见 [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md)。
+完整设计与调研见 [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md)；
+屏幕内容守卫的设计与缺陷清单见仓库外文档（作者 your_files/知行-屏幕内容守卫-设计.md）。
 
-实现说明：为在无 Gradle 守护进程的环境中可复现构建，v1 仍用零依赖的原生 Java/Views 实现，
-但分层与研究报告一致（TaskStore 数据层 / SyncManager 同步层 / TimerService 计时层 / 界面层），
-日后迁移 Kotlin + Compose + Room 时只换实现、不动数据格式。
+实现说明：界面仍为原生 Java/Views，分层与研究报告一致（TaskStore 数据层 /
+SyncManager 同步层 / TimerService 计时层 / 界面层），日后迁移 Kotlin + Compose + Room 时
+只换实现、不动数据格式。构建自 v1.4.0 起改用 Gradle（因 ML Kit / ONNX Runtime 依赖），
+见下方构建一节；签名仍用同一把 debug.keystore，可覆盖安装旧版。
 
 v1.0.0: spreadsheet-like task table (editable columns, scenario multi-select,
 per-task timer), the verified dual-path full-screen check-in pages, and two-way sync
@@ -67,10 +82,16 @@ with a Google Drive `tasks.json` bridge via the Storage Access Framework.
 ## 构建 / Build
 
 ```sh
-./build-manual.sh   # 需要 JDK 17 与 Android SDK platform 34 / build-tools 34.0.0
+./build-gradle.sh   # v1.4.0 起的主构建：Gradle 8.7 + AGP 8.5.2，需要 JDK 17 与 Android SDK 34
 ```
 
-产物为 debug 签名的可安装 APK（`build/manual/task-timer.apk`）。
+产物 APK 在 `app/build/outputs/apk/release/app-release.apk`，脚本会顺手拷一份到
+`~/workspace/your_files/task-timer-probe.apk`。签名配置在 `app/build.gradle`，
+指向 `~/workspace/tools/debug.keystore`（与 v1.3.x 手工管线同一把，可覆盖安装）。
+
+`./build-manual.sh` 是 v1.3.x 时代的零依赖手工管线（aapt2/d8 直连），仅作历史备用：
+v1.4.0 的源码用了 ML Kit / ONNX Runtime，手工管线编不了。本机沙箱里跑 Gradle 的
+若干适配（进程内构建、代理与证书处理）都写在 `build-gradle.sh` 注释里。
 
 ## 许可 / License
 
