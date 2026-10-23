@@ -17,8 +17,10 @@ public class TaskItem {
     public String title = "";
     public List<String> scenarios = new ArrayList<>();
     public String deadline;            // YYYY-MM-DD，可空
+    public String deadlineTime;        // "HH:mm" 完成时间（当天几点前做完），可空
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
+    public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
     public String priority;            // must / secondary / null
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
     public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
@@ -82,8 +84,10 @@ public class TaskItem {
         for (String s : scenarios) sc.put(s);
         o.put("scenarios", sc);
         o.put("deadline", deadline == null ? JSONObject.NULL : deadline);
+        o.put("deadlineTime", deadlineTime == null ? JSONObject.NULL : deadlineTime);
         o.put("repeat", repeat);
         o.put("durationMinutes", durationMinutes);
+        o.put("actualMinutes", actualMinutes);
         o.put("priority", priority == null ? JSONObject.NULL : priority);
         o.put("status", status);
         o.put("autoStart", autoStart);
@@ -116,8 +120,11 @@ public class TaskItem {
         if (sc != null) for (int i = 0; i < sc.length(); i++) t.scenarios.add(sc.getString(i));
         t.deadline = o.isNull("deadline") ? null : o.optString("deadline", null);
         if (t.deadline != null && t.deadline.isEmpty()) t.deadline = null;
+        t.deadlineTime = o.isNull("deadlineTime") ? null : o.optString("deadlineTime", null);
+        if (t.deadlineTime != null && t.deadlineTime.isEmpty()) t.deadlineTime = null;
         t.repeat = o.optString("repeat", "none");
         t.durationMinutes = o.optInt("durationMinutes", 30);
+        t.actualMinutes = o.optInt("actualMinutes", 0);
         t.priority = o.isNull("priority") ? null : o.optString("priority", null);
         if (t.priority != null && t.priority.isEmpty()) t.priority = null;
         t.status = o.optString("status", "todo");

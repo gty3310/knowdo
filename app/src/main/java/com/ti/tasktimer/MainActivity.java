@@ -379,7 +379,9 @@ public class MainActivity extends Activity {
             row.addView(scCell);
 
             TextView dlCell = new TextView(MainActivity.this);
-            dlCell.setText("daily".equals(t.repeat) ? "每日" : (t.deadline == null ? "＋日期" : t.deadline.substring(5)));
+            dlCell.setText("daily".equals(t.repeat) ? "每日"
+                    : (t.deadline == null ? "＋日期"
+                    : t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime)));
             dlCell.setTextSize(13);
             dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
             dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -387,7 +389,7 @@ public class MainActivity extends Activity {
             row.addView(dlCell);
 
             TextView duCell = new TextView(MainActivity.this);
-            duCell.setText(t.durationMinutes + " 分");
+            duCell.setText(t.durationMinutes + " 分" + (t.actualMinutes > 0 ? "\n实" + t.actualMinutes : ""));
             duCell.setTextSize(13);
             duCell.setTextColor(Color.rgb(21, 101, 192));
             duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -598,6 +600,31 @@ public class MainActivity extends Activity {
         box.addView(picker);
         repeatBox.setOnCheckedChangeListener((b, isChecked) -> picker.setEnabled(!isChecked));
         picker.setEnabled(!repeatBox.isChecked());
+        // 完成时间（可选）：当天几点前做完
+        final String[] timeHolder = {t.deadlineTime};
+        final Button timeBtn = new Button(this);
+        final Runnable refreshTimeBtn = () -> timeBtn.setText(
+                timeHolder[0] == null ? "完成时间（可选）：未设置" : "完成时间：" + timeHolder[0] + " 前");
+        refreshTimeBtn.run();
+        timeBtn.setOnClickListener(v -> {
+            int hh = 18, mm = 0;
+            if (timeHolder[0] != null) {
+                try {
+                    String[] p = timeHolder[0].split(":");
+                    hh = Integer.parseInt(p[0]);
+                    mm = Integer.parseInt(p[1]);
+                } catch (Exception ignored) { }
+            }
+            android.app.TimePickerDialog tp = new android.app.TimePickerDialog(this,
+                    (view, h2, m2) -> {
+                        timeHolder[0] = String.format("%02d:%02d", h2, m2);
+                        refreshTimeBtn.run();
+                    }, hh, mm, true);
+            tp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
+                    (d2, w2) -> { timeHolder[0] = null; refreshTimeBtn.run(); });
+            tp.show();
+        });
+        box.addView(timeBtn);
         new AlertDialog.Builder(this)
                 .setTitle("截止日期")
                 .setView(box)
@@ -605,16 +632,19 @@ public class MainActivity extends Activity {
                     if (repeatBox.isChecked()) {
                         t.repeat = "daily";
                         t.deadline = null;
+                        t.deadlineTime = null;
                     } else {
                         t.repeat = "none";
                         t.deadline = String.format("%04d-%02d-%02d",
                                 picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
+                        t.deadlineTime = timeHolder[0];
                     }
                     t.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNeutralButton("清除日期", (d, w) -> {
                     t.repeat = "none";
                     t.deadline = null;
+                    t.deadlineTime = null;
                     t.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
@@ -622,18 +652,43 @@ public class MainActivity extends Activity {
     }
 
     private void dialogDuration(final TaskItem t) {
-        final EditText input = new EditText(this);
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        input.setText(String.valueOf(t.durationMinutes));
-        input.setSelectAllOnFocus(true);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+        TextView planLabel = new TextView(this);
+        planLabel.setText("计划时长（分钟）");
+        box.addView(planLabel);
+        final EditText planInput = new EditText(this);
+        planInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        planInput.setText(String.valueOf(t.durationMinutes));
+        planInput.setSelectAllOnFocus(true);
+        box.addView(planInput);
+        TextView actualLabel = new TextView(this);
+        actualLabel.setText("实际用时（分钟，可空）");
+        box.addView(actualLabel);
+        final EditText actualInput = new EditText(this);
+        actualInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        if (t.actualMinutes > 0) actualInput.setText(String.valueOf(t.actualMinutes));
+        actualInput.setHint("做完后填实际花了多少分钟");
+        box.addView(actualInput);
         new AlertDialog.Builder(this)
-                .setTitle("时长（分钟）")
-                .setView(input)
+                .setTitle("时长")
+                .setView(box)
                 .setPositiveButton("保存", (d, w) -> {
                     try {
-                        int m = Integer.parseInt(input.getText().toString().trim());
-                        if (m > 0) { t.durationMinutes = m; t.touch(); store.save(); adapter.notifyDataSetChanged(); }
+                        int m = Integer.parseInt(planInput.getText().toString().trim());
+                        if (m > 0) t.durationMinutes = m;
                     } catch (NumberFormatException ignored) { }
+                    String a = actualInput.getText().toString().trim();
+                    if (a.isEmpty()) {
+                        t.actualMinutes = 0;
+                    } else {
+                        try {
+                            int am = Integer.parseInt(a);
+                            if (am >= 0) t.actualMinutes = am;
+                        } catch (NumberFormatException ignored) { }
+                    }
+                    t.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -653,7 +708,7 @@ public class MainActivity extends Activity {
         box.setPadding(dp(16), dp(8), dp(16), 0);
 
         final EditText ruleInput = new EditText(this);
-        ruleInput.setHint("自然语言规则，如：读经典只用时习，不要开微信和浏览器");
+        ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站（Muse 会据此翻译成要拦/只许用的软件名单）");
         ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
         ruleInput.setMinLines(2);
         ruleInput.setTextSize(15);

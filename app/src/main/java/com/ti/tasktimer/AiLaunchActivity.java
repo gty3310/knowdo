@@ -74,8 +74,13 @@ if (t.scenarios!= null &&!t.scenarios.isEmpty()) {
 sb.append("情景：").append(String.join("、", t.scenarios)).append('\n');
 }
 if ("daily".equals(t.repeat)) sb.append("截止：每日重复\n");
-else if (t.deadline!= null) sb.append("截止：").append(t.deadline).append('\n');
+else if (t.deadline!= null) {
+    sb.append("截止：").append(t.deadline);
+    if (t.deadlineTime != null) sb.append(" ").append(t.deadlineTime).append(" 前");
+    sb.append('\n');
+}
 sb.append("计划时长：").append(t.durationMinutes).append(" 分钟\n");
+if (t.actualMinutes > 0) sb.append("实际用时：").append(t.actualMinutes).append(" 分钟\n");
 sb.append("优先级：").append("must".equals(t.priority)? "必要": "次要").append('\n');
 if (t.focusRule!= null &&!t.focusRule.isEmpty()) {
 sb.append("专注规则：").append(t.focusRule).append('\n');
