@@ -234,10 +234,8 @@ public class FloatingWindow {
         miniTime.setPadding(dp(c, 6), 0, dp(c, 2), 0);
         miniBox.addView(miniTime);
         TextView bang = new TextView(c);
-        bang.setText("!");
-        bang.setTextColor(Color.rgb(255, 193, 7));
-        bang.setTextSize(19);
-        bang.setTypeface(bang.getTypeface(), android.graphics.Typeface.BOLD);
+        bang.setText("✏️");
+        bang.setTextSize(16);
         bang.setPadding(dp(c, 8), dp(c, 2), dp(c, 4), dp(c, 2));
         bang.setOnClickListener(v -> openEdit(c));
         miniBox.addView(bang);
