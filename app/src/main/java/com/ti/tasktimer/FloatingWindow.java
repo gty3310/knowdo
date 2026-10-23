@@ -23,7 +23,7 @@ import android.widget.TextView;
 /**
  * 计时悬浮窗（以 Floating Notes 的交互为模板）：
  * 三种模式——
- *  吸附 DOCK：贴在屏幕侧边的小标签，只有一个 ⏱；点它展开，拖离边缘也展开，沿边缘拖动换高度。
+ *  吸附 DOCK：贴在屏幕侧边的小标签，只显示剩余分钟数（向上取整，最多 99+）；点它展开，拖离边缘也展开，沿边缘拖动换高度。
  *  小展开 MINI：半透明小窗，只显示任务名 + 倒计时 + 一个「!」；点内容区或「!」直接进入编辑；
  *               拖到屏幕左/右边缘松手就吸附成 DOCK。
  *  编辑 EDIT：不透明度更高的大卡片，笔记就是输入框本身——点笔记区直接打字（无「笔记」按钮），
@@ -131,6 +131,7 @@ public class FloatingWindow {
         if (timeView != null) timeView.setText("24:59");
         if (miniTitle != null) miniTitle.setText("预览任务");
         if (miniTime != null) miniTime.setText("24:59");
+        if (dockView != null) dockView.setText("25");
         settingText = true;
         if (noteEdit != null) noteEdit.setText("这是预览。现在默认是「小展开」模式：点它直接进来写字，停笔自动保存；拖到屏幕边缘松手就吸附。");
         settingText = false;
@@ -157,6 +158,11 @@ public class FloatingWindow {
         if (timeView != null) timeView.setText(remainText);
         if (miniTitle != null) miniTitle.setText(title);
         if (miniTime != null) miniTime.setText(remainText);
+        if (dockView != null) {
+            long remainMs = TimerState.endAt(c) - System.currentTimeMillis();
+            long mins = Math.max(1, (remainMs + 59_999) / 60_000);
+            dockView.setText(mins > 99 ? "99+" : String.valueOf(mins));
+        }
         // 任务切换时才重载笔记，避免打断正在输入的内容
         String id = TimerState.taskId(c);
         if (noteEdit != null && (cachedTaskId == null || !cachedTaskId.equals(id))) {
@@ -201,9 +207,10 @@ public class FloatingWindow {
 
         // —— 吸附模式：边缘小标签 ——
         dockView = new TextView(c);
-        dockView.setText("⏱");
+        dockView.setText("25");
         dockView.setTextColor(Color.WHITE);
-        dockView.setTextSize(17);
+        dockView.setTextSize(16);
+        dockView.setTypeface(dockView.getTypeface(), android.graphics.Typeface.BOLD);
         dockView.setGravity(Gravity.CENTER);
         dockView.setVisibility(View.GONE);
         rootView.addView(dockView);
