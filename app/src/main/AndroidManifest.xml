@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- 关键：持有此权限是官方认可的后台启动页面豁免之一，亮屏时可直接弹出全屏页，不必经通知 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="知行 KnowDo"
@@ -34,6 +35,24 @@
         <activity
             android:name=".LogActivity"
             android:exported="false" />
+
+        <!-- 实时同步服务：每 30 秒轮询 Drive 桥文件，有新任务自动合并、带标记的自动开始计时 -->
+        <service
+            android:name=".SyncService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="每30秒与云端任务清单（电子大脑）同步，发现立即开始标记时自动启动任务倒计时" />
+        </service>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- 全屏检查页：压锁屏显示、点亮屏幕、独立任务、不进最近任务 -->
         <activity

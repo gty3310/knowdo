@@ -21,6 +21,7 @@ public class TaskItem {
     public int durationMinutes = 30;
     public String priority;            // must / secondary / null
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
+    public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
     public List<String> doneDates = new ArrayList<>();
     public boolean deleted = false;
     public long createdAtMs;
@@ -78,6 +79,7 @@ public class TaskItem {
         o.put("durationMinutes", durationMinutes);
         o.put("priority", priority == null ? JSONObject.NULL : priority);
         o.put("status", status);
+        o.put("autoStart", autoStart);
         JSONArray dd = new JSONArray();
         for (String s : doneDates) dd.put(s);
         o.put("doneDates", dd);
@@ -102,6 +104,7 @@ public class TaskItem {
         t.priority = o.isNull("priority") ? null : o.optString("priority", null);
         if (t.priority != null && t.priority.isEmpty()) t.priority = null;
         t.status = o.optString("status", "todo");
+        t.autoStart = o.optBoolean("autoStart", false);
         JSONArray dd = o.optJSONArray("doneDates");
         if (dd != null) for (int i = 0; i < dd.length(); i++) t.doneDates.add(dd.getString(i));
         t.deleted = o.optBoolean("deleted", false);

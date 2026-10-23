@@ -5,7 +5,9 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.content.IntentFilter;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -40,6 +42,8 @@ public class MainActivity extends Activity {
     private ListView listView;
     private TaskAdapter adapter;
     private TextView statusView;
+    private Button realtimeBtn;
+    private android.content.BroadcastReceiver syncReceiver;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable statusLoop = new Runnable() {
         @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); }
@@ -55,6 +59,7 @@ public class MainActivity extends Activity {
             launchBridgePicker();
         } else if (SyncManager.getUri(this) != null) {
             runSync(false); // 打开即自动同步一次
+            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         }
     }
 
@@ -63,13 +68,29 @@ public class MainActivity extends Activity {
         super.onResume();
         store.load();
         adapter.notifyDataSetChanged();
+        updateRealtimeBtn();
         handler.removeCallbacks(statusLoop);
         handler.post(statusLoop);
+        if (syncReceiver == null) {
+            syncReceiver = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, Intent i) {
+                    store.load();
+                    adapter.notifyDataSetChanged();
+                    refreshStatus();
+                }
+            };
+        }
+        IntentFilter f = new IntentFilter(SyncService.ACTION_SYNC_UPDATED);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(syncReceiver, f, RECEIVER_NOT_EXPORTED);
+        else registerReceiver(syncReceiver, f);
     }
 
     @Override
     protected void onPause() {
         handler.removeCallbacks(statusLoop);
+        if (syncReceiver != null) {
+            try { unregisterReceiver(syncReceiver); } catch (Exception ignored) { }
+        }
         super.onPause();
     }
 
@@ -97,11 +118,14 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setPadding(dp(12), dp(4), dp(12), dp(8));
-        bar.addView(barButton("＋ 新增任务", v -> dialogNewTask()));
+        bar.addView(barButton("＋ 新增", v -> dialogNewTask()));
         bar.addView(barButton("同步", v -> {
             if (SyncManager.getUri(this) == null) launchBridgePicker();
             else runSync(true);
         }));
+        realtimeBtn = barButton("", v -> toggleRealtime());
+        bar.addView(realtimeBtn);
+        updateRealtimeBtn();
         bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
         bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
         root.addView(bar);
@@ -120,10 +144,34 @@ public class MainActivity extends Activity {
         refreshStatus();
     }
 
+    private void updateRealtimeBtn() {
+        if (realtimeBtn != null) {
+            realtimeBtn.setText(SyncManager.realtimeEnabled(this) ? "实时：开" : "实时：关");
+        }
+    }
+
+    private void toggleRealtime() {
+        boolean on = !SyncManager.realtimeEnabled(this);
+        SyncManager.setRealtimeEnabled(this, on);
+        updateRealtimeBtn();
+        if (on) {
+            if (SyncManager.getUri(this) == null) {
+                toast("实时同步已开：先点「同步」选中 Drive 里的 tasks.json");
+                launchBridgePicker();
+            } else {
+                SyncService.start(this);
+                toast("实时同步已开：每 30 秒自动同步，带「立即开始」标记的任务会自动开始计时");
+            }
+        } else {
+            SyncService.stop(this);
+            toast("实时同步已关");
+        }
+    }
+
     private Button barButton(String s, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(s);
-        b.setTextSize(15);
+        b.setTextSize(14);
         b.setOnClickListener(l);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         lp.setMargins(dp(3), 0, dp(3), 0);
@@ -447,6 +495,7 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) { }
             SyncManager.setUri(this, uri);
             runSync(true);
+            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         }
     }
 

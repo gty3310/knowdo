@@ -43,6 +43,26 @@ public class SyncManager {
         return prefs(c).getString("last_result", "");
     }
 
+    // ---- 实时同步开关与 autoStart 防重复 ----
+    public static boolean realtimeEnabled(Context c) {
+        return prefs(c).getBoolean("realtime", true);
+    }
+
+    public static void setRealtimeEnabled(Context c, boolean on) {
+        prefs(c).edit().putBoolean("realtime", on).apply();
+    }
+
+    public static boolean autoStartHandled(Context c, String taskId) {
+        return prefs(c).getStringSet("autostart_handled", new java.util.HashSet<>()).contains(taskId);
+    }
+
+    public static void markAutoStartHandled(Context c, String taskId) {
+        java.util.Set<String> s = new java.util.HashSet<>(
+                prefs(c).getStringSet("autostart_handled", new java.util.HashSet<>()));
+        s.add(taskId);
+        prefs(c).edit().putStringSet("autostart_handled", s).apply();
+    }
+
     /** 执行一次同步；返回结果说明。必须在后台线程调用。 */
     public static String syncNow(Context c, TaskStore store) {
         Uri uri = getUri(c);
