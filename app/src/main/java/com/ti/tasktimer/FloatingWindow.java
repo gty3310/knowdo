@@ -24,7 +24,7 @@ import android.widget.TextView;
  * 计时悬浮窗（以 Floating Notes 的交互为模板）：
  * 三种模式——
  *  吸附 DOCK：贴在屏幕侧边的小标签，只显示剩余分钟数（向上取整，最多 99+）；点它展开，拖离边缘也展开，沿边缘拖动换高度。
- *  小展开 MINI：半透明小窗，只显示任务名 + 倒计时 + 一个「!」；点内容区或「!」直接进入编辑；
+ *  小展开 MINI：半透明小窗，只显示任务名 + 倒计时 + 一个 ✏️；点内容区或 ✏️ 直接进入编辑；
  *               拖到屏幕左/右边缘松手就吸附成 DOCK。
  *  编辑 EDIT：不透明度更高的大卡片，笔记就是输入框本身——点笔记区直接打字（无「笔记」按钮），
  *               停笔自动保存（随桥同步）；另有打开知行 / 完成 / 收起。
@@ -234,8 +234,9 @@ public class FloatingWindow {
         miniTime.setPadding(dp(c, 6), 0, dp(c, 2), 0);
         miniBox.addView(miniTime);
         TextView bang = new TextView(c);
-        bang.setText("✏️");
-        bang.setTextSize(16);
+        bang.setText("✎");
+        bang.setTextColor(Color.rgb(220, 220, 220));
+        bang.setTextSize(17);
         bang.setPadding(dp(c, 8), dp(c, 2), dp(c, 4), dp(c, 2));
         bang.setOnClickListener(v -> openEdit(c));
         miniBox.addView(bang);
