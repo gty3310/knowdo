@@ -401,6 +401,11 @@ public class FloatingWindow {
         noteEdit.setHint("点这里直接写笔记（自动保存）");
         noteEdit.setTextSize(14);
         noteEdit.setMinLines(2);
+        // 笔记区高度封顶 + 内部滚动：文字再长也只在这个框里上下滚，
+        // 不许把下面的按钮行（开始/AI/完成/打开知行/收起）顶出屏幕
+        noteEdit.setMaxLines(6);
+        noteEdit.setVerticalScrollBarEnabled(true);
+        noteEdit.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         noteEdit.setGravity(Gravity.TOP);
         noteEdit.setBackgroundColor(Color.TRANSPARENT);
         noteEdit.setPadding(0, dp(c, 4), 0, 0);

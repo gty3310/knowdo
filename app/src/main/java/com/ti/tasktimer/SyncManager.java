@@ -23,6 +23,7 @@ import java.util.Set;
 public class SyncManager {
     private static final String PREF = "sync";
     private static final String KEY_URI = "tasks_json_uri";
+    private static final String KEY_SCHEDULE = "schedule_json";
 
     public static void setUri(Context c, Uri uri) {
         prefs(c).edit().putString(KEY_URI, uri.toString()).apply();
@@ -94,6 +95,7 @@ public class SyncManager {
             //    若每周期无条件整表回写，会把桥上刚写入的新内容用旧的盖掉。
             if (taskSignature(merged).equals(taskSignature(remote.tasks))
                     && eventKeys(mergedEvents).equals(eventKeys(remote.guardEvents))) {
+                StartReminder.reschedule(c, store);
                 return "同步完成：" + counts + "，内容无变化，未回写（" + TaskItem.nowIso() + "）";
             }
             // 4) 写前复读：两次读之间远端若又变了（多半是 Muse 刚写入），以第二次为准重新合并再写
@@ -112,6 +114,7 @@ public class SyncManager {
             } catch (Exception ignored) { }
             // 5) 回写远端
             if (!writeRemote(c, uri, store, writeEvents)) {
+                StartReminder.reschedule(c, store);
                 return "合并完成，但回写桥文件失败（未能打开输出流）";
             }
             // 6) 写后校验：再读一次，若合并结果里非 deleted 的任务有缺失，
@@ -131,6 +134,7 @@ public class SyncManager {
                     writeRemote(c, uri, store, unionEvents);
                 }
             } catch (Exception ignored) { }
+            StartReminder.reschedule(c, store);
             return "同步完成：" + counts + "（" + TaskItem.nowIso() + "）";
         } catch (Exception e) {
             return "同步失败：" + e.getMessage();
@@ -141,6 +145,21 @@ public class SyncManager {
     private static class RemoteSnapshot {
         final Map<String, TaskItem> tasks = new HashMap<>();
         JSONArray guardEvents;
+        JSONObject schedule;
+    }
+
+    /**
+     * 最近一次从桥上读到的日程（schedule 顶层字段，Muse 排、App 只读）。
+     * 日历页用它画今日时间表；桥上暂时没有时返回 null。
+     */
+    public static JSONObject latestSchedule(Context c) {
+        String s = prefs(c).getString(KEY_SCHEDULE, null);
+        if (s == null) return null;
+        try {
+            return new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static RemoteSnapshot readRemote(Context c, Uri uri) throws Exception {
@@ -155,6 +174,13 @@ public class SyncManager {
             snap.tasks.put(t.id, t);
         }
         snap.guardEvents = root.optJSONArray("guardEvents");
+        // schedule 是 Muse 维护的顶层字段：App 只读不改。读到就存一份到本地，
+        // 回写桥文件时原样带回——否则整表回写会把 Muse 刚排好的日程抹掉。
+        JSONObject sch = root.optJSONObject("schedule");
+        if (sch != null) {
+            snap.schedule = sch;
+            prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+        }
         return snap;
     }
 
@@ -193,6 +219,11 @@ public class SyncManager {
         if (out == null) return false;
         JSONObject root = store.toRootJson();
         root.put("guardEvents", events);
+        // 把最近一次读到的 schedule 原样带回（内容一字不改，App 只是保管员）
+        String sch = prefs(c).getString(KEY_SCHEDULE, null);
+        if (sch != null) {
+            try { root.put("schedule", new JSONObject(sch)); } catch (Exception ignored) { }
+        }
         out.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
         out.close();
         return true;

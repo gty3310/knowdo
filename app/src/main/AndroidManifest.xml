@@ -52,6 +52,10 @@
             android:name=".HelpActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".CalendarActivity"
+            android:exported="false" />
+
         <!-- 屏幕内容守卫采集服务：计时期间随机采样屏幕（MediaProjection，仅本机分析） -->
         <service
             android:name=".ScreenCaptureService"
@@ -130,6 +134,20 @@
 
         <activity
             android:name=".ResumeRemindActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- 开始提醒：任务的下次开始时间到点，全屏叫用户开始 -->
+        <receiver
+            android:name=".StartReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".StartRemindActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"

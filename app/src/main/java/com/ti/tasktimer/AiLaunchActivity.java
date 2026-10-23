@@ -16,10 +16,19 @@ import android.widget.Toast;
 */
 public class AiLaunchActivity extends Activity {
 public static final String EXTRA_TASK_ID = "task_id";
+/** 通用文本模式：调用方把现成文字放进这个 extra（如日历页「问 AI」拼好的今日日程），本页照常复制+打开助手。 */
+public static final String EXTRA_TEXT = "text";
 
 @Override
 protected void onCreate(Bundle savedInstanceState) {
 super.onCreate(savedInstanceState);
+String prebuilt = getIntent().getStringExtra(EXTRA_TEXT);
+boolean textMode = prebuilt != null && !prebuilt.isEmpty();
+final String info;
+final String what = textMode ? "日程信息" : "任务信息";
+if (textMode) {
+info = prebuilt;
+} else {
 String taskId = getIntent().getStringExtra(EXTRA_TASK_ID);
 TaskItem t = new TaskStore(this).byId(taskId);
 if (t == null) {
@@ -27,13 +36,14 @@ Toast.makeText(this, "没有可发送的任务", Toast.LENGTH_SHORT).show();
 finish();
 return;
 }
-String info = buildInfo(t);
+info = buildInfo(t);
+}
 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-if (cm!= null) cm.setPrimaryClip(ClipData.newPlainText("知行任务", info));
+if (cm!= null) cm.setPrimaryClip(ClipData.newPlainText(textMode ? "知行日程" : "知行任务", info));
 
 String pkg = FocusGuard.musePackage(this);
 if (pkg == null) {
-Toast.makeText(this, "任务信息已复制。先去「权限」页选一下 Muse 是哪个应用，我再帮你直接打开它",
+Toast.makeText(this, what + "已复制。先去「权限」页选一下 Muse 是哪个应用，我再帮你直接打开它",
 Toast.LENGTH_LONG).show();
 Intent p = new Intent(this, PermActivity.class);
 p.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -59,9 +69,9 @@ if (launch!= null) {
 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 try { startActivity(launch);} catch (Exception ignored) {}
 }
-Toast.makeText(this, "任务信息已复制到剪贴板，在 Muse 里粘贴即可", Toast.LENGTH_LONG).show();
+Toast.makeText(this, what + "已复制到剪贴板，在 Muse 里粘贴即可", Toast.LENGTH_LONG).show();
 } else {
-Toast.makeText(this, "任务信息已同时复制到剪贴板（若没自动填入，粘贴即可）", Toast.LENGTH_SHORT).show();
+Toast.makeText(this, what + "已同时复制到剪贴板（若没自动填入，粘贴即可）", Toast.LENGTH_SHORT).show();
 }
 finish();
 }

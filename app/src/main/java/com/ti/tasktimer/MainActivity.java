@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
         super.onResume();
         store.load();
         adapter.notifyDataSetChanged();
+        StartReminder.reschedule(this, store);
         updateRealtimeBtn();
         handler.removeCallbacks(statusLoop);
         handler.post(statusLoop);
@@ -134,6 +135,7 @@ public class MainActivity extends Activity {
         bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
         bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
         bar.addView(barButton("帮助", v -> startActivity(new Intent(this, HelpActivity.class))));
+        bar.addView(barButton("日历", v -> startActivity(new Intent(this, CalendarActivity.class))));
         root.addView(bar);
 
         root.addView(headerRow());
@@ -379,9 +381,7 @@ public class MainActivity extends Activity {
             row.addView(scCell);
 
             TextView dlCell = new TextView(MainActivity.this);
-            dlCell.setText("daily".equals(t.repeat) ? "每日"
-                    : (t.deadline == null ? "＋日期"
-                    : t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime)));
+            dlCell.setText(deadlineCellText(t));
             dlCell.setTextSize(13);
             dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
             dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -580,6 +580,29 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    /** 截止格文字：日期/每日 + 完成时间；设了下次开始时间时再加一行小字 ▶时间（不是今天时带 MM-DD）。 */
+    private CharSequence deadlineCellText(TaskItem t) {
+        String base = "daily".equals(t.repeat) ? "每日"
+                : (t.deadline == null ? "＋日期"
+                : t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime));
+        long ms = t.nextStartMs();
+        if (ms <= 0) return base;
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(ms);
+        String hm = String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        String day = String.format("%04d-%02d-%02d",
+                c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
+        String tail = "\n▶" + (day.equals(TaskItem.today()) ? hm : day.substring(5) + " " + hm);
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(base);
+        int start = sb.length();
+        sb.append(tail);
+        sb.setSpan(new android.text.style.RelativeSizeSpan(0.78f),
+                start, sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sb.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(46, 125, 50)),
+                start, sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return sb;
+    }
+
     private void dialogDeadline(final TaskItem t) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -625,6 +648,41 @@ public class MainActivity extends Activity {
             tp.show();
         });
         box.addView(timeBtn);
+        // 下次开始时间（可选）：到点全屏提醒开始，与截止日期相互独立（每日重复任务也能设）
+        final String[] startHolder = {t.nextStartAt};
+        final Button startBtn = new Button(this);
+        final Runnable refreshStartBtn = () -> startBtn.setText(
+                startHolder[0] == null ? "下次开始时间（可选）：未设置"
+                        : "下次开始时间：" + startHolder[0].replace('T', ' '));
+        refreshStartBtn.run();
+        startBtn.setOnClickListener(v -> {
+            Calendar sc = Calendar.getInstance();
+            if (startHolder[0] != null && startHolder[0].length() >= 10) {
+                try {
+                    String[] dp2 = startHolder[0].substring(0, 10).split("-");
+                    sc.set(Integer.parseInt(dp2[0]), Integer.parseInt(dp2[1]) - 1, Integer.parseInt(dp2[2]));
+                } catch (Exception ignored) { }
+            }
+            new android.app.DatePickerDialog(this, (dv, y, mo, da) -> {
+                int sh = 9, sm = 0;
+                if (startHolder[0] != null && startHolder[0].length() >= 16) {
+                    try {
+                        String[] tp2 = startHolder[0].substring(11, 16).split(":");
+                        sh = Integer.parseInt(tp2[0]);
+                        sm = Integer.parseInt(tp2[1]);
+                    } catch (Exception ignored) { }
+                }
+                android.app.TimePickerDialog stp = new android.app.TimePickerDialog(this,
+                        (tv, h3, m3) -> {
+                            startHolder[0] = String.format("%04d-%02d-%02dT%02d:%02d", y, mo + 1, da, h3, m3);
+                            refreshStartBtn.run();
+                        }, sh, sm, true);
+                stp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
+                        (d3, w3) -> { startHolder[0] = null; refreshStartBtn.run(); });
+                stp.show();
+            }, sc.get(Calendar.YEAR), sc.get(Calendar.MONTH), sc.get(Calendar.DAY_OF_MONTH)).show();
+        });
+        box.addView(startBtn);
         new AlertDialog.Builder(this)
                 .setTitle("截止日期")
                 .setView(box)
@@ -639,13 +697,17 @@ public class MainActivity extends Activity {
                                 picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
                         t.deadlineTime = timeHolder[0];
                     }
+                    t.nextStartAt = startHolder[0];
                     t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    StartReminder.reschedule(this, store);
                 })
                 .setNeutralButton("清除日期", (d, w) -> {
                     t.repeat = "none";
                     t.deadline = null;
                     t.deadlineTime = null;
+                    t.nextStartAt = null;
                     t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    StartReminder.reschedule(this, store);
                 })
                 .setNegativeButton("取消", null)
                 .show();

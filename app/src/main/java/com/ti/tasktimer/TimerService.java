@@ -103,6 +103,7 @@ public class TimerService extends Service {
                 long delay = intent.getLongExtra(EXTRA_DELAY_MS, 0);
                 if (delay > 0) ResumeReminder.schedule(this, TimerState.pausedTaskId(this), delay);
             }
+            SessionLog.close(this);
             TimerState.stop(this);
             ScreenCaptureService.onTimerStopped(this);
             cancelAlarms();
@@ -115,6 +116,7 @@ public class TimerService extends Service {
         }
         if (ACTION_STOP.equals(action)) {
             TimerState.logEvent(this, "计时已停止/完成");
+            SessionLog.close(this);
             TimerState.stop(this);
             ScreenCaptureService.onTimerStopped(this);
             cancelAlarms();
@@ -133,6 +135,7 @@ public class TimerService extends Service {
             FocusGuard.reset(this);
             VerdictEngine.reset(this);
             ScreenCaptureService.onTimerStarted(this);
+            SessionLog.open(this, intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
         } else if (ACTION_START.equals(action)) {
             ResumeReminder.cancel(this);
@@ -144,6 +147,7 @@ public class TimerService extends Service {
             FocusGuard.reset(this);
             VerdictEngine.reset(this);
             ScreenCaptureService.onTimerStarted(this);
+            SessionLog.open(this, sid, intent.getStringExtra(EXTRA_TASK_TITLE));
             TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);

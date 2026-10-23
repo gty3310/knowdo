@@ -18,6 +18,7 @@ public class TaskItem {
     public List<String> scenarios = new ArrayList<>();
     public String deadline;            // YYYY-MM-DD，可空
     public String deadlineTime;        // "HH:mm" 完成时间（当天几点前做完），可空
+    public String nextStartAt;         // "YYYY-MM-DDTHH:mm" 下一个开始时间（本地时间），到点全屏提醒开始，可空
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
@@ -85,6 +86,7 @@ public class TaskItem {
         o.put("scenarios", sc);
         o.put("deadline", deadline == null ? JSONObject.NULL : deadline);
         o.put("deadlineTime", deadlineTime == null ? JSONObject.NULL : deadlineTime);
+        o.put("nextStartAt", nextStartAt == null ? JSONObject.NULL : nextStartAt);
         o.put("repeat", repeat);
         o.put("durationMinutes", durationMinutes);
         o.put("actualMinutes", actualMinutes);
@@ -122,6 +124,8 @@ public class TaskItem {
         if (t.deadline != null && t.deadline.isEmpty()) t.deadline = null;
         t.deadlineTime = o.isNull("deadlineTime") ? null : o.optString("deadlineTime", null);
         if (t.deadlineTime != null && t.deadlineTime.isEmpty()) t.deadlineTime = null;
+        t.nextStartAt = o.isNull("nextStartAt") ? null : o.optString("nextStartAt", null);
+        if (t.nextStartAt != null && t.nextStartAt.isEmpty()) t.nextStartAt = null;
         t.repeat = o.optString("repeat", "none");
         t.durationMinutes = o.optInt("durationMinutes", 30);
         t.actualMinutes = o.optInt("actualMinutes", 0);
@@ -147,6 +151,21 @@ public class TaskItem {
         if (t.updatedAtMs == 0) t.updatedAtMs = parseIso(o.optString("updatedAt", ""));
         if (t.createdAtMs == 0) t.createdAtMs = parseIso(o.optString("createdAt", ""));
         return t;
+    }
+
+    /** nextStartAt（"YYYY-MM-DDTHH:mm"，本地时间）解析成毫秒；未设或格式坏返回 0。 */
+    public long nextStartMs() {
+        if (nextStartAt == null || nextStartAt.isEmpty()) return 0;
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).parse(nextStartAt).getTime();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** 毫秒 → nextStartAt 的字符串格式（本地时间）。 */
+    public static String formatNextStart(long ms) {
+        return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).format(new Date(ms));
     }
 
     private static long parseIso(String s) {

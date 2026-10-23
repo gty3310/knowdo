@@ -99,6 +99,7 @@ public final class TimerState {
     }
 
     public static boolean isRunning(Context c) { return sp(c).getBoolean("running", false); }
+    public static long startedAt(Context c) { return sp(c).getLong("startedAt", 0); }
     public static long endAt(Context c) { return sp(c).getLong("endAt", 0); }
     public static long halfAt(Context c) { return sp(c).getLong("halfAt", 0); }
     public static int totalSec(Context c) { return sp(c).getInt("totalSec", 0); }
