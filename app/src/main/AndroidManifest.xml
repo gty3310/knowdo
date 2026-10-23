@@ -14,6 +14,15 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!-- 安卓 11+ 包可见性：不声明就只能看到极少数应用（选择器里只剩商店/云端硬盘/设置）。
+         本应用需要列出全部可启动应用供用户给任务挑软件（专注规则、主软件、Muse 应用）。 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:label="知行 KnowDo"
