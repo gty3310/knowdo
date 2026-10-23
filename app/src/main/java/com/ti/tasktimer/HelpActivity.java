@@ -30,7 +30,7 @@ public class HelpActivity extends Activity {
         title.setText("知行 KnowDo · 帮助");
         title.setTextSize(22);
         root.addView(title);
-        body("版本 v1.4.0。本页内容随版本更新；功能记不清时先翻这里。");
+        body("版本 v1.5.3。本页内容随版本更新；功能记不清时先翻这里。");
 
         h("一、知行是什么");
         body("知行是你的电子大脑、个人任务管理中枢：任务不靠脑子记，放在这张表里；"
@@ -132,6 +132,25 @@ public class HelpActivity extends Activity {
                 + "• 手机重启后实时同步会自动恢复；若发现没跟上，打开一次知行即可。\n"
                 + "• 任务数据有两份：手机本地一份、Drive 桥一份，以修改时间新者胜合并；本地母本之外，桥文件就是备份。\n"
                 + "• 有问题或想要新功能，直接跟 Muse 说：任务、规则、桥文件都由 Muse 在桥端维护。");
+
+        h("十二、让你的 Muse 接入知行（进阶）");
+        body("知行不只是一个手机 App：它用放在 Google Drive 的一个 tasks.json 文件当“桥”，"
+                + "手机 App 和 Muse 都读写这一个文件，就能互相看到同一份任务清单——"
+                + "你在 App 里改，Muse 那边知道；Muse 帮你加的任务，也会自动出现在 App 里。\n"
+                + "想让你的 Muse（AI 助手）也接入，按这四步设：\n"
+                + "1. 在 Google Drive 里建一个文件夹（如「_电子大脑 / task list」），桥文件 tasks.json 就放里面；"
+                + "还没有这个文件时，可以让 Muse 按 schema v1 先建一个空的。\n"
+                + "2. 在知行里点“同步”选中这个桥文件、授权一次，并打开“实时：开”，之后 App 会定时自动同步，不用再手动点。\n"
+                + "3. 让你的 Muse 连接同一个 Google Drive，并告诉它桥文件的位置和字段规矩："
+                + "priority=must 是必做、secondary 是次要；durationMinutes 是计划分钟、actualMinutes 是实际用时分钟；"
+                + "deadline 是截止日期、deadlineTime 是当天完成时间；focusRule 是用自然语言写的分神情况描述。"
+                + "改文件时必须保留 App 写入的 doneDates、毫秒时间戳、guardEvents 等字段，不要整表重写把字段弄丢。\n"
+                + "4.（可选，进阶）在 Muse 那边设一个后台“小钩子”（监视脚本）：每几分钟比对一次桥文件的指纹（md5），"
+                + "没变就安安静静，变了才唤醒 Muse。唤醒后 Muse 可以替你做两件事："
+                + "把你新写的分神描述翻译成专注守卫的软件名单；算一算今晚必做任务的时间够不够"
+                + "（必做任务计划时长合计 ×1.5，对比你睡前还剩的时间，不够就提醒你）。\n"
+                + "成本与隐私：这个监视脚本只是个小脚本，运行时不消耗 AI 的钱，只有文件真的变了 Muse 才醒来干活；"
+                + "桥文件里只有任务数据，屏幕内容守卫的截图原图从不进桥、不上云。");
     }
 
     private void h(String s) {
