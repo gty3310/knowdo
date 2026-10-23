@@ -21,6 +21,7 @@ import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,6 +38,8 @@ import java.util.Set;
  */
 public class MainActivity extends Activity {
     private static final int REQ_PICK_BRIDGE = 42;
+    private static final int REQ_CAPTURE = 43;
+    private TaskItem pendingGuardTask; // 等待截图授权结果的待启动任务
 
     private TaskStore store;
     private ListView listView;
@@ -128,6 +131,7 @@ public class MainActivity extends Activity {
         updateRealtimeBtn();
         bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
         bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
+        bar.addView(barButton("帮助", v -> startActivity(new Intent(this, HelpActivity.class))));
         root.addView(bar);
 
         root.addView(headerRow());
@@ -210,6 +214,11 @@ public class MainActivity extends Activity {
             long remain = Math.max(0, (TimerState.endAt(this) - System.currentTimeMillis()) / 1000);
             sb.append("计时中：「").append(TimerState.taskTitle(this)).append("」剩余 ")
               .append(remain / 60).append(":").append(String.format("%02d", remain % 60)).append("  ");
+        } else if (TimerState.isPaused(this)) {
+            long remain = Math.max(0, TimerState.pausedRemainMs(this) / 1000);
+            sb.append("已暂停：「").append(TimerState.pausedTitle(this)).append("」剩余 ")
+              .append(remain / 60).append(":").append(String.format("%02d", remain % 60))
+              .append("，点它的 ▶ 继续  ");
         }
         String last = SyncManager.lastResult(this);
         sb.append(last.isEmpty() ? "点「同步」连接 Drive 的 tasks.json" : last);
@@ -217,23 +226,84 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- 任务行 ----------------
+    /** 列表行：0 今日任务 / 1 历史日期头（可展开）/ 2 历史任务（某日完成的） */
+    private static class Row {
+        int kind;
+        TaskItem t;
+        String date;
+        int count;
+        static Row task(TaskItem t) { Row r = new Row(); r.kind = 0; r.t = t; return r; }
+        static Row header(String date, int count) { Row r = new Row(); r.kind = 1; r.date = date; r.count = count; return r; }
+        static Row history(TaskItem t) { Row r = new Row(); r.kind = 2; r.t = t; return r; }
+    }
+
     private class TaskAdapter extends BaseAdapter {
         List<TaskItem> visible = new ArrayList<>();
+        List<Row> rows = new ArrayList<>();
         final java.util.Set<String> expandedNotes = new java.util.HashSet<>();
+        final java.util.Set<String> expandedDays = new java.util.HashSet<>();
 
         TaskAdapter() { reload(); }
 
-        void reload() { visible = store.visibleSorted(); }
+        void reload() {
+            visible = store.visibleSorted();
+            rows = new ArrayList<>();
+            for (TaskItem t : visible) rows.add(Row.task(t));
+            // 历史：按完成日期（今天之前）分组，日期倒序；每组一个可展开的日期头
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    .format(new java.util.Date());
+            java.util.Map<String, List<TaskItem>> byDate = new java.util.TreeMap<>(
+                    java.util.Collections.reverseOrder());
+            for (TaskItem t : store.tasks) {
+                if (t.deleted || t.doneDates == null) continue;
+                for (String d : t.doneDates) {
+                    if (d != null && d.compareTo(today) < 0) {
+                        byDate.computeIfAbsent(d, k -> new ArrayList<>()).add(t);
+                    }
+                }
+            }
+            for (java.util.Map.Entry<String, List<TaskItem>> e : byDate.entrySet()) {
+                rows.add(Row.header(e.getKey(), e.getValue().size()));
+                if (expandedDays.contains(e.getKey())) {
+                    for (TaskItem t : e.getValue()) rows.add(Row.history(t));
+                }
+            }
+        }
 
-        @Override public int getCount() { return visible.size(); }
-        @Override public Object getItem(int p) { return visible.get(p); }
+        @Override public int getCount() { return rows.size(); }
+        @Override public Object getItem(int p) { return rows.get(p); }
         @Override public long getItemId(int p) { return p; }
 
         @Override public void notifyDataSetChanged() { reload(); super.notifyDataSetChanged(); }
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            final TaskItem t = visible.get(position);
+            final Row rowObj = rows.get(position);
+            if (rowObj.kind == 1) {
+                TextView h = new TextView(MainActivity.this);
+                boolean open = expandedDays.contains(rowObj.date);
+                h.setText((open ? "▼ " : "▶ ") + rowObj.date + " · 完成 " + rowObj.count + " 个（点开看那天做了什么）");
+                h.setTextSize(14);
+                h.setTextColor(Color.rgb(97, 97, 97));
+                h.setBackgroundColor(Color.rgb(238, 238, 238));
+                h.setPadding(dp(12), dp(10), dp(12), dp(10));
+                h.setOnClickListener(v -> {
+                    if (expandedDays.contains(rowObj.date)) expandedDays.remove(rowObj.date);
+                    else expandedDays.add(rowObj.date);
+                    notifyDataSetChanged();
+                });
+                return h;
+            }
+            if (rowObj.kind == 2) {
+                TextView h = new TextView(MainActivity.this);
+                h.setText("✓ " + rowObj.t.title + "（" + rowObj.t.durationMinutes + " 分）");
+                h.setTextSize(14);
+                h.setTextColor(Color.GRAY);
+                h.setPadding(dp(28), dp(8), dp(12), dp(8));
+                h.setOnClickListener(v -> dialogNote(rowObj.t));
+                return h;
+            }
+            final TaskItem t = rowObj.t;
             LinearLayout col = new LinearLayout(MainActivity.this);
             col.setOrientation(LinearLayout.VERTICAL);
             boolean done = t.isDoneToday();
@@ -244,11 +314,30 @@ public class MainActivity extends Activity {
             row.setPadding(dp(6), dp(8), dp(6), dp(8));
             col.addView(row);
 
+            CheckBox doneBox = new CheckBox(MainActivity.this);
+            doneBox.setChecked(done);
+            doneBox.setLayoutParams(new LinearLayout.LayoutParams(dp(36), dp(48)));
+            doneBox.setOnClickListener(v -> {
+                if (doneBox.isChecked()) t.markDone(); else t.markUndone();
+                store.save();
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+            });
+            row.addView(doneBox);
+
+            boolean isRunningThis = TimerState.isRunning(MainActivity.this) && t.id.equals(TimerState.taskId(MainActivity.this));
             Button play = new Button(MainActivity.this);
-            play.setText(TimerState.isRunning(MainActivity.this) && t.id.equals(TimerState.taskId(MainActivity.this)) ? "■" : "▶");
+            play.setText(isRunningThis ? "⏸" : "▶");
             play.setTextSize(15);
             play.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(48)));
             play.setOnClickListener(v -> onPlay(t));
+            play.setOnLongClickListener(v -> {
+                PopupMenu pm = new PopupMenu(MainActivity.this, v);
+                pm.getMenu().add("重置（从 0 重新开始计时）");
+                pm.setOnMenuItemClickListener(item -> { resetTask(t); return true; });
+                pm.show();
+                return true;
+            });
             row.addView(play);
 
             boolean hasNote = t.note != null && !t.note.trim().isEmpty();
@@ -269,7 +358,8 @@ public class MainActivity extends Activity {
             }
 
             TextView titleCell = new TextView(MainActivity.this);
-            String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title;
+            String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
+                    + (t.id.equals(TimerState.pausedTaskId(MainActivity.this)) && !TimerState.isRunning(MainActivity.this) ? "（已暂停）" : "");
             titleCell.setText(done ? titleText + " ✓" : titleText);
             titleCell.setTextSize(16);
             titleCell.setTextColor(done ? Color.GRAY : Color.BLACK);
@@ -340,24 +430,68 @@ public class MainActivity extends Activity {
         if (TimerState.isRunning(this)) {
             String runningId = TimerState.taskId(this);
             if (t.id.equals(runningId)) {
-                toast("这个任务正在计时中");
+                TimerService.pauseTimer(this);
+                toast("已暂停：「" + t.title + "」，点 ▶ 继续");
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    adapter.notifyDataSetChanged();
+                    refreshStatus();
+                }, 350);
                 return;
             }
+            String warn = TimerState.isPaused(this) && !TimerState.pausedTaskId(this).equals(runningId)
+                    ? "\n（注意：之前暂停的「" + TimerState.pausedTitle(this) + "」的进度会被覆盖）" : "";
             new AlertDialog.Builder(this)
                     .setTitle("已有任务在计时")
-                    .setMessage("「" + TimerState.taskTitle(this) + "」正在计时，切换到「" + t.title + "」吗？")
-                    .setPositiveButton("切换", (d, w) -> {
-                        TimerService.stopTimer(this);
-                        startTaskTimer(t);
+                    .setMessage("「" + TimerState.taskTitle(this) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
+                    .setPositiveButton("暂停并切换", (d, w) -> {
+                        TimerService.pauseTimer(this);
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
                     })
                     .setNegativeButton("取消", null)
                     .show();
             return;
         }
+        if (t.id.equals(TimerState.pausedTaskId(this))) {
+            int total = TimerState.pausedTotalSec(this);
+            if (total <= 0) total = Math.max(1, t.durationMinutes) * 60;
+            int remain = (int) Math.max(1, TimerState.pausedRemainMs(this) / 1000);
+            TimerService.resumeTimer(this, total, remain, t.id, t.title);
+            toast("继续计时：" + t.title + "（剩余约 " + (remain / 60) + " 分 " + (remain % 60) + " 秒）");
+            adapter.notifyDataSetChanged();
+            refreshStatus();
+            return;
+        }
         startTaskTimer(t);
     }
 
+    /** 重置：把这个任务的计时清零，从完整时长重新开始（长按 ▶ 弹出）。 */
+    private void resetTask(final TaskItem t) {
+        if (TimerState.isRunning(this) && !t.id.equals(TimerState.taskId(this))) {
+            TimerService.pauseTimer(this);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
+        } else {
+            startTaskTimer(t);
+        }
+        toast("已重置，从 0 重新开始：" + t.title);
+    }
+
     private void startTaskTimer(TaskItem t) {
+        // 屏幕内容守卫开着且还没有可用授权时，先请求一次截图授权（安卓 14+ 每个计时会话一次），
+        // 拿到结果（允许或拒绝）后都照常开始计时：拒绝就本次不采样，不拦着做事。
+        if (ScreenGuardPrefs.enabled(this) && !ScreenCaptureService.isAuthorized(this)) {
+            android.media.projection.MediaProjectionManager mpm =
+                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            if (mpm != null) {
+                pendingGuardTask = t;
+                toast("屏幕内容守卫已开：请在系统弹窗里允许这一次截图授权（每个任务一次）");
+                startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+                return;
+            }
+        }
+        doStartTaskTimer(t);
+    }
+
+    private void doStartTaskTimer(TaskItem t) {
         TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
         toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
         adapter.notifyDataSetChanged();
@@ -673,6 +807,17 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_CAPTURE) {
+            TaskItem t = pendingGuardTask;
+            pendingGuardTask = null;
+            if (resultCode == RESULT_OK && data != null) {
+                ProjectionAuth.store(resultCode, data);
+            } else {
+                toast("未获得截图授权：本次计时不做屏幕内容采样，其余功能照常");
+            }
+            if (t != null) doStartTaskTimer(t);
+            return;
+        }
         if (requestCode == REQ_PICK_BRIDGE && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             try {

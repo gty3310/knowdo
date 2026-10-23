@@ -21,7 +21,10 @@ public class TimerService extends Service {
     public static final String ACTION_START = "com.ti.tasktimer.START";
     public static final String ACTION_STOP = "com.ti.tasktimer.STOP";
     public static final String ACTION_EXTEND = "com.ti.tasktimer.EXTEND";
+    public static final String ACTION_PAUSE = "com.ti.tasktimer.PAUSE";
+    public static final String ACTION_RESUME = "com.ti.tasktimer.RESUME";
     public static final String EXTRA_TOTAL_SEC = "total_sec";
+    public static final String EXTRA_REMAIN_SEC = "remain_sec";
     public static final String EXTRA_ADD_SEC = "add_sec";
     public static final String EXTRA_TASK_ID = "task_id";
     public static final String EXTRA_TASK_TITLE = "task_title";
@@ -58,13 +61,34 @@ public class TimerService extends Service {
         c.startService(i);
     }
 
+    public static void pauseTimer(Context c) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_PAUSE);
+        c.startService(i);
+    }
+
+    public static void resumeTimer(Context c, int totalSec, int remainSec, String taskId, String taskTitle) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_RESUME);
+        i.putExtra(EXTRA_TOTAL_SEC, totalSec);
+        i.putExtra(EXTRA_REMAIN_SEC, remainSec);
+        i.putExtra(EXTRA_TASK_ID, taskId);
+        i.putExtra(EXTRA_TASK_TITLE, taskTitle);
+        c.startForegroundService(i);
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         AlertHelper.createChannels(this);
         String action = intent == null ? null : intent.getAction();
-        if (ACTION_STOP.equals(action)) {
-            TimerState.logEvent(this, "计时已停止/完成");
+        if (ACTION_PAUSE.equals(action)) {
+            long remain = TimerState.endAt(this) - System.currentTimeMillis();
+            if (TimerState.isRunning(this) && remain > 0 && !TimerState.endFired(this)) {
+                TimerState.setPaused(this, remain);
+                TimerState.logEvent(this, "已暂停：" + TimerState.taskTitle(this) + "，剩余 " + (remain / 1000) + " 秒");
+            }
             TimerState.stop(this);
+            ScreenCaptureService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
             FloatingWindow.hide();
@@ -73,11 +97,35 @@ public class TimerService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (ACTION_START.equals(action)) {
-            int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
-            TimerState.start(this, total,
+        if (ACTION_STOP.equals(action)) {
+            TimerState.logEvent(this, "计时已停止/完成");
+            TimerState.stop(this);
+            ScreenCaptureService.onTimerStopped(this);
+            cancelAlarms();
+            AlertHelper.cancelAlert(this);
+            FloatingWindow.hide();
+            handler.removeCallbacks(ticker);
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (ACTION_RESUME.equals(action)) {
+            TimerState.startResumed(this,
+                    intent.getIntExtra(EXTRA_TOTAL_SEC, 60), intent.getIntExtra(EXTRA_REMAIN_SEC, 60),
                     intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
             FocusGuard.reset(this);
+            VerdictEngine.reset(this);
+            ScreenCaptureService.onTimerStarted(this);
+            TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
+        } else if (ACTION_START.equals(action)) {
+            int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
+            String sid = intent.getStringExtra(EXTRA_TASK_ID);
+            if (sid != null && sid.equals(TimerState.pausedTaskId(this))) TimerState.clearPaused(this);
+            TimerState.start(this, total,
+                    sid, intent.getStringExtra(EXTRA_TASK_TITLE));
+            FocusGuard.reset(this);
+            VerdictEngine.reset(this);
+            ScreenCaptureService.onTimerStarted(this);
             TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);

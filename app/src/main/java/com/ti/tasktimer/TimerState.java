@@ -49,6 +49,55 @@ public final class TimerState {
         sp(c).edit().putBoolean("running", false).apply();
     }
 
+    // ---------- 暂停 / 继续（全局只留一个暂停槽） ----------
+    public static void setPaused(Context c, long remainMs) {
+        SharedPreferences p = sp(c);
+        p.edit()
+            .putString("p_taskId", p.getString("taskId", ""))
+            .putString("p_title", p.getString("taskTitle", ""))
+            .putInt("p_totalSec", p.getInt("totalSec", 0))
+            .putLong("p_remainMs", Math.max(0, remainMs))
+            .apply();
+    }
+
+    public static void clearPaused(Context c) {
+        sp(c).edit().remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs").apply();
+    }
+
+    public static String pausedTaskId(Context c) {
+        String s = sp(c).getString("p_taskId", "");
+        return s == null ? "" : s;
+    }
+
+    public static boolean isPaused(Context c) { return !pausedTaskId(c).isEmpty(); }
+    public static long pausedRemainMs(Context c) { return sp(c).getLong("p_remainMs", 0); }
+    public static int pausedTotalSec(Context c) { return sp(c).getInt("p_totalSec", 0); }
+
+    public static String pausedTitle(Context c) {
+        String s = sp(c).getString("p_title", "");
+        return s == null ? "" : s;
+    }
+
+    /** 继续：按原总时长与剩余秒数重建绝对时间点；过半标记沿用暂停前的状态（或已过半则视为已触发）。 */
+    public static void startResumed(Context c, int totalSec, int remainSec, String taskId, String taskTitle) {
+        SharedPreferences p = sp(c);
+        long now = System.currentTimeMillis();
+        long elapsedSec = Math.max(0, totalSec - remainSec);
+        boolean half = p.getBoolean("halfFired", false) || elapsedSec * 2 >= totalSec;
+        p.edit()
+            .putBoolean("running", true)
+            .putLong("startedAt", now - elapsedSec * 1000L)
+            .putLong("halfAt", now - elapsedSec * 1000L + totalSec * 500L)
+            .putLong("endAt", now + remainSec * 1000L)
+            .putInt("totalSec", totalSec)
+            .putString("taskId", taskId == null ? "" : taskId)
+            .putString("taskTitle", taskTitle == null ? "" : taskTitle)
+            .putBoolean("halfFired", half)
+            .putBoolean("endFired", false)
+            .remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
+            .apply();
+    }
+
     public static boolean isRunning(Context c) { return sp(c).getBoolean("running", false); }
     public static long endAt(Context c) { return sp(c).getLong("endAt", 0); }
     public static long halfAt(Context c) { return sp(c).getLong("halfAt", 0); }
