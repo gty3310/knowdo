@@ -94,9 +94,19 @@ public final class SbTimerSync {
         return o;
     }
 
+    // 逻辑计时器的归属（v1.13.0）：最近一次应用的 timer_state 若来自另一台设备，本机只是
+    // 镜像端——此时本机编辑正在跑的任务的子任务，不做本地队列重建（SubtaskResync 会跳过），
+    // 由拥有端重建后经 timer_state 推过来，本机镜像跟随。本机任何计时动作都会夺回所有权。
+    private static final String K_REMOTE_OWNED = "remote_owned";
+
+    public static boolean isRemoteOwned(Context c) {
+        return prefs(c).getBoolean(K_REMOTE_OWNED, false);
+    }
+
     /** TimerService 在每次本地计时动作后调用：记下待写状态并异步上传（失败留待 syncNow 补写）。 */
     public static void onLocalTimerChanged(Context c) {
         final Context app = c.getApplicationContext();
+        prefs(app).edit().putBoolean(K_REMOTE_OWNED, false).apply();
         JSONObject st = buildLocalState(app);
         synchronized (LOCK) {
             prefs(app).edit()
@@ -153,6 +163,8 @@ public final class SbTimerSync {
         p.edit().putLong("last_remote_applied", upd).apply();
 
         String phase = ts.optString("phase", "idle");
+        // 归属更新：远端的 running/paused 状态被接纳后，逻辑计时器归远端；idle 则无人拥有
+        p.edit().putBoolean(K_REMOTE_OWNED, "running".equals(phase) || "paused".equals(phase)).apply();
         String taskId = ts.optString("task_id", "");
         String title = ts.optString("task_title", "");
         int duration = ts.optInt("duration_seconds", 0);

@@ -27,6 +27,7 @@ public final class TimerState {
             .putBoolean("endFired", false)
             .remove("sub_active").remove("sub_index").remove("sub_count")
             .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired")
+            .remove("sub_snap")
             .apply();
     }
 
@@ -126,6 +127,93 @@ public final class TimerState {
     public static boolean subFired(Context c) { return sp(c).getBoolean("sub_fired", false); }
     public static void markSubFired(Context c) { sp(c).edit().putBoolean("sub_fired", true).apply(); }
 
+    // ---------- 子任务队列快照与运行中重建（v1.13.0） ----------
+    // sub_snap 存「当前队列是按哪一版子任务列表建的」（[{id,title,minutes}] 的 JSON 串）：
+    // TaskStore 一有变更，SubtaskResync 拿最新列表与快照比对，不同才让 TimerService 重建队列，
+    // 实现「计时中加/改子任务立即接管」。快照随新一轮计时（start）清掉；暂停走 stop() 不清——
+    // 暂停期间编辑子任务同样要靠它对账，恢复时由 TimerService 按最新列表重写。
+
+    public static void setSubSnapshot(Context c, java.util.List<Subtask> subs) {
+        if (subs == null || subs.isEmpty()) {
+            sp(c).edit().remove("sub_snap").apply();
+            return;
+        }
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (Subtask s : subs) {
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("id", s.id == null ? "" : s.id);
+                o.put("title", s.title == null ? "" : s.title);
+                o.put("minutes", Math.max(1, s.minutes));
+                arr.put(o);
+            }
+            sp(c).edit().putString("sub_snap", arr.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    public static java.util.List<Subtask> subSnapshot(Context c) {
+        java.util.List<Subtask> out = new java.util.ArrayList<>();
+        String raw = sp(c).getString("sub_snap", null);
+        if (raw == null || raw.isEmpty()) return out;
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                Subtask s = new Subtask();
+                s.id = o.optString("id", "");
+                s.title = o.optString("title", "");
+                s.minutes = Math.max(1, o.optInt("minutes", 5));
+                out.add(s);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /**
+     * 队列重建落点（运行中）：一次性写入子任务运行态＋任务级总时长/结束点。
+     * startedAt 按 endAt − totalSec 顺推，保证跨设备镜像算出的结束点与本机一致；
+     * 调用方用「新旧队列剩余之差」平移 endAt/totalSec 时 startedAt 自然不变，检查页停留
+     * 吃掉的时间（dwell）不会被重建悄悄还回来。
+     */
+    public static void applyQueueState(Context c, int index, String subId, String subTitle,
+                                       int count, long subEndMs, long endAtMs, int totalSec) {
+        sp(c).edit()
+            .putBoolean("running", true)
+            .putBoolean("sub_active", true)
+            .putInt("sub_index", index)
+            .putInt("sub_count", count)
+            .putString("sub_id", subId == null ? "" : subId)
+            .putString("sub_title", subTitle == null ? "" : subTitle)
+            .putLong("sub_end", subEndMs)
+            .putBoolean("sub_fired", false)
+            .putLong("endAt", endAtMs)
+            .putInt("totalSec", totalSec)
+            .putLong("startedAt", endAtMs - totalSec * 1000L)
+            .putLong("halfAt", endAtMs - totalSec * 500L)
+            .putBoolean("halfFired", true) // 子任务模式：检查点只在子任务边界
+            .putBoolean("endFired", false)
+            .apply();
+    }
+
+    /** 退出子任务模式（运行中）：只清子任务运行态，任务级时间点由调用方决定。 */
+    public static void clearSubRunState(Context c) {
+        sp(c).edit().remove("sub_active").remove("sub_index").remove("sub_count")
+            .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired")
+            .apply();
+    }
+
+    /** 任务级收尾：结束点设到现在，下一个 tick 即走任务结束检查页（无子任务时的原有逻辑）。 */
+    public static void finishNow(Context c) {
+        sp(c).edit().putLong("endAt", System.currentTimeMillis())
+            .putBoolean("endFired", false).apply();
+    }
+
+    /** 子任务检查页在显（sub_fired）时的最小同步：只更新计数，不动正在等确认的边界。 */
+    public static void touchSubCount(Context c, int count) {
+        sp(c).edit().putInt("sub_count", count).apply();
+    }
+
     // ---------- 暂停 / 继续（全局只留一个暂停槽） ----------
     public static void setPaused(Context c, long remainMs) {
         SharedPreferences p = sp(c);
@@ -160,6 +248,10 @@ public final class TimerState {
 
     // 暂停槽里的子任务快照（恢复/镜像用）
     public static boolean pausedSubActive(Context c) { return sp(c).getBoolean("p_subActive", false); }
+    public static String pausedSubId(Context c) {
+        String s = sp(c).getString("p_subId", "");
+        return s == null ? "" : s;
+    }
     public static int pausedSubIndex(Context c) { return sp(c).getInt("p_subIndex", 0); }
     public static int pausedSubCount(Context c) { return sp(c).getInt("p_subCount", 0); }
     public static String pausedSubTitle(Context c) {
@@ -167,6 +259,32 @@ public final class TimerState {
         return s == null ? "" : s;
     }
     public static long pausedSubRemainMs(Context c) { return sp(c).getLong("p_subRemainMs", 0); }
+
+    /**
+     * 暂停中子任务队列重建落点（v1.13.0）：改写暂停槽的子任务快照＋任务级剩余/总时长。
+     * 只动这几处键，暂停目的三件套（p_reason/p_emoji/p_silent）与叫回提醒不受影响；
+     * 恢复计时（startResumed）读到的就是新队列，恢复后按新队列走。
+     */
+    public static void rewritePausedSub(Context c, int index, String subId, String subTitle,
+                                        int count, long subRemainMs, long taskRemainMs, int totalSec) {
+        sp(c).edit()
+            .putBoolean("p_subActive", true)
+            .putInt("p_subIndex", index)
+            .putInt("p_subCount", count)
+            .putString("p_subId", subId == null ? "" : subId)
+            .putString("p_subTitle", subTitle == null ? "" : subTitle)
+            .putLong("p_subRemainMs", Math.max(0, subRemainMs))
+            .putLong("p_remainMs", Math.max(0, taskRemainMs))
+            .putInt("p_totalSec", totalSec)
+            .apply();
+    }
+
+    /** 暂停槽退出子任务模式：恢复后按任务级剩余走完（p_remainMs/p_totalSec 不动）。 */
+    public static void clearPausedSub(Context c) {
+        sp(c).edit().remove("p_subActive").remove("p_subIndex").remove("p_subCount")
+            .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs")
+            .apply();
+    }
 
     // ---------- 暂停目的（v1.10.0 预留 p_reason，v1.11.0 暂停模式正式启用） ----------
     // 暂停卡选的目的三件套，随暂停槽同生同灭（setPaused/setPausedRemote 新暂停时清、

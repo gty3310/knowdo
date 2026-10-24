@@ -28,6 +28,8 @@ public class TimerService extends Service {
     public static final String ACTION_RESUME = "com.ti.tasktimer.RESUME";
     /** 子任务推进（v1.11.0）：当前子任务到点确认/跳过后，开始下一个子任务。 */
     public static final String ACTION_SUB_ADVANCE = "com.ti.tasktimer.SUB_ADVANCE";
+    /** 子任务队列重建（v1.13.0）：计时/暂停中该任务的子任务被编辑，按最新列表重建队列并接管。 */
+    public static final String ACTION_SUB_RESYNC = "com.ti.tasktimer.SUB_RESYNC";
     public static final String EXTRA_REASON = "pause_reason";
     public static final String EXTRA_EMOJI = "pause_emoji";
     public static final String EXTRA_SILENT = "pause_silent";
@@ -45,8 +47,16 @@ public class TimerService extends Service {
             handler.postDelayed(this, 250);
         }
     };
+    // 子任务接管对账（v1.13.0）：主页/悬浮窗的监听覆盖大多数情形，这里再注册一份，
+    // 兜住「悬浮窗关着、主页已销毁」时计时中编辑经同步合并进来的子任务变化
+    private final TaskStore.ChangeListener storeListener = () -> SubtaskResync.check(this);
 
     @Override public IBinder onBind(Intent intent) { return null; }
+
+    @Override public void onCreate() {
+        super.onCreate();
+        TaskStore.addChangeListener(storeListener);
+    }
 
     public static void startTimer(Context c, int totalSec, String taskId, String taskTitle) {
         Intent i = new Intent(c, TimerService.class);
@@ -97,6 +107,18 @@ public class TimerService extends Service {
         Intent i = new Intent(c, TimerService.class);
         i.setAction(ACTION_SUB_ADVANCE);
         c.startForegroundService(i);
+    }
+
+    /**
+     * 子任务队列重建请求（v1.13.0）：SubtaskResync 对账发现运行/暂停中任务的子任务变了才调。
+     * 服务活着（计时中）走 startService 直达；服务没活（暂停中）把它拉起来处理完暂停槽
+     * 重建后，onStartCommand 末尾会因不在计时而自行 stopSelf。
+     */
+    public static void resyncSubtasks(Context c, String taskId) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_SUB_RESYNC);
+        i.putExtra(EXTRA_TASK_ID, taskId);
+        c.startService(i);
     }
 
     /**
@@ -203,6 +225,9 @@ public class TimerService extends Service {
                     intent.getStringExtra("sub_title"),
                     intent.getIntExtra("sub_count", 0),
                     intent.getLongExtra("sub_end_at", 0));
+            // 队列快照跟本地任务列表对齐（镜像端不重建，仅作呈现/对账基线；任务不在本地时不动）
+            TaskItem mt = mid == null ? null : new TaskStore(this).byId(mid);
+            if (mt != null) TimerState.setSubSnapshot(this, mt.subtasks);
         } else if (ACTION_SUB_ADVANCE.equals(action)) {
             TaskItem t = new TaskStore(this).byId(TimerState.taskId(this));
             if (t != null && t.hasSubtasks() && TimerState.subActive(this)) {
@@ -215,6 +240,9 @@ public class TimerService extends Service {
                     SbTimerSync.onLocalTimerChanged(this);
                 }
             }
+        } else if (ACTION_SUB_RESYNC.equals(action)) {
+            // 计时/暂停中子任务被编辑：按最新列表重建队列（算法见 handleSubResync）
+            handleSubResync();
         } else if (ACTION_RESUME.equals(action)) {
             ResumeReminder.cancel(this);
             TimerState.startResumed(this,
@@ -224,6 +252,9 @@ public class TimerService extends Service {
             VerdictEngine.reset(this);
             ScreenCaptureService.onTimerStarted(this);
             SessionLog.open(this, intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
+            // 队列快照按最新列表重写：暂停期间的重建已让暂停槽与列表一致，这里对齐基线
+            TaskItem rt = new TaskStore(this).byId(intent.getStringExtra(EXTRA_TASK_ID));
+            TimerState.setSubSnapshot(this, rt != null ? rt.subtasks : null);
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
             SbTimerSync.onLocalTimerChanged(this);
         } else if (ACTION_START.equals(action)) {
@@ -240,6 +271,8 @@ public class TimerService extends Service {
                 TimerState.logEvent(this, "子任务模式：「" + st.title + "」共 "
                         + st.subtasks.size() + " 个子任务，先跑「" + st.subtasks.get(0).title + "」");
             }
+            // 队列快照（v1.13.0）：记下这轮计时是按哪版子任务列表跑的，供中途接管对账
+            TimerState.setSubSnapshot(this, st != null ? st.subtasks : null);
             FocusGuard.reset(this);
             VerdictEngine.reset(this);
             ScreenCaptureService.onTimerStarted(this);
@@ -263,6 +296,198 @@ public class TimerService extends Service {
         }
         stopSelf();
         return START_NOT_STICKY;
+    }
+
+    // ---------- 子任务队列重建（v1.13.0）：计时中加/改子任务立即接管 ----------
+    //
+    // 共通口径：任务级结束点/总时长只按「新旧队列剩余之差」平移——检查页停留吃掉的时间
+    // （子任务边界与任务结束点之间的漂移）保持原样，不因重建被还回或重复扣掉；唯独
+    // 「任务级计时中首次加子任务」的接管是整表重排：从第一个子任务开始计，总时长与结束点
+    // 按子任务之和重新定，与「开始时就带子任务」的落点完全一致。
+    private void handleSubResync() {
+        boolean running = TimerState.isRunning(this);
+        String tid = running ? TimerState.taskId(this)
+                : (TimerState.isPaused(this) ? TimerState.pausedTaskId(this) : "");
+        if (tid == null || tid.isEmpty()) return;
+        TaskItem t = new TaskStore(this).byId(tid);
+        if (t == null) return;
+        java.util.List<Subtask> news = t.subtasks != null
+                ? t.subtasks : new java.util.ArrayList<Subtask>();
+        java.util.List<Subtask> snap = TimerState.subSnapshot(this);
+        boolean changed = running
+                ? rebuildRunningQueue(t, news, snap)
+                : rebuildPausedQueue(t, news, snap);
+        TimerState.setSubSnapshot(this, news);
+        if (changed) SbTimerSync.onLocalTimerChanged(this);
+    }
+
+    private boolean rebuildRunningQueue(TaskItem t, java.util.List<Subtask> news,
+                                        java.util.List<Subtask> snap) {
+        long now = System.currentTimeMillis();
+        if (TimerState.endFired(this)) return false; // 结束检查页已出：只同步快照，不搅动已到点的状态
+        if (news.isEmpty()) {
+            if (!TimerState.subActive(this)) return false;
+            // 子任务被删光 → 退出子任务模式，按无子任务的原有逻辑收尾（走任务结束检查页）
+            TimerState.clearSubRunState(this);
+            TimerState.finishNow(this);
+            TimerState.logEvent(this, "子任务已全部删除：「" + t.title + "」回任务级收尾");
+            return true;
+        }
+        if (!TimerState.subActive(this)) {
+            // 接管：任务级计时中首次出现子任务 → 立即开始第一个子任务，整表按子任务之和重排
+            int totalSec = totalMinutesOf(news) * 60;
+            Subtask s0 = news.get(0);
+            TimerState.applyQueueState(this, 0, s0.id, s0.title, news.size(),
+                    now + Math.max(1, s0.minutes) * 60_000L, now + totalSec * 1000L, totalSec);
+            TimerState.logEvent(this, "子任务接管：「" + t.title + "」开始子任务「" + s0.title
+                    + "」（共 " + news.size() + " 个，总时长按子任务之和 " + totalMinutesOf(news) + " 分钟）");
+            return true;
+        }
+        if (TimerState.subFired(this)) {
+            // 子任务边界已到、检查页在显：只同步计数；推进时 ACTION_SUB_ADVANCE 读最新列表
+            if (TimerState.subCount(this) != news.size()) {
+                TimerState.touchSubCount(this, news.size());
+                return true;
+            }
+            return false;
+        }
+        String curId = TimerState.subId(this);
+        int oldIndex = TimerState.subIndex(this);
+        long subEnd = TimerState.subEndAt(this);
+        // 旧队列从现在起的剩余（含当前子任务剩余＋其后全部子任务时长），以快照为准
+        long remainOldMs = Math.max(0, subEnd - now) + sumAfterMs(snap, oldIndex);
+        int p = indexOfId(news, curId);
+        if (p >= 0) {
+            Subtask cur = news.get(p);
+            long curRemainMs = Math.max(0, subEnd - now);
+            int oldMin = minutesOf(snap, curId);
+            if (oldMin > 0 && oldMin != cur.minutes) {
+                // 改了当前子任务时长：已用不变，剩余按「新时长 − 已用」重算（用完则立即到点）
+                long usedMs = Math.max(0, oldMin * 60_000L - curRemainMs);
+                curRemainMs = Math.max(0, cur.minutes * 60_000L - usedMs);
+            }
+            long newSubEnd = now + curRemainMs;
+            long remainNewMs = curRemainMs + sumAfterMs(news, p);
+            long deltaMs = remainNewMs - remainOldMs;
+            boolean same = p == oldIndex && newSubEnd == subEnd && deltaMs == 0
+                    && cur.title != null && cur.title.equals(TimerState.subTitle(this))
+                    && TimerState.subCount(this) == news.size();
+            if (same) return false;
+            TimerState.applyQueueState(this, p, cur.id, cur.title, news.size(), newSubEnd,
+                    TimerState.endAt(this) + deltaMs,
+                    TimerState.totalSec(this) + (int) (deltaMs / 1000));
+            TimerState.logEvent(this, "子任务队列已更新：「" + t.title + "」当前第 "
+                    + (p + 1) + "/" + news.size() + " 个「" + cur.title + "」");
+            return true;
+        }
+        if (oldIndex < news.size()) {
+            // 正在计时的子任务被删 → 立即推进到顶上来的下一个（给它完整时长）
+            Subtask nxt = news.get(oldIndex);
+            long remainNewMs = Math.max(1, nxt.minutes) * 60_000L + sumAfterMs(news, oldIndex);
+            long deltaMs = remainNewMs - remainOldMs;
+            TimerState.applyQueueState(this, oldIndex, nxt.id, nxt.title, news.size(),
+                    now + Math.max(1, nxt.minutes) * 60_000L,
+                    TimerState.endAt(this) + deltaMs,
+                    TimerState.totalSec(this) + (int) (deltaMs / 1000));
+            TimerState.logEvent(this, "当前子任务被删除：「" + t.title + "」立即推进到「" + nxt.title + "」");
+            return true;
+        }
+        // 正在计时的子任务被删且没有下一个 → 回任务级收尾（走任务结束检查页）
+        TimerState.clearSubRunState(this);
+        TimerState.finishNow(this);
+        TimerState.logEvent(this, "当前子任务被删除且没有下一个：「" + t.title + "」回任务级收尾");
+        return true;
+    }
+
+    private boolean rebuildPausedQueue(TaskItem t, java.util.List<Subtask> news,
+                                       java.util.List<Subtask> snap) {
+        if (news.isEmpty()) {
+            if (!TimerState.pausedSubActive(this)) return false;
+            // 子任务删光：清掉暂停槽的子任务快照，恢复后按任务级剩余走完
+            TimerState.clearPausedSub(this);
+            TimerState.logEvent(this, "暂停中子任务已全部删除：「" + t.title + "」恢复后按任务级收尾");
+            return true;
+        }
+        if (!TimerState.pausedSubActive(this)) {
+            // 暂停中（任务级）首次加子任务 → 队列接管：恢复计时后直接进第一个子任务
+            int totalSec = totalMinutesOf(news) * 60;
+            Subtask s0 = news.get(0);
+            TimerState.rewritePausedSub(this, 0, s0.id, s0.title, news.size(),
+                    Math.max(1, s0.minutes) * 60_000L, totalSec * 1000L, totalSec);
+            TimerState.logEvent(this, "暂停中子任务接管：「" + t.title + "」恢复后从子任务「"
+                    + s0.title + "」开始（共 " + news.size() + " 个）");
+            return true;
+        }
+        String curId = TimerState.pausedSubId(this);
+        int oldIndex = TimerState.pausedSubIndex(this);
+        long curRemain = TimerState.pausedSubRemainMs(this);
+        long remainOldMs = curRemain + sumAfterMs(snap, oldIndex);
+        int p = (curId == null || curId.isEmpty()) ? -1 : indexOfId(news, curId);
+        if (p < 0 && (curId == null || curId.isEmpty()) && oldIndex < news.size()) {
+            p = oldIndex; // 远端镜像暂停没带子任务 id：按序号对位（尽力而为）
+        }
+        if (p >= 0) {
+            Subtask cur = news.get(p);
+            long newRemain = curRemain;
+            int oldMin = minutesOf(snap, cur.id);
+            if (oldMin > 0 && oldMin != cur.minutes) {
+                long usedMs = Math.max(0, oldMin * 60_000L - curRemain);
+                newRemain = Math.max(0, cur.minutes * 60_000L - usedMs);
+            }
+            long remainNewMs = newRemain + sumAfterMs(news, p);
+            boolean same = p == oldIndex && newRemain == curRemain && remainNewMs == remainOldMs
+                    && TimerState.pausedSubCount(this) == news.size()
+                    && cur.title != null && cur.title.equals(TimerState.pausedSubTitle(this));
+            if (same) return false;
+            int totalSec = TimerState.pausedTotalSec(this) + (int) ((remainNewMs - remainOldMs) / 1000);
+            TimerState.rewritePausedSub(this, p, cur.id, cur.title, news.size(),
+                    newRemain, remainNewMs, totalSec);
+            TimerState.logEvent(this, "暂停中子任务队列已更新：「" + t.title + "」当前第 "
+                    + (p + 1) + "/" + news.size() + " 个「" + cur.title + "」");
+            return true;
+        }
+        if (oldIndex < news.size()) {
+            Subtask nxt = news.get(oldIndex);
+            long remainNewMs = Math.max(1, nxt.minutes) * 60_000L + sumAfterMs(news, oldIndex);
+            int totalSec = TimerState.pausedTotalSec(this) + (int) ((remainNewMs - remainOldMs) / 1000);
+            TimerState.rewritePausedSub(this, oldIndex, nxt.id, nxt.title, news.size(),
+                    Math.max(1, nxt.minutes) * 60_000L, remainNewMs, totalSec);
+            TimerState.logEvent(this, "暂停中当前子任务被删除：「" + t.title + "」恢复后从「" + nxt.title + "」开始");
+            return true;
+        }
+        // 当前子任务被删且没有下一个：清子任务快照，恢复后按任务级剩余走完
+        TimerState.clearPausedSub(this);
+        TimerState.logEvent(this, "暂停中当前子任务被删除且没有下一个：「" + t.title + "」恢复后按任务级收尾");
+        return true;
+    }
+
+    private static int totalMinutesOf(java.util.List<Subtask> subs) {
+        int sum = 0;
+        for (Subtask s : subs) sum += Math.max(1, s.minutes);
+        return Math.max(1, sum);
+    }
+
+    /** 列表中 index 之后全部子任务的时长合计（毫秒）。 */
+    private static long sumAfterMs(java.util.List<Subtask> subs, int index) {
+        long sum = 0;
+        if (subs != null) {
+            for (int i = index + 1; i < subs.size(); i++) sum += Math.max(1, subs.get(i).minutes) * 60_000L;
+        }
+        return sum;
+    }
+
+    private static int indexOfId(java.util.List<Subtask> subs, String id) {
+        if (subs == null || id == null) return -1;
+        for (int i = 0; i < subs.size(); i++) {
+            if (id.equals(subs.get(i).id)) return i;
+        }
+        return -1;
+    }
+
+    /** 快照里某子任务的分钟数；不在快照里（或快照为空）返回 -1，表示无从对比、按未改处理。 */
+    private static int minutesOf(java.util.List<Subtask> snap, String id) {
+        int i = indexOfId(snap, id);
+        return i < 0 ? -1 : Math.max(1, snap.get(i).minutes);
     }
 
     private void tick() {
@@ -386,6 +611,7 @@ public class TimerService extends Service {
 
     @Override
     public void onDestroy() {
+        TaskStore.removeChangeListener(storeListener);
         handler.removeCallbacks(ticker);
         FloatingWindow.hide();
         super.onDestroy();

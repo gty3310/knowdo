@@ -798,7 +798,11 @@ public class FloatingWindow {
         // 数据变更即时重渲染（v1.6.2）：主页/同步在别处改了任务，这里不等下一秒节拍。
         if (storeListener == null) {
             final Context app = c.getApplicationContext();
-            storeListener = () -> refresh(app);
+            storeListener = () -> {
+                refresh(app);
+                // 在本窗里给正在计时的任务加/改子任务 → 对账接管（v1.13.0）
+                SubtaskResync.check(app);
+            };
             TaskStore.addChangeListener(storeListener);
         }
         applyMode(c);

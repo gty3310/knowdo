@@ -7,5 +7,8 @@ local.properties
 supabase_public_key.txt
 app/src/main/java/com/ti/tasktimer/SupaSecrets.java
 
+# 构建时生成的版本信息（git 短 hash 注入，v1.13.0 起；与 SupaSecrets 同办法，永不入库）
+app/src/main/java/com/ti/tasktimer/BuildInfo.java
+
 # 桥文件母本含真实任务数据，永不进仓库（母本在仓库外 ~/workspace/knowdo-bridge/）
 sync/

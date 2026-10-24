@@ -89,7 +89,8 @@ public final class Strings {
     public static String dark() { return s("暗", "Dark"); }
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
-    public static String versionLine() { return "知行 KnowDo v1.12.0"; }
+    /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
+    public static String versionLine() { return "知行 KnowDo v1.13.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -327,16 +328,20 @@ public final class Strings {
     public static String scExtendAsk() { return s("加时之前，先记一下现在的状态", "Before extending, note how you feel"); }
     public static String scDirectExtend() { return s("直接加时", "Just extend"); }
 
+    // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
+    /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
+    public static String whatsNewEntry() { return s("更新日志", "What's new"); }
+
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.12.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.12.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.13.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.13.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
-    /** [标题, 正文] × 19 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
+    /** [标题, 正文] × 20 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
      *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增、
-     *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增；英文为对应译文。 */
+     *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增，第二十节为 v1.13.0 新增；英文为对应译文。 */
     public static String[][] helpSections() { return en ? HELP_EN : HELP_ZH; }
 
     private static final String[][] HELP_ZH = {
@@ -474,7 +479,7 @@ public final class Strings {
          + "（悬浮窗会自动切换到它），正在计时的那个显示 ⏸，点它暂停，和主界面的开始/暂停是同一套。\n"
          + "最左窄栏里的灰紫色块是你的 Google 日历日程（Muse 同步过来的已有安排）："
          + "只在那一栏里显示，不会压到计划块上；只能看、点一下显示全名和时间，不能拖、也没有 ▶；"
-         + "「问 AI」时会把它们列为忙碌时段，让 Muse 排日程时绕开它们。"},
+         + "「问 AI」时只会把它们列出来给你参考，并明确告诉 Muse：排日程时不用管它们、不用避让。"},
         {"十四、Supabase 账号与跨设备计时（v1.7.0 新增）",
          "从这一版起，知行可以把同步从 Drive 桥换成云端数据库 Supabase："
          + "在三横线菜单或设置页「账号」组点「账号」，用邮箱+密码注册或登录。第一次登录时，本机现有任务会全量"
@@ -550,6 +555,15 @@ public final class Strings {
          + "都会先让你点一下当前状态，点完才真正加时；不想记，点一行不显眼的「直接加时」即可——照常加时、不留记录。\n"
          + "• 记录只存本机并同步到你账号名下的云端（self_checks），本版只记录、不出统计页——"
          + "先攒着，日后的「每日省察」会拿它对账：哪天、什么状态下最容易知而未行，一看便知。"},
+        {"二十、更新日志（v1.13.0）",
+         "每次升级到新版本后，第一次打开知行会弹一个「更新日志」框：最近 5 个版本纵向排列——"
+         + "每版改了什么（按新功能／改进／修复分组）、为什么改、最新版还有「怎么试」，下滑就能翻完。\n"
+         + "• 只在升级后的第一次打开弹一次，点「知道了」关掉就不再出现；全新安装不会弹。\n"
+         + "• 平时想翻：设置页「通用」组有「更新日志」入口，随时打开同一页看最近 5 个版本；"
+         + "每个版本的新功能也都会同步写进这本帮助（就是这一页）。\n"
+         + "• 顺带说一句本版的核心修复：正在计时的任务中途加子任务，现在会立刻开始计子任务——"
+         + "在大号悬浮窗或主页展开区给它加一个子任务，两个悬浮窗的第一行马上换成子任务名和它的倒计时；"
+         + "排在后面的子任务、删掉正在计的、改时长，队列都会当场跟着变，不用等下一次开始。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -681,7 +695,7 @@ public final class Strings {
          + "Plan blocks and unscheduled task rows carry a ▶: tap to start timing that task immediately (the floating window switches to it); the running one shows ⏸ — tap to pause. Same path as the home page's Start/Pause.\n"
          + "Grey-purple blocks in the left Calendar column are your Google Calendar events (arrangements Muse synced over): they render only inside that narrow column and never cover plan blocks; "
          + "view-only — tap for the full name and time; they can't be dragged and have no ▶. "
-         + "Ask AI lists them as busy time so Muse plans around them."},
+         + "Ask AI merely lists them for your reference and tells Muse explicitly: when planning the schedule, ignore them — no need to work around them."},
         {"14. Supabase accounts & cross-device timing (new in v1.7.0)",
          "Since this version, KnowDo can switch sync from the Drive bridge to the Supabase cloud database: "
          + "tap Account in the hamburger menu or Settings → Account and register / sign in with an email + password. On first sign-in, this device's existing tasks become your cloud data in full "
@@ -763,5 +777,14 @@ public final class Strings {
          + "Don't want to record? Tap the quiet \"Just extend\" — the time is added as usual, with nothing recorded.\n"
          + "• Records live on the device and sync to your account's cloud data (self_checks). This version only records — no stats page yet; "
          + "they are being saved up for a future daily review: which states, on which days, most often separate knowing from doing."},
+        {"20. What's new (v1.13.0)",
+         "After you update to a new version, the first time you open KnowDo a \"What's new\" box pops up: the latest 5 versions stacked — "
+         + "what changed in each (grouped as New / Improved / Fixed), why it changed, and, for the newest, how to try it. Scroll to read them all.\n"
+         + "• It appears only once, on the first open after an update — tap \"Got it\" and it won't come back. A brand-new install doesn't show it.\n"
+         + "• Want it again later? Settings → General has a \"What's new\" entry that opens the same page with the latest 5 versions; "
+         + "every version's new features are also written into this help page.\n"
+         + "• And this version's core fix: adding a subtask to a task that is already timing now starts that subtask immediately — "
+         + "add one in the large floating window or the home expansion, and the first line of both floating windows switches to the subtask and its countdown at once; "
+         + "appending, deleting the running one, or changing a length re-shapes the queue on the spot, no need to wait for the next start."},
     };
 }

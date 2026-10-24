@@ -370,6 +370,8 @@ public class SettingsActivity extends Activity {
                 v -> startActivity(new Intent(this, LogActivity.class)));
         row(Strings.help(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, HelpActivity.class)));
+        row(Strings.whatsNewEntry(), null, arrowBtn("›"),
+                v -> WhatsNew.show(this));
         row(Strings.rowAbout(), Strings.versionLine(), null, v ->
                 new AlertDialog.Builder(this)
                         .setTitle(Strings.appFull())

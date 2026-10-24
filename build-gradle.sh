@@ -63,6 +63,19 @@ public final class SupaSecrets {
 }
 EOF
 
+# 版本追溯（v1.13.0 起）：把构建时 HEAD 的 git 短 hash 注入 BuildInfo.java（生成类，永不入库），
+# App 内版本显示带上它，保证与实际构建的提交永远一致，不许手写。
+_GIT_SHORT=$(git -C "$PWD" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+cat > app/src/main/java/com/ti/tasktimer/BuildInfo.java <<EOF
+package com.ti.tasktimer;
+
+/** 构建时由 build-gradle.sh 从 git rev-parse --short HEAD 生成，永不入库，请勿手改。 */
+public final class BuildInfo {
+    public static final String GIT_SHORT = "$_GIT_SHORT";
+    private BuildInfo() {}
+}
+EOF
+
 # 进程内构建：沙箱会杀掉脱离会话的 Gradle daemon，故 --no-daemon 且用 GRADLE_OPTS
 # 让启动器 JVM 本身带足堆内存（与 gradle.properties 不设 org.gradle.jvmargs 配套，避免 fork）。
 "$HOME/workspace/tools/gradle-8.7/bin/gradle" :app:assembleRelease --console=plain --no-daemon

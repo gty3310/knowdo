@@ -28,16 +28,16 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.9.0)
+## Features (Android, v1.13.0)
 
-Current version: **v1.9.0**.
+Current version: **v1.13.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
 - **Always-on floating window** — a small overlay (docked tab / mini card / full edit card) that always shows your current task and its remaining time and follows you across apps. Pause from it (with a "remind me in N minutes" menu), jump back to your assistant, or edit the task note in place without opening the app.
 - **Focus guard** — each task can carry a focus rule: a natural-language description plus a structured block/allow app list and a primary app. While a timer runs, the foreground app is checked every couple of seconds (via usage access); open something unrelated and a full-screen page asks "are you working on the right task?" — jump back to the task's primary app (or to a built-in current-task page), take a 30/60-second grace period, after which it jumps back for you, or dismiss a false alarm for the rest of that session.
 - **Screen-content guard** — for the distractions the focus guard cannot see: shopping or short videos inside an allowed browser, or adult content. Opt-in, and on-device only. While a timer runs on an unlocked screen, screenshots are sampled at random intervals and analyzed locally — ML Kit OCR (Chinese / Japanese / English) plus keyword rules, foreground-app category, and a small on-device image classifier (ONNX). Two consecutive hits (one, for adult content, if you set it so) raise the same inquiry page as the focus guard. Screenshots are analyzed in memory and destroyed immediately: never saved, never uploaded; only the verdict events sync.
-- **Calendar panel** — a slide-in day view: planned blocks and actual timed blocks in two lanes, Google Calendar events for the day shown alongside as fixed busy blocks, plan blocks you can long-press and drag to a new time, and an "Ask AI" button that copies a summary of the day for planning in chat.
+- **Calendar panel** — a slide-in day view in three lanes: a narrow Google Calendar lane (view-only reference; scheduling does not work around it), the day's plan lane (widest), and a narrow actual lane; plan blocks you can long-press and drag to a new time, and an "Ask AI" button that copies a summary of the day for planning in chat.
 - **Account and realtime sync (Supabase)** — sign in with an email account and tasks sync in realtime between devices; merges align by task id with newest-wins and tombstone deletes, so nothing resurrects and nothing is silently overwritten. There is a **single logical timer across devices**: state lives in the cloud, both ends render it, and either end can control it. A task written with an `autoStart` flag starts its own countdown as soon as it arrives. A legacy Google Drive file-bridge mode remains available, but Supabase is the primary sync path.
 - **Per-task alarms** — any task can have an alarm time (it rings whether or not a timer is running; a daily task re-arms for the next day) and/or ring when its timer ends, before the end-of-task check-in. The default sound is a clear nature recording that fades in from silence to full volume over 60 seconds, played on the alarm audio stream, so it rings even when the phone is muted.
 - **Start-time reminders** — when a task's planned start time arrives, a full-screen reminder pops up: start now, snooze 10 minutes, or ignore.
@@ -45,6 +45,23 @@ Current version: **v1.9.0**.
 - **Help page** — the full manual lives inside the app, including the design rationale and an explicit list of things considered and deliberately not built.
 
 The UI is native Java/Views, layered as TaskStore (data) / SyncManager (sync) / TimerService (timing) / UI, so the data format stays stable across implementation changes. The full design research (in Chinese) is in [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md).
+
+## Changelog
+
+The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
+
+### v1.13.0 — 2026-10-24
+
+**Why:** Subtasks are how the user splits work on the fly while using the app; the old "queue snapshot at start, edits apply next time" behavior broke the "set it and it starts" expectation. The same release turns the standing "read the changelog after every update" rule into a product mechanism, and aligns the calendar prompt with the current no-avoidance rule for Google Calendar.
+
+**Fixed**
+- **Subtasks take over instantly** — add a subtask to a task that is already timing and it starts counting right away; both floating windows switch their first line to the subtask name and its countdown, and the total always equals the sum of subtasks. Deleting the running subtask advances to the next, changing a length recomputes the remainder as new length minus time used, appending queues at the end, and reordering never interrupts the current subtask. Editing subtasks while paused rebuilds the frozen queue the same way, so resuming follows the new queue.
+
+**New**
+- **What's-new popup** — the first time the app opens after an update, a scrollable changelog shows the latest 5 versions (what changed, grouped as New / Improved / Fixed; why it changed; how to try the newest). A permanent "What's new" entry lives in Settings → General. A fresh install never sees the popup.
+
+**Improved**
+- **Calendar "Ask AI" prompt** — Google Calendar events are now described as view-only reference: scheduling does not work around them and may overlap them (blocks you dragged yourself stay fixed).
 
 ## Build
 

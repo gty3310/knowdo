@@ -832,7 +832,7 @@ un.append(t.title).append("（计划 ").append(t.durationMinutes).append(" 分�
 sb.append("未排入日程的任务：").append(un.length() == 0? "无": un.toString()).append('\n');
 List<GcalEvent> gcal = gcalEvents();
 if (!gcal.isEmpty()) {
-sb.append("已有日程（Google 日历，这些时段我已经有安排了，是忙碌时段）：\n");
+sb.append("已有日程（Google 日历，仅供我查看参考，排日程时不用管、不用避让）：\n");
 for (GcalEvent e : gcal) {
 if (e.allDay) sb.append("全天 · ").append(e.title).append('\n');
 else sb.append(hhmm(e.startMin)).append('–').append(hhmm(e.endMin)).append(' ').append(e.title).append('\n');
@@ -854,7 +854,7 @@ sb.append("请按这个规则帮我更新今天剩下的安排，并写回桥文
 .append("1）必做任务（priority=must 或截止在今天）必须排入；次要任务按重要程度穿插进空档；\n")
 .append("2）每件任务按计划时长 ×1.5 占时段（留 50% 缓冲）；\n")
 .append("3）已经过去的时段和已完成任务的时段不要动，未完成的从现在往后排，不要排到 22:30 之后；排不下请直接告诉我。\n")
-.append("4）上面「已有日程（Google 日历）」是真实日历上的忙碌时段，任务不要排上去、也不要和它们重叠，必须避让；我在日历页手动拖动改过的块也当作固定块，不要再挪回去。\n")
+.append("4）上面「已有日程（Google 日历）」只是给我看的参考，排日程时不用管它们、不用避让，任务该怎么排就怎么排，可以和它们重叠；我在日历页手动拖动改过的块也当作固定块，不要再挪回去。\n")
 .append("schedule 格式：{\"date\":\"").append(today)
 .append("\",\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"HH:mm\",\"end\":\"HH:mm\"}],\"updatedAtMs\":毫秒时间戳,\"updatedBy\":\"Muse\"}。\n")
 .append("写好后我这边日历页会自动刷新显示新版。");

@@ -105,6 +105,8 @@ public class MainActivity extends Activity {
             runSync(false); // 打开即自动同步一次
             if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         }
+        // 更新日志（v1.13.0 起的长期规矩）：升级后首次打开弹一次，全新安装不弹
+        WhatsNew.maybeShow(this);
     }
 
     @Override
@@ -152,6 +154,8 @@ public class MainActivity extends Activity {
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshStatus();
         refreshOpenDialog();
+        // 计时/暂停中任务的子任务被改 → 对账接管（v1.13.0；无变化时内部立刻返回）
+        SubtaskResync.check(this);
     }
 
     /** 打开中的内容弹窗跟上数据源：输入框文字与打开时一致（用户没改过）才换成最新值；
