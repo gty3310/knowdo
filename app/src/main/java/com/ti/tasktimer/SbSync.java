@@ -101,8 +101,11 @@ public final class SbSync {
                 JSONArray payload = new JSONArray();
                 for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
-                adoptServerTimes(back, store);
-                store.save();
+                synchronized (STORE_LOCK) {
+                    store.load(); // 先拿磁盘最新状态再对齐时间戳，别用旧快照整表盖盘（v1.14.0 修复）
+                    adoptServerTimes(back, store, null);
+                    store.save();
+                }
             }
             prefs(c).edit().putBoolean("seeded_" + uid, true).apply();
             remote.clear();
@@ -111,8 +114,13 @@ public final class SbSync {
         }
 
         // 3) 合并（新者胜、墓碑参与）→ 本地落盘
+        //    v1.14.0 修复「完成被弹回」根因：合并前必须在锁内先 store.load() 重读磁盘——
+        //    本轮同步从拉取到此已经历多次网络往返（数秒），用户在这段时间里的本地改动
+        //    （如点完成）只在磁盘上；拿同步开始时的内存快照合并再整表 save，会把改动盖回旧值，
+        //    且第 4 步的差异比较也基于旧快照，完成根本推不上云。
         Map<String, TaskItem> merged;
         synchronized (STORE_LOCK) {
+            store.load();
             merged = mergeTasks(remote, store.tasks);
             store.tasks.clear();
             store.tasks.addAll(merged.values());
@@ -121,17 +129,24 @@ public final class SbSync {
 
         // 4) 差异推送：本地胜出且比云端快照新的，一批 upsert；回读服务端 updated_at 对齐本地
         java.util.List<TaskItem> toPush = new java.util.ArrayList<>();
+        Map<String, Long> pushedMs = new HashMap<>();
         for (TaskItem t : merged.values()) {
             Long r = remoteMs.get(t.id);
-            if (r == null || t.updatedAtMs > r) toPush.add(t);
+            if (r == null || t.updatedAtMs > r) { toPush.add(t); pushedMs.put(t.id, t.updatedAtMs); }
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
             for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
-            adoptServerTimes(back, store);
-            for (TaskItem t : toPush) remoteMs.put(t.id, t.updatedAtMs);
-            synchronized (STORE_LOCK) { store.save(); }
+            synchronized (STORE_LOCK) {
+                store.load(); // 同上：对齐前先重读，且仅当条目未被更新的本地改动动过时才对齐
+                adoptServerTimes(back, store, pushedMs);
+                store.save();
+                for (TaskItem t : toPush) {
+                    TaskItem cur = store.byId(t.id);
+                    if (cur != null) remoteMs.put(t.id, cur.updatedAtMs); // 签名记对齐后的值
+                }
+            }
         }
         saveSig(c, remoteMs);
 
@@ -161,15 +176,25 @@ public final class SbSync {
         }
     }
 
-    /** upsert 返回的 representation 里带服务端 updated_at：对齐本地，避免下一轮把自己刚写的又当新版。 */
-    private static void adoptServerTimes(JSONArray back, TaskStore store) {
+    /**
+     * upsert 返回的 representation 里带服务端 updated_at：对齐本地，避免下一轮把自己刚写的又当新版。
+     * expected 非空时（第 4 步差异推送）只对齐「updatedAtMs 仍等于本次推送值」的条目——
+     * 推送往返期间用户又改过的条目，本地时间戳更新，不许被服务端时间倒灌（v1.14.0）。
+     * 调用方必须已在 STORE_LOCK 内 store.load() 过。
+     */
+    private static void adoptServerTimes(JSONArray back, TaskStore store, Map<String, Long> expected) {
         if (back == null) return;
         for (int i = 0; i < back.length(); i++) {
             JSONObject row = back.optJSONObject(i);
             if (row == null) continue;
             TaskItem t = store.byId(row.optString("id", ""));
+            if (t == null) continue;
+            if (expected != null) {
+                Long exp = expected.get(t.id);
+                if (exp == null || t.updatedAtMs != exp) continue;
+            }
             long ms = SbMapper.parseIsoMs(row.optString("updated_at", ""));
-            if (t != null && ms > t.updatedAtMs) t.updatedAtMs = ms;
+            if (ms > t.updatedAtMs) t.updatedAtMs = ms;
         }
     }
 
@@ -193,6 +218,7 @@ public final class SbSync {
         // 免得整行 upsert 因未知列被服务端拒掉、连累 timer_state 等既有回写
         boolean hasAsp = probeUserStateCol(c, "aspiration");
         boolean hasSc = probeUserStateCol(c, "self_checks");
+        boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
@@ -225,6 +251,18 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasNag) {
+                // 空档催促设置合并（v1.14.0，与立志同口径）：本机从未存过且云端有值→采用云端；
+                // 本机有值且与云端不同→回写本机值。只动 idle_nag 一个键。
+                JSONObject remoteNag = urow.isNull("idle_nag") ? null : urow.optJSONObject("idle_nag");
+                if (!IdleNag.hasLocal(c) && remoteNag != null) {
+                    IdleNag.adoptCloud(c, remoteNag);
+                    IdleAlarm.reevaluate(c);
+                } else if (IdleNag.hasLocal(c) && !IdleNag.cloudEquals(c, remoteNag)) {
+                    write.put("idle_nag", IdleNag.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -247,6 +285,10 @@ public final class SbSync {
                     write.put("aspiration", localAsp);
                     needWrite = true;
                 }
+            }
+            if (hasNag && IdleNag.hasLocal(c)) {
+                write.put("idle_nag", IdleNag.toCloudJson(c));
+                needWrite = true;
             }
         }
         JSONObject pendingTimer = SbTimerSync.pendingJson(c);
@@ -281,6 +323,14 @@ public final class SbSync {
             String remoteAsp = Aspiration.fromCloudRow(row);
             if (!remoteAsp.isEmpty() && Aspiration.get(c).isEmpty()) {
                 Aspiration.setLocal(c, remoteAsp);
+            }
+            // 空档催促设置：本机从未存过时才采用云端推来的值（同口径），不在这里回写
+            if (!row.isNull("idle_nag") && !IdleNag.hasLocal(c)) {
+                JSONObject rn = row.optJSONObject("idle_nag");
+                if (rn != null) {
+                    IdleNag.adoptCloud(c, rn);
+                    IdleAlarm.reevaluate(c);
+                }
             }
             if (!row.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, row.optJSONObject("timer_state"));
@@ -369,6 +419,14 @@ public final class SbSync {
                 if (local == null) {
                     store.tasks.add(remote);
                 } else if (remote.updatedAtMs >= local.updatedAtMs) {
+                    // 待确认写守卫（v1.14.0）：本地 updatedAtMs 比已知云端签名新＝有一笔本地
+                    // 改动还没被云端确认；此时到达的远端行若并不比本地新（同戳回声/旧快照），
+                    // 不许替换本地——本地时钟与服务端时钟混比时同戳回滚正是「完成被弹回」的帮凶。
+                    Map<String, Long> sig0 = loadSig(c);
+                    Long s0 = sig0.get(local.id);
+                    if (s0 != null && local.updatedAtMs > s0 && remote.updatedAtMs <= local.updatedAtMs) {
+                        return false;
+                    }
                     store.tasks.set(store.tasks.indexOf(local), remote);
                 } else {
                     return false;
@@ -420,16 +478,86 @@ public final class SbSync {
 
     private static void pushOneQuiet(Context c, TaskStore store, TaskItem t,
                                      boolean hasExtra, boolean hasAlarm, boolean hasSub) {
+        // v1.14.0 起统一走定向校验写（原实现同样有「拿旧快照 adopt+save 盖盘」的隐患）
+        pushOneVerified(c, store, t.id);
+    }
+
+    /**
+     * 定向单条校验写（v1.14.0，完成弹回 bug 的主修法）——只能在后台线程调用：
+     * 锁内重读磁盘拿该任务的最新本地状态 → 先读云端最新行 → 按内容（status/done_dates/
+     * auto_start）判断：云端已一致就只对齐签名收工；不一致就整行 upsert（本地这份是
+     * 刚从磁盘重读的最新版，不会盖掉别人的新改动）→ 回读校验 status/done_dates，
+     * 对不上重写一次（自愈）；两次都不过就留给下轮全量同步兜底。
+     * 时间戳是手机时钟与服务器时钟混比、不可靠，所以「要不要推」按内容定，不按时间定。
+     */
+    public static void pushOneVerified(Context c, TaskStore store, String taskId) {
+        if (!Supa.isLoggedIn(c) || taskId == null) return;
+        boolean hasExtra = prefs(c).getBoolean("has_extra", false);
+        boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
+        boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
         try {
-            JSONArray payload = new JSONArray();
-            payload.put(SbMapper.toRow(t, Supa.userId(c), hasExtra, hasAlarm, hasSub));
-            JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
-            adoptServerTimes(back, store);
-            store.save();
-            Map<String, Long> sig = loadSig(c);
-            sig.put(t.id, t.updatedAtMs);
-            saveSig(c, sig);
+            for (int attempt = 0; attempt < 2; attempt++) {
+                TaskItem local;
+                synchronized (STORE_LOCK) {
+                    store.load();
+                    local = store.byId(taskId);
+                }
+                if (local == null) return;
+                JSONArray rows = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
+                if (rows.length() > 0) {
+                    TaskItem remote = SbMapper.fromRow(rows.getJSONObject(0), null);
+                    if (remote != null && eqStr(remote.status, local.status)
+                            && remote.autoStart == local.autoStart
+                            && remote.doneDates.equals(local.doneDates)) {
+                        alignSigAndTime(c, store, local, rows.getJSONObject(0));
+                        return; // 云端已是这份内容，收工
+                    }
+                }
+                JSONArray payload = new JSONArray();
+                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub));
+                Supa.restUpsert(c, "tasks", "id", payload);
+                // 回读校验
+                JSONArray chk = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
+                if (chk.length() > 0) {
+                    TaskItem back = SbMapper.fromRow(chk.getJSONObject(0), null);
+                    if (back != null && eqStr(back.status, local.status)
+                            && back.doneDates.equals(local.doneDates)) {
+                        alignSigAndTime(c, store, local, chk.getJSONObject(0));
+                        return;
+                    }
+                }
+                // 校验不过 → 循环重写一次（自愈）
+            }
         } catch (Exception ignored) { }
+    }
+
+    /** 定向写确认后：把服务端 updated_at 对齐进本地（仍是推送值才对齐）并更新签名。 */
+    private static void alignSigAndTime(Context c, TaskStore store, TaskItem pushed, JSONObject serverRow) {
+        long serverMs = SbMapper.parseIsoMs(serverRow.optString("updated_at", ""));
+        long sigVal = pushed.updatedAtMs;
+        synchronized (STORE_LOCK) {
+            store.load();
+            TaskItem cur = store.byId(pushed.id);
+            if (cur != null && cur.updatedAtMs == pushed.updatedAtMs && serverMs > cur.updatedAtMs) {
+                cur.updatedAtMs = serverMs;
+                sigVal = serverMs;
+                store.save();
+            }
+        }
+        Map<String, Long> sig = loadSig(c);
+        sig.put(pushed.id, sigVal);
+        saveSig(c, sig);
+    }
+
+    private static boolean eqStr(String a, String b) {
+        return a == null ? b == null : a.equals(b);
+    }
+
+    /** 完成/取消完成落盘后调用：后台线程把这一条立刻定向写上云并回读确认（约 1 秒内）。 */
+    public static void pushDoneAsync(final Context c, final String taskId) {
+        if (!Supa.isLoggedIn(c) || taskId == null) return;
+        final Context app = c.getApplicationContext();
+        new Thread(() -> pushOneVerified(app, new TaskStore(app), taskId)).start();
     }
 
     // ---------------- 签名与探测 ----------------

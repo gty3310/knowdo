@@ -14,7 +14,7 @@ import android.os.Looper;
  * 用户在叫回页一有操作，PauseEscalation.cancel 会立刻把它停掉。
  */
 public final class AlarmRing {
-    private static final long RAMP_MS = 60_000L;
+    private static long ringMs = 60_000L; // 本轮时长（渐强与自停同此，v1.14.0 起可由个人设置决定）
     private static MediaPlayer player;
     private static long ringStartMs;
     private static final Handler handler = new Handler(Looper.getMainLooper());
@@ -22,7 +22,7 @@ public final class AlarmRing {
     private static final Runnable rampTick = new Runnable() {
         @Override public void run() {
             if (player == null) return;
-            float v = Math.min(1f, (System.currentTimeMillis() - ringStartMs) / (float) RAMP_MS);
+            float v = Math.min(1f, (System.currentTimeMillis() - ringStartMs) / (float) ringMs);
             try { player.setVolume(v, v); } catch (Exception ignored) { }
             if (v < 1f) handler.postDelayed(this, 500);
         }
@@ -32,7 +32,13 @@ public final class AlarmRing {
     private AlarmRing() {}
 
     public static synchronized void start(Context c) {
+        start(c, 60_000L);
+    }
+
+    /** 按指定时长响铃：播放增益在 durationMs 内线性渐强到满，响满即自停。 */
+    public static synchronized void start(Context c, long durationMs) {
         stopInternal();
+        ringMs = Math.max(1_000L, durationMs);
         try {
             Context app = c.getApplicationContext();
             player = new MediaPlayer();
@@ -54,8 +60,8 @@ public final class AlarmRing {
             player.start();
             ringStartMs = System.currentTimeMillis();
             handler.post(rampTick);
-            handler.postDelayed(autoStop, RAMP_MS);
-            TimerState.logEvent(app, "暂停叫回无反馈：渐强闹铃开始（60 秒）");
+            handler.postDelayed(autoStop, ringMs);
+            TimerState.logEvent(app, "渐强闹铃开始（" + (ringMs / 1000) + " 秒）");
         } catch (Exception e) {
             TimerState.logEvent(c, "渐强闹铃播放失败：" + e.getClass().getSimpleName());
             stopInternal();

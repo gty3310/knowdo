@@ -160,7 +160,10 @@ public class CheckActivity extends Activity {
         // 回写完成状态（一次性任务置 done，每日任务记今日完成）
         TaskStore store = new TaskStore(this);
         TaskItem t = store.byId(TimerState.taskId(this));
-        if (t != null) { t.markDone(); store.save(); }
+        if (t != null) {
+            t.markDone(); store.save();
+            SbSync.pushDoneAsync(this, t.id); // 完成状态立刻定向写上云并回读确认（v1.14.0）
+        }
         TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
         TimerService.stopTimer(this);
         // v1.10.0 衔接守卫：确认完成后若没顺势开始下一个，约 0.6 秒后全屏问「下一个任务」

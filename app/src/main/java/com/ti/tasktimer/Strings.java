@@ -335,8 +335,8 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.13.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.13.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.14.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.14.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
     /** [标题, 正文] × 20 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
@@ -381,7 +381,10 @@ public final class Strings {
          + "按钮：开始/暂停/继续（同上，暂停要选提醒时间）、AI、完成（计时中才显示，弹出结束检查页）、打开知行、收起。\n"
          + "• AI 按钮：把这个任务的全部信息（名称、情景、截止、时长、优先级、专注规则、当前状态、笔记）复制到剪贴板，并打开你在权限页选定的 AI 助手（目前是 Muse）：若对方支持分享直达，文字会直接进输入框；否则打开助手后粘贴即可。\n"
          + "• 复制按钮：笔记编辑区右上角常驻一个「复制」，点的效果和 AI 按钮的前半步一样——把任务全部信息复制到剪贴板——但不打开助手。主界面里弹出的笔记编辑框、专注规则编辑框右上角也有同样的「复制」，复制时用的是编辑框里正在写的内容。\n"
-         + "权限页有“预览悬浮窗”，不用开始计时也能看 10 秒效果（常驻服务在跑时预览会被实时内容覆盖，属正常）。"},
+         + "权限页有“预览悬浮窗”，不用开始计时也能看 10 秒效果（常驻服务在跑时预览会被实时内容覆盖，属正常）。\n"
+         + "• 定时关闭（v1.14.0）：大卡片上有「关闭」——选 10/15/30/60 分钟后回来、等当前任务结束回来、"
+         + "自定义分钟数，或者「不再出现」（等于关掉设置里的悬浮窗开关，在设置里能再打开）。"
+         + "定时项到点自动再现，关机重启也照算；隐藏期间只是没了这块窗，计时、守卫弹页、闹铃、通知全都照常。"},
         {"五、Drive 实时同步与“立即开始”",
          "桥文件是 Google Drive「_电子大脑 / task list」文件夹里的 tasks.json。"
          + "第一次点“同步”时选中它、授权一次，之后 App 自动读写（v1.8.0 起选桥文件在设置页「账号」组）。\n"
@@ -525,7 +528,18 @@ public final class Strings {
          + "• 暂停期间：中号悬浮窗两行——第一行「暂停『任务名』」，第二行目的＋还剩多久；"
          + "大号悬浮窗内容仍是任务本身，暂停只是顶部一条琥珀色条；在大窗里可以「换个目的」重选目的与时长。\\n"
          + "• 普通模式到点：全屏叫回＋短震一次；60 秒里你没有任何反馈（继续/再歇/换任务），"
-         + "会响起 60 秒大自然鸟鸣闹铃，声音由小渐大到最大，你一操作就停，响满自动停，只响这一轮。"},
+         + "会响起 60 秒大自然鸟鸣闹铃，声音由小渐大到最大，你一操作就停，响满自动停，只响这一轮。\n"
+         + "• 空档出声催促（v1.14.0）：空档持续满设定分钟（默认 5 分钟）起，守卫页会带着鸟鸣一起回来——"
+         + "每轮响满设定的秒数（默认 60 秒，走闹钟通道，静音也响），你在守卫页一有操作就停声（页面保留）；"
+         + "第一轮之后隔 1 分钟再来一轮，再之后每 5 分钟一轮，直到你开始一个任务为止。"
+         + "按返回的那 3 分钟静默不取消这个排期，到点照样带声把页面拉回来；"
+         + "带时长的暂停进行中不触发（暂停有自己的叫回）。\n"
+         + "• 催促是个人设置：设置页「守卫」组里有「空档催促」——先选档位："
+         + "温和＝任务结束就结束，不弹页、不出声，完全不催；"
+         + "标准＝全屏提醒＋有限轮（默认最多 3 轮）后安静，全程没有声音；"
+         + "严格＝不停催直到你开始任务，且只有这一档有声音开关；"
+         + "自定义＝重复策略（不催／有限轮／无限）与每个数字自己定（手动改任一数值就会转到自定义）。"
+         + "这份设置存进你的云端账号（idle_nag），手机与电脑共用同一份。"},
         {"十七、子任务（v1.11.0）",
          "大任务可以拆成一串子任务，按队列逐个计时（样子参考 Smart Countdown Timer 的 context→queue）。\\n"
          + "• 怎么拆：主页展开任务，下方有「子任务」区；大号悬浮窗里也有同一区。点「＋ 加子任务」新增一行，"
@@ -608,7 +622,10 @@ public final class Strings {
          + "(currently Muse): if it supports share-intent delivery the text lands in its input box; otherwise just paste after it opens.\n"
          + "• Copy button: a permanent \"Copy\" at the top right of the note editor — same first half as the AI button (copies the full task info) but doesn't open the assistant. "
          + "The note and focus-rule dialogs on the home page have the same Copy button, copying what's currently in the editor.\n"
-         + "The Permissions page has a 10-second floating-window preview (while the resident service runs, the preview is covered by live content — that's normal)."},
+         + "The Permissions page has a 10-second floating-window preview (while the resident service runs, the preview is covered by live content — that's normal).\n"
+         + "• Timed close (v1.14.0): the Edit card has a \"Close\" button — pick back in 10/15/30/60 minutes, back when the current task ends, "
+         + "a custom number of minutes, or \"never again\" (the same as turning the floating-window switch off in Settings, where you can turn it back on). "
+         + "Timed closes reappear on schedule, even across reboots; while hidden, only the window is gone — timing, guard pop-ups, alarms and notifications all carry on."},
         {"5. Drive realtime sync & \"start immediately\"",
          "The bridge file is tasks.json in the Google Drive folder \"_电子大脑 / task list\". "
          + "Pick it once via Sync and grant access; after that the app reads and writes it automatically (since v1.8.0, picking lives in Settings → Account).\n"
@@ -746,7 +763,17 @@ public final class Strings {
          + "from there you can change the purpose and length.\\n"
          + "• Normal mode when time's up: the call-back page pops full-screen with one short vibration; "
          + "if you give no response (resume / snooze / next task) within 60 seconds, a 60-second nature-sounds alarm fades in to full volume — "
-         + "any response stops it, and it stops on its own after one round."},
+         + "any response stops it, and it stops on its own after one round.\n"
+         + "• Idle nagging with sound (v1.14.0): once a gap has lasted the set minutes (default 5), the guard page comes back with birdsong — "
+         + "each round rings for the set seconds (default 60, on the alarm stream, so it rings while muted); any interaction on the page stops the sound but keeps the page. "
+         + "After the first round it repeats 1 minute later, then every 5 minutes, until you start a task. "
+         + "The 3-minute Back quiet does not cancel this schedule — the page returns with sound right on time; a timed pause never triggers it (pauses have their own call-back).\n"
+         + "• Nagging is a personal setting: Settings → Guards has \"Idle nagging\". Pick a level first: "
+         + "Gentle = a task ends and that's it — no page, no sound, no nagging. "
+         + "Standard = full-screen reminders for a limited number of rounds (default 3), then quiet — and no sound at any point. "
+         + "Strict = keeps nagging until you start a task, and it is the only level with a sound switch. "
+         + "Custom = your own repeat strategy (none / limited / unlimited) and every number (editing any number on a preset level moves you to Custom). "
+         + "The setting is stored in your cloud account (idle_nag), shared between phone and computer."},
         {"17. Subtasks (v1.11.0)",
          "A big task can be split into a queue of subtasks, timed one by one (the context→queue shape of Smart Countdown Timer).\\n"
          + "• How: expand a task on the home page — there's a Subtasks section; the big floating window has the same section. "

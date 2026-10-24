@@ -67,6 +67,12 @@ public class FloatService extends Service {
             stopSelf();
             return;
         }
+        FloatSnooze.poll(this); // 「等任务结束」型 snooze 的到期检测（v1.14.0）
+        if (FloatSnooze.isActive(this)) {
+            FloatingWindow.hide(); // snooze 中：只藏窗，本服务的通知/巡检照常
+            patrolIdle();
+            return;
+        }
         if (TimerState.endFired(this)) {
             // 到点等确认期间不显示（检查页在管事），确认完自动回来
             FloatingWindow.hide();

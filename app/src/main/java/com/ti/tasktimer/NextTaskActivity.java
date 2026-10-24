@@ -61,6 +61,9 @@ public class NextTaskActivity extends Activity {
         Strings.init(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         AlertHelper.cancelNextTask(this);
+        // 空档时钟锚点（v1.14.0）：守卫页展示时若尚无锚点，以展示时刻起算——
+        // 覆盖「叫回页选换下一个任务直接进本页」等不经 IdleGuard 的入口（已有锚点不重置）。
+        IdleAlarm.notePageShown(this);
         store = new TaskStore(this);
 
         buildUi();
@@ -82,10 +85,20 @@ public class NextTaskActivity extends Activity {
         super.onPause();
     }
 
-    /** 按返回退出：给自动触发留一段静默期，避免回主页被 onResume 立刻重弹（事件触发不受影响）。 */
+    /** 按返回退出：给自动触发留一段静默期，避免回主页被 onResume 立刻重弹（事件触发不受影响）。
+     *  注意：这 3 分钟静默不取消空档 alarm 排期（v1.14.0 口径），到点照样带声拉回本页。 */
     @Override public void onBackPressed() {
         IdleGuard.snoozeOnDismiss(this);
         super.onBackPressed();
+    }
+
+    /** 用户在本页有任何操作：立刻停掉本轮铃声（页面保留），下轮间隔从停声时刻起算。 */
+    @Override public void onUserInteraction() {
+        super.onUserInteraction();
+        if (AlarmRing.isRinging()) {
+            AlarmRing.stop(this);
+            IdleAlarm.onSoundStoppedEarly(this);
+        }
     }
 
     // ---------------- 界面 ----------------

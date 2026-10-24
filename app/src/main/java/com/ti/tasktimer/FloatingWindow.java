@@ -239,6 +239,8 @@ public class FloatingWindow {
     // ---------- 显示/隐藏/刷新 ----------
     public static void ensureShown(Context c) {
         if (!enabled(c) || suppressed || rootView != null) return;
+        // snooze 期间（v1.14.0）：只藏悬浮窗，计时/守卫/alarm/通知照常
+        if (FloatSnooze.isActive(c)) { hide(); return; }
         if (!AlertHelper.canDrawOverlays(c)) return;
         build(c.getApplicationContext());
     }
@@ -774,6 +776,14 @@ public class FloatingWindow {
         Button miniBtn = smallButton(c, "收起");
         miniBtn.setOnClickListener(v -> setMode(c, MODE_MINI));
         btns2.addView(miniBtn);
+        // 关闭（v1.14.0）：定时 snooze / 等任务结束 / 不再出现，经中转页选择
+        Button closeBtn = smallButton(c, Strings.en() ? "Close" : "关闭");
+        closeBtn.setOnClickListener(v -> {
+            Intent i = new Intent(c, FloatCloseActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+        });
+        btns2.addView(closeBtn);
         bodyBox.addView(btns2);
 
         int type = Build.VERSION.SDK_INT >= 26

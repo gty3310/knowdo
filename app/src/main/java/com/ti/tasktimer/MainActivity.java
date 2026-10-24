@@ -956,6 +956,7 @@ public class MainActivity extends Activity {
             boolean nowDone = doneBox.isChecked();
             if (nowDone) t.markDone(); else t.markUndone();
             store.save();
+            SbSync.pushDoneAsync(this, t.id); // 完成状态立刻定向写上云并回读确认（v1.14.0 防弹回）
             adapter.notifyDataSetChanged();
             refreshStatus();
             if (nowDone) fireGuardAfterManualDone();
@@ -1129,6 +1130,7 @@ public class MainActivity extends Activity {
         chips.addView(chip(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
             if (done) t.markUndone(); else t.markDone();
             store.save();
+            SbSync.pushDoneAsync(this, t.id);
             expandedTaskId = null;
             adapter.notifyDataSetChanged();
             refreshStatus();
@@ -1938,7 +1940,9 @@ public class MainActivity extends Activity {
                     if (which == 0) {
                         boolean toDone = !cur.isDoneToday();
                         if (toDone) cur.markDone(); else cur.markUndone();
-                        store.save(); adapter.notifyDataSetChanged();
+                        store.save();
+                        SbSync.pushDoneAsync(this, cur.id);
+                        adapter.notifyDataSetChanged();
                         if (toDone) fireGuardAfterManualDone();
                     } else {
                         new AlertDialog.Builder(this)

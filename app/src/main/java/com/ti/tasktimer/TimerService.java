@@ -209,6 +209,7 @@ public class TimerService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_MIRROR.equals(action)) {
+            IdleAlarm.onNotIdle(this); // 任何一台设备开始计时，空档催促周期立即取消
             // 跨设备镜像：只落状态，刻意不动 SessionLog/专注守卫/屏幕采样（那些是发起端的本端语义）
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
             long startedAtMs = intent.getLongExtra("started_at_ms", System.currentTimeMillis());
@@ -244,6 +245,7 @@ public class TimerService extends Service {
             // 计时/暂停中子任务被编辑：按最新列表重建队列（算法见 handleSubResync）
             handleSubResync();
         } else if (ACTION_RESUME.equals(action)) {
+            IdleAlarm.onNotIdle(this);
             ResumeReminder.cancel(this);
             TimerState.startResumed(this,
                     intent.getIntExtra(EXTRA_TOTAL_SEC, 60), intent.getIntExtra(EXTRA_REMAIN_SEC, 60),
@@ -258,6 +260,7 @@ public class TimerService extends Service {
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
             SbTimerSync.onLocalTimerChanged(this);
         } else if (ACTION_START.equals(action)) {
+            IdleAlarm.onNotIdle(this); // 任何入口开始计时都算：催促周期取消、空档时钟重置
             ResumeReminder.cancel(this);
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
             String sid = intent.getStringExtra(EXTRA_TASK_ID);

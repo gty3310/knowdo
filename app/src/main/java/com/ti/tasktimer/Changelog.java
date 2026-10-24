@@ -36,6 +36,52 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e114 = new Entry("v1.14.0", "2026-10-24");
+        e114.add(new Group(s("新功能", "New"),
+                s("没任务时它会出声催你：超过 5 分钟没有任何任务在计时，全屏弹出「接下来干什么」并响起鸟鸣，"
+                        + "你不理它，隔 1 分钟再响、之后每 5 分钟响一次，直到你开始一个任务。",
+                  "It now nags you out loud when nothing is running: after 5 minutes with no task timing, "
+                        + "the full-screen \"What's next?\" pops up with birdsong. Ignore it and it rings again "
+                        + "after 1 minute, then every 5 minutes, until you start a task."),
+                s("空档催促成了你的个人设置：分温和／标准／严格三档，也可自定义——多久算空档、每轮响多久、"
+                        + "隔多久再催、最多催几轮、出不出声，都能自己调；存在云端，手机与电脑共用同一份。"
+                        + "（声音是严格档才有的：标准档只弹页面、不出声，温和档什么都不做。）",
+                  "Idle nagging is now your personal setting: Gentle / Standard / Strict levels, or fully "
+                        + "custom — how long counts as idle, how long each round rings, the gaps between "
+                        + "rounds, how many rounds at most, and whether it makes sound. It lives in the cloud, "
+                        + "shared between phone and computer. (Sound belongs to Strict only: Standard pops the "
+                        + "page silently, Gentle does nothing.)"),
+                s("悬浮窗可以定时关：点大悬浮窗的「关闭」，可以选 10／15／30／60 分钟后回来、"
+                        + "等当前任务结束回来、自己定时间，或者永不再出现（设置里能再打开）。",
+                  "The floating window can close on a timer: tap \"Close\" on the large floating window and "
+                        + "pick back in 10/15/30/60 minutes, back when the current task ends, a custom time, "
+                        + "or never again (re-enable it in Settings).")));
+        e114.add(new Group(s("修复", "Fixed"),
+                s("任务点完成后又自己弹回未完成：原因是同步对账拿着你点完成之前的旧快照整表落盘，"
+                        + "把完成状态盖了回去，你的完成也一直没写上云。现在对账先读最新状态再合并，"
+                        + "完成一点下去还会立刻单独写上云并回读确认。",
+                  "A task you checked done flipping back to not-done on its own: sync reconciliation was "
+                        + "writing a stale whole-table snapshot — taken before your tap — back over your "
+                        + "completion, which also never reached the cloud. Reconciliation now re-reads the "
+                        + "latest state before merging, and a completion is written to the cloud on its own "
+                        + "right away, with a read-back check.")));
+        e114.why = s("光弹页面没声音，你经常注意不到，空档就溜走了；悬浮窗以前只能在设置里开关，"
+                        + "想清静一会儿又怕找不回来。催促的轻重也该由你定，而不是写死的；"
+                        + "完成状态这种最基础的账，更不能被同步盖掉。",
+                "A silent popup is easy to miss, and gaps slipped away; the floating window could only be "
+                        + "toggled in Settings, so a quiet moment risked losing it. How hard it nags should "
+                        + "be your call, not hardcoded — and something as basic as a completion must never be "
+                        + "overwritten by sync.");
+        e114.tryIt = s("①什么任务都不开，干等 5 分钟（或结束当前任务后不开始下一个），听它响；"
+                        + "②展开大悬浮窗，点「关闭」，选「10 分钟后」；"
+                        + "③到设置页守卫组里的「空档催促」，把档位切到「标准」再切回「严格」；"
+                        + "④在列表里点完成一个任务，等十来秒，看它不再弹回。",
+                "1) Start nothing and wait 5 minutes (or end a task and don't start the next) and hear it "
+                        + "ring. 2) Open the large floating window, tap \"Close\", pick \"in 10 minutes\". "
+                        + "3) In Settings, under Guards → \"Idle nagging\", switch the level to Standard and "
+                        + "back to Strict. 4) Check a task done in the list, wait ten seconds, and see it stay done.");
+        out.add(e114);
+
         Entry e113 = new Entry("v1.13.0", "2026-10-24");
         e113.add(new Group(s("修复", "Fixed"),
                 s("子任务立刻生效：正在计时的任务中途加子任务，马上开始计这个子任务的时间，不再等下次启动；"
@@ -148,27 +194,6 @@ public final class Changelog {
                         + "for the phone. With only three states at any moment — timing, a timed pause, or filling "
                         + "in the next task — distraction has no crack to slip through.");
         out.add(e110);
-
-        Entry e19 = new Entry("v1.9.0", "2026-10-24");
-        e19.add(new Group(s("新功能", "New"),
-                s("「任务闹钟」：每个任务可单独设一个闹钟时间——到点就响，与计时无关（会议、起床这类怕错过的事；"
-                        + "每日任务响完自动续到明天）；也可以设「计时结束时响铃」（午睡这类），响完再进结束检查页。"
-                        + "铃声是清晨鸟鸣，60 秒由小渐大，走闹钟通道，手机静音也照样响。",
-                  "\"Per-task alarms\": each task can have an alarm time that rings whether or not it is timing "
-                        + "(meetings, wake-ups — things you can't afford to miss; daily tasks re-arm for the next "
-                        + "day), and/or ring when its timer ends (naps), then flow into the end check. The sound "
-                        + "is morning birdsong fading in over 60 seconds on the alarm stream, so it rings even "
-                        + "when the phone is muted.")));
-        e19.add(new Group(s("改进", "Improved"),
-                s("设置页账号区精简，只留一行简洁状态；云端模式的实时同步改成常开，去掉了开关和说明文字。",
-                  "The Settings account area is trimmed to one simple status line; in cloud mode realtime sync "
-                        + "is now simply always on — the toggle and its explanation are gone.")));
-        e19.why = s("有些提醒必须独立于计时存在（怕错过的会、要起的床），有些只需要在倒计时结束时叫醒（午睡）；"
-                        + "而同步这种事，默认实时就好，不需要一个开关让人惦记。",
-                "Some reminders must live independently of any timer (a meeting you can't miss, a bed you must "
-                        + "leave), and some only need to fire when a countdown ends (a nap). Sync, meanwhile, "
-                        + "should just be realtime by default — not another switch to think about.");
-        out.add(e19);
 
         return out;
     }

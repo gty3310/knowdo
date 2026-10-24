@@ -38,7 +38,10 @@ public final class IdleGuard {
 
     public static void setEnabled(Context c, boolean on) {
         sp(c).edit().putBoolean("enabled", on).apply();
-        if (!on) AlertHelper.cancelNextTask(c);
+        if (!on) {
+            AlertHelper.cancelNextTask(c);
+            IdleAlarm.onNotIdle(c); // 总开关关：催促周期一并取消（弹页与 alarm 都不发生）
+        }
     }
 
     /** 是否空档：没在计时，也没有生效中的定时暂停。 */
@@ -64,7 +67,13 @@ public final class IdleGuard {
 
     /** 自动档：巡检与主页 onResume 调用。 */
     public static void checkAndFire(Context c) {
-        if (!enabled(c) || !isIdle(c) || TopPages.anyBlockingShown()) return;
+        // 空档催促周期先与空档状态同步（v1.14.0）：非空档即取消整个周期；
+        // 空档中维护锚点与 alarm 排期。这一步在总开关/静默判断之前——
+        // 按返回的 3 分钟静默只压自动弹页，绝不动 alarm 排期。
+        if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
+        IdleAlarm.observeIdle(c);
+        if (!enabled(c) || TopPages.anyBlockingShown()) return;
+        if (IdleNag.suppressIdlePage(c)) return; // 温和档：空档连页都不弹
         long now = System.currentTimeMillis();
         if (now < sp(c).getLong("snooze_until", 0L)) return;
         if (now - lastFiredAt < REFIRE_MIN_MS) return;
@@ -74,6 +83,7 @@ public final class IdleGuard {
     /** 事件档：完成任务/叫回页转入等明确时刻调用，不受返回静默期约束。 */
     public static void fireNow(Context c) {
         if (!enabled(c) || !isIdle(c) || TopPages.anyBlockingShown()) return;
+        if (IdleNag.suppressIdlePage(c)) return;
         if (System.currentTimeMillis() - lastFiredAt < EVENT_DEBOUNCE_MS) return;
         fire(c);
     }
@@ -92,6 +102,7 @@ public final class IdleGuard {
 
     private static void fire(Context c) {
         lastFiredAt = System.currentTimeMillis();
+        IdleAlarm.notePageShown(c); // 守卫页展示＝空档时钟的锚点候选（已有锚点时不重置）
         TimerState.logEvent(c, "任务衔接守卫：检测到空档，拉起「下一个任务」页");
         AlertHelper.fireNextTask(c);
     }

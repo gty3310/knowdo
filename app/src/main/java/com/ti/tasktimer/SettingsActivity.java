@@ -348,8 +348,151 @@ public class SettingsActivity extends Activity {
                     : (Strings.en() ? "Next-task guard off" : "任务衔接守卫已关闭：空档时不再自动弹出（暂停规则不受影响）"));
         });
         row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
+        buildIdleNagRows();
         row(Strings.rowPerms(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, PermActivity.class)));
+    }
+
+    // ---------------- 空档催促（v1.14.0）：个人设置，存本地＋云端 user_state.idle_nag 同步 ----------------
+
+    private void buildIdleNagRows() {
+        boolean en = Strings.en();
+        groupTitle(en ? "Idle nagging" : "空档催促");
+        Switch master = mkSwitch(IdleNag.enabled(this));
+        master.setOnCheckedChangeListener((b, on) -> {
+            IdleNag.setEnabled(this, on);
+            afterNagChanged();
+        });
+        row(en ? "Nag me when idle" : "空档时催我",
+                en ? "Your settings, synced via cloud — phone and computer share them"
+                        : "你的个人设置，存云端同步，手机与电脑共用一份",
+                master, null);
+        final String p = IdleNag.profile(this);
+        row(en ? "Intensity" : "强度档位", IdleNag.rhythmText(this),
+                arrowBtn(IdleNag.profileName(p) + " ›"), v -> pickProfile());
+        if (IdleNag.GENTLE.equals(p)) return; // 温和＝什么都不发生，没有可调项
+        row(en ? "Minutes idle before nagging" : "几分钟没任务算空档",
+                null, arrowBtn(IdleNag.idleMinutes(this) + (en ? " min" : " 分钟")),
+                v -> editNagNumber("idle_minutes", en ? "Minutes idle before nagging" : "几分钟没任务算空档",
+                        IdleNag.idleMinutes(this), 1, 120, en ? " min" : " 分钟"));
+        if (IdleNag.STRICT.equals(p) || IdleNag.CUSTOM.equals(p)) {
+            row(en ? "Seconds each round rings" : "每轮响多久",
+                    null, arrowBtn(IdleNag.ringSeconds(this) + (en ? " sec" : " 秒")),
+                    v -> editNagNumber("ring_seconds", en ? "Seconds each round rings" : "每轮响多久（秒）",
+                            IdleNag.ringSeconds(this), 5, 600, en ? " sec" : " 秒"));
+        }
+        row(en ? "Gap after the first round" : "第一轮后隔几分钟再来",
+                null, arrowBtn(IdleNag.firstRepeatMinutes(this) + (en ? " min" : " 分钟")),
+                v -> editNagNumber("first_repeat_minutes", en ? "Gap after the first round" : "第一轮后隔几分钟",
+                        IdleNag.firstRepeatMinutes(this), 1, 120, en ? " min" : " 分钟"));
+        row(en ? "Gap between later rounds" : "之后每隔几分钟一轮",
+                null, arrowBtn(IdleNag.repeatMinutes(this) + (en ? " min" : " 分钟")),
+                v -> editNagNumber("repeat_minutes", en ? "Gap between later rounds" : "之后每隔几分钟",
+                        IdleNag.repeatMinutes(this), 1, 120, en ? " min" : " 分钟"));
+        if (IdleNag.STANDARD.equals(p)) {
+            row(en ? "Max rounds" : "最多催几轮",
+                    en ? "Then it stays quiet until a new idle gap" : "到上限就安静，直到下一次空档",
+                    arrowBtn(String.valueOf(IdleNag.maxRounds(this))),
+                    v -> editNagNumber("max_rounds", en ? "Max rounds" : "最多催几轮",
+                            IdleNag.maxRounds(this), 1, 20, ""));
+        }
+        if (IdleNag.CUSTOM.equals(p)) {
+            int mr = IdleNag.maxRounds(this);
+            String strat = mr == 0 ? (en ? "Don't nag" : "不催")
+                    : mr < 0 ? (en ? "Until I start a task" : "无限，直到开始任务")
+                    : (en ? "At most " + mr + " rounds" : "最多 " + mr + " 轮");
+            row(en ? "Repeat strategy" : "重复策略", null, arrowBtn(strat + " ›"), v -> pickStrategy());
+            if (mr > 0) {
+                row(en ? "Max rounds" : "最多催几轮", null,
+                        arrowBtn(String.valueOf(mr)),
+                        v -> editNagNumber("max_rounds", en ? "Max rounds" : "最多催几轮", mr, 1, 20, ""));
+            }
+        }
+        // 声音只属严格与自定义；标准档只注明没有声音
+        if (IdleNag.STRICT.equals(p) || IdleNag.CUSTOM.equals(p)) {
+            Switch snd = mkSwitch(IdleNag.sound(this));
+            snd.setOnCheckedChangeListener((b, on) -> {
+                IdleNag.setSound(this, on);
+                afterNagChanged();
+            });
+            row(en ? "Sound" : "出声", en ? "Birdsong alarm, fades in" : "鸟鸣渐强，走闹钟通道", snd, null);
+        } else if (IdleNag.STANDARD.equals(p)) {
+            row(en ? "Sound" : "声音", en ? "The standard level has no sound — popup only"
+                    : "标准档没有声音，只弹页面", null, null);
+        }
+    }
+
+    /** 设置改完：行为层按新参数重排当前周期，页面重画，并后台同步一次回写云端。 */
+    private void afterNagChanged() {
+        IdleAlarm.reevaluate(this);
+        buildUi();
+        AccountUi.runSync(this, store, this::buildUi, false);
+    }
+
+    private void pickProfile() {
+        boolean en = Strings.en();
+        String[] items = en
+                ? new String[]{"Gentle — a task ends, and that's it. No nagging.",
+                        "Standard — reminds you, but at most a few rounds. No sound.",
+                        "Strict — keeps reminding (with sound) until you start a task.",
+                        "Custom — your own strategy and numbers."}
+                : new String[]{"温和 — 任务结束就结束，不催你",
+                        "标准 — 催，但最多几轮就安静；不出声",
+                        "严格 — 每隔几分钟出声催你，直到你开始任务",
+                        "自定义 — 重复策略和每个数字自己定"};
+        new AlertDialog.Builder(this)
+                .setTitle(en ? "Intensity" : "强度档位")
+                .setItems(items, (d, which) -> {
+                    switch (which) {
+                        case 0: IdleNag.applyProfile(this, IdleNag.GENTLE); break;
+                        case 1: IdleNag.applyProfile(this, IdleNag.STANDARD); break;
+                        case 2: IdleNag.applyProfile(this, IdleNag.STRICT); break;
+                        default: IdleNag.enterCustom(this); break;
+                    }
+                    afterNagChanged();
+                })
+                .setNegativeButton(en ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    private void pickStrategy() {
+        boolean en = Strings.en();
+        String[] items = en
+                ? new String[]{"Don't nag", "Limited rounds", "Until I start a task"}
+                : new String[]{"不催", "有限轮数", "无限，直到开始任务"};
+        new AlertDialog.Builder(this)
+                .setTitle(en ? "Repeat strategy" : "重复策略")
+                .setItems(items, (d, which) -> {
+                    if (which == 0) IdleNag.setCustomMaxRounds(this, 0);
+                    else if (which == 2) IdleNag.setCustomMaxRounds(this, -1);
+                    else {
+                        int mr = IdleNag.maxRounds(this);
+                        IdleNag.setCustomMaxRounds(this, mr > 0 ? mr : 3);
+                    }
+                    afterNagChanged();
+                })
+                .setNegativeButton(en ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    private void editNagNumber(final String key, String title, int current,
+                               final int min, final int max, String unit) {
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(current));
+        input.setSelection(input.getText().length());
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton(Strings.en() ? "Save" : "保存", (d, w) -> {
+                    int val = current;
+                    try { val = Integer.parseInt(input.getText().toString().trim()); } catch (Exception ignored) { }
+                    val = Math.max(min, Math.min(max, val));
+                    IdleNag.editParam(this, key, val);
+                    afterNagChanged();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
     }
 
     // ---------------- 通用组 ----------------

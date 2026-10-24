@@ -18,6 +18,9 @@ public class BootReceiver extends BroadcastReceiver {
             try { StartReminder.reschedule(context, new TaskStore(context)); } catch (Exception ignored) { }
             // 任务闹钟同理：开机后按本地任务逐个重排（v1.9.0）
             try { AlarmScheduler.rescheduleAll(context, new TaskStore(context)); } catch (Exception ignored) { }
+            // 空档催促：开机后按持久化状态续排（v1.14.0）；悬浮窗 snooze 截止时刻是
+            // 持久化的，FloatService 起来后由 FloatSnooze.isActive/poll 照算，无需这里处理
+            try { IdleAlarm.ensureScheduled(context); } catch (Exception ignored) { }
         }
     }
 }

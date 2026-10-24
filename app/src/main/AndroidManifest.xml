@@ -205,5 +205,17 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 空档催促闹钟接收器（v1.14.0） -->
+        <receiver
+            android:name=".IdleAlarmReceiver"
+            android:exported="false" />
+
+        <!-- 悬浮窗「关闭」选择页（v1.14.0）：半透明中转页 -->
+        <activity
+            android:name=".FloatCloseActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>
