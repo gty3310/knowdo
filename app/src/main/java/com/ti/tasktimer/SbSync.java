@@ -397,6 +397,60 @@ public final class SbSync {
         }
     }
 
+    /**
+     * 日历页把任务拖进日历（Supabase 模式下的 schedule 唯一写入口之二，纪律与桥时代一致）：
+     * 读云端最新 user_state → 只往 blocks 加这一块 → upsert → 回读校验。
+     * 云端还没有今天的日程时，就地为今天新建一份只含这一块的日程（拖入即是给今天排）。
+     * 返回 null 表示成功，否则是可读的失败原因。
+     */
+    public static String addScheduleBlock(Context c, String taskId, String newStart, String newEnd) {
+        if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法保存计划块";
+        try {
+            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONObject sch = null;
+            if (us.length() > 0) sch = us.getJSONObject(0).optJSONObject("schedule");
+            if (sch == null || !TaskItem.today().equals(sch.optString("date", ""))) {
+                sch = new JSONObject();
+                sch.put("date", TaskItem.today());
+                sch.put("blocks", new JSONArray());
+            }
+            JSONArray blocks = sch.optJSONArray("blocks");
+            if (blocks == null) { blocks = new JSONArray(); sch.put("blocks", blocks); }
+            JSONObject nb = new JSONObject();
+            nb.put("taskId", taskId);
+            nb.put("start", newStart);
+            nb.put("end", newEnd);
+            blocks.put(nb);
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", "KnowDo App（用户把任务拖进日历）");
+            SyncManager.cacheSchedule(c, sch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", sch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            // 回读校验：新块确实已在云端
+            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            boolean ok = false;
+            if (chk.length() > 0) {
+                JSONObject s2 = chk.getJSONObject(0).optJSONObject("schedule");
+                JSONArray cb = s2 == null ? null : s2.optJSONArray("blocks");
+                if (cb != null) for (int i = 0; i < cb.length(); i++) {
+                    JSONObject o = cb.optJSONObject(i);
+                    if (o == null) continue;
+                    if (taskId.equals(o.optString("taskId", ""))
+                            && newStart.equals(o.optString("start", ""))
+                            && newEnd.equals(o.optString("end", ""))) { ok = true; break; }
+                }
+            }
+            return ok ? null : "已写回但回读没看到新块，请刷新页面确认";
+        } catch (Supa.Err e) {
+            if (e.network) return "离线，暂时存不了计划块，联网后再拖一次";
+            return "保存计划块失败（" + e.status + "）";
+        } catch (Exception e) {
+            return "保存计划块失败：" + e.getMessage();
+        }
+    }
+
     // ---------------- Realtime 单行合并 ----------------
     /** Realtime 推来的 tasks 行变更：按同一合并纪律并入本地。返回本地是否发生变化。 */
     public static boolean applyRemoteTaskRow(Context c, JSONObject row, String type) {

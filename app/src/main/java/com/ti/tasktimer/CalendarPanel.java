@@ -2,6 +2,8 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -12,6 +14,9 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.DatePicker;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -23,8 +28,10 @@ import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -35,9 +42,15 @@ import java.util.Set;
 * （云端 user_state 的 schedule，Muse 排的）、右窄栏是实际（本地计时段记录 SessionLog，只读）。
 * 本页在前台时每 10 秒同步一次桥并重画——Muse 在桥端改了 schedule，这里很快就能看到新版。
 *
-* v1.6.2 交互：计划块可长按拖拽改时间（用户定案：App 对 schedule 的写权限仅此一处，
+* v1.6.2 交互：计划块可长按拖拽改时间（用户定案：App 对 schedule 的写权限只走 sanction 入口，
 * 经 SyncManager.updateScheduleBlock 按读-改-写-校验纪律回写）；计划块与未排任务带 ▶，
 * 点了立即开始/暂停该任务（与主页同一条计时路径）；计划块长按拾起时有 lift 放大效果。
+*
+* v1.15.0 分屏：顶栏「任务列表」开关——开启后左半屏出任务列表（今日未排的未完成任务，
+* 可整行拖进右侧日历，落点即计划块开始时间，块长＝任务计划时长 ×1.5，经
+* SyncManager.addScheduleBlock 同一 sanction 纪律落盘）；点右侧任一计划块，左半屏
+* 定位并展开该任务（手风琴内容与主页展开区一致：笔记/元信息/操作 chips/子任务，
+* 数据与操作入口与主页同一套——TaskStore/TimerService/SubtaskPanel/SbSync.pushDoneAsync）。
 */
 public class CalendarPanel extends FrameLayout {
 private final Activity host;
@@ -54,11 +67,26 @@ private TextView hintView;
 private FrameLayout canvas;
 private LinearLayout laneHead;
 private LinearLayout listBox;
+// v1.15.0 分屏：左任务栏 + 右日历栏（各自独立滚动）
+private Button listToggle;
+private ScrollView splitScroll;
+private LinearLayout splitBox;
+private ScrollView calScroll;
+private boolean splitOn = false;
+private String focusTaskId = null; // 左栏当前展开的任务（点计划块定位到它）；null＝显示未排列表
+private int lastAxisStart = DAY_START_MIN, lastAxisEnd = DAY_END_MIN;
+private int lastScale = 1, lastPlanX = 0, lastPlanW = 0;
+private TextView dropPreview; // 拖任务入日历时的落点预览块（canvas 的临时子视图）
 private final Handler handler = new Handler(Looper.getMainLooper());
 private boolean foreground = false;
 private boolean syncing = false;
 private boolean dragging = false; // 有块正被拖动时，周期 render 不要打断它
 private TaskItem pendingGuardTask; // 等截图授权结果的待开始任务（与主页同语义）
+
+/** 任务数据一变（主页/悬浮窗/同步改的都算）就重画日历与左栏——与主页同一条 TaskStore 通知。 */
+private final TaskStore.ChangeListener storeListener = () -> {
+if (foreground && !dragging) { render(); renderSplit(); }
+};
 
 private final Runnable refresher = new Runnable() {
 @Override public void run() {
@@ -111,13 +139,11 @@ this.host = host;
 ctx = host;
 Strings.init(host);
 store = new TaskStore(ctx);
-ScrollView scroll = new ScrollView(ctx);
+setBackgroundColor(Ui.bg(host));
 LinearLayout root = new LinearLayout(ctx);
 root.setOrientation(LinearLayout.VERTICAL);
-root.setPadding(dp(16), dp(18), dp(16), dp(28));
-root.setBackgroundColor(Ui.bg(host));
-scroll.addView(root);
-addView(scroll, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+root.setPadding(dp(16), dp(18), dp(16), dp(10));
+addView(root, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
 FrameLayout.LayoutParams.MATCH_PARENT));
 
 TextView title = new TextView(ctx);
@@ -156,41 +182,108 @@ hintView.setTextColor(Ui.danger(ctx));
 hintView.setPadding(0, dp(4), 0, dp(4));
 root.addView(hintView);
 
+// 工具行（v1.15.0）：「任务列表」开关——开了左半屏出任务列表，可拖进右侧日历
+LinearLayout tools = new LinearLayout(ctx);
+tools.setOrientation(LinearLayout.HORIZONTAL);
+tools.setGravity(Gravity.CENTER_VERTICAL);
+tools.setPadding(0, dp(2), 0, dp(6));
+listToggle = new Button(ctx);
+listToggle.setText(Strings.calTaskListBtn());
+listToggle.setOnClickListener(v -> setSplit(!splitOn));
+tools.addView(listToggle);
+root.addView(tools);
+
+// 主体：左任务栏（默认藏）＋右日历栏，各自独立滚动
+LinearLayout bodyRow = new LinearLayout(ctx);
+bodyRow.setOrientation(LinearLayout.HORIZONTAL);
+root.addView(bodyRow, new LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+
+splitBox = new LinearLayout(ctx);
+splitBox.setOrientation(LinearLayout.VERTICAL);
+splitBox.setPadding(0, 0, dp(10), dp(28));
+splitScroll = new ScrollView(ctx);
+splitScroll.addView(splitBox);
+splitScroll.setVisibility(View.GONE);
+bodyRow.addView(splitScroll, new LinearLayout.LayoutParams(0,
+LinearLayout.LayoutParams.MATCH_PARENT, 46f));
+
+LinearLayout calBox = new LinearLayout(ctx);
+calBox.setOrientation(LinearLayout.VERTICAL);
+calBox.setPadding(0, 0, 0, dp(28));
 // 三栏标题（日历／计划／实际）：宽度与时间轴三栏逐像素对齐，在 render() 里按当次几何重建
 laneHead = new LinearLayout(ctx);
 laneHead.setOrientation(LinearLayout.HORIZONTAL);
 laneHead.setPadding(dp(46), dp(6), 0, dp(2));
-root.addView(laneHead);
+calBox.addView(laneHead);
 
 canvas = new FrameLayout(ctx);
-root.addView(canvas);
+calBox.addView(canvas);
 
 listBox = new LinearLayout(ctx);
 listBox.setOrientation(LinearLayout.VERTICAL);
 listBox.setPadding(0, dp(14), 0, 0);
-root.addView(listBox);
+calBox.addView(listBox);
+
+calScroll = new ScrollView(ctx);
+calScroll.addView(calBox);
+bodyRow.addView(calScroll, new LinearLayout.LayoutParams(0,
+LinearLayout.LayoutParams.MATCH_PARENT, 54f));
 
 render();
+}
+
+/** 分屏开/关：左栏显隐＋两栏权重，布局落定后按新宽度重画日历与左栏。 */
+private void setSplit(boolean on) {
+splitOn = on;
+if (!on) focusTaskId = null;
+splitScroll.setVisibility(on ? View.VISIBLE : View.GONE);
+LinearLayout.LayoutParams clp = (LinearLayout.LayoutParams) calScroll.getLayoutParams();
+clp.weight = on ? 54f : 100f;
+calScroll.setLayoutParams(clp);
+listToggle.setText(Strings.calTaskListBtn() + (on ? " ✓" : ""));
+renderSplit();
+calScroll.post(this::render);
+}
+
+/** 点计划块 → 左栏定位并展开该任务（分屏没开先开分屏）。 */
+private void focusExpand(String taskId) {
+if (!splitOn) setSplit(true);
+focusTaskId = taskId;
+renderSplit();
+if (splitScroll != null) splitScroll.scrollTo(0, 0);
+}
+
+@Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+super.onSizeChanged(w, h, ow, oh);
+if (w != ow && w > 0 && foreground && !dragging) {
+handler.post(this::render);
+}
 }
 
 /** 面板打开 / 宿主 onResume 时调用：开始周期刷新并立刻重画一次。 */
 public void panelStart() {
 foreground = true;
+TaskStore.removeChangeListener(storeListener);
+TaskStore.addChangeListener(storeListener);
 handler.removeCallbacks(refresher);
 handler.post(refresher);
 store.load();
 render();
+renderSplit();
 }
 
 /** 对外重画（宿主改变面板宽度后调用）。 */
 public void refreshNow() {
 store.load();
 render();
+renderSplit();
 }
 
 /** 面板关闭 / 宿主 onPause 时调用：停掉周期刷新。 */
 public void panelStop() {
 foreground = false;
+TaskStore.removeChangeListener(storeListener);
 handler.removeCallbacks(refresher);
 }
 
@@ -206,7 +299,7 @@ SyncManager.setLastResult(ctx, r);
 handler.post(() -> {
 syncing = false;
 store.load();
-if (foreground) render();
+if (foreground) { render(); renderSplit(); }
 });
 }).start();
 }
@@ -353,8 +446,13 @@ int nowMin = minOfDay(System.currentTimeMillis());
 axisStart = Math.min(axisStart, (nowMin / 60) * 60);
 axisEnd = Math.max(axisEnd, Math.min(24 * 60, (nowMin / 60 + 1) * 60));
 
-int pw = getWidth();
-int totalW = (pw > 0 ? pw : getResources().getDisplayMetrics().widthPixels) - dp(32);
+// 宽度按右日历栏的实际宽度算（v1.15.0 分屏后日历不再占满整宽）；未布局时先估算，布局后会重画
+int pw = calScroll != null ? calScroll.getWidth() : 0;
+if (pw <= 0) {
+int panelW = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
+pw = panelW - dp(32) - (splitOn ? (int) (panelW * 0.44f) : 0);
+}
+int totalW = pw;
 int gutter = dp(46), gap = dp(6);
 // 三栏版式（v1.12.0 用户定案，宽度写死）：日历窄栏 ≈17%｜计划主栏 ≈58%｜实际窄栏 ≈25%。
 // Google 日历事件只许在自己的窄栏里渲染，绝不压到计划栏上。
@@ -380,6 +478,12 @@ lhA.setLayoutParams(lhAp);
 laneHead.addView(lhA);
 int scale = dp(1); // 1 分钟 = 1dp
 int heightPx = (axisEnd - axisStart) * scale;
+// 缓存本次几何：拖任务入日历时按它换算落点分钟（v1.15.0）
+lastAxisStart = axisStart;
+lastAxisEnd = axisEnd;
+lastScale = scale;
+lastPlanX = planX;
+lastPlanW = planW;
 canvas.removeAllViews();
 canvas.setLayoutParams(new LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT, heightPx));
@@ -427,6 +531,7 @@ canvas.addView(nt, ntlp);
 }
 
 // 下方清单：未排入日程的任务 / 无日程时的今日任务
+// （分屏开着时这一段让给左栏——左栏同一批任务且可拖、可展开，此处不再重复列）
 listBox.removeAllViews();
 Set<String> scheduledIds = new HashSet<>();
 if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
@@ -435,15 +540,16 @@ for (TaskItem t: todo) if (!scheduledIds.contains(t.id)) unscheduled.add(t);
 if (plan == null) {
 hintView.setText(Strings.calNoPlanHint());
 hintView.setVisibility(View.VISIBLE);
-addListTitle(Strings.calTodayTasksTitle());
 } else {
 hintView.setVisibility(View.GONE);
-addListTitle(Strings.calUnscheduledTitle());
 }
+if (!splitOn) {
+addListTitle(plan == null? Strings.calTodayTasksTitle(): Strings.calUnscheduledTitle());
 if (unscheduled.isEmpty()) {
 addListLine(plan == null? Strings.calEmptyAllDone(): Strings.calEmptyAllScheduled(), Ui.sub(ctx));
 } else {
 for (TaskItem t: unscheduled) addTaskRow(t);
+}
 }
 boolean hasAllDay = false;
 for (GcalEvent e : gcal) if (e.allDay) { hasAllDay = true; break; }
@@ -501,6 +607,9 @@ FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(24), dp(22), Grav
 box.addView(play, plp);
 play.setOnClickListener(v -> togglePlayTask(b.taskId));
 attachDrag(box, label, b, axisStart, scale);
+} else {
+// 已完成块没有拖拽：轻点整块 → 左栏展开该任务（v1.15.0）
+box.setOnClickListener(v -> focusExpand(b.taskId));
 }
 int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
@@ -584,7 +693,11 @@ return true;
 case MotionEvent.ACTION_UP:
 case MotionEvent.ACTION_CANCEL:
 handler.removeCallbacks(lift);
-if (!lifted) return true;
+if (!lifted) {
+// 没拾起就松手＝轻点整块 → 左栏展开该任务（v1.15.0）
+if (ev.getActionMasked() == MotionEvent.ACTION_UP) focusExpand(b.taskId);
+return true;
+}
 lifted = false;
 // 回落动画：缩放/透明度/阴影都收回，再落定写回
 box.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(150).start();
@@ -639,6 +752,1047 @@ play.setPadding(dp(10), dp(2), dp(6), dp(2));
 play.setOnClickListener(v -> togglePlayTask(t.id));
 row.addView(play);
 listBox.addView(row);
+}
+
+// ---------------- v1.15.0 左栏：未排列表（可拖进日历）＋点块展开 ----------------
+
+/** 与 render() 同一批「未排」任务：今日未完成、且不在今日计划块里。无计划时＝今日全部未完成。 */
+private List<TaskItem> unscheduledTasks() {
+store.load();
+List<Block> plan = planBlocks();
+Set<String> scheduledIds = new HashSet<>();
+if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
+List<TaskItem> out = new ArrayList<>();
+for (TaskItem t: store.tasks) {
+if (!isTodayTask(t) || t.isDoneToday()) continue;
+if (!scheduledIds.contains(t.id)) out.add(t);
+}
+return out;
+}
+
+private void renderSplit() {
+if (splitBox == null) return;
+splitBox.removeAllViews();
+if (!splitOn) return;
+store.load();
+// 展开模式：某个任务被点开（点计划块或点列表行都会来到这里）
+if (focusTaskId != null) {
+TaskItem t = store.byId(focusTaskId);
+if (t!= null && !t.deleted) {
+TextView back = new TextView(ctx);
+back.setText(Strings.calSplitBack());
+back.setTextSize(13);
+back.setTextColor(Ui.link(ctx));
+back.setPadding(0, dp(2), 0, dp(8));
+back.setOnClickListener(v -> { focusTaskId = null; renderSplit(); });
+splitBox.addView(back);
+TextView head = new TextView(ctx);
+head.setText((t.isDoneToday()? "✓ ": "") + t.title);
+head.setTextSize(16);
+head.setTextColor(Ui.text(ctx));
+head.setTypeface(head.getTypeface(), Typeface.BOLD);
+splitBox.addView(head);
+TextView sub = new TextView(ctx);
+sub.setText(Strings.calPlannedFmt(t.durationMinutes, "must".equals(t.priority)));
+sub.setTextSize(12);
+sub.setTextColor(Ui.sub(ctx));
+sub.setPadding(0, dp(2), 0, dp(4));
+splitBox.addView(sub);
+splitBox.addView(expansionView(t));
+return;
+}
+focusTaskId = null; // 任务已不在了，回列表
+}
+addSplitTitle(planBlocks() == null? Strings.calTodayTasksTitle(): Strings.calUnscheduledTitle());
+TextView hint = new TextView(ctx);
+hint.setText(Strings.calDragHint());
+hint.setTextSize(11);
+hint.setTextColor(Ui.sub(ctx));
+hint.setPadding(0, 0, 0, dp(6));
+splitBox.addView(hint);
+List<TaskItem> list = unscheduledTasks();
+if (list.isEmpty()) {
+addSplitLine(planBlocks() == null? Strings.calEmptyAllDone(): Strings.calEmptyAllScheduled());
+} else {
+for (TaskItem t: list) splitBox.addView(splitTaskRow(t));
+}
+}
+
+private void addSplitTitle(String s) {
+TextView t = new TextView(ctx);
+t.setText(s);
+t.setTextSize(14);
+t.setTextColor(Ui.text(ctx));
+t.setTypeface(t.getTypeface(), Typeface.BOLD);
+t.setPadding(0, dp(4), 0, dp(3));
+splitBox.addView(t);
+}
+
+private void addSplitLine(String s) {
+TextView t = new TextView(ctx);
+t.setText(s);
+t.setTextSize(13);
+t.setTextColor(Ui.sub(ctx));
+t.setPadding(0, dp(1), 0, dp(1));
+splitBox.addView(t);
+}
+
+/**
+ * 左栏任务行：标题＋时长＋▶（与下方清单行同一条开始路径）。
+ * 整行可拖：横向拖过阈值即拾起（竖向拖动仍归左栏滚动，ScrollView 会拦截并给本行 CANCEL），
+ * 拖进右侧日历时计划栏出现落点预览块，松手按 5 分钟吸附生成计划块；轻点则在左栏展开该任务。
+ */
+private View splitTaskRow(final TaskItem t) {
+LinearLayout row = new LinearLayout(ctx);
+row.setOrientation(LinearLayout.HORIZONTAL);
+row.setGravity(Gravity.CENTER_VERTICAL);
+row.setPadding(dp(4), dp(6), 0, dp(6));
+GradientDrawable rbg = new GradientDrawable();
+rbg.setCornerRadius(dp(6));
+rbg.setColor(Ui.surface(ctx));
+rbg.setStroke(dp(1), Ui.line(ctx));
+row.setBackground(rbg);
+LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+rlp.setMargins(0, 0, 0, dp(6));
+row.setLayoutParams(rlp);
+TextView lab = new TextView(ctx);
+lab.setText("≡ " + t.title + Strings.calPlannedFmt(t.durationMinutes, "must".equals(t.priority)));
+lab.setTextSize(13);
+lab.setTextColor(Ui.text(ctx));
+lab.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+row.addView(lab);
+TextView play = new TextView(ctx);
+boolean isRunningThis = TimerState.isRunning(ctx) && t.id.equals(TimerState.taskId(ctx));
+play.setText(isRunningThis? "⏸": "▶");
+play.setTextSize(16);
+play.setTextColor(Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161));
+play.setGravity(Gravity.CENTER);
+play.setPadding(dp(10), dp(2), dp(6), dp(2));
+play.setOnClickListener(v -> togglePlayTask(t.id));
+row.addView(play);
+row.setOnTouchListener(new View.OnTouchListener() {
+float downX, downY;
+boolean started = false;
+TextView ghost = null;
+@Override public boolean onTouch(View v, MotionEvent ev) {
+switch (ev.getActionMasked()) {
+case MotionEvent.ACTION_DOWN:
+downX = ev.getRawX();
+downY = ev.getRawY();
+started = false;
+return true;
+case MotionEvent.ACTION_MOVE: {
+float dx = ev.getRawX() - downX, dy = ev.getRawY() - downY;
+if (!started) {
+if (Math.abs(dx) < dp(12) || Math.abs(dx) < Math.abs(dy)) return true;
+started = true;
+dragging = true; // 挡住周期 render，免得预览块被重建冲掉
+v.getParent().requestDisallowInterceptTouchEvent(true);
+ghost = makeDragGhost(t);
+try { v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) {}
+}
+moveDragGhost(ghost, ev.getRawX(), ev.getRawY());
+updateDropPreview(t, ev.getRawX(), ev.getRawY());
+return true;
+}
+case MotionEvent.ACTION_UP: {
+boolean wasStarted = started;
+int dropMin = wasStarted? dropMinuteFor(ev.getRawY()) : -1;
+boolean inCanvas = wasStarted && pointInCanvas(ev.getRawX(), ev.getRawY());
+cleanupListDrag(ghost);
+ghost = null;
+started = false;
+dragging = false;
+v.getParent().requestDisallowInterceptTouchEvent(false);
+if (wasStarted) {
+if (inCanvas && dropMin >= 0) commitDrop(t, dropMin);
+else render(); // 拖回列表/日历外：取消，不写任何东西，重画复位
+} else {
+focusExpand(t.id); // 轻点＝在左栏展开
+}
+return true;
+}
+case MotionEvent.ACTION_CANCEL: {
+cleanupListDrag(ghost);
+ghost = null;
+started = false;
+dragging = false;
+render();
+return true;
+}
+}
+return false;
+}
+});
+return row;
+}
+
+/** 拖拽中的跟随影子块（挂在面板根上，尺寸照计划栏宽）。 */
+private TextView makeDragGhost(TaskItem t) {
+TextView g = new TextView(ctx);
+g.setText(t.title);
+g.setTextSize(11);
+g.setPadding(dp(6), dp(3), dp(6), dp(3));
+g.setSingleLine(true);
+g.setEllipsize(android.text.TextUtils.TruncateAt.END);
+GradientDrawable bg = new GradientDrawable();
+bg.setCornerRadius(dp(4));
+bg.setColor(Ui.dark(ctx) ? Color.rgb(38, 66, 99) : Color.rgb(187, 222, 251));
+bg.setStroke(dp(2), Ui.accent(ctx));
+g.setBackground(bg);
+g.setTextColor(Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161));
+g.setAlpha(0.92f);
+g.setElevation(dp(8));
+int w = lastPlanW > 0 ? lastPlanW : dp(120);
+addView(g, new FrameLayout.LayoutParams(w, dp(36)));
+return g;
+}
+
+private void moveDragGhost(View ghost, float rawX, float rawY) {
+if (ghost == null) return;
+int[] pl = new int[2];
+getLocationOnScreen(pl);
+ghost.setX(rawX - pl[0] - ghost.getWidth() / 4f);
+ghost.setY(rawY - pl[1] - ghost.getHeight() / 2f);
+}
+
+/** 落点是否落在日历画布上（屏幕坐标）。 */
+private boolean pointInCanvas(float rawX, float rawY) {
+if (canvas == null || canvas.getWidth() <= 0) return false;
+int[] cl = new int[2];
+canvas.getLocationOnScreen(cl);
+return rawX >= cl[0] && rawX <= cl[0] + canvas.getWidth()
+&& rawY >= cl[1] && rawY <= cl[1] + canvas.getHeight();
+}
+
+/** 手指 Y → 落点开始分钟（按上次渲染的轴几何，5 分钟吸附，夹在一天之内）。 */
+private int dropMinuteFor(float rawY) {
+if (canvas == null) return -1;
+int[] cl = new int[2];
+canvas.getLocationOnScreen(cl);
+int raw = lastAxisStart + Math.round((rawY - cl[1]) / (float) Math.max(1, lastScale));
+int snapped = Math.round(raw / 5f) * 5;
+return snapped;
+}
+
+/** 拖动中在计划栏画/更新落点预览块；手指不在日历上则收起预览。 */
+private void updateDropPreview(TaskItem t, float rawX, float rawY) {
+int durMin = Math.max(5, Math.round(t.durationMinutes * 1.5f));
+if (!pointInCanvas(rawX, rawY)) { hideDropPreview(); return; }
+int startMin = dropMinuteFor(rawY);
+startMin = Math.max(DAY_START_MIN, Math.min(startMin, 24 * 60 - durMin));
+if (dropPreview == null) {
+dropPreview = new TextView(ctx);
+dropPreview.setTextSize(10);
+dropPreview.setPadding(dp(4), dp(2), dp(2), dp(2));
+GradientDrawable bg = new GradientDrawable();
+bg.setCornerRadius(dp(4));
+bg.setColor(Color.argb(90, 255, 193, 7));
+bg.setStroke(dp(2), Color.rgb(255, 143, 0));
+dropPreview.setBackground(bg);
+dropPreview.setTextColor(Ui.text(ctx));
+canvas.addView(dropPreview);
+}
+dropPreview.setText(hhmm(startMin) + "–" + hhmm(startMin + durMin) + "\n" + t.title);
+FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+lastPlanW > 0 ? lastPlanW : dp(56), Math.max(dp(18), durMin * lastScale));
+lp.leftMargin = lastPlanX;
+lp.topMargin = (startMin - lastAxisStart) * lastScale;
+dropPreview.setLayoutParams(lp);
+dropPreview.setVisibility(View.VISIBLE);
+dropPreview.bringToFront();
+}
+
+private void hideDropPreview() {
+if (dropPreview != null) dropPreview.setVisibility(View.GONE);
+}
+
+private void cleanupListDrag(View ghost) {
+if (ghost != null) removeView(ghost);
+if (dropPreview != null) { canvas.removeView(dropPreview); dropPreview = null; }
+}
+
+/** 松手落定：块长＝计划时长 ×1.5（用户一贯的占时口径），经 sanction 入口 addScheduleBlock 落盘。 */
+private void commitDrop(final TaskItem t, int startMinRaw) {
+int durMin = Math.max(5, Math.round(t.durationMinutes * 1.5f));
+final int startMin = Math.max(DAY_START_MIN, Math.min(startMinRaw, 24 * 60 - durMin));
+final String newStart = hhmm(startMin), newEnd = hhmm(startMin + durMin);
+new Thread(() -> {
+String err = SyncManager.addScheduleBlock(ctx, t.id, newStart, newEnd);
+handler.post(() -> {
+if (err == null) {
+toast("「" + t.title + "」已排到 " + newStart + "–" + newEnd);
+} else {
+toast(err);
+}
+render();
+renderSplit();
+});
+}).start();
+}
+
+/**
+ * 左栏展开区：内容与操作逐项对齐主页 expansionView（v1.15.0）——笔记、元信息（开始时间/已用分段/
+ * 专注/闹钟）、操作 chips（开始暂停/编辑/闹钟/+15/完成）、子任务面板。数据走同一 TaskStore，
+ * 开始/暂停走本页 togglePlayTask（与主页 onPlay 同一条路径），完成走 SbSync.pushDoneAsync，
+ * 子任务走同一 SubtaskPanel 组件——不另起一套状态。保存一律 freshCopyOf（本页 render 会周期性
+ * store.load() 换对象，捕获的渲染对象随时可能过期）。
+ */
+private View expansionView(final TaskItem t) {
+final boolean done = t.isDoneToday();
+final boolean isRunningThis = TimerState.isRunning(ctx) && t.id.equals(TimerState.taskId(ctx));
+final boolean isPausedThis = !TimerState.isRunning(ctx) && t.id.equals(TimerState.pausedTaskId(ctx));
+LinearLayout exp = new LinearLayout(ctx);
+exp.setOrientation(LinearLayout.VERTICAL);
+exp.setBackgroundColor(Ui.muted(ctx));
+exp.setPadding(dp(10), dp(10), dp(10), dp(12));
+LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+elp.setMargins(0, 0, 0, dp(10));
+exp.setLayoutParams(elp);
+boolean hasNote = t.note != null && !t.note.trim().isEmpty();
+TextView note = new TextView(ctx);
+note.setText(hasNote ? t.note : Strings.noNote());
+note.setTextSize(13);
+note.setTextColor(hasNote ? Ui.text(ctx) : Ui.sub(ctx));
+note.setOnClickListener(v -> dialogNote(t));
+exp.addView(note);
+
+int usedMin = (int) (SessionLog.totalMsForTask(ctx, t.id) / 60000);
+int segs = SessionLog.countForTask(ctx, t.id)
++ (t.id.equals(SessionLog.openTaskId(ctx)) ? 1 : 0);
+String startPart = t.nextStartMs() > 0
+? Strings.metaStart(startCellText(t)) : Strings.metaNotStarted();
+String alarmPart = "";
+if (t.alarmMs() > 0) alarmPart += " · ⏰ " + t.alarmAt.substring(5).replace('T', ' ');
+if (t.alarmOnTimerEnd) {
+alarmPart += " · " + (Strings.en() ? "Rings at end" : "结束响铃");
+}
+TextView meta = new TextView(ctx);
+meta.setText(startPart + " · " + Strings.metaUsed(usedMin, segs)
++ " · " + Strings.metaFocus(focusCellText(t).toString()) + alarmPart);
+meta.setTextSize(12);
+meta.setTextColor(Ui.sub(ctx));
+meta.setPadding(0, dp(6), 0, 0);
+exp.addView(meta);
+
+LinearLayout chips = new LinearLayout(ctx);
+chips.setOrientation(LinearLayout.HORIZONTAL);
+chips.setPadding(0, dp(10), 0, 0);
+String primary = isRunningThis ? Strings.chipPause()
+: isPausedThis ? Strings.chipResume() : Strings.chipStart();
+chips.addView(chipCal(primary, true, v -> togglePlayTask(t.id)));
+chips.addView(chipCal(Strings.chipEdit(), false, v -> dialogEditMenu(t)));
+chips.addView(chipCal(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
+if (isRunningThis) {
+chips.addView(chipCal(Strings.chipPlus15(), false, v -> {
+TimerService.extendTimer(ctx, 15 * 60);
+toast(Strings.en() ? "Extended by 15 minutes" : "已加时 15 分钟");
+handler.postDelayed(this::afterTaskEdited, 650);
+}));
+}
+chips.addView(chipCal(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
+TaskItem c = freshCopyOf(t);
+if (done) c.markUndone(); else c.markDone();
+store.save();
+SbSync.pushDoneAsync(ctx, c.id);
+if (!done) focusTaskId = null;
+afterTaskEdited();
+if (!done) handler.postDelayed(() -> IdleGuard.fireNow(ctx), 1500);
+}));
+exp.addView(chips);
+
+// 子任务区：与主页、大悬浮窗共用同一面板组件
+View line2 = new View(ctx);
+line2.setBackgroundColor(Ui.line(ctx));
+LinearLayout.LayoutParams l2lp = new LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, 1);
+l2lp.setMargins(0, dp(12), 0, dp(8));
+line2.setLayoutParams(l2lp);
+exp.addView(line2);
+SubtaskPanel panel = new SubtaskPanel(ctx, false, false);
+panel.bind(t, calSubHost);
+exp.addView(panel);
+return exp;
+}
+
+/** 展开区 chips：与主页 chip() 同样式。 */
+private TextView chipCal(String label, boolean filled, View.OnClickListener cl) {
+TextView c = new TextView(ctx);
+c.setText(label);
+c.setTextSize(13);
+c.setGravity(Gravity.CENTER);
+c.setPadding(dp(14), dp(7), dp(14), dp(7));
+GradientDrawable g = new GradientDrawable();
+g.setCornerRadius(dp(17));
+if (filled) {
+g.setColor(Ui.accent(ctx));
+c.setTextColor(Ui.onAccent(ctx));
+} else {
+g.setColor(Ui.surface(ctx));
+g.setStroke(1, Ui.line(ctx));
+c.setTextColor(Ui.text(ctx));
+}
+c.setBackground(g);
+LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+lp.setMargins(0, 0, dp(8), 0);
+c.setLayoutParams(lp);
+c.setOnClickListener(cl);
+return c;
+}
+
+/** 保存前按 id 重取最新副本（与主页 freshCopyOf 同纪律，防旧副本整表覆盖）。 */
+private TaskItem freshCopyOf(TaskItem t) {
+store.load();
+TaskItem c = store.byId(t.id);
+return c != null ? c : t;
+}
+
+private void afterTaskEdited() {
+render();
+renderSplit();
+}
+
+private String mmss(long ms) {
+long s = Math.max(0, ms / 1000);
+return String.format(Locale.US, "%d:%02d", s / 60, s % 60);
+}
+
+private String hmOf(long ms) {
+Calendar c = Calendar.getInstance();
+c.setTimeInMillis(ms);
+return String.format(Locale.US, "%02d:%02d",
+c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+}
+
+private String startCellText(TaskItem t) {
+long ms = t.nextStartMs();
+if (ms <= 0) return "—";
+Calendar c = Calendar.getInstance();
+c.setTimeInMillis(ms);
+String day = String.format(Locale.US, "%04d-%02d-%02d",
+c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
+return day.equals(TaskItem.today()) ? hmOf(ms) : day.substring(5) + " " + hmOf(ms);
+}
+
+private String focusCellText(TaskItem t) {
+if ("block".equals(t.focusMode)) {
+return t.blockedApps.isEmpty() ? "禁（未选）"
+: "禁:" + AppLister.labelOf(ctx, t.blockedApps.get(0)) + (t.blockedApps.size() > 1 ? "+" + (t.blockedApps.size() - 1) : "");
+}
+if ("allow".equals(t.focusMode)) {
+return t.allowedApps.isEmpty() ? "仅（未选）"
+: "仅:" + AppLister.labelOf(ctx, t.allowedApps.get(0)) + (t.allowedApps.size() > 1 ? "+" + (t.allowedApps.size() - 1) : "");
+}
+return (t.focusRule == null || t.focusRule.isEmpty()) ? "＋专注" : "规则";
+}
+
+// ---------------- 左栏展开区用的编辑对话框（字段与保存路径逐项对齐主页） ----------------
+
+private void dialogNote(final TaskItem t) {
+EditText input = new EditText(ctx);
+input.setText(t.note == null ? "" : t.note);
+input.setSelection(input.getText().length());
+input.setMinLines(3);
+input.setGravity(Gravity.TOP);
+new AlertDialog.Builder(host)
+.setTitle("笔记 · " + t.title)
+.setView(wrapWithCopyButton(t, input, "note"))
+.setPositiveButton("保存", (dg, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.note = input.getText().toString().trim();
+cur.touch();
+store.save();
+afterTaskEdited();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void dialogEditMenu(final TaskItem t) {
+boolean en = Strings.en();
+String[] items = {
+en ? "Name & priority" : "名称与优先级",
+en ? "Contexts" : "情景",
+en ? "Deadline & start time" : "截止与开始时间",
+en ? "Length" : "时长",
+en ? "Focus rule" : "专注规则",
+en ? "Note" : "笔记",
+Strings.alarmTitle(),
+en ? "Reset timer" : "重置计时",
+};
+new AlertDialog.Builder(host)
+.setTitle(Strings.editMenuTitle())
+.setItems(items, (d, which) -> {
+switch (which) {
+case 0: dialogTitle(t); break;
+case 1: dialogScenarios(t); break;
+case 2: dialogDeadline(t); break;
+case 3: dialogDuration(t); break;
+case 4: dialogFocus(t); break;
+case 5: dialogNote(t); break;
+case 6: dialogAlarm(t); break;
+case 7: resetTaskFromCal(t); break;
+default: break;
+}
+})
+.show();
+}
+
+private void dialogTitle(final TaskItem t) {
+final EditText input = new EditText(ctx);
+input.setText(t.title);
+input.setSelectAllOnFocus(true);
+new AlertDialog.Builder(host)
+.setTitle("任务名称")
+.setView(input)
+.setPositiveButton("保存", (d, w) -> {
+String name = input.getText().toString().trim();
+if (!name.isEmpty()) {
+TaskItem cur = freshCopyOf(t);
+cur.title = name; cur.touch(); store.save(); afterTaskEdited();
+}
+})
+.setNeutralButton("设为必要/取消必要", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.priority = "must".equals(cur.priority) ? null : "must";
+cur.touch(); store.save(); afterTaskEdited();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void dialogScenarios(final TaskItem t) {
+LinkedHashSet<String> knownSet = new LinkedHashSet<>();
+knownSet.add("有网");
+knownSet.add("无网");
+knownSet.add("跟 AI 聊天");
+knownSet.addAll(store.allScenarios());
+knownSet.addAll(t.scenarios);
+final List<String> known = new ArrayList<>(knownSet);
+final Set<String> sel = new LinkedHashSet<>(t.scenarios);
+boolean[] checked = new boolean[known.size()];
+for (int i = 0; i < known.size(); i++) checked[i] = sel.contains(known.get(i));
+new AlertDialog.Builder(host)
+.setTitle("情景（可多选）")
+.setMultiChoiceItems(known.toArray(new String[0]), checked,
+(d, which, isChecked) -> {
+if (isChecked) sel.add(known.get(which));
+else sel.remove(known.get(which));
+})
+.setPositiveButton("保存", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.scenarios = new ArrayList<>(sel);
+cur.touch(); store.save(); afterTaskEdited();
+})
+.setNeutralButton("＋新增情景", (d, w) -> {
+final EditText input = new EditText(ctx);
+input.setHint("如：在书院、早上、跟 AI 聊天");
+new AlertDialog.Builder(host)
+.setTitle("新增情景")
+.setView(input)
+.setPositiveButton("添加", (d2, w2) -> {
+String s = input.getText().toString().trim();
+TaskItem cur = freshCopyOf(t);
+if (!s.isEmpty() && !cur.scenarios.contains(s)) {
+cur.scenarios.add(s);
+cur.touch(); store.save(); afterTaskEdited();
+}
+})
+.setNegativeButton("取消", null)
+.show();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void dialogDeadline(final TaskItem t) {
+LinearLayout box = new LinearLayout(ctx);
+box.setOrientation(LinearLayout.VERTICAL);
+box.setPadding(dp(16), dp(8), dp(16), 0);
+final CheckBox repeatBox = new CheckBox(ctx);
+repeatBox.setText("每日重复任务");
+repeatBox.setChecked("daily".equals(t.repeat));
+box.addView(repeatBox);
+final DatePicker picker = new DatePicker(ctx);
+Calendar cal = Calendar.getInstance();
+if (t.deadline != null) {
+try {
+String[] p = t.deadline.split("-");
+cal.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]));
+} catch (Exception ignored) {}
+}
+picker.init(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH), null);
+box.addView(picker);
+repeatBox.setOnCheckedChangeListener((b, isChecked) -> picker.setEnabled(!isChecked));
+picker.setEnabled(!repeatBox.isChecked());
+final String[] timeHolder = {t.deadlineTime};
+final Button timeBtn = new Button(ctx);
+final Runnable refreshTimeBtn = () -> timeBtn.setText(
+timeHolder[0] == null ? "完成时间（可选）：未设置" : "完成时间：" + timeHolder[0] + " 前");
+refreshTimeBtn.run();
+timeBtn.setOnClickListener(v -> {
+int hh = 18, mm = 0;
+if (timeHolder[0] != null) {
+try {
+String[] p = timeHolder[0].split(":");
+hh = Integer.parseInt(p[0]);
+mm = Integer.parseInt(p[1]);
+} catch (Exception ignored) {}
+}
+android.app.TimePickerDialog tp = new android.app.TimePickerDialog(host,
+(view, h2, m2) -> {
+timeHolder[0] = String.format(Locale.US, "%02d:%02d", h2, m2);
+refreshTimeBtn.run();
+}, hh, mm, true);
+tp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
+(d2, w2) -> { timeHolder[0] = null; refreshTimeBtn.run(); });
+tp.show();
+});
+box.addView(timeBtn);
+final String[] startHolder = {t.nextStartAt};
+final Button startBtn = new Button(ctx);
+final Runnable refreshStartBtn = () -> startBtn.setText(
+startHolder[0] == null ? "下次开始时间（可选）：未设置"
+: "下次开始时间：" + startHolder[0].replace('T', ' '));
+refreshStartBtn.run();
+startBtn.setOnClickListener(v -> {
+Calendar sc = Calendar.getInstance();
+if (startHolder[0] != null && startHolder[0].length() >= 10) {
+try {
+String[] dp2 = startHolder[0].substring(0, 10).split("-");
+sc.set(Integer.parseInt(dp2[0]), Integer.parseInt(dp2[1]) - 1, Integer.parseInt(dp2[2]));
+} catch (Exception ignored) {}
+}
+new android.app.DatePickerDialog(host, (dv, y, mo, da) -> {
+int sh = 9, sm = 0;
+if (startHolder[0] != null && startHolder[0].length() >= 16) {
+try {
+String[] tp2 = startHolder[0].substring(11, 16).split(":");
+sh = Integer.parseInt(tp2[0]);
+sm = Integer.parseInt(tp2[1]);
+} catch (Exception ignored) {}
+}
+android.app.TimePickerDialog stp = new android.app.TimePickerDialog(host,
+(tv, h3, m3) -> {
+startHolder[0] = String.format(Locale.US, "%04d-%02d-%02dT%02d:%02d", y, mo + 1, da, h3, m3);
+refreshStartBtn.run();
+}, sh, sm, true);
+stp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
+(d3, w3) -> { startHolder[0] = null; refreshStartBtn.run(); });
+stp.show();
+}, sc.get(Calendar.YEAR), sc.get(Calendar.MONTH), sc.get(Calendar.DAY_OF_MONTH)).show();
+});
+box.addView(startBtn);
+new AlertDialog.Builder(host)
+.setTitle("截止日期")
+.setView(box)
+.setPositiveButton("保存", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+if (repeatBox.isChecked()) {
+cur.repeat = "daily";
+cur.deadline = null;
+cur.deadlineTime = null;
+} else {
+cur.repeat = "none";
+cur.deadline = String.format(Locale.US, "%04d-%02d-%02d",
+picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
+cur.deadlineTime = timeHolder[0];
+}
+cur.nextStartAt = startHolder[0];
+cur.touch(); store.save(); afterTaskEdited();
+StartReminder.reschedule(ctx, store);
+})
+.setNeutralButton("清除日期", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.repeat = "none";
+cur.deadline = null;
+cur.deadlineTime = null;
+cur.nextStartAt = null;
+cur.touch(); store.save(); afterTaskEdited();
+StartReminder.reschedule(ctx, store);
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void dialogDuration(final TaskItem t) {
+LinearLayout box = new LinearLayout(ctx);
+box.setOrientation(LinearLayout.VERTICAL);
+box.setPadding(dp(16), dp(8), dp(16), 0);
+TextView planLabel = new TextView(ctx);
+planLabel.setText("计划时长（分钟）");
+box.addView(planLabel);
+final EditText planInput = new EditText(ctx);
+planInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+planInput.setText(String.valueOf(t.durationMinutes));
+planInput.setSelectAllOnFocus(true);
+box.addView(planInput);
+if (t.hasSubtasks()) {
+planInput.setEnabled(false);
+TextView lockNote = new TextView(ctx);
+lockNote.setText(Strings.subDurationLocked());
+lockNote.setTextSize(12);
+box.addView(lockNote);
+}
+TextView actualLabel = new TextView(ctx);
+actualLabel.setText("实际用时（分钟，可空）");
+box.addView(actualLabel);
+final EditText actualInput = new EditText(ctx);
+actualInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+if (t.actualMinutes > 0) actualInput.setText(String.valueOf(t.actualMinutes));
+actualInput.setHint("做完后填实际花了多少分钟");
+box.addView(actualInput);
+new AlertDialog.Builder(host)
+.setTitle("时长")
+.setView(box)
+.setPositiveButton("保存", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+try {
+int m = Integer.parseInt(planInput.getText().toString().trim());
+if (m > 0) cur.durationMinutes = m;
+} catch (NumberFormatException ignored) {}
+String a = actualInput.getText().toString().trim();
+if (a.isEmpty()) {
+cur.actualMinutes = 0;
+} else {
+try {
+int am = Integer.parseInt(a);
+if (am >= 0) cur.actualMinutes = am;
+} catch (NumberFormatException ignored) {}
+}
+cur.touch(); store.save(); afterTaskEdited();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void dialogFocus(final TaskItem t) {
+final List<AppLister.AppInfo> apps = AppLister.launchableApps(ctx);
+final String[] labels = new String[apps.size()];
+for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).label;
+final String[] mode = {t.focusMode == null ? "off" : t.focusMode};
+final List<String> blocked = new ArrayList<>(t.blockedApps);
+final List<String> allowed = new ArrayList<>(t.allowedApps);
+final String[] primary = {t.primaryApp};
+
+LinearLayout box = new LinearLayout(ctx);
+box.setOrientation(LinearLayout.VERTICAL);
+box.setPadding(dp(16), dp(8), dp(16), 0);
+
+final EditText ruleInput = new EditText(ctx);
+ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站（Muse 会据此翻译成要拦/只许用的软件名单）");
+ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
+ruleInput.setMinLines(2);
+ruleInput.setTextSize(15);
+box.addView(wrapWithCopyButton(t, ruleInput, "rule"));
+
+final TextView summary = new TextView(ctx);
+summary.setTextSize(13);
+summary.setTextColor(Color.DKGRAY);
+summary.setPadding(0, dp(8), 0, dp(4));
+
+final Button[] modeBtns = new Button[3];
+final String[] modeVals = {"off", "block", "allow"};
+final String[] modeNames = {"不监测", "黑名单", "白名单"};
+final Runnable[] refresh = new Runnable[1];
+refresh[0] = () -> {
+for (int i = 0; i < 3; i++) {
+modeBtns[i].setBackgroundColor(modeVals[i].equals(mode[0])
+? Color.rgb(46, 125, 50) : Color.rgb(189, 189, 189));
+modeBtns[i].setTextColor(Color.WHITE);
+}
+summary.setText("拦截 " + blocked.size() + " 个 · 允许 " + allowed.size() + " 个 · 主软件："
++ (primary[0] == null ? "无（跳回当前任务页）" : AppLister.labelOf(ctx, primary[0])));
+};
+LinearLayout modeRow = new LinearLayout(ctx);
+modeRow.setOrientation(LinearLayout.HORIZONTAL);
+for (int i = 0; i < 3; i++) {
+final int idx = i;
+modeBtns[i] = new Button(ctx);
+modeBtns[i].setText(modeNames[i]);
+modeBtns[i].setTextSize(14);
+modeBtns[i].setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+modeBtns[i].setOnClickListener(v -> { mode[0] = modeVals[idx]; refresh[0].run(); });
+modeRow.addView(modeBtns[i]);
+}
+box.addView(modeRow);
+box.addView(summary);
+
+Button pickBlocked = new Button(ctx);
+pickBlocked.setText("选择要拦截的软件（黑名单）");
+pickBlocked.setOnClickListener(v -> pickAppsMulti("拦截这些软件", apps, labels, blocked, refresh[0]));
+box.addView(pickBlocked);
+Button pickAllowed = new Button(ctx);
+pickAllowed.setText("选择只允许用的软件（白名单）");
+pickAllowed.setOnClickListener(v -> pickAppsMulti("只允许这些软件", apps, labels, allowed, refresh[0]));
+box.addView(pickAllowed);
+Button pickPrimary = new Button(ctx);
+pickPrimary.setText("选择主软件（被拦下时跳回它）");
+pickPrimary.setOnClickListener(v -> {
+String[] items = new String[labels.length + 1];
+items[0] = "无（跳回知行的当前任务页）";
+System.arraycopy(labels, 0, items, 1, labels.length);
+new AlertDialog.Builder(host)
+.setTitle("主软件")
+.setItems(items, (d, which) -> {
+primary[0] = which == 0 ? null : apps.get(which - 1).pkg;
+refresh[0].run();
+})
+.show();
+});
+box.addView(pickPrimary);
+refresh[0].run();
+
+new AlertDialog.Builder(host)
+.setTitle("专注规则")
+.setView(box)
+.setPositiveButton("保存", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.focusRule = ruleInput.getText().toString().trim();
+cur.focusMode = mode[0];
+cur.blockedApps = new ArrayList<>(blocked);
+cur.allowedApps = new ArrayList<>(allowed);
+cur.primaryApp = primary[0];
+cur.touch();
+store.save();
+afterTaskEdited();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+private void pickAppsMulti(String title, List<AppLister.AppInfo> apps, String[] labels,
+List<String> target, Runnable onDone) {
+final Set<String> sel = new LinkedHashSet<>(target);
+boolean[] checked = new boolean[apps.size()];
+for (int i = 0; i < apps.size(); i++) checked[i] = sel.contains(apps.get(i).pkg);
+new AlertDialog.Builder(host)
+.setTitle(title)
+.setMultiChoiceItems(labels, checked, (d, which, isChecked) -> {
+if (isChecked) sel.add(apps.get(which).pkg);
+else sel.remove(apps.get(which).pkg);
+})
+.setPositiveButton("确定", (d, w) -> {
+target.clear();
+target.addAll(sel);
+onDone.run();
+})
+.setNegativeButton("取消", null)
+.show();
+}
+
+/** 闹钟设置：与主页 dialogAlarm 同字段（alarmAt 闹钟时间＋结束响铃开关）。 */
+private void dialogAlarm(final TaskItem t) {
+boolean en = Strings.en();
+LinearLayout box = new LinearLayout(ctx);
+box.setOrientation(LinearLayout.VERTICAL);
+box.setPadding(dp(16), dp(8), dp(16), 0);
+final String[] alarmHolder = {t.alarmAt};
+final Button alarmBtn = new Button(ctx);
+final Runnable refreshAlarmBtn = () -> alarmBtn.setText(
+alarmHolder[0] == null
+? Strings.alarmTimeLabel() + "：" + Strings.alarmNotSet()
+: Strings.alarmTimeLabel() + "：" + alarmHolder[0].replace('T', ' '));
+refreshAlarmBtn.run();
+alarmBtn.setOnClickListener(v -> {
+final String init = alarmHolder[0] != null ? alarmHolder[0] : t.nextStartAt;
+Calendar ac = Calendar.getInstance();
+if (init != null && init.length() >= 10) {
+try {
+String[] dp2 = init.substring(0, 10).split("-");
+ac.set(Integer.parseInt(dp2[0]), Integer.parseInt(dp2[1]) - 1, Integer.parseInt(dp2[2]));
+} catch (Exception ignored) {}
+}
+new android.app.DatePickerDialog(host, (dv, y, mo, da) -> {
+int ah = 7, am2 = 0;
+if (init != null && init.length() >= 16) {
+try {
+String[] tp2 = init.substring(11, 16).split(":");
+ah = Integer.parseInt(tp2[0]);
+am2 = Integer.parseInt(tp2[1]);
+} catch (Exception ignored) {}
+}
+android.app.TimePickerDialog atp = new android.app.TimePickerDialog(host,
+(tv, h3, m3) -> {
+alarmHolder[0] = String.format(Locale.US, "%04d-%02d-%02dT%02d:%02d", y, mo + 1, da, h3, m3);
+refreshAlarmBtn.run();
+}, ah, am2, true);
+atp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL,
+en ? "Clear" : "清除时间",
+(d3, w3) -> { alarmHolder[0] = null; refreshAlarmBtn.run(); });
+atp.show();
+}, ac.get(Calendar.YEAR), ac.get(Calendar.MONTH), ac.get(Calendar.DAY_OF_MONTH)).show();
+});
+box.addView(alarmBtn);
+final CheckBox endBox = new CheckBox(ctx);
+endBox.setText(Strings.alarmRingOnEnd());
+endBox.setChecked(t.alarmOnTimerEnd);
+box.addView(endBox);
+new AlertDialog.Builder(host)
+.setTitle(Strings.alarmTitle())
+.setView(box)
+.setPositiveButton(en ? "Save" : "保存", (d, w) -> {
+TaskItem cur = freshCopyOf(t);
+cur.alarmAt = alarmHolder[0];
+cur.alarmOnTimerEnd = endBox.isChecked();
+cur.touch(); store.save(); afterTaskEdited();
+AlarmScheduler.rescheduleAll(ctx, store);
+})
+.setNegativeButton(en ? "Cancel" : "取消", null)
+.show();
+}
+
+/** 重置计时：与主页 resetTask 同处理（别的任务在跑→先过暂停卡再开始）。 */
+private void resetTaskFromCal(final TaskItem t) {
+if (TimerState.isRunning(ctx) && !t.id.equals(TimerState.taskId(ctx))) {
+final String curTitle = TimerState.taskTitle(ctx);
+PauseFlow.ask(host, curTitle, ch -> {
+TimerService.pauseWithReminder(ctx, ch.delayMs, ch.reason, ch.emoji, ch.silent);
+handler.postDelayed(() -> startTaskTimer(t), 350);
+PauseFlow.armRemindAfterSwitch(ctx, ch.delayMs);
+});
+} else {
+startTaskTimer(t);
+}
+toast("已重置，从 0 重新开始：" + t.title);
+}
+
+/** 子任务编辑（新增 index=-1 / 改名改分钟 / 删除带二次确认）：与主页 dialogSubtask 同字段同落盘。 */
+private void dialogSubtask(final TaskItem t, final int index) {
+final Subtask cur = index >= 0 && index < t.subtasks.size() ? t.subtasks.get(index) : null;
+LinearLayout box = new LinearLayout(ctx);
+box.setOrientation(LinearLayout.VERTICAL);
+box.setPadding(dp(16), dp(8), dp(16), 0);
+final EditText nameIn = new EditText(ctx);
+nameIn.setHint(Strings.subNameHint());
+if (cur != null) nameIn.setText(cur.title);
+box.addView(nameIn);
+final EditText minIn = new EditText(ctx);
+minIn.setHint(Strings.subMinutesHint());
+minIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+minIn.setText(cur != null ? String.valueOf(cur.minutes) : "5");
+box.addView(minIn);
+AlertDialog.Builder b = new AlertDialog.Builder(host)
+.setTitle(cur == null ? Strings.subEditNew() : Strings.subEditTitle())
+.setView(box)
+.setPositiveButton(Strings.subSave(), (d, w) -> {
+TaskItem task = freshCopyOf(t);
+String name = nameIn.getText().toString().trim();
+if (name.isEmpty()) name = Strings.subtasksTitle() + (task.subtasks.size() + 1);
+int mins = 5;
+try {
+mins = Integer.parseInt(minIn.getText().toString().trim());
+} catch (NumberFormatException ignored) {}
+if (mins <= 0) mins = 5;
+if (cur == null) {
+task.subtasks.add(Subtask.create(name, mins));
+} else {
+Subtask s = null;
+for (Subtask x : task.subtasks) if (x.id.equals(cur.id)) s = x;
+if (s == null) return;
+s.title = name;
+s.minutes = mins;
+}
+task.syncDurationFromSubtasks();
+task.touch();
+store.save();
+afterTaskEdited();
+})
+.setNegativeButton(Strings.btnCancel(), null);
+if (cur != null) {
+b.setNeutralButton(Strings.subDelete(), (d, w) -> {
+new AlertDialog.Builder(host)
+.setMessage(Strings.subDeleteConfirm())
+.setPositiveButton(Strings.subDelete(), (d2, w2) -> {
+TaskItem task = freshCopyOf(t);
+for (int i = 0; i < task.subtasks.size(); i++) {
+if (task.subtasks.get(i).id.equals(cur.id)) {
+task.subtasks.remove(i);
+break;
+}
+}
+task.syncDurationFromSubtasks();
+task.touch();
+store.save();
+afterTaskEdited();
+})
+.setNegativeButton(Strings.btnCancel(), null)
+.show();
+});
+}
+b.show();
+}
+
+/** 子任务面板宿主（左栏）：与主页 subtaskHost 同口径，落盘后重画日历与左栏。 */
+private final SubtaskPanel.Host calSubHost = new SubtaskPanel.Host() {
+@Override public void onSubtasksEdited(TaskItem t) {
+store.save();
+afterTaskEdited();
+}
+@Override public void requestEditSubtask(TaskItem t, int index) {
+dialogSubtask(t, index);
+}
+@Override public int runningIndex(TaskItem t) {
+if (TimerState.isRunning(ctx)
+&& t.id.equals(TimerState.taskId(ctx))
+&& TimerState.subActive(ctx)) {
+return TimerState.subIndex(ctx);
+}
+return -1;
+}
+@Override public String runningRemainText(TaskItem t) {
+return mmss(Math.max(0, TimerState.subEndAt(ctx) - System.currentTimeMillis()));
+}
+@Override public String headerRightText(TaskItem t) {
+int ri = runningIndex(t);
+if (ri >= 0) {
+return Strings.subProgress(ri + 1, TimerState.subCount(ctx), TimerState.subTitle(ctx));
+}
+if (t.hasSubtasks()) return Strings.subTotalNote(t.subtasksTotalMinutes());
+return null;
+}
+};
+
+/** 把任务全字段文案复制到剪贴板（与主页 copyTaskInfo 同一份 buildInfo 文案）。 */
+private void copyTaskInfo(final TaskItem t, String noteOverride, String ruleOverride) {
+String oldNote = t.note, oldRule = t.focusRule;
+if (noteOverride != null) t.note = noteOverride;
+if (ruleOverride != null) t.focusRule = ruleOverride;
+String info = AiLaunchActivity.buildInfo(ctx, t);
+t.note = oldNote;
+t.focusRule = oldRule;
+ClipboardManager cm = (ClipboardManager) ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("知行任务", info));
+toast("已复制任务信息");
+}
+
+/** 给整段内容编辑框套一层：右上方常驻「复制」按钮（与主页 v1.6.1 同一便利件）。 */
+private FrameLayout wrapWithCopyButton(final TaskItem t, final EditText input, final String kind) {
+FrameLayout wrap = new FrameLayout(ctx);
+wrap.addView(input, new FrameLayout.LayoutParams(
+FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+input.setPadding(input.getPaddingLeft(), input.getPaddingTop(), dp(56), input.getPaddingBottom());
+TextView btn = new TextView(ctx);
+btn.setText("复制");
+btn.setTextSize(12);
+btn.setTextColor(Color.WHITE);
+btn.setBackgroundColor(Color.argb(210, 97, 97, 97));
+btn.setPadding(dp(10), dp(4), dp(10), dp(4));
+FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
+FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+Gravity.TOP | Gravity.END);
+blp.setMargins(0, dp(4), dp(6), 0);
+btn.setLayoutParams(blp);
+btn.setOnClickListener(v -> {
+if ("note".equals(kind)) copyTaskInfo(t, input.getText().toString(), null);
+else if ("rule".equals(kind)) copyTaskInfo(t, null, input.getText().toString());
+else copyTaskInfo(t, null, null);
+});
+wrap.addView(btn);
+return wrap;
 }
 
 // ---------------- 开始 / 暂停（与主页 ▶ 同一条路径） ----------------

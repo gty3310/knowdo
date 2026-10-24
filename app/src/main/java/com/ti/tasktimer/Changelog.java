@@ -36,6 +36,26 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e115 = new Entry("v1.15.0", "2026-10-24");
+        e115.add(new Group(s("新功能", "New"),
+                s("日历里能把任务拖进去了——打开日历的「任务列表」，左边出任务、右边是日历，"
+                        + "把任务拖到想排的时刻就生成计划块（块长按计划时长 ×1.5，与排日程的老规矩一致）。",
+                  "You can now drag tasks into the calendar — open the calendar's Task list: tasks on the "
+                        + "left, calendar on the right. Drag a task to the moment you want and a plan block "
+                        + "is created (its length is the task's planned length ×1.5, the usual scheduling rule)."),
+                s("在日历里点任何一个任务块，左边会展开那个任务，笔记、子任务、开始/完成都能直接操作，"
+                        + "和主页展开任务行是同一套。",
+                  "Tap any task block in the calendar and that task expands on the left — note, subtasks, "
+                        + "start/finish, all right there, the same expansion as on the home page.")));
+        e115.why = s("排一天计划时不用在任务列表和日历之间来回跳；看到日历上的一块就能就地打开它。",
+                "So planning a day doesn't mean jumping back and forth between the task list and the "
+                        + "calendar — see a block on the calendar, open it right there.");
+        e115.tryIt = s("主页点日历图标打开日历 → 点「任务列表」→ 把一个任务拖到右边某个时刻；"
+                        + "再点日历上任意一个任务块，看左边是不是展开了它。",
+                "Open the calendar from the home page → tap Task list → drag a task onto a time on the "
+                        + "right; then tap any task block in the calendar and watch it expand on the left.");
+        out.add(e115);
+
         Entry e114 = new Entry("v1.14.0", "2026-10-24");
         e114.add(new Group(s("新功能", "New"),
                 s("没任务时它会出声催你：超过 5 分钟没有任何任务在计时，全屏弹出「接下来干什么」并响起鸟鸣，"
@@ -172,28 +192,6 @@ public final class Changelog {
                 "Big tasks invite delay; small pieces are easier to start and easier to finish. And a pause "
                         + "shouldn't be a void — it is a small named task with a length of its own.");
         out.add(e111);
-
-        Entry e110 = new Entry("v1.10.0", "2026-10-24");
-        e110.add(new Group(s("新功能", "New"),
-                s("「任务衔接守卫」：App 永不允许出现无状态的空档——做完一件事、回到主页，"
-                        + "或巡检发现没有任务在跑时，全屏弹出「接下来干什么？」：填名字、选时长、点开始，"
-                        + "新任务立刻开始计时；连睡觉也要建一个「睡觉」任务占位。",
-                  "\"Next-task guard\": the app never allows a stateless gap — after you finish something, return "
-                        + "home, or whenever the watchdog finds nothing running, a full-screen \"What's next?\" "
-                        + "asks for a name and a length, and starts timing the new task immediately. Even sleep "
-                        + "gets a \"sleep\" task.")));
-        e110.add(new Group(s("改进", "Improved"),
-                s("暂停在所有入口都必须先选时长（悬浮窗、任务行、展开面板、日历块、暂停并切换、重置），"
-                        + "没有「无限期暂停」了；暂停叫回页多了「换下一个任务」，能直达「下一个任务」页。",
-                  "Pausing anywhere — floating window, task rows, the expansion panel, calendar blocks, switch, "
-                        + "reset — now always asks for a length first; there is no open-ended pause any more. The "
-                        + "pause call-back page can also jump straight to the \"What's next?\" page.")));
-        e110.why = s("最容易滑走的就是两件事之间的空档：下一件还没定，手就先摸向了手机。"
-                        + "让任何时刻只剩计时、带时长的暂停、填下一个任务这三种状态，分神就没有缝可钻。",
-                "The gap between two tasks is where time slips away: nothing decided yet, and the hand reaches "
-                        + "for the phone. With only three states at any moment — timing, a timed pause, or filling "
-                        + "in the next task — distraction has no crack to slip through.");
-        out.add(e110);
 
         return out;
     }

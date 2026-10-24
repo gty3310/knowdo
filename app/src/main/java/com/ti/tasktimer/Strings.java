@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.13.0 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.15.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -294,6 +294,9 @@ public final class Strings {
     }
     public static String calUnscheduledTitle() { return s("未排入日程的任务", "Not scheduled yet"); }
     public static String calTodayTasksTitle() { return s("今天的任务（还没排日程）", "Today's tasks (no schedule yet)"); }
+    public static String calTaskListBtn() { return s("任务列表", "Task list"); }
+    public static String calSplitBack() { return s("‹ 未排列表", "‹ Unscheduled list"); }
+    public static String calDragHint() { return s("按住任务往右拖进日历，松手就排到那个时刻；点任务行可在左边展开。", "Hold a task and drag it into the calendar on the right — it lands at that time. Tap a row to expand it here."); }
     public static String calEmptyAllDone() { return s("（今天没有未完成的任务）", "(Nothing left today)"); }
     public static String calEmptyAllScheduled() { return s("（未完成的任务都已排入日程）", "(Everything is scheduled)"); }
     public static String calGcalTitle() { return s("今天的 Google 日历日程", "Google Calendar today"); }
@@ -335,8 +338,8 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.14.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.14.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.15.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.15.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
     /** [标题, 正文] × 20 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
@@ -480,6 +483,12 @@ public final class Strings {
          + "Muse 之后重排时会把你手动拖过的块当作固定块，不再挪回去。\n"
          + "计划块右上角和未排入日程的任务行上都有一个 ▶：点一下就立即开始这个任务计时"
          + "（悬浮窗会自动切换到它），正在计时的那个显示 ⏸，点它暂停，和主界面的开始/暂停是同一套。\n"
+         + "分屏排计划（v1.15.0）：点日历上方的「任务列表」，左边出任务列表（今天还没排进日程的未完成任务）、右边还是日历。"
+         + "按住一个任务往右拖进日历，拖动时计划栏会出现预览块，松手落在哪个时刻就排到哪个时刻（5 分钟对齐）；"
+         + "块长按任务计划时长 ×1.5 占时（和排日程的老规矩一致）。拖回左边或拖到日历外松手就是取消，不会写任何东西。\n"
+         + "在日历里点任何一个计划块（任务块），左边会自动打开任务列表并展开那个任务：笔记、已用分段、子任务都在，"
+         + "开始/暂停、编辑、闹钟、加时、完成都能直接操作，和主界面展开任务行是同一套；"
+         + "左边的列表行点一下也能展开。Google 日历的块点开仍只是看全名，不展开。\n"
          + "最左窄栏里的灰紫色块是你的 Google 日历日程（Muse 同步过来的已有安排）："
          + "只在那一栏里显示，不会压到计划块上；只能看、点一下显示全名和时间，不能拖、也没有 ▶；"
          + "「问 AI」时只会把它们列出来给你参考，并明确告诉 Muse：排日程时不用管它们、不用避让。"},
@@ -710,6 +719,11 @@ public final class Strings {
          + "You can move a plan block yourself: long-press to pick it up (it lifts slightly), drag up/down to the new spot, 5-minute snapping, and letting go saves it back to the bridge — "
          + "the app's only schedule write, changing only that block's start/end; later, Muse treats blocks you dragged as fixed and won't move them back.\n"
          + "Plan blocks and unscheduled task rows carry a ▶: tap to start timing that task immediately (the floating window switches to it); the running one shows ⏸ — tap to pause. Same path as the home page's Start/Pause.\n"
+         + "Split planning (v1.15.0): tap Task list above the calendar and the left half lists today's unscheduled, unfinished tasks while the calendar stays on the right. "
+         + "Hold a task and drag it into the calendar — a preview block follows in the Plan column; let go and it is scheduled at that moment (5-minute snapping), "
+         + "occupying its planned length ×1.5 like always. Drag back out or off the calendar to cancel; nothing is written.\n"
+         + "Tap any plan block (task block) in the calendar and the left side opens the task list and expands that task: note, timed segments and subtasks, "
+         + "with Start/Pause, Edit, Alarm, +15 and Done all working — the same expansion as the home page. Rows in the left list expand on tap too. Google Calendar blocks still only show their full name.\n"
          + "Grey-purple blocks in the left Calendar column are your Google Calendar events (arrangements Muse synced over): they render only inside that narrow column and never cover plan blocks; "
          + "view-only — tap for the full name and time; they can't be dragged and have no ▶. "
          + "Ask AI merely lists them for your reference and tells Muse explicitly: when planning the schedule, ignore them — no need to work around them."},

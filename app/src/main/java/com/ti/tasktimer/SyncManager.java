@@ -211,14 +211,14 @@ public class SyncManager {
     /**
      * 【App 对 schedule 的唯一写入口】（用户 2026-10-24 定案，随 v1.6.2 落地）
      *
-     * 只允许一件事：用户在日历页把「今天」的某个计划块拖到了新时间，把那个块的
-     * start/end 改掉（时长不变）。除此之外的任何代码都不许动 schedule——它仍是
-     * Muse 排的日程，本 App 只是保管员。
+     * 只允许两件事（v1.15.0 起）：① 用户在日历页把「今天」的某个计划块拖到了新时间，
+     * 把那个块的 start/end 改掉（时长不变，本方法 updateScheduleBlock）；② 用户把一个
+     * 未排任务从日历左栏拖进今天的日历，在落点新建一个计划块（addScheduleBlock）。
+     * 除此之外的任何代码都不许动 schedule——它仍是 Muse 排的日程，本 App 只是保管员。
      *
-     * 纪律（与 syncNow 同一条）：先读远端最新版 → 只替换命中的那个块（taskId＋
-     * oldStart 双中才算，防桥上已变还硬写）→ 写回 → 再读一次校验该块已是新时间。
-     * 任务表与 guardEvents 用刚读到的远端原样带回，本方法不碰它们。
-     * 命中并写成功时同步更新本地 schedule 缓存，日历页立刻能重渲染。
+     * 纪律（与 syncNow 同一条）：先读远端最新版 → 只改/只加命中的那个块 → 写回 →
+     * 再读一次校验。任务表与 guardEvents 用刚读到的远端原样带回，本方法不碰它们。
+     * 写成功时同步更新本地 schedule 缓存，日历页立刻能重渲染。
      * 必须在后台线程调用。返回 null 表示成功，否则是可读的失败原因。
      */
     public static String updateScheduleBlock(Context c, String taskId, String oldStart,
@@ -272,6 +272,60 @@ public class SyncManager {
             return ok ? null : "已写回但回读没看到新时间，请刷新页面确认";
         } catch (Exception e) {
             return "保存新时间失败：" + e.getMessage();
+        }
+    }
+
+    /**
+     * 【唯一写入口之二，v1.15.0】用户把一个未排任务拖进今天的日历：在落点新建计划块。
+     * 纪律与 updateScheduleBlock 同一条：先读远端最新版 → 只往 blocks 里加这一块 →
+     * 写回 → 回读校验该块已在。远端还没有今天的日程（无 schedule 或 date 不是今天）
+     * 时，就地为今天新建一份只含这一块的日程——「拖进来」本身就是给今天排，
+     * 不因此报错。任务表/guardEvents 用远端原样带回，一个字不改。
+     * 必须在后台线程调用。返回 null 表示成功，否则是可读的失败原因。
+     */
+    public static String addScheduleBlock(Context c, String taskId, String newStart, String newEnd) {
+        if (isSupabaseMode(c)) return SbSync.addScheduleBlock(c, taskId, newStart, newEnd);
+        Uri uri = getUri(c);
+        if (uri == null) return "尚未选择桥文件，无法保存计划块";
+        try {
+            RemoteSnapshot remote = readRemote(c, uri);
+            JSONObject sch = remote.schedule;
+            if (sch == null || !TaskItem.today().equals(sch.optString("date", ""))) {
+                sch = new JSONObject();
+                sch.put("date", TaskItem.today());
+                sch.put("blocks", new JSONArray());
+            }
+            JSONArray blocks = sch.optJSONArray("blocks");
+            if (blocks == null) { blocks = new JSONArray(); sch.put("blocks", blocks); }
+            JSONObject nb = new JSONObject();
+            nb.put("taskId", taskId);
+            nb.put("start", newStart);
+            nb.put("end", newEnd);
+            blocks.put(nb);
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", "KnowDo App（用户把任务拖进日历）");
+            prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+            TaskStore carrier = new TaskStore(c);
+            carrier.tasks.clear();
+            carrier.tasks.addAll(remote.tasks.values());
+            if (!writeRemote(c, uri, carrier, remote.guardEvents, sch)) {
+                return "回写桥文件失败（未能打开输出流）";
+            }
+            RemoteSnapshot check = readRemote(c, uri);
+            boolean ok = false;
+            if (check.schedule != null) {
+                JSONArray cb = check.schedule.optJSONArray("blocks");
+                if (cb != null) for (int i = 0; i < cb.length(); i++) {
+                    JSONObject o = cb.optJSONObject(i);
+                    if (o == null) continue;
+                    if (taskId.equals(o.optString("taskId", ""))
+                            && newStart.equals(o.optString("start", ""))
+                            && newEnd.equals(o.optString("end", ""))) { ok = true; break; }
+                }
+            }
+            return ok ? null : "已写回但回读没看到新块，请刷新页面确认";
+        } catch (Exception e) {
+            return "保存计划块失败：" + e.getMessage();
         }
     }
 
