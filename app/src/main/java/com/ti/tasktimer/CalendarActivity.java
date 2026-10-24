@@ -194,7 +194,7 @@ if (syncing) { render(); return;}
 syncing = true;
 new Thread(() -> {
 try {
-String r = SyncManager.syncNow(this, store);
+String r = SyncManager.syncNowSmart(this, store);
 SyncManager.setLastResult(this, r);
 } catch (Exception ignored) {}
 handler.post(() -> {

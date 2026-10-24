@@ -67,6 +67,30 @@ public class SyncManager {
         prefs(c).edit().putStringSet("autostart_handled", s).apply();
     }
 
+    // ---- 同步模式（v1.7.0）：登录过 Supabase 后进入 Supabase 模式，Drive 桥轮询停用 ----
+    public static boolean isSupabaseMode(Context c) {
+        return prefs(c).getBoolean("sb_mode", false);
+    }
+
+    public static void setSupabaseMode(Context c, boolean on) {
+        prefs(c).edit().putBoolean("sb_mode", on).apply();
+    }
+
+    /** 同步总入口：Supabase 模式走 SbSync，否则走桥。MainActivity / CalendarActivity 都从这里进。 */
+    public static String syncNowSmart(Context c, TaskStore store) {
+        return isSupabaseMode(c) ? SbSync.syncNow(c, store) : syncNow(c, store);
+    }
+
+    /** Supabase 同步把云端 schedule 写进与桥时代相同的本地缓存（CalendarActivity 读口不变）。 */
+    public static void cacheSchedule(Context c, JSONObject sch) {
+        if (sch != null) prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+    }
+
+    /** Supabase 同步把云端 gcal 写进与桥时代相同的本地缓存（只读渲染，App 不改）。 */
+    public static void cacheGcal(Context c, JSONObject gcal) {
+        if (gcal != null) prefs(c).edit().putString(KEY_GCAL, gcal.toString()).apply();
+    }
+
     /** 执行一次同步；返回结果说明。必须在后台线程调用。 */
     public static String syncNow(Context c, TaskStore store) {
         Uri uri = getUri(c);
@@ -193,6 +217,7 @@ public class SyncManager {
      */
     public static String updateScheduleBlock(Context c, String taskId, String oldStart,
                                              String newStart, String newEnd) {
+        if (isSupabaseMode(c)) return SbSync.updateScheduleBlock(c, taskId, oldStart, newStart, newEnd);
         Uri uri = getUri(c);
         if (uri == null) return "尚未选择桥文件，无法保存新时间";
         try {

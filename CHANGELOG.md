@@ -2,6 +2,14 @@
 
 （v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## v1.7.0（versionCode 30，2026-10-24）
+
+1. **同步层换 Supabase（云端数据库）**：主界面新增「账号」入口，邮箱+密码注册/登录后进入 Supabase 模式（Drive 桥轮询随即停用，退出登录可回桥模式；未登录不挡本地使用）。合并纪律与桥时代完全一致：按 id 对齐、updated_at 新者胜、墓碑不复活。首次登录且云端为空时，本机任务全量成为该用户云端数据（播种）再拉取合并，数据不丢、不出现空列表。之后本地变更走 PostgREST 差异 upsert、远端变更走 Realtime（Phoenix WebSocket）实时合并（含悬浮窗）；断网时差异即队列，恢复后先推后拉。主界面状态行显示「未登录 / 已同步 / 待同步 N 条 / 同步中」。gcal 仍只读渲染、schedule 仍只有日历拖拽一个写入口，均改走云端 user_state。
+2. **跨设备计时**：user_state.timer_state 是一台逻辑计时器——本端开始/暂停/继续/加时/结束即写云端；另一端 Realtime 收到后镜像出严格对齐同一结束点的倒计时，过半/结束检查页双端照常触发；任一端处理（做完/加时）后写状态、另一端跟随（开着的检查页自动关闭/更新）。镜像只落 TimerState，不在镜像端新开 SessionLog/守卫/屏幕采样。autoStart 改为实时消费：任务新增或 auto_start 置 true 且本机没在计时该任务，立即开始（在跑则按原语义留待空闲轮次），消费后回写 false 防两端重复启动；App 启动与每次对账都会补上离线期间漏掉的 autoStart 与计时状态。
+3. **实现要点**：不引官方 SDK——Auth/PostgREST 走 HttpURLConnection，Realtime 手写 Phoenix 协议客户端（join/25 秒心跳/access_token 更新/断线退避重连+重连后全量对账），WebSocket 只引 org.java-websocket 一个小库。publishable key 构建时从本地文件 supabase_public_key.txt 生成 SupaSecrets.java 注入（与时习 store_token 同办法），两文件均 gitignore、永不入库；服务端按账号 RLS 隔离。
+4. **帮助页新增第十四节**：Supabase 登录与跨设备计时的说明。
+5. **已知缺口**：服务端 tasks 表暂无 deadline_time（完成时分）与 actual_minutes（实际用时）两列，这两项暂只存本机、合并时本地保全不丢，待服务端补列后自动纳入同步（App 每次同步会探测这两列是否存在）。
+
 ## v1.6.2（versionCode 29，2026-10-24）
 
 1. **悬浮窗跳转后缩回中号（用户定案）**：在 EDIT 大卡点「AI」或「打开知行」后，悬浮窗自动缩回 MINI 中号——这是明确要的行为，本版在两个按钮上显式落定，不再时缩时不缩；缩回前会先把正在写的笔记落盘，AI 读到的文案带最新笔记。用户手动选的模式记忆不变。

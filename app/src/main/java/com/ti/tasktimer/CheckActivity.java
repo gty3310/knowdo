@@ -26,9 +26,24 @@ public class CheckActivity extends Activity {
     private int type;
     private LinearLayout root;
 
+    // 跨设备跟随（v1.7.0）：另一端已处理（结束/加时/换任务）时，本页若还在显就关掉，别停在过期状态上
+    private final android.content.BroadcastReceiver timerRemoteReceiver =
+            new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context c, Intent i) {
+                    if (!TimerState.isRunning(CheckActivity.this)) {
+                        finish(); // 远端已结束/停止：本页没有存在的意义了
+                    } else if (type == AlertHelper.TYPE_END) {
+                        finish(); // 还在跑但结束点已被远端改动（多半是加时）：旧结束页过期
+                    }
+                }
+            };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        android.content.IntentFilter tf = new android.content.IntentFilter(SbTimerSync.ACTION_TIMER_REMOTE);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(timerRemoteReceiver, tf, RECEIVER_NOT_EXPORTED);
+        else registerReceiver(timerRemoteReceiver, tf);
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -51,6 +66,7 @@ public class CheckActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        try { unregisterReceiver(timerRemoteReceiver); } catch (Exception ignored) { }
         FloatingWindow.setSuppressed(false); // 检查页关闭，悬浮窗可以回来了（计时还在走时）
         super.onDestroy();
     }

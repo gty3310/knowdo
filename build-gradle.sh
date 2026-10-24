@@ -47,6 +47,22 @@ fi
 if [ -f "$_TS" ]; then
   export GRADLE_OPTS="$GRADLE_OPTS -Djavax.net.ssl.trustStore=$_TS -Djavax.net.ssl.trustStorePassword=changeit"
 fi
+# Supabase publishable key：从本地文件 supabase_public_key.txt 生成 SupaSecrets.java
+# （与时习 store_token.txt 同办法；密钥文件与生成类都在 .gitignore，永不入库）。
+# 文件缺失时生成空串占位，保证编译不断（登录与云同步自然不可用，本地功能不受影响）。
+_KEY_FILE="$PWD/supabase_public_key.txt"
+_KEY=""
+[ -f "$_KEY_FILE" ] && _KEY=$(tr -d '[:space:]' < "$_KEY_FILE")
+cat > app/src/main/java/com/ti/tasktimer/SupaSecrets.java <<EOF
+package com.ti.tasktimer;
+
+/** 构建时由 build-gradle.sh 从 supabase_public_key.txt 生成，永不入库，请勿手改。 */
+public final class SupaSecrets {
+    public static final String PUBLISHABLE_KEY = "$_KEY";
+    private SupaSecrets() {}
+}
+EOF
+
 # 进程内构建：沙箱会杀掉脱离会话的 Gradle daemon，故 --no-daemon 且用 GRADLE_OPTS
 # 让启动器 JVM 本身带足堆内存（与 gradle.properties 不设 org.gradle.jvmargs 配套，避免 fork）。
 "$HOME/workspace/tools/gradle-8.7/bin/gradle" :app:assembleRelease --console=plain --no-daemon

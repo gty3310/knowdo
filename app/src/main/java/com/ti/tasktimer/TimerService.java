@@ -19,6 +19,8 @@ import android.os.Looper;
  */
 public class TimerService extends Service {
     public static final String ACTION_START = "com.ti.tasktimer.START";
+    /** 跨设备镜像启动：只落 TimerState + 前台/闹钟/tick，不开 SessionLog、不重置守卫、不启屏幕采样。 */
+    public static final String ACTION_MIRROR = "com.ti.tasktimer.MIRROR";
     public static final String ACTION_STOP = "com.ti.tasktimer.STOP";
     public static final String ACTION_EXTEND = "com.ti.tasktimer.EXTEND";
     public static final String ACTION_PAUSE = "com.ti.tasktimer.PAUSE";
@@ -77,6 +79,22 @@ public class TimerService extends Service {
         c.startService(i);
     }
 
+    /**
+     * 镜像远端正在跑的倒计时（SbTimerSync 收到远端 timer_state 后调用）：
+     * startedAtMs 是虚拟起点（结束点 − 总时长），绝对时间点与远端严格对齐，双端同一时刻到点。
+     */
+    public static void mirrorStart(Context c, int totalSec, long startedAtMs, long endAtMs,
+                                   String taskId, String taskTitle) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_MIRROR);
+        i.putExtra(EXTRA_TOTAL_SEC, totalSec);
+        i.putExtra("started_at_ms", startedAtMs);
+        i.putExtra("end_at_ms", endAtMs);
+        i.putExtra(EXTRA_TASK_ID, taskId);
+        i.putExtra(EXTRA_TASK_TITLE, taskTitle);
+        c.startForegroundService(i);
+    }
+
     public static void resumeTimer(Context c, int totalSec, int remainSec, String taskId, String taskTitle) {
         Intent i = new Intent(c, TimerService.class);
         i.setAction(ACTION_RESUME);
@@ -105,6 +123,7 @@ public class TimerService extends Service {
             }
             SessionLog.close(this);
             TimerState.stop(this);
+            SbTimerSync.onLocalTimerChanged(this);
             ScreenCaptureService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
@@ -118,6 +137,7 @@ public class TimerService extends Service {
             TimerState.logEvent(this, "计时已停止/完成");
             SessionLog.close(this);
             TimerState.stop(this);
+            SbTimerSync.onLocalTimerChanged(this);
             ScreenCaptureService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
@@ -127,7 +147,17 @@ public class TimerService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (ACTION_RESUME.equals(action)) {
+        if (ACTION_MIRROR.equals(action)) {
+            // 跨设备镜像：只落状态，刻意不动 SessionLog/专注守卫/屏幕采样（那些是发起端的本端语义）
+            int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
+            long startedAtMs = intent.getLongExtra("started_at_ms", System.currentTimeMillis());
+            long endAtMs = intent.getLongExtra("end_at_ms", System.currentTimeMillis() + total * 1000L);
+            String mid = intent.getStringExtra(EXTRA_TASK_ID);
+            boolean half = System.currentTimeMillis() >= startedAtMs + total * 500L
+                    || (mid != null && mid.equals(TimerState.taskId(this)) && TimerState.halfFired(this));
+            TimerState.mirrorStart(this, total, startedAtMs, endAtMs,
+                    intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE), half);
+        } else if (ACTION_RESUME.equals(action)) {
             ResumeReminder.cancel(this);
             TimerState.startResumed(this,
                     intent.getIntExtra(EXTRA_TOTAL_SEC, 60), intent.getIntExtra(EXTRA_REMAIN_SEC, 60),
@@ -137,6 +167,7 @@ public class TimerService extends Service {
             ScreenCaptureService.onTimerStarted(this);
             SessionLog.open(this, intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
+            SbTimerSync.onLocalTimerChanged(this);
         } else if (ACTION_START.equals(action)) {
             ResumeReminder.cancel(this);
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
@@ -149,10 +180,12 @@ public class TimerService extends Service {
             ScreenCaptureService.onTimerStarted(this);
             SessionLog.open(this, sid, intent.getStringExtra(EXTRA_TASK_TITLE));
             TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
+            SbTimerSync.onLocalTimerChanged(this);
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);
             TimerState.extend(this, add);
             TimerState.logEvent(this, "加时 " + add + " 秒，新结束时间已顺延");
+            SbTimerSync.onLocalTimerChanged(this);
         }
         // START / EXTEND / 系统重启恢复（intent==null）都汇到这里
         if (TimerState.isRunning(this)) {

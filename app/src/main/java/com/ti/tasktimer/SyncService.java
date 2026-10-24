@@ -47,7 +47,9 @@ public class SyncService extends Service {
     public void onCreate() {
         super.onCreate();
         createChannel();
-        startForeground(NOTIF_ID, buildNotification("每 30 秒与 Drive 任务清单同步一次"));
+        startForeground(NOTIF_ID, buildNotification(SyncManager.isSupabaseMode(this)
+                ? "Supabase 实时同步中：云端推送 + 每 30 秒对账"
+                : "每 30 秒与 Drive 任务清单同步一次"));
         thread = new HandlerThread("knowdo-sync");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -71,6 +73,10 @@ public class SyncService extends Service {
     };
 
     private void tick() {
+        if (SyncManager.isSupabaseMode(this)) {
+            sbTick();
+            return;
+        }
         Uri uri = SyncManager.getUri(this);
         if (uri == null) return;
         String content;
@@ -120,6 +126,51 @@ public class SyncService extends Service {
         }
     }
 
+    // ---------------- Supabase 模式（v1.7.0）：Realtime 推送为主，每 30 秒全量对账兜底 ----------------
+    private boolean sbFirst = true;
+
+    private final SupaRealtime.Listener rtListener = new SupaRealtime.Listener() {
+        @Override public void onTaskRow(org.json.JSONObject record, String type) {
+            boolean changed = SbSync.applyRemoteTaskRow(SyncService.this, record, type);
+            if (changed) {
+                TimerState.logEvent(SyncService.this, "实时推送：云端任务有更新，已合并");
+                sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
+            }
+        }
+
+        @Override public void onUserStateRow(org.json.JSONObject record) {
+            SbSync.applyRemoteUserState(SyncService.this, record);
+            sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
+        }
+
+        @Override public void onJoined() {
+            // (重)连成功：跑一次全量对账，补上断线期间漏掉的变更/autoStart/计时状态
+            if (handler != null) handler.post(() -> {
+                try { sbReconcile("实时推送已连接"); } catch (Exception ignored) { }
+            });
+        }
+    };
+
+    private void sbTick() {
+        SupaRealtime.ensure(this, rtListener);
+        sbReconcile(null);
+    }
+
+    private void sbReconcile(String note) {
+        TaskStore store = new TaskStore(this);
+        String result = SbSync.syncNow(this, store);
+        if ("同步中…".equals(result)) return;
+        String text = note == null ? result : note + "：" + result;
+        boolean changed = !text.equals(SyncManager.lastResult(this));
+        SyncManager.setLastResult(this, text);
+        if (!sbFirst && changed) {
+            TimerState.logEvent(this, "实时同步：" + text);
+            sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
+            updateNotification("最近同步：" + text);
+        }
+        sbFirst = false;
+    }
+
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);
@@ -157,6 +208,8 @@ public class SyncService extends Service {
         running = false;
         if (handler != null) handler.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
+        // Realtime 连接由本服务持有：服务销毁就断开，下次启动时 ensure 会重建
+        SupaRealtime.shutdown();
         super.onDestroy();
     }
 

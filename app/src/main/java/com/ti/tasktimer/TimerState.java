@@ -98,6 +98,35 @@ public final class TimerState {
             .apply();
     }
 
+    /**
+     * 跨设备镜像（v1.7.0）：另一台设备正在跑的同一倒计时在本机的落点。
+     * startedAt 存「虚拟起点」＝真实结束点 − 总时长，本机的 halfAt/endAt 现算口径不变。
+     */
+    public static void mirrorStart(Context c, int totalSec, long startedAtMs, long endAtMs,
+                                   String taskId, String taskTitle, boolean halfFired) {
+        sp(c).edit()
+            .putBoolean("running", true)
+            .putLong("startedAt", startedAtMs)
+            .putLong("halfAt", startedAtMs + totalSec * 500L)
+            .putLong("endAt", endAtMs)
+            .putInt("totalSec", totalSec)
+            .putString("taskId", taskId == null ? "" : taskId)
+            .putString("taskTitle", taskTitle == null ? "" : taskTitle)
+            .putBoolean("halfFired", halfFired)
+            .putBoolean("endFired", false)
+            .apply();
+    }
+
+    /** 远端暂停的镜像：把暂停槽设成任意任务（setPaused 是从本机运行态转存的，不适用）。 */
+    public static void setPausedRemote(Context c, String taskId, String title, int totalSec, long remainMs) {
+        sp(c).edit()
+            .putString("p_taskId", taskId == null ? "" : taskId)
+            .putString("p_title", title == null ? "" : title)
+            .putInt("p_totalSec", totalSec)
+            .putLong("p_remainMs", Math.max(0, remainMs))
+            .apply();
+    }
+
     public static boolean isRunning(Context c) { return sp(c).getBoolean("running", false); }
     public static long startedAt(Context c) { return sp(c).getLong("startedAt", 0); }
     public static long endAt(Context c) { return sp(c).getLong("endAt", 0); }

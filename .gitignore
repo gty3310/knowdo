@@ -3,5 +3,9 @@ build/
 .gradle/
 local.properties
 
+# Supabase publishable key 与构建时生成的密钥类，永不入库（与时习 store_token 同办法）
+supabase_public_key.txt
+app/src/main/java/com/ti/tasktimer/SupaSecrets.java
+
 # 桥文件母本含真实任务数据，永不进仓库（母本在仓库外 ~/workspace/knowdo-bridge/）
 sync/

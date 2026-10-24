@@ -3,6 +3,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Supabase 同步（v1.7.0）：HTTPS 接口 + Realtime WebSocket -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -62,14 +65,15 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
-        <!-- 实时同步服务：每 30 秒轮询 Drive 桥文件，有新任务自动合并、带标记的自动开始计时 -->
+        <!-- 实时同步服务：桥模式每 30 秒轮询 Drive 桥文件；Supabase 模式走 Realtime 推送 + 30 秒对账；
+             有新任务自动合并、带立即开始标记的自动开始计时，计时状态跨设备镜像 -->
         <service
             android:name=".SyncService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="每30秒与云端任务清单（电子大脑）同步，发现立即开始标记时自动启动任务倒计时" />
+                android:value="与云端任务清单同步（桥文件轮询或 Supabase 实时推送），发现立即开始标记时自动启动任务倒计时，计时状态跨设备同步" />
         </service>
 
         <receiver

@@ -10,8 +10,8 @@ android {
         applicationId 'com.ti.tasktimer'
         minSdk 26
         targetSdk 34
-        versionCode 29
-        versionName '1.6.2'
+        versionCode 30
+        versionName '1.7.0'
         ndk {
             // 只打 Pixel 在用的 arm64，避免 ONNX Runtime 四个 ABI 把包撑大
             abiFilters 'arm64-v8a'
@@ -57,4 +57,6 @@ dependencies {
     implementation 'com.google.mlkit:text-recognition-japanese:16.0.0'
     // 屏幕内容守卫二级：ONNX Runtime（跑 NudeNet 320n.onnx）
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    // Supabase Realtime（Phoenix 协议）的 WebSocket 客户端：只引这一个小库，不引官方 SDK 全家桶
+    implementation 'org.java-websocket:Java-WebSocket:1.5.7'
 }

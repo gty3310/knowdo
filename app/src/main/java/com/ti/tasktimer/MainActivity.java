@@ -74,6 +74,9 @@ public class MainActivity extends Activity {
         if (FloatingWindow.enabled(this)) FloatService.start(this);
         if (getIntent() != null && getIntent().getBooleanExtra("pick_bridge", false)) {
             launchBridgePicker();
+        } else if (SyncManager.isSupabaseMode(this)) {
+            runSync(false); // Supabase 模式：打开即对账一次（含漏掉的 autoStart/计时状态）
+            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         } else if (SyncManager.getUri(this) != null) {
             runSync(false); // 打开即自动同步一次
             if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
@@ -192,11 +195,13 @@ public class MainActivity extends Activity {
         bar.setPadding(dp(12), dp(4), dp(12), dp(8));
         bar.addView(barButton("＋ 新增", v -> dialogNewTask()));
         bar.addView(barButton("同步", v -> {
-            if (SyncManager.getUri(this) == null) launchBridgePicker();
+            if (SyncManager.isSupabaseMode(this)) runSync(true);
+            else if (SyncManager.getUri(this) == null) launchBridgePicker();
             else runSync(true);
         }));
         realtimeBtn = barButton("", v -> toggleRealtime());
         bar.addView(realtimeBtn);
+        bar.addView(barButton("账号", v -> dialogAccount()));
         updateRealtimeBtn();
         bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
         bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
@@ -229,7 +234,10 @@ public class MainActivity extends Activity {
         SyncManager.setRealtimeEnabled(this, on);
         updateRealtimeBtn();
         if (on) {
-            if (SyncManager.getUri(this) == null) {
+            if (SyncManager.isSupabaseMode(this)) {
+                SyncService.start(this);
+                toast("实时同步已开：云端变更实时推送，另每 30 秒对账一次；带「立即开始」标记的任务会自动开始计时");
+            } else if (SyncManager.getUri(this) == null) {
                 toast("实时同步已开：先点「同步」选中 Drive 里的 tasks.json");
                 launchBridgePicker();
             } else {
@@ -290,8 +298,12 @@ public class MainActivity extends Activity {
               .append(remain / 60).append(":").append(String.format("%02d", remain % 60))
               .append("，点它的 ▶ 继续  ");
         }
-        String last = SyncManager.lastResult(this);
-        sb.append(last.isEmpty() ? "点「同步」连接 Drive 的 tasks.json" : last);
+        if (SyncManager.isSupabaseMode(this)) {
+            sb.append(SbSync.statusText(this, store));
+        } else {
+            String last = SyncManager.lastResult(this);
+            sb.append(last.isEmpty() ? "点「同步」连接 Drive 的 tasks.json" : last);
+        }
         statusView.setText(sb.toString());
     }
 
@@ -1035,6 +1047,111 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    // ---------------- 账号与同步（Supabase，v1.7.0） ----------------
+    /** 账号区：未登录显示邮箱+密码+登录/注册；已登录显示邮箱、同步状态、立即同步与退出登录。
+     *  未登录不硬挡：App 本地与 Drive 桥照常可用。 */
+    private void dialogAccount() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(12), dp(20), 0);
+        if (Supa.isLoggedIn(this)) {
+            TextView who = new TextView(this);
+            who.setText("已登录：" + Supa.userEmail(this));
+            who.setTextSize(16);
+            who.setTextColor(Color.BLACK);
+            box.addView(who);
+            TextView st = new TextView(this);
+            st.setText(SbSync.statusText(this, store)
+                    + "\n\n任务与计时状态都存在云端（Supabase），手机与电脑共用同一份；"
+                    + "另一台设备开始计时，这台会立刻镜像同一个倒计时。");
+            st.setTextSize(14);
+            st.setTextColor(Color.DKGRAY);
+            box.addView(st);
+            new AlertDialog.Builder(this)
+                    .setTitle("账号与同步")
+                    .setView(box)
+                    .setPositiveButton("立即同步", (d, w) -> runSync(true))
+                    .setNeutralButton("退出登录", (d, w) -> doLogout())
+                    .setNegativeButton("关闭", null)
+                    .show();
+            return;
+        }
+        final EditText email = new EditText(this);
+        email.setHint("邮箱");
+        email.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        box.addView(email);
+        final EditText password = new EditText(this);
+        password.setHint("密码（至少 6 位）");
+        password.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(password);
+        TextView tip = new TextView(this);
+        tip.setText("登录后进入云端同步：本机现有任务会全量成为你的云端数据，不会丢失。"
+                + "没登录也能照常用本机与 Drive 桥。");
+        tip.setTextSize(13);
+        tip.setTextColor(Color.DKGRAY);
+        box.addView(tip);
+        new AlertDialog.Builder(this)
+                .setTitle("账号与同步（Supabase）")
+                .setView(box)
+                .setPositiveButton("登录", (d, w) -> doAuth(true,
+                        email.getText().toString().trim(), password.getText().toString()))
+                .setNeutralButton("注册", (d, w) -> doAuth(false,
+                        email.getText().toString().trim(), password.getText().toString()))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void doAuth(final boolean signIn, final String email, final String password) {
+        if (email.isEmpty() || password.isEmpty()) {
+            toast("邮箱和密码都要填");
+            return;
+        }
+        toast(signIn ? "正在登录…" : "正在注册…");
+        new Thread(() -> {
+            try {
+                String pendingMsg = null;
+                if (signIn) {
+                    Supa.signIn(this, email, password);
+                } else {
+                    pendingMsg = Supa.signUp(this, email, password);
+                }
+                if (pendingMsg != null) {
+                    final String m = pendingMsg;
+                    handler.post(() -> toast(m));
+                    return;
+                }
+                handler.post(() -> {
+                    SyncManager.setSupabaseMode(this, true);
+                    if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
+                    toast("登录成功，正在同步");
+                    runSync(true);
+                });
+            } catch (Supa.Err e) {
+                final String m = e.network ? "网络连不上，稍后再试"
+                        : (signIn ? "登录失败：" : "注册失败：") + e.getMessage();
+                handler.post(() -> toast(m));
+            } catch (Exception e) {
+                final String m = (signIn ? "登录失败：" : "注册失败：") + e.getMessage();
+                handler.post(() -> toast(m));
+            }
+        }).start();
+    }
+
+    private void doLogout() {
+        new Thread(() -> {
+            Supa.signOut(this);
+            handler.post(() -> {
+                SyncManager.setSupabaseMode(this, false);
+                SupaRealtime.shutdown();
+                SyncService.stop(this);
+                refreshStatus();
+                toast("已退出登录：回到 Drive 桥模式（本机数据都在）");
+            });
+        }).start();
+    }
+
     // ---------------- Drive 同步 ----------------
     private void launchBridgePicker() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -1074,7 +1191,7 @@ public class MainActivity extends Activity {
 
     private void runSync(final boolean verbose) {
         new Thread(() -> {
-            String result = SyncManager.syncNow(this, store);
+            String result = SyncManager.syncNowSmart(this, store);
             SyncManager.setLastResult(this, result);
             handler.post(() -> {
                 store.load();
