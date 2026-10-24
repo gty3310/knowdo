@@ -30,9 +30,9 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
-* 日历页（今日时间表）：纵向一天时间轴，左泳道是计划、右泳道是实际。
-* 计划来自桥文件顶层 schedule（Muse 排的）；实际来自本地计时段记录 SessionLog。
-* 桥上若有 gcal（Google 日历事件，Muse 写入），在计划泳道以独立样式只读渲染。
+* 日历页（今日时间表）：纵向一天时间轴，三栏并排（v1.12.0 定案）——最左窄栏是 Google 日历
+* （桥 gcal，Muse 写入，只读、只在本栏内渲染，不许压到计划栏上）、中间最宽的主栏是计划
+* （云端 user_state 的 schedule，Muse 排的）、右窄栏是实际（本地计时段记录 SessionLog，只读）。
 * 本页在前台时每 10 秒同步一次桥并重画——Muse 在桥端改了 schedule，这里很快就能看到新版。
 *
 * v1.6.2 交互：计划块可长按拖拽改时间（用户定案：App 对 schedule 的写权限仅此一处，
@@ -52,6 +52,7 @@ private TextView overviewView;
 private TextView doneView;
 private TextView hintView;
 private FrameLayout canvas;
+private LinearLayout laneHead;
 private LinearLayout listBox;
 private final Handler handler = new Handler(Looper.getMainLooper());
 private boolean foreground = false;
@@ -155,15 +156,10 @@ hintView.setTextColor(Ui.danger(ctx));
 hintView.setPadding(0, dp(4), 0, dp(4));
 root.addView(hintView);
 
-LinearLayout laneHead = new LinearLayout(ctx);
+// 三栏标题（日历／计划／实际）：宽度与时间轴三栏逐像素对齐，在 render() 里按当次几何重建
+laneHead = new LinearLayout(ctx);
 laneHead.setOrientation(LinearLayout.HORIZONTAL);
 laneHead.setPadding(dp(46), dp(6), 0, dp(2));
-TextView lh1 = laneLabel(Strings.calLanePlan());
-lh1.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-laneHead.addView(lh1);
-TextView lh2 = laneLabel(Strings.calLaneActual());
-lh2.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-laneHead.addView(lh2);
 root.addView(laneHead);
 
 canvas = new FrameLayout(ctx);
@@ -360,8 +356,28 @@ axisEnd = Math.max(axisEnd, Math.min(24 * 60, (nowMin / 60 + 1) * 60));
 int pw = getWidth();
 int totalW = (pw > 0 ? pw : getResources().getDisplayMetrics().widthPixels) - dp(32);
 int gutter = dp(46), gap = dp(6);
-int laneW = Math.max(dp(60), (totalW - gutter - gap) / 2);
-int planX = gutter, actX = gutter + laneW + gap;
+// 三栏版式（v1.12.0 用户定案，宽度写死）：日历窄栏 ≈17%｜计划主栏 ≈58%｜实际窄栏 ≈25%。
+// Google 日历事件只许在自己的窄栏里渲染，绝不压到计划栏上。
+int colsW = Math.max(dp(150), totalW - gutter - gap * 2);
+int gcalW = Math.max(dp(38), (int) (colsW * 0.17f));
+int actW = Math.max(dp(46), (int) (colsW * 0.25f));
+int planW = Math.max(dp(56), colsW - gcalW - actW);
+int gcalX = gutter, planX = gcalX + gcalW + gap, actX = planX + planW + gap;
+// 栏标题与三栏逐像素对齐重建
+laneHead.removeAllViews();
+TextView lhG = laneLabel(Strings.calLaneGcal());
+lhG.setLayoutParams(new LinearLayout.LayoutParams(gcalW, LinearLayout.LayoutParams.WRAP_CONTENT));
+laneHead.addView(lhG);
+TextView lhP = laneLabel(Strings.calLanePlan());
+LinearLayout.LayoutParams lhPp = new LinearLayout.LayoutParams(planW, LinearLayout.LayoutParams.WRAP_CONTENT);
+lhPp.leftMargin = gap;
+lhP.setLayoutParams(lhPp);
+laneHead.addView(lhP);
+TextView lhA = laneLabel(Strings.calLaneActual());
+LinearLayout.LayoutParams lhAp = new LinearLayout.LayoutParams(actW, LinearLayout.LayoutParams.WRAP_CONTENT);
+lhAp.leftMargin = gap;
+lhA.setLayoutParams(lhAp);
+laneHead.addView(lhA);
 int scale = dp(1); // 1 分钟 = 1dp
 int heightPx = (axisEnd - axisStart) * scale;
 canvas.removeAllViews();
@@ -386,12 +402,12 @@ tlp.leftMargin = 0;
 tlp.topMargin = Math.max(0, y - dp(7));
 canvas.addView(lab, tlp);
 }
-// 计划块（左泳道，浅色描边，可拖、带 ▶）
-if (plan!= null) for (Block b: plan) addPlanBlock(b, planX, laneW, axisStart, scale);
-// Google 日历事件（左泳道，独立灰紫样式，只读：不可拖、无 ▶、点一下看全文）
-for (GcalEvent e : gcalTimed) addGcalBlock(e, planX, laneW, axisStart, scale);
-// 实际块（右泳道，实心）
-for (Block b: actual) addBlock(b, actX, laneW, axisStart, scale, false);
+// Google 日历事件（最左窄栏，独立灰紫样式，只读：不可拖、无 ▶、点一下看全文；只在本栏内渲染）
+for (GcalEvent e : gcalTimed) addGcalBlock(e, gcalX, gcalW, axisStart, scale);
+// 计划块（中间主栏，浅色描边，可拖、带 ▶——行为只在本栏内，口径不变）
+if (plan!= null) for (Block b: plan) addPlanBlock(b, planX, planW, axisStart, scale);
+// 实际块（右窄栏，实心，只读展示 SessionLog 计时段）
+for (Block b: actual) addBlock(b, actX, actW, axisStart, scale, false);
 // 现在线
 if (nowMin >= axisStart && nowMin <= axisEnd) {
 int y = (nowMin - axisStart) * scale;
@@ -493,12 +509,12 @@ lp.topMargin = (b.startMin - axisStart) * scale;
 canvas.addView(box, lp);
 }
 
-/** Google 日历事件块：灰紫描边、标题带 📅，只读——点一下 Toast 看全名与时间，不能拖、没有 ▶。 */
+/** Google 日历事件块（v1.12.0 起只在自己的窄栏内渲染）：灰紫描边，只读——窄栏里只放开始时间＋标题（可截断），点一下 Toast 看全名与完整时间，不能拖、没有 ▶。 */
 private void addGcalBlock(final GcalEvent e, int x, int w, int axisStart, int scale) {
 TextView v = new TextView(ctx);
-v.setText(hhmm(e.startMin) + "–" + hhmm(e.endMin) + "\n📅 " + e.title);
-v.setTextSize(11);
-v.setPadding(dp(5), dp(2), dp(3), dp(2));
+v.setText(hhmm(e.startMin) + "\n" + e.title);
+v.setTextSize(9);
+v.setPadding(dp(3), dp(2), dp(2), dp(2));
 v.setMaxLines(3);
 v.setEllipsize(android.text.TextUtils.TruncateAt.END);
 GradientDrawable bg = new GradientDrawable();
@@ -713,11 +729,13 @@ if (t != null) doStartTaskTimer(t);
 
 private void addBlock(Block b, int x, int w, int axisStart, int scale, boolean planned) {
 TextView v = new TextView(ctx);
-String label = hhmm(b.startMin) + "–" + hhmm(b.endMin) + "\n" + b.title
+// 实际栏是窄栏（v1.12.0）：栏太窄时时间只放开始时刻，避免时间串被拦腰换行；标题可截断
+String time = w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin);
+String label = time + "\n" + b.title
 + (b.running? " ▶": "");
 v.setText(label);
-v.setTextSize(11);
-v.setPadding(dp(5), dp(2), dp(3), dp(2));
+v.setTextSize(10);
+v.setPadding(dp(3), dp(2), dp(2), dp(2));
 v.setMaxLines(3);
 v.setEllipsize(android.text.TextUtils.TruncateAt.END);
 GradientDrawable bg = new GradientDrawable();

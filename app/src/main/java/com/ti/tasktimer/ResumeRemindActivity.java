@@ -44,6 +44,14 @@ public class ResumeRemindActivity extends Activity {
         task.setPadding(0, dp(14), 0, dp(22));
         root.addView(task);
 
+        // 立志常驻（v1.12.0）：叫回页也展示「我的志」，未设置不显示
+        TextView asp = Aspiration.makeView(this, true);
+        if (asp != null) {
+            asp.setPadding(0, 0, 0, dp(18));
+            root.addView(asp, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
         Button go = bigButton("继续任务");
         go.setOnClickListener(v -> {
             PauseEscalation.cancel(this); // 有反馈：撤掉 60 秒渐强闹铃升级

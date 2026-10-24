@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -72,10 +73,44 @@ public class SettingsActivity extends Activity {
         title.setTypeface(title.getTypeface(), Typeface.BOLD);
         root.addView(title);
 
+        buildAspirationGroup();
         buildAccountGroup();
         buildDisplayGroup();
         buildGuardsGroup();
         buildGeneralGroup();
+    }
+
+    // ---------------- 我的志（v1.12.0） ----------------
+
+    /** 立志常驻：用户亲手写的一句话，展示在守卫问询页与各检查页。设置只给一句轻提示。 */
+    private void buildAspirationGroup() {
+        groupTitle(Strings.grpAspiration());
+        String cur = Aspiration.get(this);
+        row(cur.isEmpty() ? Strings.aspEmpty() : cur, Strings.aspRowHint(), arrowBtn("›"),
+                v -> editAspiration());
+    }
+
+    private void editAspiration() {
+        final EditText input = new EditText(this);
+        input.setText(Aspiration.get(this));
+        input.setHint(Strings.aspEditHint());
+        input.setMinLines(3);
+        input.setGravity(Gravity.TOP);
+        input.setTextSize(17);
+        input.setTextColor(Ui.text(this));
+        input.setHintTextColor(Ui.sub(this));
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.aspEditTitle())
+                .setView(input)
+                .setPositiveButton(Strings.en() ? "Save" : "保存", (d, w) -> {
+                    Aspiration.setLocal(this, input.getText().toString());
+                    toast(Strings.aspSaved());
+                    buildUi();
+                    // 回写云端：后台同步一次（未登录/桥模式时同步自己会短路，不打扰）
+                    AccountUi.runSync(this, store, this::buildUi, false);
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
     }
 
     private void groupTitle(String s) {

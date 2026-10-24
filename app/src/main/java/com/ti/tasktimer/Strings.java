@@ -89,7 +89,7 @@ public final class Strings {
     public static String dark() { return s("暗", "Dark"); }
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
-    public static String versionLine() { return "知行 KnowDo v1.11.0"; }
+    public static String versionLine() { return "知行 KnowDo v1.12.0"; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -280,8 +280,9 @@ public final class Strings {
                 + freeMin + " 分钟（到 22:30）";
     }
     public static String calDonePrefix() { return s("已完成：", "Done: "); }
-    public static String calLanePlan() { return s("计划（Muse 排）", "Plan (by Muse)"); }
-    public static String calLaneActual() { return s("实际（计时）", "Actual (timed)"); }
+    public static String calLaneGcal() { return s("日历", "Calendar"); }
+    public static String calLanePlan() { return s("计划", "Plan"); }
+    public static String calLaneActual() { return s("实际", "Actual"); }
     public static String calAskAi() {
         return s("问 AI：让 Muse 帮我重排今天剩下的日程",
                 "Ask AI: let Muse re-plan the rest of today");
@@ -304,15 +305,38 @@ public final class Strings {
                   : "（计划 " + mins + " 分钟" + (must ? " · 必做）" : "）");
     }
 
+    // ---------------- 立志常驻 + 磨练自检（v1.12.0） ----------------
+    public static String grpAspiration() { return s("我的志", "My aspiration"); }
+    public static String aspRowHint() {
+        return s("分神被抓、时间到了的时候，这句话会出现在页面上",
+                "This line appears on the drift and check pages");
+    }
+    public static String aspEmpty() { return s("（还没写，点这里写一句）", "(Not written yet — tap to write)"); }
+    public static String aspEditTitle() { return s("我的志", "My aspiration"); }
+    public static String aspEditHint() { return s("写下你立志的那句话", "Write the line you aspire to live by"); }
+    public static String aspSaved() { return s("已保存", "Saved"); }
+    public static String scDidRightQ() { return s("刚才在做该做的事吗？", "Were you doing what you should?"); }
+    public static String scDid() { return s("做到了", "Yes, I was"); }
+    public static String scNot() { return s("没有", "No"); }
+    public static String scStateQ() { return s("现在的状态", "How do you feel right now?"); }
+    /** 六个状态的显示名（与 SelfChecks.STATES 同序；记录里存的是标准存值，与界面语言无关）。 */
+    public static String[] selfCheckStates() {
+        return en ? new String[]{"Calm", "Irritated", "Restless", "Groggy", "Overreaching", "Rushing"}
+                  : SelfChecks.STATES;
+    }
+    public static String scExtendAsk() { return s("加时之前，先记一下现在的状态", "Before extending, note how you feel"); }
+    public static String scDirectExtend() { return s("直接加时", "Just extend"); }
+
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.11.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.11.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.12.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.12.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
-    /** [标题, 正文] × 16 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
-     *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增；英文为对应译文。 */
+    /** [标题, 正文] × 19 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
+     *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增、
+     *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增；英文为对应译文。 */
     public static String[][] helpSections() { return en ? HELP_EN : HELP_ZH; }
 
     private static final String[][] HELP_ZH = {
@@ -431,8 +455,9 @@ public final class Strings {
          + "桥文件里只有任务数据，屏幕内容守卫的截图原图从不进桥、不上云。"},
         {"十三、日历页（今日时间表）",
          "主界面点右上角「日历」，日历面板从右侧滑出（左缘拉手可拖动定宽，拖到很窄松手自动关上）："
-         + "左边一列是计划（Muse 排的时段，浅色描边块），"
-         + "右边一列是实际（你真正计时的时段，绿色实心块）；同一件任务分段做的，就分几段显示；"
+         + "时间轴是三栏并排：最左一条窄栏是「日历」（你的 Google 日历日程，只放开始时间＋标题），"
+         + "中间最宽的一栏是「计划」（Muse 排的时段，浅色描边块，是这页的主角），"
+         + "右边一条窄栏是「实际」（你真正计时的时段，绿色实心块）；同一件任务分段做的，就分几段显示；"
          + "做完的任务变灰，正在计时的高亮，还有一条红线标着现在几点。\n"
          + "顶部写着今天已完成几件、未完成几件、从现在到 22:30（睡觉）还可自由安排多少分钟，"
          + "一眼就知道今天还剩多少事、时间紧不紧。\n"
@@ -447,9 +472,9 @@ public final class Strings {
          + "Muse 之后重排时会把你手动拖过的块当作固定块，不再挪回去。\n"
          + "计划块右上角和未排入日程的任务行上都有一个 ▶：点一下就立即开始这个任务计时"
          + "（悬浮窗会自动切换到它），正在计时的那个显示 ⏸，点它暂停，和主界面的开始/暂停是同一套。\n"
-         + "页面里带 📅 的灰紫色块是你的 Google 日历日程（Muse 同步过来的已有安排）："
-         + "只能看、点一下显示全名和时间，不能拖、也没有 ▶；「问 AI」时会把它们列为忙碌时段，"
-         + "让 Muse 排日程时绕开它们。"},
+         + "最左窄栏里的灰紫色块是你的 Google 日历日程（Muse 同步过来的已有安排）："
+         + "只在那一栏里显示，不会压到计划块上；只能看、点一下显示全名和时间，不能拖、也没有 ▶；"
+         + "「问 AI」时会把它们列为忙碌时段，让 Muse 排日程时绕开它们。"},
         {"十四、Supabase 账号与跨设备计时（v1.7.0 新增）",
          "从这一版起，知行可以把同步从 Drive 桥换成云端数据库 Supabase："
          + "在三横线菜单或设置页「账号」组点「账号」，用邮箱+密码注册或登录。第一次登录时，本机现有任务会全量"
@@ -509,6 +534,22 @@ public final class Strings {
          + "• 呈现：计时中悬浮窗中号窗主行显示当前子任务名和它的剩余时间，次行小字是任务名；"
          + "主页展开区能看到「子任务 2/3 · 当前名字」的进度，没开始时列出整个队列。"
          + "暂停/恢复时当前子任务的剩余会冻住、恢复后继续。日历和日程仍按整个任务一块显示，不拆块。"},
+        {"十八、我的志（v1.12.0）",
+         "在设置页最上方的「我的志」里，亲手写下你立志的那句话——每人各自设置，只属于你自己。\n"
+         + "• 什么时候出现：分神被抓的问询页、任务结束检查页、子任务检查页、暂停叫回页——"
+         + "页面上会多出一行金色的字，就是你的志。它不是按钮，点不动，只是给你看的。\n"
+         + "• 没写时，这些页面什么都不多显示，不留占位、也不催你填；想改随时回设置页改。\n"
+         + "• 登录 Supabase 后，这句话会同步进你账号的云端数据并跟着账号走："
+         + "换一台设备登录同一账号、本机还没写过时，会自动采用云端的那句；你在 App 里改了，也会回写云端。"},
+        {"十九、磨练自检（v1.12.0）",
+         "把每一次「被抓分神」和每一次「加时」都变成一次对自己的察问——这是阳明「省察克治」的日常版。\n"
+         + "• 分神问询页（用错应用、屏幕内容两种模式都有）顶部多了两问："
+         + "「刚才在做该做的事吗？」点[做到了]或[没有]；「现在的状态」点一个：平静 / 烦 / 躁 / 昏沉 / 贪多 / 求快。"
+         + "点了立刻记下，不点也不会拦着你——页面原有的回到任务、宽限、放行按钮照常可用，不必先答题。\n"
+         + "• 加时之前也要自检：结束检查页与子任务检查页上，点任何加时（+50%、+5/+10/+15 分钟、自定义）"
+         + "都会先让你点一下当前状态，点完才真正加时；不想记，点一行不显眼的「直接加时」即可——照常加时、不留记录。\n"
+         + "• 记录只存本机并同步到你账号名下的云端（self_checks），本版只记录、不出统计页——"
+         + "先攒着，日后的「每日省察」会拿它对账：哪天、什么状态下最容易知而未行，一看便知。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -627,7 +668,8 @@ public final class Strings {
          + "The bridge holds task data only — screen-guard screenshots never enter the bridge and never go to the cloud."},
         {"13. The calendar panel (today's timetable)",
          "Tap Calendar at the top right of the home page and the panel slides in from the right (drag its left-edge grip to size it; drag it very narrow and let go to close it): "
-         + "the left lane is the Plan (slots Muse scheduled, pale outlined blocks); the right lane is the Actual (time you really timed, solid green blocks). "
+         + "the timeline has three columns side by side: a narrow Calendar column on the left (your Google Calendar events, start time + title only), "
+         + "the widest Plan column in the middle (slots Muse scheduled, pale outlined blocks — the star of the page), and a narrow Actual column on the right (time you really timed, solid green blocks). "
          + "A task done in segments shows as several segments; finished tasks turn grey, the running one is highlighted, and a red line marks the current time.\n"
          + "The top shows how many are done and unfinished today, and how many free minutes remain from now until 22:30 (bedtime) — one glance tells you what's left and how tight it is.\n"
          + "The schedule is planned by Muse in the bridge file: must-dos (Must, or due today) must be placed; each occupies its planned length ×1.5 (a 50% buffer, your long-standing habit); "
@@ -637,7 +679,8 @@ public final class Strings {
          + "You can move a plan block yourself: long-press to pick it up (it lifts slightly), drag up/down to the new spot, 5-minute snapping, and letting go saves it back to the bridge — "
          + "the app's only schedule write, changing only that block's start/end; later, Muse treats blocks you dragged as fixed and won't move them back.\n"
          + "Plan blocks and unscheduled task rows carry a ▶: tap to start timing that task immediately (the floating window switches to it); the running one shows ⏸ — tap to pause. Same path as the home page's Start/Pause.\n"
-         + "Grey-purple blocks with 📅 are your Google Calendar events (arrangements Muse synced over): view-only — tap for the full name and time; they can't be dragged and have no ▶. "
+         + "Grey-purple blocks in the left Calendar column are your Google Calendar events (arrangements Muse synced over): they render only inside that narrow column and never cover plan blocks; "
+         + "view-only — tap for the full name and time; they can't be dragged and have no ▶. "
          + "Ask AI lists them as busy time so Muse plans around them."},
         {"14. Supabase accounts & cross-device timing (new in v1.7.0)",
          "Since this version, KnowDo can switch sync from the Drive bridge to the Supabase cloud database: "
@@ -703,5 +746,22 @@ public final class Strings {
          + "• Display: while timing, the mini floating window's main line shows the current subtask and its remaining time, "
          + "with the task name small underneath; the home expansion shows progress like \"Subtask 2/3 · name\" and, before starting, the whole queue. "
          + "Pausing freezes the current subtask's remaining time and resuming continues it. Calendar and schedule still show the task as one block."},
+        {"18. My aspiration (v1.12.0)",
+         "In Settings, at the very top under \"My aspiration\", write the one line you aspire to live by — set by you, yours alone.\n"
+         + "• When it appears: on the drift inquiry page, the task-end check page, the subtask check page and the pause call-back page — "
+         + "one extra line in soft gold: your aspiration. It is not a button and can't be tapped; it is simply there for you to see.\n"
+         + "• If you haven't written one, those pages show nothing extra — no placeholder, no nagging. Edit it any time in Settings.\n"
+         + "• Signed in to Supabase, the line syncs into your account's cloud data and follows the account: "
+         + "on a new device with the same account, a device that has none yet adopts the cloud line automatically; edits in the app are written back."},
+        {"19. Self-check (v1.12.0)",
+         "Every drift catch and every extension becomes a moment of self-examination — Wang Yangming's \"reflect and subdue\" as a daily habit.\n"
+         + "• The drift inquiry page (both wrong-app and screen-content modes) gains two questions at the top: "
+         + "\"Were you doing what you should?\" — tap Yes or No; \"How do you feel right now?\" — pick one: Calm / Irritated / Restless / Groggy / Overreaching / Rushing. "
+         + "Answers are recorded the moment you tap; not answering never blocks you — the return, grace and allow buttons work as before.\n"
+         + "• Extending asks too: on the end check page and the subtask check page, any extension (+50%, +5/+10/+15 min, custom) "
+         + "first asks you to tap your current state; only then does the time actually get added. "
+         + "Don't want to record? Tap the quiet \"Just extend\" — the time is added as usual, with nothing recorded.\n"
+         + "• Records live on the device and sync to your account's cloud data (self_checks). This version only records — no stats page yet; "
+         + "they are being saved up for a future daily review: which states, on which days, most often separate knowing from doing."},
     };
 }

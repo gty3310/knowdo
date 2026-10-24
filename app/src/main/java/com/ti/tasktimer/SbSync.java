@@ -20,7 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * - 之后：拉取云端全量 → 合并进本地 → 把本地胜出的差异 upsert 回云端（state-diff 即离线队列：
  *   断网时差异留在本地与签名之间，下次 syncNow 先推后拉自动收敛）。
  * - user_state 一行：schedule/gcal 只读缓存（与桥时代同一个本地缓存口，CalendarActivity 无感），
- *   guard_events 双向合并，timer_state 交给 SbTimerSync。
+ *   guard_events 双向合并，timer_state 交给 SbTimerSync；
+ *   v1.12.0 加 self_checks 同纪律合并与 aspiration 单键合并（两列均先探测再碰）。
  * 全部方法只能在后台线程调用。
  */
 public final class SbSync {
@@ -188,6 +189,10 @@ public final class SbSync {
         JSONObject write = new JSONObject();
         write.put("user_id", uid);
         boolean needWrite = false;
+        // v1.12.0 两列（aspiration / self_checks）按附加列同法探测：列未就绪就不碰这两个键，
+        // 免得整行 upsert 因未知列被服务端拒掉、连累 timer_state 等既有回写
+        boolean hasAsp = probeUserStateCol(c, "aspiration");
+        boolean hasSc = probeUserStateCol(c, "self_checks");
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
@@ -200,6 +205,26 @@ public final class SbSync {
                 write.put("guard_events", mergedEv);
                 needWrite = true;
             }
+            if (hasSc) {
+                JSONArray remoteSc = urow.isNull("self_checks") ? null : urow.optJSONArray("self_checks");
+                JSONArray mergedSc = SelfChecks.merge(c, remoteSc);
+                if (!SelfChecks.keys(mergedSc).equals(SelfChecks.keys(remoteSc))) {
+                    write.put("self_checks", mergedSc);
+                    needWrite = true;
+                }
+            }
+            if (hasAsp) {
+                // 立志合并：本机为空且云端有值→采用云端（Jarvis 预填/另一台设备所写）；
+                // 本机有值且与云端不同→回写本机值。两种情况都只动 aspiration 一个键。
+                String remoteAsp = Aspiration.fromCloudRow(urow);
+                String localAsp = Aspiration.get(c);
+                if (localAsp.isEmpty() && !remoteAsp.isEmpty()) {
+                    Aspiration.setLocal(c, remoteAsp);
+                } else if (!localAsp.isEmpty() && !localAsp.equals(remoteAsp)) {
+                    write.put("aspiration", localAsp);
+                    needWrite = true;
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -208,6 +233,20 @@ public final class SbSync {
             if (local.length() > 0) {
                 write.put("guard_events", local);
                 needWrite = true;
+            }
+            if (hasSc) {
+                JSONArray localSc = SelfChecks.loadArray(c);
+                if (localSc.length() > 0) {
+                    write.put("self_checks", localSc);
+                    needWrite = true;
+                }
+            }
+            if (hasAsp) {
+                String localAsp = Aspiration.get(c);
+                if (!localAsp.isEmpty()) {
+                    write.put("aspiration", localAsp);
+                    needWrite = true;
+                }
             }
         }
         JSONObject pendingTimer = SbTimerSync.pendingJson(c);
@@ -234,6 +273,14 @@ public final class SbSync {
             }
             if (!row.isNull("guard_events")) {
                 GuardEvents.merge(c, row.optJSONArray("guard_events"));
+            }
+            if (!row.isNull("self_checks")) {
+                SelfChecks.merge(c, row.optJSONArray("self_checks"));
+            }
+            // 立志：本机还没写过时才采用云端推来的值（与全量同步同一口径），不在这里回写
+            String remoteAsp = Aspiration.fromCloudRow(row);
+            if (!remoteAsp.isEmpty() && Aspiration.get(c).isEmpty()) {
+                Aspiration.setLocal(c, remoteAsp);
             }
             if (!row.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, row.optJSONObject("timer_state"));
@@ -430,6 +477,14 @@ public final class SbSync {
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_alarm", has).apply();
         return has;
+    }
+
+    /** user_state 有没有某列（v1.12.0 的 aspiration / self_checks 用，与附加列同法探测）。 */
+    private static boolean probeUserStateCol(Context c, String col) {
+        try {
+            Supa.restGet(c, "user_state?select=" + col + "&limit=0");
+            return true;
+        } catch (Exception ignored) { return false; }
     }
 
     /** 服务端有没有子任务列 subtasks（jsonb，v1.11.0，与附加列同法探测）。 */

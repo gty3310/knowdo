@@ -13,7 +13,7 @@ import android.os.Build;
 public class ResumeReminder {
     public static final String[] LABELS = {
             "1 分钟", "3 分钟", "5 分钟", "10 分钟", "15 分钟",
-            "20 分钟", "半个小时", "60 分钟", "2 个小时"};
+            "20 分钟", "30 分钟", "1 小时", "2 小时"};
     public static final long[] DELAYS_MS = {
             60_000L, 180_000L, 300_000L, 600_000L, 900_000L,
             1_200_000L, 1_800_000L, 3_600_000L, 7_200_000L};

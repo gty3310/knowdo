@@ -2,6 +2,7 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -10,6 +11,9 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 专注守卫全屏问询页：计时中打开了无关软件时弹出。
@@ -26,9 +30,17 @@ public class GuardActivity extends Activity {
     private boolean contentMode;
     private String category = "";
 
+    // 磨练自检（v1.12.0）：两问的点选状态与本页的自检记录 id（首次点选时才建条）
+    private String scEventId;
+    private int scDidSel = -1;
+    private int scStateSel = -1;
+    private final List<Button> scDidBtns = new ArrayList<>();
+    private final List<Button> scStateBtns = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Strings.init(this);
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -74,6 +86,16 @@ public class GuardActivity extends Activity {
         sub.setPadding(0, dp(12), 0, dp(30));
         root.addView(sub);
 
+        // 立志常驻（v1.12.0）：设了志就在问询页上多一行金字，没设不显示
+        TextView asp = Aspiration.makeView(this, false);
+        if (asp != null) {
+            asp.setPadding(0, 0, 0, dp(22));
+            root.addView(asp, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
+        buildSelfCheck(root);
+
         Button now = bigButton("立即回到任务", Color.rgb(46, 125, 50));
         now.setOnClickListener(v -> {
             if (contentMode) VerdictEngine.contentImmediate(this);
@@ -108,6 +130,110 @@ public class GuardActivity extends Activity {
             finish();
         });
         root.addView(allow);
+    }
+
+    // ---------------- 磨练自检（v1.12.0） ----------------
+    /**
+     * 问询页顶部自检区：问一「刚才在做该做的事吗？」[做到了][没有]；
+     * 问二「现在的状态」六个 chips。点了即时记录（同一页共用一条记录），
+     * 不点不拦任何原有动作——下面的回到任务/宽限/放行照常可用。
+     */
+    private void buildSelfCheck(LinearLayout root) {
+        TextView q1 = new TextView(this);
+        q1.setText(Strings.scDidRightQ());
+        q1.setTextSize(17);
+        q1.setTextColor(Color.BLACK);
+        root.addView(q1);
+        LinearLayout r1 = scRow(root);
+        Button did = scButton(Strings.scDid());
+        did.setOnClickListener(v -> {
+            scDidSel = 0;
+            ensureScEvent();
+            SelfChecks.answer(this, scEventId, Boolean.TRUE, null);
+            refreshScStyles();
+        });
+        Button not = scButton(Strings.scNot());
+        not.setOnClickListener(v -> {
+            scDidSel = 1;
+            ensureScEvent();
+            SelfChecks.answer(this, scEventId, Boolean.FALSE, null);
+            refreshScStyles();
+        });
+        scDidBtns.add(did);
+        scDidBtns.add(not);
+        r1.addView(did);
+        r1.addView(not);
+
+        TextView q2 = new TextView(this);
+        q2.setText(Strings.scStateQ());
+        q2.setTextSize(17);
+        q2.setTextColor(Color.BLACK);
+        q2.setPadding(0, dp(14), 0, 0);
+        root.addView(q2);
+        String[] states = Strings.selfCheckStates();
+        for (int r = 0; r < 2; r++) {
+            LinearLayout row = scRow(root);
+            for (int k = 0; k < 3; k++) {
+                final int i = r * 3 + k;
+                Button chip = scButton(states[i]);
+                chip.setOnClickListener(v -> {
+                    scStateSel = i;
+                    ensureScEvent();
+                    // 存标准存值（与界面语言无关），日后省察对账才对得齐
+                    SelfChecks.answer(this, scEventId, null, SelfChecks.STATES[i]);
+                    refreshScStyles();
+                });
+                scStateBtns.add(chip);
+                row.addView(chip);
+            }
+        }
+        spacer(root, 26);
+    }
+
+    private void ensureScEvent() {
+        if (scEventId == null) {
+            scEventId = SelfChecks.begin(this, "drift", TimerState.taskId(this));
+        }
+    }
+
+    private LinearLayout scRow(LinearLayout root) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(r);
+        return r;
+    }
+
+    private Button scButton(String s) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setTextSize(16);
+        b.setAllCaps(false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(52), 1f);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        b.setLayoutParams(lp);
+        styleScButton(b, false);
+        return b;
+    }
+
+    private void styleScButton(Button b, boolean selected) {
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(10));
+        if (selected) {
+            g.setColor(Color.rgb(226, 170, 61));
+            b.setTextColor(Color.rgb(25, 18, 4));
+        } else {
+            g.setColor(Color.WHITE);
+            g.setStroke(dp(1), Color.rgb(190, 190, 190));
+            b.setTextColor(Color.DKGRAY);
+        }
+        b.setBackground(g);
+    }
+
+    private void refreshScStyles() {
+        for (int i = 0; i < scDidBtns.size(); i++) styleScButton(scDidBtns.get(i), scDidSel == i);
+        for (int i = 0; i < scStateBtns.size(); i++) styleScButton(scStateBtns.get(i), scStateSel == i);
     }
 
     @Override

@@ -131,6 +131,8 @@ public final class PauseCard {
 
         final int[] selDur = {-1}; // -1 未选；0..n-1 标准项；n = 自定义
         final TextView[] chips = new TextView[ResumeReminder.LABELS.length + 1];
+        // 等宽网格：每行 4 格、宽度均分（weight），不再按内容流式排——内容定宽会把
+        // 「10 分钟」这类 chip 挤到字内换行、行尾 chip 竖排（v1.11.0 真机反馈，v1.12.0 修）
         LinearLayout chipsBox = new LinearLayout(c);
         chipsBox.setOrientation(LinearLayout.VERTICAL);
         LinearLayout chipRow = null;
@@ -145,9 +147,13 @@ public final class PauseCard {
                     ? ResumeReminder.LABELS[i] : Strings.pauseCustom());
             chip.setTextSize(13);
             chip.setGravity(Gravity.CENTER);
-            chip.setPadding((int) (12 * d), (int) (6 * d), (int) (12 * d), (int) (6 * d));
+            chip.setSingleLine(true);
+            // 单行放不下时自动缩字号（10–13sp），保证整行挤得下、绝不换行
+            chip.setAutoSizeTextTypeUniformWithConfiguration(
+                    10, 13, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+            chip.setPadding((int) (4 * d), (int) (6 * d), (int) (4 * d), (int) (6 * d));
             LinearLayout.LayoutParams chlp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
             chlp.setMargins((int) (3 * d), (int) (4 * d), (int) (3 * d), 0);
             chip.setLayoutParams(chlp);
             chips[i] = chip;

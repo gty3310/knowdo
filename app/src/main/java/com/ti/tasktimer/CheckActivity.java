@@ -180,6 +180,7 @@ public class CheckActivity extends Activity {
         final String subName = TimerState.subTitle(this);
         title(Strings.subCheckTitle());
         subtitle(Strings.subCheckSub(taskName(), idx + 1, count, subName));
+        addAspiration();
         Runnable nextAct = () -> {
             TimerState.logEvent(this, "子任务检查[" + taskName() + " · " + subName + "]：完成，下一个");
             if (idx >= count - 1) { showEnd(); return; }
@@ -227,13 +228,13 @@ public class CheckActivity extends Activity {
         int subMin = currentSubMinutes();
         final int halfSec = Math.max(1, subMin / 2) * 60;
         root.addView(extendButton(Strings.chkPlus50(Math.max(1, subMin / 2)), halfSec, "Q"));
-        keyQ = () -> doExtend(halfSec);
+        keyQ = () -> askStateThenExtend(halfSec);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
-        keyW = () -> doExtend(300);
+        keyW = () -> askStateThenExtend(300);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
-        keyE = () -> doExtend(600);
+        keyE = () -> askStateThenExtend(600);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus15(), 900, null));
         spacerSmall();
@@ -249,7 +250,7 @@ public class CheckActivity extends Activity {
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
-                if (min > 0) doExtend(min * 60);
+                if (min > 0) askStateThenExtend(min * 60);
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
@@ -273,6 +274,7 @@ public class CheckActivity extends Activity {
         keyQ = keyW = keyE = null;
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
+        addAspiration();
         Runnable doneAct = this::completeWholeTask;
         Button done = bigButton(Strings.chkDone(), true, "Enter");
         done.setOnClickListener(v -> doneAct.run());
@@ -289,13 +291,13 @@ public class CheckActivity extends Activity {
         int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
         final int halfSec = Math.max(1, totalMin / 2) * 60;
         root.addView(extendButton(Strings.chkPlus50(Math.max(1, totalMin / 2)), halfSec, "Q"));
-        keyQ = () -> doExtend(halfSec);
+        keyQ = () -> askStateThenExtend(halfSec);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
-        keyW = () -> doExtend(300);
+        keyW = () -> askStateThenExtend(300);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
-        keyE = () -> doExtend(600);
+        keyE = () -> askStateThenExtend(600);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus15(), 900, null));
         spacerSmall();
@@ -311,7 +313,7 @@ public class CheckActivity extends Activity {
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
-                if (min > 0) doExtend(min * 60);
+                if (min > 0) askStateThenExtend(min * 60);
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
@@ -319,7 +321,7 @@ public class CheckActivity extends Activity {
 
     private Button extendButton(String text, final int addSec, String kbd) {
         Button b = bigButton(text, false, kbd);
-        b.setOnClickListener(v -> doExtend(addSec));
+        b.setOnClickListener(v -> askStateThenExtend(addSec));
         return b;
     }
 
@@ -327,6 +329,71 @@ public class CheckActivity extends Activity {
         TimerState.logEvent(this, "结束检查[" + taskName() + "]：加时 " + (addSec / 60) + " 分钟");
         TimerService.extendTimer(this, addSec);
         finish();
+    }
+
+    // ---------- 磨练自检：加时前先记状态（v1.12.0） ----------
+    /**
+     * 所有加时入口（结束页/子任务页的按钮、键盘 Q/W/E、自定义分钟）都先过这一页：
+     * 点一个当前状态（平静/烦/躁/昏沉/贪多/求快）→ 记录一条 extend 自检 → 真正加时；
+     * 点不显眼的「直接加时」→ 不记录、照常加时。
+     */
+    private void askStateThenExtend(final int addSec) {
+        clear();
+        primaryAction = null;
+        keyQ = keyW = keyE = null;
+        title(Strings.scExtendAsk());
+        subtitle(taskName() + " · +" + Math.max(1, addSec / 60) + (Strings.en() ? " min" : " 分钟"));
+        String[] states = Strings.selfCheckStates();
+        for (int r = 0; r < 2; r++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            root.addView(row);
+            for (int k = 0; k < 3; k++) {
+                final int i = r * 3 + k;
+                Button chip = scStateChip(states[i]);
+                chip.setOnClickListener(v -> {
+                    // 存标准存值（与界面语言无关）
+                    SelfChecks.add(this, "extend", null, SelfChecks.STATES[i], TimerState.taskId(this));
+                    doExtend(addSec);
+                });
+                row.addView(chip);
+            }
+            spacerSmall();
+        }
+        Button direct = new Button(this);
+        direct.setText(Strings.scDirectExtend());
+        direct.setTextSize(14);
+        direct.setAllCaps(false);
+        direct.setTextColor(Ui.sub(this));
+        direct.setBackgroundColor(Color.TRANSPARENT);
+        direct.setOnClickListener(v -> doExtend(addSec));
+        root.addView(direct);
+    }
+
+    private Button scStateChip(String s) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setTextSize(17);
+        b.setAllCaps(false);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(12));
+        g.setColor(Ui.surface(this));
+        g.setStroke(dp(1), Ui.line(this));
+        b.setBackground(g);
+        b.setTextColor(Ui.text(this));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(56), 1f);
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    /** 立志常驻（v1.12.0）：结束页与子任务页副标题下展示「我的志」，未设置时什么都不加。 */
+    private void addAspiration() {
+        TextView asp = Aspiration.makeView(this, Ui.dark(this));
+        if (asp == null) return;
+        asp.setPadding(0, 0, 0, dp(24));
+        root.addView(asp, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     // ---------- 小件 ----------
