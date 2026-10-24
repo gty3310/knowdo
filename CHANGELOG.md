@@ -2,6 +2,46 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.14.0] - 2026-10-24（versionCode 37）
+
+为什么：光弹页面没声音，用户经常注意不到，空档就溜走了；悬浮窗以前只能在设置里开关，想清静一会儿又怕找不回来。催促的轻重缓急该由用户定、不是写死行为；完成状态这种最基础的账，更不能被同步盖掉。
+
+发布提交：`6e60429`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.13.0...v1.14.0 比较](https://github.com/gty3310/knowdo/compare/v1.13.0...v1.14.0)
+
+### 新增
+
+**空档声音催促（用户今晚三次强调的定案）**
+
+1. **行为**：「空档」＝没有任务在计时、且不在带时长的暂停中（IdleGuard.isIdle，含跨设备镜像口径）。空档持续满 idle_minutes（默认 5 分钟）起一轮：全屏拉起「接下来干什么」（NextTaskActivity）＋同时响鸟鸣 alarm——复用 AlarmRing 机制（素材 alarm_nature、USAGE_ALARM 通道、静音照样响），渐强与最长时长按 ring_seconds（默认 60 秒）走；用户在守卫页有任何操作（onUserInteraction）即停声、页面保留。第一轮结束（响满或被停声）后隔 first_repeat_minutes（默认 1）再一轮，之后每 repeat_minutes（默认 5）一轮，直到有任务从任何入口开始计时为止（TimerService 的 ACTION_START/RESUME/MIRROR 三处钩子立即取消整个周期并重置空档时钟）。
+2. **空档时钟起算点**：锚点取三者中最先确立者且确立后不重置——巡检（FloatService 约 30 秒一次＋主页 onResume 经 IdleGuard.checkAndFire）首次确认空档的时刻；守卫页被展示的时刻（IdleGuard.fire 与 NextTaskActivity.onCreate 都调 notePageShown，覆盖「叫回页选换下一个任务直接进守卫页」等不经巡检的入口，此时用户正处在「下一个还没开始」的空档里，以展示时刻起算最贴合感知）。
+3. **排期与持久化**：新类 IdleAlarm——状态（空档锚点 anchor_ms、已响轮次 round、下轮时刻 next_at 及该轮间隔构成）存 prefs「idle_nag_state」；排期用精确闹钟（setExactAndAllowWhileIdle，仿 PauseEscalation，扛 Doze），接收器 IdleAlarmReceiver。进程/服务重启由 IdleAlarm.ensureScheduled 按持久化状态续排（BootReceiver 开机同调；已过点 1 秒后补响当前轮）。按返回退出守卫页的 3 分钟静默只压巡检弹页，不重置锚点、不取消 alarm 排期，到点照样带声音拉回页面（催促轮次绕过 snooze_until）。带时长暂停中不触发（isIdle 为假）；暂停叫回页展示期间同理；守卫总开关关闭时弹页与 alarm 都不发生（IdleGuard.checkAndFire 先同步周期状态，setEnabled(false) 直接清周期）。守卫页已在前台时该轮只响铃不重开页面，避免冲掉正在输入的任务名。
+4. **早停声的间隔口径**：下轮时刻按「本轮响满＋间隔」排；用户提前停声时经 onSoundStoppedEarly 把下轮改为「停声时刻＋该轮间隔」（排期里存了 next_gap_ms 与 next_includes_ring 标记）。
+
+**空档催促个人设置＋强度档位（行为分档，用户最终口径）**
+
+1. **存储**：新类 IdleNag，本地 SharedPreferences「idle_nag」；云端 user_state 新列 `idle_nag`（jsonb 对象 {enabled, profile, idle_minutes, first_repeat_minutes, repeat_minutes, ring_seconds, sound, max_rounds}）。同步纪律照 aspiration 先例：SbSync.syncUserState 先 probe 列是否存在，列未就绪只用本地、绝不碰该键、不连累其他回写；列就绪后——本机从未存过（has_local=false）且云端有值→采用云端，本机有值且与云端不同→回写本机值；Realtime 推来时仅本机无值才采用。设置页任何改动后即 IdleAlarm.reevaluate 按新参数重排当前周期＋触发一次后台同步。
+2. **档位（行为分档，不是数字打包）**：温和 gentle＝不催（空档连守卫页都不自动弹、更不出声，任务结束就结束；计时结束检查页是任务自身流程照常）；标准 standard＝催但有上限（满阈值全屏＋按间隔重复、最多 max_rounds 轮、默认 3，到顶后安静直到下一次空档；**全程没有声音**，sound 强制关，设置页只注明「标准档没有声音」）；严格 strict＝不停催直到开始任务（今晚定案参数：idle 5／ring 60／first 1／repeat 5），声音开关只在这一档（与自定义）出现，用户设置＝开；自定义 custom＝重复策略三选一（不催＝max_rounds 0／有限轮／无限＝-1）＋全部数字自调。默认档＝strict（用户本人今晚定的就是严格这套）。在预设档手动改任一数值即转自定义——转档前先把原档轮数语义折算进 max_rounds（严格→无限、温和→0），保证转档瞬间行为不变。
+3. **设置页**：守卫组「任务衔接守卫」开关之下加「空档催促」子组：总开关、档位行（值＝档位名，下方一行按当前参数现算的节奏说明，如「5 分钟没任务就全屏提醒，每轮响 60 秒，隔 1 分钟再来一轮，之后每 5 分钟一次，直到你开始任务为止」）、数值行按档显隐（温和无可调项；ring_seconds 只在严格/自定义显示；标准多一行「最多催几轮」与声音说明行；自定义多「重复策略」行）。数值用数字输入弹窗（仿立志编辑的对话框范式）。
+
+**悬浮窗关闭 snooze（用户新定）**
+
+1. **入口**：大悬浮窗 EDIT 卡按钮区（打开知行/收起一排）加「关闭」，经半透明中转页 FloatCloseActivity（仿 AiLaunchActivity）弹选择：10／15／30／60 分钟后回来、等当前任务结束（没在计时时文案为「等下一个任务结束回来」）、自定义分钟数（数字输入）、不再出现。
+2. **实现**：新类 FloatSnooze，prefs「float_snooze」存模式与截止时刻；FloatingWindow.ensureShown 一处收口加 snooze 门闸（FloatService 与 TimerService 两条 ensureShown 调用链都受控），FloatService 每秒 tick 另调 poll 做「等任务结束」的运行→非运行且非暂停跃迁检测（检查页展示期间计时状态仍在、状态落定才到期，与「结束检查处理完」口径一致），并在 snooze 中主动 hide。定时项截止时刻持久化，服务重启照算、已过点立即再现，开机同理（FloatService 由 BootReceiver 拉起后即按 prefs 判断）。
+3. **「不再出现」**＝关闭 FloatingWindow 的 float_enabled 显示开关（设置页通用组可重开），选择框与设置文案互相说清。snooze 期间只藏窗，计时、守卫弹页、alarm、通知一律照常。
+
+### 修复
+
+**任务完成状态被弹回未完成（用户实测报告，根因查实）**
+
+1. **现象**：列表点勾选完成，5–10 秒后勾选自己弹回未完成。
+2. **根因（代码证据）**：SbSync.doSync 拿的是「同步开始时」的 TaskStore 内存快照做读-改-写：第 1 步拉取后，第 3 步用调用方传入 store 的内存列表（store.tasks）与远端合并、整表 store.save() 落盘，第 4 步 adoptServerTimes 后又整表 save 一次，全程不重读磁盘。一次对账含拉取＋3 个列探测＋差异推送等多次到新加坡区域的网络往返、耗时数秒；用户在此窗口内点完成（MainActivity 勾选处理 markDone＋save 已同步落盘），会被随后任一次整表 save 用旧快照盖回 todo；且第 4 步的推送差异正是按这份旧快照算的，完成也从未写上云。Realtime 每次重连（国内连新加坡易抖动）都会再触发一轮对账，放大命中概率——延迟与「点完后 5–10 秒弹回」吻合。次要隐患：applyRemoteTaskRow 用 remote.updatedAtMs >= local.updatedAtMs 判胜负，而本地时间戳是手机时钟、远端是服务器时钟，两钟混比之下，同戳回声也可能把尚未确认的本地写替换掉。已排除：TaskItem 本地 JSON 往返完整保住 updatedAtMs/status/doneDates；SyncService 每轮对账现造 TaskStore 实例、无长寿命陈旧实例；桥路径在 Supabase 模式下不运行。
+3. **修法**：① doSync 第 3 步在 STORE_LOCK 内先 store.load() 重读磁盘最新状态再合并再落盘；第 4 步 adoptServerTimes 改为锁内重读＋仅当条目 updatedAtMs 仍等于本次推送值时才对齐服务端时间（用户在推送往返里又改过的条目不被倒灌），签名改记对齐后的值；播种路径与 pushOneQuiet 同样改走锁内重读纪律。② applyRemoteTaskRow 加待确认写守卫：本地 updatedAtMs 大于已知云端签名（有未确认写）且远端时间戳不比本地新时，跳过该远端行。③ 新增 SbSync.pushOneVerified 定向校验写：锁内重读拿最新本地行→先读云端最新行→按内容（status/done_dates/auto_start）判断，云端已一致只对齐签名收工，不一致才整行 upsert（本地这份刚从磁盘重读、不会盖掉别的新改动）→回读校验 status/done_dates，对不上重写一次（自愈）。「要不要推」按内容定、不按混比的时间戳定。主页勾选、展开区完成 chip、长按行菜单、结束检查页四处完成落盘后都调 pushDoneAsync，完成约 1 秒内带校验上云。
+
+### 红线与未真机验证
+
+- 红线守恒：合并纪律只强化不改语义（新者胜/墓碑/字段保全不变）；timer_state 语义、schedule 唯一写入口（updateScheduleBlock）零改动；idle_nag 走 user_state 附加列探测纪律，不与 schedule/gcal/timer_state 互相覆盖；密钥零入库（提交前敏感扫描通过、只按文件名提交）。
+- 未真机验证：空档 alarm 全链路（5 分钟到点弹页＋响铃、渐强手感、静音模式下经闹钟通道响、操作停声、1 分钟/5 分钟重复节奏、Doze 下精确闹钟、杀进程/重启后按持久化续排、按返回后到点带声拉回）；档位行为（温和连页都不弹、标准 3 轮封顶且无声、改数值转自定义、云端 idle_nag 列就绪后的双向合并与 Mac 共用一份——列由助理侧并行添加，App 按探测纪律自动纳入）；snooze 各选项（定时到点再现、等任务结束的跃迁、自定义、不再出现与设置开关互文、重启后照算）；完成弹回修复的真机复现验证（弱网/Realtime 抖动下连点完成不再弹回、定向写回读自愈）；设置页空档催促子组在中英/亮暗下的呈现。
+
 ## [1.13.0] - 2026-10-24（versionCode 36）
 
 为什么：子任务是用户在实际使用中临时想到的拆分方式，之前「队列按启动快照、计时中改动下次启动才生效」不符合他「设了就开始」的预期；同一版把「每次升级先看更新日志」这条长期规矩做成产品机制，并把日历排程口径与「不避让 Google 日历」的新规矩对齐。

@@ -50,18 +50,17 @@ The UI is native Java/Views, layered as TaskStore (data) / SyncManager (sync) / 
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
-### v1.13.0 — 2026-10-24
+### v1.14.0 — 2026-10-24
 
-**Why:** Subtasks are how the user splits work on the fly while using the app; the old "queue snapshot at start, edits apply next time" behavior broke the "set it and it starts" expectation. The same release turns the standing "read the changelog after every update" rule into a product mechanism, and aligns the calendar prompt with the current no-avoidance rule for Google Calendar.
-
-**Fixed**
-- **Subtasks take over instantly** — add a subtask to a task that is already timing and it starts counting right away; both floating windows switch their first line to the subtask name and its countdown, and the total always equals the sum of subtasks. Deleting the running subtask advances to the next, changing a length recomputes the remainder as new length minus time used, appending queues at the end, and reordering never interrupts the current subtask. Editing subtasks while paused rebuilds the frozen queue the same way, so resuming follows the new queue.
+**Why:** A silent popup is easy to miss, and idle gaps slipped away; the floating window could only be toggled in Settings, so a quiet moment risked losing it. How hard the app nags should be the user's call, not hardcoded — and something as basic as marking a task done must never be overwritten by sync.
 
 **New**
-- **What's-new popup** — the first time the app opens after an update, a scrollable changelog shows the latest 5 versions (what changed, grouped as New / Improved / Fixed; why it changed; how to try the newest). A permanent "What's new" entry lives in Settings → General. A fresh install never sees the popup.
+- **Idle nagging with sound** — after the set minutes with no task timing (default 5), the full-screen "What's next?" page returns together with a birdsong alarm that fades in on the alarm stream (it rings while muted) for the set seconds per round (default 60). Any interaction stops the sound but keeps the page; rounds repeat after 1 minute, then every 5 minutes, until a task starts. Scheduling uses exact alarms and persists its state, so it survives Doze, process restarts and reboots; the 3-minute quiet after pressing Back never cancels it, and a timed pause never triggers it.
+- **Nagging is a personal setting with behavior levels** — Settings → Guards → "Idle nagging": Gentle (a task ends and that's it — no page, no sound), Standard (full-screen reminders for a limited number of rounds, default 3, and no sound at any point), Strict (keeps nagging until you start a task; the only level with a sound switch), or Custom (your own repeat strategy — none / limited / unlimited — and every number; editing any number on a preset level moves you to Custom). Idle minutes, ring seconds, both repeat gaps and the round cap are all adjustable. The setting is stored in the cloud account (`user_state.idle_nag`), shared between phone and computer.
+- **Timed close for the floating window** — the Edit card gains a "Close" button: back in 10/15/30/60 minutes, back when the current task ends, a custom number of minutes, or never again (the same as the Settings switch, which can re-enable it). Deadlines persist and reappear on schedule even across reboots; while hidden, only the window is gone — timing, guard pop-ups, alarms and notifications carry on.
 
-**Improved**
-- **Calendar "Ask AI" prompt** — Google Calendar events are now described as view-only reference: scheduling does not work around them and may overlap them (blocks you dragged yourself stay fixed).
+**Fixed**
+- **A completion flipping back to not-done** — root cause: full sync reconciliation merged into a TaskStore snapshot taken when the sync began and then saved that whole table back to disk; a sync round involves several network round-trips to the sync region (seconds), so a completion tapped during that window existed only on disk and was overwritten by the stale snapshot, and the push diff was computed from the same stale snapshot so the completion never reached the cloud either. Realtime reconnects re-ran reconciliation often enough to make the flip-back show up 5–10 seconds after the tap. The fix: reconciliation (and the seed and post-push timestamp adoption) now re-reads the latest on-disk state under the store lock before merging/saving, timestamp adoption only touches rows still at the pushed value, realtime echoes no longer roll back a local write that is newer than the last confirmed cloud signature, and every completion (list checkbox, expansion chip, row menu, end-check page) is additionally pushed on its own within about a second — read-merge-write with a read-back verification of status/done_dates and one self-healing rewrite.
 
 ## Build
 
