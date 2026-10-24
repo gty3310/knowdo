@@ -1,105 +1,65 @@
-# 知行 KnowDo
+# KnowDo 知行
 
 **The Unity of Knowledge and Action.**
 
-知行 KnowDo 是一个安卓任务管理与计时应用，源于王阳明“知行合一”：
-把要做的事说出来、列清楚（知），然后在时间的约束下真正做完（行）。
-它相当于使用者的“电子大脑”：Excel 式任务表（任务 / 情景标签 / 截止日期或每日重复 / 预估时长），
-点 ▶ 开始倒计时；时间过半和结束时，会强制弹出一个全屏页面问你：
-“剩下的时间还够吗？”“做完了吗？”——没做完，可以当场加时或写下办法。
+KnowDo is an Android task manager and focus timer inspired by Wang Yangming's doctrine of the unity of knowledge and action: say what you will do and lay it out clearly (knowing), then actually finish it under the pressure of a countdown (doing). It works as an external brain — an Excel-like task table (task / context tags / deadline or daily repeat / planned duration). Tap ▶ to start a countdown; at half-time and again at the deadline, a full-screen page takes over and asks: can you still finish in time? Did you finish? If not, extend the timer on the spot, or write down how you will finish.
 
-KnowDo is an Android task manager + focus timer inspired by Wang Yangming's doctrine of
-the unity of knowledge and action. Lay out your tasks in a spreadsheet-like table
-(task / context tags / deadline or daily repeat / planned duration), tap ▶ to start a
-countdown. At half-time and at the deadline, a full-screen page takes over the screen —
-even from the lock screen — and asks whether you can still finish, and whether you did.
-If not, extend the timer or write down how you will finish.
+> **Related project — [KnowDo for Mac](https://github.com/gty3310/knowdo-mac):** the macOS companion to KnowDo — a SwiftUI menu-bar and floating-window app that shares the same account, the same task list, and the same single cross-device timer with this Android app. Start a task on your phone and watch it count down on your Mac, or the other way around.
 
-## 当前状态 / Status
+## Vision
 
-当前版本 **v1.4.0**（验证版 v0.1.x 的全屏机制已全部并入）：
+KnowDo is built around one job: at any moment, you know exactly what you should be doing — and the moment you drift, it notices and brings you back.
 
-* **Excel 式任务表**：每行四列可直接点按编辑——任务名（可设“必要”★）、
-  情景（多选面板，可自由新增标签）、截止（日期选择，或勾选“每日重复”）、
-  时长（分钟）；每行左侧 ▶ 开始该任务的计时；长按一行可标记完成或删除。
-* **全屏检查页**（过半 / 结束同一个页面，熄屏与亮屏一致）：
-  熄屏/锁屏走 Full-Screen Intent 拉起；亮屏未锁时 FSI 按系统设计只给横幅，
-  故走官方后台启动豁免路线——用户授予“在其他应用上层显示”（SYSTEM_ALERT_WINDOW）后，
-  计时服务直接启动全屏页，不经通知（两条路径均已在 Pixel 10 Pro / Android 16 真机验证前者、后者待复测）。
-  过半页问“还够做完吗”，做不完可写下办法；结束页点“做完了”会回写任务完成状态，
-  没做完可 +50% / +5 / +10 / +15 分钟或自定义加时。
-* **与 Google Drive 同步（当作“桥”）**：任务清单以 tasks.json（schema 见 `sync/tasks.json`）
-  存放在使用者的 Drive「_电子大脑 / task list」文件夹；App 通过系统文件选择器（SAF）
-  一次授权后即可双向同步——在 App 里增改，或由 Muse 直接改桥文件，另一端同步即达。
-  合并规则：按任务 id 对齐、updatedAtMs 新者胜、删除走墓碑标记防复活。
-  计时记录只存本地，不进桥文件。
-* **专注守卫**（v1.3.0，轻量版）：每个任务可设一列专注规则——自然语言说明 + 结构化名单
-  （黑名单拦 / 白名单只许）+ 主软件。计时中每 2 秒以使用情况访问（UsageStats）检测前台应用，
-  打开无关软件即弹全屏问询页「你是在做正确的任务吗？」，可选：立即跳回 /
-  宽限 30 秒 / 宽限 60 秒（到期仍在用就自动跳回）/ 误判放行（本次计时内不再拦）。
-  “跳回”去向：任务指定了主软件就跳它（如读经典跳时习），没指定就跳知行内置的「当前任务页」
-  （极简页：任务名 + 倒计时 + 笔记区 + 「回到任务列表」「回到 Muse」两个按钮）。
-  架构为强力版留了扩展点：检测层是 `ForegroundDetector` 接口（现为 UsageStats 轮询实现，
-  强力版可换无障碍事件实现），执行层是 `GuardActions`（现为跳转实现，强力版可加
-  模拟 Home/返回与全屏遮罩），状态机 `FocusGuard` 不变。
-* **计时悬浮窗**（v1.2.0 引入，v1.3.4 起按 Floating Notes 交互重做）：三种模式——
-  「吸附」贴屏幕侧边的小标签，只显示剩余分钟数，点它展开、沿边缘拖动换高度；
-  「小展开」半透明小窗，任务名 + 倒计时 + 一个浅灰单色字符「✎」，点内容区或 ✎ 直接进编辑并弹键盘，
-  拖到屏幕左右边缘松手自动吸附；「编辑」更不透明的完整卡片，笔记就是输入框本身，
-  点笔记区直接打字、停笔自动保存（笔记是任务字段 `note`，随桥同步）。
-  点「完成」直达结束检查页；全屏检查页弹出时悬浮窗自动让位、检查页关闭后自动回来。
-  权限页可开关与预览此功能（依赖“上层显示”授权）。任务若有笔记，主列表任务名旁有小三角可展开查看。
-* **屏幕内容守卫**（v1.4.0）：专注守卫看不见的分神（在允许用的浏览器里购物、刷短视频网页版、
-  看黄色内容）由它补位。仅计时中 + 亮屏解锁时工作，随机每 45–170 秒截一张图
-  （开始计时时经系统授权一次）；分析全在端侧：NudeNet 小模型（ONNX）看图抓黄色/暴露内容
-  （按作者定义，穿得少也算）→ 前台包名类别 → ML Kit OCR（中/日/英）+ 关键词规则判与任务是否相关。
-  同类连续命中 2 张才弹与专注守卫同一张问询页（黄色类可设一张即触发）。
-  隐私红线：截图只在内存分析、判完即销毁，不落盘、不上云；同步进桥的只有
-  顶层 `guardEvents` 事件记录（时间/类别/置信度/证据文字，上限 200 条）。
-* **帮助页**（v1.4.0）：主界面「帮助」入口，把全部功能用法、设计理念与
-  “提到过但暂不做 / 决定不做”的清单（Firebase 秒级推送、云端判图、强力版无障碍守卫、
-  端侧大模型深判等）都写在 App 里，随时可翻。
-* **实时同步与自动开始**（v1.1.0）：前台同步服务每 30 秒轮询桥文件（低打扰常驻通知，
-  主界面可开关，开机自启），桥端变化即自动合并、界面自动刷新，无需手动同步；
-  桥协议含 `autoStart` 标记——外部（如 Muse）写入带标记的任务，App 在下一轮轮询
-  （≤30 秒）即自动开始其倒计时（已有计时在跑时排队等空闲），启动后回写清除标记防重复。
-* 倒计时由前台服务（specialUse 类型）驱动，只存绝对结束时间，进程被杀不漂移；
-  AlarmManager 精确闹钟在过半点/结束点兜底。权限体检独立成页（六项逐项可跳转开启，
-  另有 Muse 应用选择、悬浮窗与屏幕内容守卫设置）。
+It is designed for an ADHD mind. Long tasks invite drift, and the most dangerous moment is the gap between finishing one task and starting the next. KnowDo attacks both failure points:
 
-完整设计与调研见 [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md)；
-屏幕内容守卫的设计与缺陷清单见仓库外文档（作者 your_files/知行-屏幕内容守卫-设计.md）。
+- Tasks break into subtasks of about 5–10 minutes each, edited right inside an always-on floating window that counts down the current subtask, not just the whole task.
+- When a task ends and the next one hasn't started, KnowDo asks — full-screen — what comes next, how long it will take, and until when. No gap, no drift.
+- On the computer, it understands what is on your screen and whether it matches your current task. If you are off-task, it doesn't slam the door: it asks how much longer you want, and then holds you to your own answer.
 
-实现说明：界面仍为原生 Java/Views，分层与研究报告一致（TaskStore 数据层 /
-SyncManager 同步层 / TimerService 计时层 / 界面层），日后迁移 Kotlin + Compose + Room 时
-只换实现、不动数据格式。构建自 v1.4.0 起改用 Gradle（因 ML Kit / ONNX Runtime 依赖），
-见下方构建一节；签名仍用同一把 debug.keystore，可覆盖安装旧版。
+The long-term goal is a true body-doubling companion, in the spirit of Overlord: aware of your screen, able to talk with you while you work, able to call you when a pop-up is not enough, with real consequences for going off-plan — combined with Motion-style automatic rescheduling and a Sunsama-style daily rhythm of planning the day against your calendar and reviewing it in the evening. One Excel-like task list, on phone and computer, always in sync, so the next action is never in doubt.
 
-v1.0.0: spreadsheet-like task table (editable columns, scenario multi-select,
-per-task timer), the verified dual-path full-screen check-in pages, and two-way sync
-with a Google Drive `tasks.json` bridge via the Storage Access Framework.
+## Roadmap
 
-## 构建 / Build
+In priority order:
+
+1. **Subtasks in the floating window** — split a task into subtasks, give each its own duration, and keep the current subtask's remaining time front and center.
+2. **Between-task guard** — the moment a task ends without a successor, a full-screen prompt asks what is next, for how long, and until when. A phone-call version follows.
+3. **Mac screen-context guard** — judge whether what is on screen matches the current task; ask "how much longer?", then close the app when the time you named is up.
+
+Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
+
+## Features (Android, v1.9.0)
+
+Current version: **v1.9.0**.
+
+- **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
+- **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
+- **Always-on floating window** — a small overlay (docked tab / mini card / full edit card) that always shows your current task and its remaining time and follows you across apps. Pause from it (with a "remind me in N minutes" menu), jump back to your assistant, or edit the task note in place without opening the app.
+- **Focus guard** — each task can carry a focus rule: a natural-language description plus a structured block/allow app list and a primary app. While a timer runs, the foreground app is checked every couple of seconds (via usage access); open something unrelated and a full-screen page asks "are you working on the right task?" — jump back to the task's primary app (or to a built-in current-task page), take a 30/60-second grace period, after which it jumps back for you, or dismiss a false alarm for the rest of that session.
+- **Screen-content guard** — for the distractions the focus guard cannot see: shopping or short videos inside an allowed browser, or adult content. Opt-in, and on-device only. While a timer runs on an unlocked screen, screenshots are sampled at random intervals and analyzed locally — ML Kit OCR (Chinese / Japanese / English) plus keyword rules, foreground-app category, and a small on-device image classifier (ONNX). Two consecutive hits (one, for adult content, if you set it so) raise the same inquiry page as the focus guard. Screenshots are analyzed in memory and destroyed immediately: never saved, never uploaded; only the verdict events sync.
+- **Calendar panel** — a slide-in day view: planned blocks and actual timed blocks in two lanes, Google Calendar events for the day shown alongside as fixed busy blocks, plan blocks you can long-press and drag to a new time, and an "Ask AI" button that copies a summary of the day for planning in chat.
+- **Account and realtime sync (Supabase)** — sign in with an email account and tasks sync in realtime between devices; merges align by task id with newest-wins and tombstone deletes, so nothing resurrects and nothing is silently overwritten. There is a **single logical timer across devices**: state lives in the cloud, both ends render it, and either end can control it. A task written with an `autoStart` flag starts its own countdown as soon as it arrives. A legacy Google Drive file-bridge mode remains available, but Supabase is the primary sync path.
+- **Per-task alarms** — any task can have an alarm time (it rings whether or not a timer is running; a daily task re-arms for the next day) and/or ring when its timer ends, before the end-of-task check-in. The default sound is a clear nature recording that fades in from silence to full volume over 60 seconds, played on the alarm audio stream, so it rings even when the phone is muted.
+- **Start-time reminders** — when a task's planned start time arrives, a full-screen reminder pops up: start now, snooze 10 minutes, or ignore.
+- **Bilingual UI and themes** — Chinese / English interface and light / dark themes, switchable from the drawer or settings. The top bar stays minimal: a drawer (account, language, theme, help, settings) on the left, the calendar on the right.
+- **Help page** — the full manual lives inside the app, including the design rationale and an explicit list of things considered and deliberately not built.
+
+The UI is native Java/Views, layered as TaskStore (data) / SyncManager (sync) / TimerService (timing) / UI, so the data format stays stable across implementation changes. The full design research (in Chinese) is in [docs/RESEARCH.zh.md](docs/RESEARCH.zh.md).
+
+## Build
+
+Requires JDK 17 and Android SDK 34 (Gradle 8.7 + AGP 8.5.2):
 
 ```sh
-./build-gradle.sh   # v1.4.0 起的主构建：Gradle 8.7 + AGP 8.5.2，需要 JDK 17 与 Android SDK 34
+./build-gradle.sh
 ```
 
-产物 APK 在 `app/build/outputs/apk/release/app-release.apk`，脚本会顺手拷一份到
-`~/workspace/your_files/task-timer-probe.apk`。签名配置在 `app/build.gradle`，
-指向 `~/workspace/tools/debug.keystore`（与 v1.3.x 手工管线同一把，可覆盖安装）。
+The APK lands in `app/build/outputs/apk/release/app-release.apk`. Signing uses a local debug keystore, so new builds install over old ones. `./build-manual.sh` is the retired zero-dependency pipeline from the v1.3.x era, kept for history only; it cannot build current sources.
 
-`./build-manual.sh` 是 v1.3.x 时代的零依赖手工管线（aapt2/d8 直连），仅作历史备用：
-v1.4.0 的源码用了 ML Kit / ONNX Runtime，手工管线编不了。本机沙箱里跑 Gradle 的
-若干适配（进程内构建、代理与证书处理）都写在 `build-gradle.sh` 注释里。
+Cloud sync reads a Supabase **publishable** key at build time from a local, untracked `supabase_public_key.txt` (never committed). Without it, the app still builds and runs with local tasks and the legacy bridge mode.
 
-## 许可 / License
+## License
 
-[CC BY-NC-SA 4.0](LICENSE)（署名—非商业性使用—相同方式共享）。
-任何人可以自由使用、修改和再开发，但**不得用于商业用途**，衍生版本必须以相同许可免费开放。
+Licensed under [CC BY-NC-SA 4.0](LICENSE): free to use, modify and build upon, **non-commercial only**, and derivatives must be shared alike and remain free.
 
-礼仪约定（非许可强制）：动手继续开发前，请先知会原作者一声。
-
-Licensed under CC BY-NC-SA 4.0: free to use, modify and build upon,
-**non-commercial only**, derivatives must be shared alike and remain free.
-As a courtesy (not a license condition), please let the author know before you build on it.
+Courtesy (not a license condition): please let the author know before you build on it.
