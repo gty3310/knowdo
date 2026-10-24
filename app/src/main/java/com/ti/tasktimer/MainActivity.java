@@ -1546,22 +1546,12 @@ public class MainActivity extends Activity {
                 });
                 return;
             }
-            String warn = TimerState.isPaused(this) && !TimerState.pausedTaskId(this).equals(runningId)
-                    ? "\n（注意：之前暂停的「" + TimerState.pausedTitle(this) + "」的进度会被覆盖）" : "";
-            new AlertDialog.Builder(this)
-                    .setTitle("已有任务在计时")
-                    .setMessage("「" + TimerState.taskTitle(this) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
-                    .setPositiveButton("暂停并切换", (d, w) -> {
-                        // 切换时的暂停同样先过暂停卡（暂停谁就问谁的卡）
-                        final String curTitle = TimerState.taskTitle(this);
-                        PauseFlow.ask(this, curTitle, ch -> {
-                            TimerService.pauseWithReminder(this, ch.delayMs, ch.reason, ch.emoji, ch.silent);
-                            new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
-                            PauseFlow.armRemindAfterSwitch(this, ch.delayMs);
-                        });
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
+            // 直接切换（v1.16.1 用户定案）：切换≠暂停。点另一个任务的开始就立即切过去——
+            // 原任务在 TimerService.ACTION_START 里直接停表（SessionLog.open 先把它的分段
+            // 以当前时刻关段落盘、已用不丢），不进暂停态：无 p_reason、无暂停倒计时、
+            // 无叫回；之后随时点它的开始接着计。中间不许有任何对话框/暂停卡。
+            // 暂停槽里若还有别的任务在暂停，也原样不动（旧实现会把它覆盖掉）。
+            startTaskTimer(t);
             return;
         }
         if (t.id.equals(TimerState.pausedTaskId(this))) {
@@ -1577,19 +1567,11 @@ public class MainActivity extends Activity {
         startTaskTimer(t);
     }
 
-    /** 重置：把这个任务的计时清零，从完整时长重新开始（长按 ▶ 弹出）。 */
+    /** 重置：把这个任务的计时清零，从完整时长重新开始（长按 ▶ 弹出）。
+     *  若别的任务正在计时，这就是一次直接切换＋重置（v1.16.1 定案，同 onPlay）：
+     *  原任务直接停表落盘，不经暂停卡。 */
     private void resetTask(final TaskItem t) {
-        if (TimerState.isRunning(this) && !t.id.equals(TimerState.taskId(this))) {
-            // 这里的暂停也走暂停卡（暂停必须带时长＋目的，全入口统一）
-            final String curTitle = TimerState.taskTitle(this);
-            PauseFlow.ask(this, curTitle, ch -> {
-                TimerService.pauseWithReminder(this, ch.delayMs, ch.reason, ch.emoji, ch.silent);
-                new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
-                PauseFlow.armRemindAfterSwitch(this, ch.delayMs);
-            });
-        } else {
-            startTaskTimer(t);
-        }
+        startTaskTimer(t);
         toast("已重置，从 0 重新开始：" + t.title);
     }
 

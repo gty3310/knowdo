@@ -36,6 +36,25 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1161 = new Entry("v1.16.1", "2026-10-24");
+        e1161.add(new Group(s("修复", "Fixed"),
+                s("切换任务时不再被要求先填暂停卡：一个任务在计时中，直接点另一个任务的开始就会切换过去，"
+                        + "原任务进度保留。暂停卡只在你对正在计时的任务点「暂停」时出现——"
+                        + "那才是去喝水、上厕所这种中间休息。",
+                  "Switching tasks no longer forces you through the pause card first: while a task is timing, "
+                        + "just tap another task's Start to switch to it — the old task keeps its progress. "
+                        + "The pause card only appears when you tap Pause on the task that is timing — "
+                        + "that's the mid-task break, for water or the restroom.")));
+        e1161.why = s("切换和暂停是两件事：此前实现把切换错误地路由进了暂停流程，"
+                        + "换个任务干还要先给上一个任务填暂停的目的和时长。",
+                "Switching and pausing are two different things: the switch had been wrongly routed through "
+                        + "the pause flow, so moving on to another task first demanded a purpose and a length "
+                        + "for pausing the previous one.");
+        e1161.tryIt = s("开始一个任务，再到列表里点另一个任务的开始——应该一下子就切过去，不再弹任何卡。",
+                "Start a task, then tap Start on another task in the list — it should switch instantly, "
+                        + "with no card in between.");
+        out.add(e1161);
+
         Entry e116 = new Entry("v1.16.0", "2026-10-24");
         e116.add(new Group(s("新功能", "New"),
                 s("底部多了两个页签：「习惯」和「知行」。",
@@ -160,43 +179,6 @@ public final class Changelog {
                         + "check that the first line of both the medium and large floating windows now shows "
                         + "the subtask name and its countdown.");
         out.add(e113);
-
-        Entry e112 = new Entry("v1.12.0", "2026-10-24");
-        e112.add(new Group(s("新功能", "New"),
-                s("「我的志」：在设置页最上方亲手写下立志的那句话，它会出现在分神问询页、任务/子任务结束检查页、"
-                        + "暂停叫回页上（金色衬线一行，给你看的，不是按钮）；登录后随账号同步。",
-                  "\"My aspiration\": write your line at the very top of Settings. It appears — in soft gold serif, "
-                        + "to read, not to tap — on the drift inquiry page, the task and subtask end check pages and "
-                        + "the pause call-back page, and syncs with your account."),
-                s("「磨练自检」：被分神问询时先自答「刚才在做该做的事吗」和现在的状态"
-                        + "（平静／烦／躁／昏沉／贪多／求快）；给任务加时前也要先点一下状态。"
-                        + "只记录、同步保存，供日后的每日省察对账。",
-                  "\"Self-check\": the drift inquiry page first asks whether you were doing what you should, plus "
-                        + "your current state (Calm / Irritated / Restless / Groggy / Overreaching / Rushing); "
-                        + "extending a task asks for your state first, too. Records only, synced, saved up for a "
-                        + "future daily review.")));
-        e112.add(new Group(s("改进", "Improved"),
-                s("日历页改成三栏：Google 日历一条窄栏（约 17%）、计划主栏最宽（约 58%）、实际窄栏（约 25%）；"
-                        + "日历事件只在自己栏里显示，不再盖住计划块。",
-                  "The calendar is now three columns: a narrow Google Calendar lane (about 17%), the plan lane "
-                        + "widest (about 58%), and a narrow actual lane (about 25%). Calendar events stay in their "
-                        + "own lane and never cover plan blocks."),
-                s("悬浮窗子任务排版统一：有子任务时第一行是子任务（最大字）＋它的倒计时，"
-                        + "第二行是母任务（细体小字），中号、大号两窗一致。",
-                  "Floating-window subtask layout unified: with subtasks, line one is the subtask in the largest "
-                        + "type plus its countdown, line two the parent task in small thin type — the same in the "
-                        + "medium and large windows.")));
-        e112.add(new Group(s("修复", "Fixed"),
-                s("暂停卡的时长按钮改成等宽网格：修好「10 分钟」被折成两行、「60 分钟」被挤成竖排；"
-                        + "标签也简化了（30 分钟／1 小时／2 小时）。",
-                  "The pause card's length buttons are now an equal-width grid — no more \"10 min\" wrapped onto "
-                        + "two lines or \"60 min\" squeezed vertical; labels are simpler too (30 min / 1 h / 2 h).")));
-        e112.why = s("知行合一就是把「知道的」去「做」：立志让你的目标在最容易分神的时刻看得见，"
-                        + "自检把每一次分神和加时都记成一笔日后能对账的材料。",
-                "Knowing-and-doing means acting on what you know: the aspiration keeps your aim visible at the "
-                        + "exact moments you are most likely to drift, and self-checks turn every drift and every "
-                        + "extension into a record you can later review.");
-        out.add(e112);
 
         return out;
     }

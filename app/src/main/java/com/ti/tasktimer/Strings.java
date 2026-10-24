@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.16.0 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.16.1 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -381,7 +381,7 @@ public final class Strings {
          + "• 长按一行：标记完成 / 删除任务；\n"
          + "• 排序：未完成在前、必要在前、截止近在前。每日重复任务每天单独记完成，不会因昨天做完今天消失。"},
         {"三、计时与全屏检查页",
-         "在展开区点「开始」计时；已有任务在计时时会先问你是否切换。\n"
+         "在展开区点「开始」计时；已有任务在计时时，点另一个任务的「开始」会直接切换过去：原任务立即停表、已用进度保留，它不算暂停，之后点它的「开始」随时接着计。暂停（去喝水、上厕所那种中间休息）只在对正在计时的那个任务点「暂停」时出现，要选目的和时长。\n"
          + "计时中通知栏常驻倒计时；时间过半、结束时都会全屏弹出检查页："
          + "熄屏时靠全屏通知顶到锁屏上，亮屏解锁时靠“上层显示”直接弹出，是同一页。\n"
          + "结束页上确认“做完了”会回写完成状态；没做完可以加时：+50%、+5/+10/+15 分钟或自定义分钟数。"
@@ -655,7 +655,7 @@ public final class Strings {
          + "• Long-press a row: mark done / delete task.\n"
          + "• Sorting: unfinished first, Must first, nearest deadline first. Daily tasks record completion per day — finishing yesterday's doesn't remove today's."},
         {"3. Timing and the full-screen check pages",
-         "Tap Start in the expanded area to time; if another task is timing, you'll be asked whether to switch.\n"
+         "Tap Start in the expanded area to time; if another task is timing, tapping a different task's Start switches straight to it: the old task stops at once and keeps its logged progress — that is not a pause, and you can resume it anytime from its Start. A pause (a mid-task break like water or the restroom) only appears when you tap Pause on the task that is timing, and asks for a purpose and a length.\n"
          + "A persistent notification shows the countdown. At half-time and at the end, a full-screen check page pops up: "
          + "on a locked screen via a full-screen notification, on an unlocked screen via display-over — the same page either way.\n"
          + "Confirming \"Done\" on the end page writes back the completion state; if not done, extend: +50%, +5/+10/+15 minutes, or a custom number. "

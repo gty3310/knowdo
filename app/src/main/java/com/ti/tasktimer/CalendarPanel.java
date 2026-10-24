@@ -1645,18 +1645,9 @@ AlarmScheduler.rescheduleAll(ctx, store);
 .show();
 }
 
-/** 重置计时：与主页 resetTask 同处理（别的任务在跑→先过暂停卡再开始）。 */
+/** 重置计时：与主页 resetTask 同处理（别的任务在跑→直接切换＋重置，v1.16.1 定案，不经暂停卡）。 */
 private void resetTaskFromCal(final TaskItem t) {
-if (TimerState.isRunning(ctx) && !t.id.equals(TimerState.taskId(ctx))) {
-final String curTitle = TimerState.taskTitle(ctx);
-PauseFlow.ask(host, curTitle, ch -> {
-TimerService.pauseWithReminder(ctx, ch.delayMs, ch.reason, ch.emoji, ch.silent);
-handler.postDelayed(() -> startTaskTimer(t), 350);
-PauseFlow.armRemindAfterSwitch(ctx, ch.delayMs);
-});
-} else {
 startTaskTimer(t);
-}
 toast("已重置，从 0 重新开始：" + t.title);
 }
 
@@ -1799,8 +1790,9 @@ return wrap;
 
 /**
  * 与主页任务行 ▶ 完全相同的切换语义（同一个 TimerService 入口）：
- * 计时中的就是它→暂停；暂停中的就是它→继续；别的任务在计时→先确认「暂停并切换」；
- * 都没有→开始。悬浮窗的当前任务由 TimerState 推导（FloatService 每秒重渲染），
+ * 计时中的就是它→暂停（过暂停卡）；暂停中的就是它→继续；别的任务在计时→直接切换
+ * （v1.16.1 定案：原任务立即停表落盘、不进暂停态、无中间页）；都没有→开始。
+ * 悬浮窗的当前任务由 TimerState 推导（FloatService 每秒重渲染），
  * 这里开始/暂停后它会自动跟着切换，无需额外通知。
  */
 private void togglePlayTask(String taskId) {
@@ -1817,22 +1809,9 @@ handler.postDelayed(this::render, 350);
 });
 return;
 }
-String warn = TimerState.isPaused(ctx) && !TimerState.pausedTaskId(ctx).equals(TimerState.taskId(ctx))
-? "\n（注意：之前暂停的「" + TimerState.pausedTitle(ctx) + "」的进度会被覆盖）" : "";
-new AlertDialog.Builder(ctx)
-.setTitle("已有任务在计时")
-.setMessage("「" + TimerState.taskTitle(ctx) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
-.setPositiveButton("暂停并切换", (d, w) -> {
-// 切换时的暂停同样先过暂停卡
-final String curTitle = TimerState.taskTitle(ctx);
-PauseFlow.ask(ctx, curTitle, ch -> {
-TimerService.pauseWithReminder(ctx, ch.delayMs, ch.reason, ch.emoji, ch.silent);
-handler.postDelayed(() -> startTaskTimer(t), 350);
-PauseFlow.armRemindAfterSwitch(ctx, ch.delayMs);
-});
-})
-.setNegativeButton("取消", null)
-.show();
+// 直接切换（v1.16.1 定案，同主页 onPlay）：原任务立即停表落盘、不进暂停态，
+// 无对话框/暂停卡；暂停槽里的其他任务原样不动。
+startTaskTimer(t);
 return;
 }
 if (t.id.equals(TimerState.pausedTaskId(ctx))) {

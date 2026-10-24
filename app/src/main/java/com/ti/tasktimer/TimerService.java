@@ -215,6 +215,12 @@ public class TimerService extends Service {
             long startedAtMs = intent.getLongExtra("started_at_ms", System.currentTimeMillis());
             long endAtMs = intent.getLongExtra("end_at_ms", System.currentTimeMillis() + total * 1000L);
             String mid = intent.getStringExtra(EXTRA_TASK_ID);
+            // 例外一处（v1.16.1，远程切换同理）：远端切到另一个任务、而本机正为旧任务开着段
+            // （旧任务曾在本机发起）时，先在切换时刻把旧段关段落盘——否则段一直开着，
+            // 要等新任务结束走 ACTION_STOP 才关，旧任务的「已用」会被灌进新任务的时长。
+            // 同一任务的镜像（接管/对账回声）不关；本机没有打开的段时 close() 自行 no-op。
+            String openId = SessionLog.openTaskId(this);
+            if (!openId.isEmpty() && !openId.equals(mid)) SessionLog.close(this);
             boolean half = System.currentTimeMillis() >= startedAtMs + total * 500L
                     || (mid != null && mid.equals(TimerState.taskId(this)) && TimerState.halfFired(this));
             TimerState.mirrorStart(this, total, startedAtMs, endAtMs,

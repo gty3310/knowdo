@@ -103,7 +103,7 @@ public class SyncService extends Service {
     }
 
     private void handleAutoStart(TaskStore store) {
-        if (TimerState.isRunning(this)) return; // 有计时在跑就不打断，标记留着，等空闲轮次再启动
+        // v1.16.1 定案：同 SbSync——远程触发的开始直接切换，不等空闲轮次。
         for (TaskItem t : store.tasks) {
             if (t.deleted || !t.autoStart) continue;
             if (SyncManager.autoStartHandled(this, t.id)) {

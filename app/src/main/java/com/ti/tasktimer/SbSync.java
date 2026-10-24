@@ -546,7 +546,8 @@ public final class SbSync {
 
     // ---------------- autoStart 消费（与 SyncService 桥时代同一语义） ----------------
     public static void handleAutoStart(Context c, TaskStore store) {
-        if (TimerState.isRunning(c)) return; // 有计时在跑就不打断，标记留着等空闲轮次
+        // v1.16.1 定案：远程触发的开始也是直接切换——有任务在计时就直接切过去
+        // （原任务停表落盘、不进暂停态），不再「等空闲轮次」把标记晾着。
         boolean hasExtra = prefs(c).getBoolean("has_extra", false);
         boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
         boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
