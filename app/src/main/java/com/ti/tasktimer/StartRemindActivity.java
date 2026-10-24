@@ -89,6 +89,16 @@ public class StartRemindActivity extends Activity {
         root.addView(dismiss);
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        TopPages.startRemindShown = true; // 衔接守卫避让：开始提醒页在显时不弹「下一个任务」页
+    }
+
+    @Override protected void onPause() {
+        TopPages.startRemindShown = false;
+        super.onPause();
+    }
+
     private Button bigButton(String s) {
         Button b = new Button(this);
         b.setText(s);

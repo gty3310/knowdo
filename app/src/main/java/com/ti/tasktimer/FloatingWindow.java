@@ -34,7 +34,7 @@ import android.widget.TextView;
  *            笔记就是输入框本身，点开直接写、停笔自动保存。时间行：左=剩余（大字），
  *            右=已用 / 计划总（小字，v1.6.1）；笔记区右上角常驻「复制」按钮（只复制不开助手，v1.6.1）。
  * 暂停不直接生效（MINI/EDIT 点 ⏸ 时）：先弹暂停菜单，选多久后提醒（1/3/5/10/15/20/30/60 分钟、
- * 2 小时、自定义），或「立刻暂停」（不提醒）。到点由 ResumeRemindActivity 全屏叫回。
+ * 2 小时、自定义）——v1.10.0 起暂停必须带时长，没有「立刻暂停」了。到点由 ResumeRemindActivity 全屏叫回。
  */
 public class FloatingWindow {
     public static final int MODE_EDIT = 0;
@@ -758,10 +758,7 @@ public class FloatingWindow {
                 listBox.setVisibility(View.GONE);
                 customBox.setVisibility(View.VISIBLE);
             }));
-            listBox.addView(menuRow(c, "立刻暂停（不提醒）", v -> {
-                TimerService.pauseTimer(c);
-                close();
-            }));
+            // v1.10.0：不再有「立刻暂停（不提醒）」——暂停必须带时长
             listBox.addView(menuRow(c, "取消", v -> close()));
             ScrollView scroll = new ScrollView(c);
             scroll.addView(listBox);

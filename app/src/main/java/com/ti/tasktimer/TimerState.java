@@ -57,11 +57,30 @@ public final class TimerState {
             .putString("p_title", p.getString("taskTitle", ""))
             .putInt("p_totalSec", p.getInt("totalSec", 0))
             .putLong("p_remainMs", Math.max(0, remainMs))
+            .remove("p_reason") // 新一次暂停从无目的开始（字段预留，见 pauseReason）
             .apply();
     }
 
     public static void clearPaused(Context c) {
-        sp(c).edit().remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs").apply();
+        sp(c).edit().remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
+            .remove("p_reason").apply();
+    }
+
+    // ---------- 暂停目的（预留字段，v1.10.0 只留存储，UI 下一版） ----------
+    // 「暂停要带目的」的扩展：暂停时选/填去干什么（如上厕所、吃饭），MINI 窗口同时显示
+    // 暂停活动与原任务——界面在定稿中，本版先把数据位留好：可空字符串，随暂停槽同生同灭
+    // （setPaused/setPausedRemote 新暂停时清为 null、clearPaused/startResumed 时一并清）。
+    // 注意：本版不写入 Supabase timer_state（同步语义零变化），仅本地存储。
+    public static void setPauseReason(Context c, String reason) {
+        SharedPreferences p = sp(c);
+        if (reason == null) p.edit().remove("p_reason").apply();
+        else p.edit().putString("p_reason", reason).apply();
+    }
+
+    /** 当前暂停槽的目的；没设过（或旧暂停）返回 null。 */
+    public static String pauseReason(Context c) {
+        String s = sp(c).getString("p_reason", null);
+        return s == null || s.isEmpty() ? null : s;
     }
 
     public static String pausedTaskId(Context c) {
@@ -95,6 +114,7 @@ public final class TimerState {
             .putBoolean("halfFired", half)
             .putBoolean("endFired", false)
             .remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
+            .remove("p_reason")
             .apply();
     }
 
@@ -124,6 +144,7 @@ public final class TimerState {
             .putString("p_title", title == null ? "" : title)
             .putInt("p_totalSec", totalSec)
             .putLong("p_remainMs", Math.max(0, remainMs))
+            .remove("p_reason") // 远端暂停的目的不在本机存（字段预留，见 pauseReason）
             .apply();
     }
 

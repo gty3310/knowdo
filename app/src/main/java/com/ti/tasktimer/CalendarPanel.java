@@ -639,9 +639,12 @@ final TaskItem t = store.byId(taskId);
 if (t == null) { toast("任务已不在列表里"); render(); return; }
 if (TimerState.isRunning(ctx)) {
 if (t.id.equals(TimerState.taskId(ctx))) {
-TimerService.pauseTimer(ctx);
-toast("已暂停：「" + t.title + "」，点 ▶ 继续");
+// v1.10.0：暂停必须带时长——先弹菜单选多久后叫回，选完才真正暂停（与主页同一 PauseFlow）
+PauseFlow.ask(ctx, t.title, delayMs -> {
+TimerService.pauseWithReminder(ctx, delayMs);
+toast("已暂停：「" + t.title + "」，到点会提醒你回来");
 handler.postDelayed(this::render, 350);
+});
 return;
 }
 String warn = TimerState.isPaused(ctx) && !TimerState.pausedTaskId(ctx).equals(TimerState.taskId(ctx))
@@ -650,8 +653,13 @@ new AlertDialog.Builder(ctx)
 .setTitle("已有任务在计时")
 .setMessage("「" + TimerState.taskTitle(ctx) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
 .setPositiveButton("暂停并切换", (d, w) -> {
-TimerService.pauseTimer(ctx);
+// v1.10.0：切换时的暂停同样先选时长
+final String curTitle = TimerState.taskTitle(ctx);
+PauseFlow.ask(ctx, curTitle, delayMs -> {
+TimerService.pauseWithReminder(ctx, delayMs);
 handler.postDelayed(() -> startTaskTimer(t), 350);
+PauseFlow.armRemindAfterSwitch(ctx, delayMs);
+});
 })
 .setNegativeButton("取消", null)
 .show();

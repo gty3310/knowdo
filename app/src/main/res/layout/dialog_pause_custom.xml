@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 暂停菜单「自定义…」：小时 + 分钟（PauseFlow 用，与悬浮窗菜单的自定义项同口径）。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="20dp">
+
+    <EditText
+        android:id="@+id/pauseHours"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:hint="小时"
+        android:inputType="number"
+        android:textSize="18sp" />
+
+    <EditText
+        android:id="@+id/pauseMinutes"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:hint="分钟"
+        android:inputType="number"
+        android:textSize="18sp" />
+</LinearLayout>

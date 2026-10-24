@@ -73,6 +73,16 @@ public class CheckActivity extends Activity {
         else showEnd();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        TopPages.checkShown = true; // 衔接守卫避让：检查页在显时不弹「下一个任务」页
+    }
+
+    @Override protected void onPause() {
+        TopPages.checkShown = false;
+        super.onPause();
+    }
+
     @Override
     protected void onDestroy() {
         try { unregisterReceiver(timerRemoteReceiver); } catch (Exception ignored) { }
@@ -153,6 +163,8 @@ public class CheckActivity extends Activity {
             if (t != null) { t.markDone(); store.save(); }
             TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
             TimerService.stopTimer(this);
+            // v1.10.0 衔接守卫：确认完成后若没顺势开始下一个，约 0.6 秒后全屏问「下一个任务」
+            IdleGuard.fireSoon(CheckActivity.this);
             Intent i = new Intent(this, MainActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);

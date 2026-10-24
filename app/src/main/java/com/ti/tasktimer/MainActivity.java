@@ -130,6 +130,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(syncReceiver, f, RECEIVER_NOT_EXPORTED);
         else registerReceiver(syncReceiver, f);
         TaskStore.addChangeListener(storeListener);
+        // 任务衔接守卫（v1.10.0）：冷启动/回到主页时若处于空档，全屏问「下一个任务」
+        IdleGuard.checkAndFire(this);
     }
 
     @Override
@@ -947,10 +949,12 @@ public class MainActivity extends Activity {
         doneBox.setChecked(done);
         doneBox.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(44)));
         doneBox.setOnClickListener(v -> {
-            if (doneBox.isChecked()) t.markDone(); else t.markUndone();
+            boolean nowDone = doneBox.isChecked();
+            if (nowDone) t.markDone(); else t.markUndone();
             store.save();
             adapter.notifyDataSetChanged();
             refreshStatus();
+            if (nowDone) fireGuardAfterManualDone();
         });
         row.addView(doneBox);
 
@@ -1124,6 +1128,7 @@ public class MainActivity extends Activity {
             expandedTaskId = null;
             adapter.notifyDataSetChanged();
             refreshStatus();
+            if (!done) fireGuardAfterManualDone();
         }));
         exp.addView(chips);
         return exp;
@@ -1267,16 +1272,24 @@ public class MainActivity extends Activity {
         return (t.focusRule == null || t.focusRule.isEmpty()) ? "＋专注" : "规则";
     }
 
+    /** 衔接守卫（v1.10.0）：手动把任务标记完成之后，约 1.5 秒后若仍空档则全屏问「下一个任务」。 */
+    private void fireGuardAfterManualDone() {
+        new Handler(Looper.getMainLooper()).postDelayed(() -> IdleGuard.fireNow(this), 1500);
+    }
+
     private void onPlay(final TaskItem t) {
         if (TimerState.isRunning(this)) {
             String runningId = TimerState.taskId(this);
             if (t.id.equals(runningId)) {
-                TimerService.pauseTimer(this);
-                toast("已暂停：「" + t.title + "」，点 ▶ 继续");
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    adapter.notifyDataSetChanged();
-                    refreshStatus();
-                }, 350);
+                // v1.10.0：暂停必须带时长——先弹菜单选多久后叫回，选完才真正暂停
+                PauseFlow.ask(this, t.title, delayMs -> {
+                    TimerService.pauseWithReminder(this, delayMs);
+                    toast("已暂停：「" + t.title + "」，到点会提醒你回来");
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        adapter.notifyDataSetChanged();
+                        refreshStatus();
+                    }, 350);
+                });
                 return;
             }
             String warn = TimerState.isPaused(this) && !TimerState.pausedTaskId(this).equals(runningId)
@@ -1285,8 +1298,13 @@ public class MainActivity extends Activity {
                     .setTitle("已有任务在计时")
                     .setMessage("「" + TimerState.taskTitle(this) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
                     .setPositiveButton("暂停并切换", (d, w) -> {
-                        TimerService.pauseTimer(this);
-                        new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
+                        // v1.10.0：切换时的暂停同样先选时长（暂停谁就问谁的菜单）
+                        final String curTitle = TimerState.taskTitle(this);
+                        PauseFlow.ask(this, curTitle, delayMs -> {
+                            TimerService.pauseWithReminder(this, delayMs);
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
+                            PauseFlow.armRemindAfterSwitch(this, delayMs);
+                        });
                     })
                     .setNegativeButton("取消", null)
                     .show();
@@ -1308,8 +1326,13 @@ public class MainActivity extends Activity {
     /** 重置：把这个任务的计时清零，从完整时长重新开始（长按 ▶ 弹出）。 */
     private void resetTask(final TaskItem t) {
         if (TimerState.isRunning(this) && !t.id.equals(TimerState.taskId(this))) {
-            TimerService.pauseTimer(this);
-            new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
+            // v1.10.0：这里的暂停也走选时长菜单（暂停必须带时长，全入口统一）
+            final String curTitle = TimerState.taskTitle(this);
+            PauseFlow.ask(this, curTitle, delayMs -> {
+                TimerService.pauseWithReminder(this, delayMs);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
+                PauseFlow.armRemindAfterSwitch(this, delayMs);
+            });
         } else {
             startTaskTimer(t);
         }
@@ -1789,8 +1812,10 @@ public class MainActivity extends Activity {
                 .setItems(items, (d, which) -> {
                     TaskItem cur = freshCopyOf(t);
                     if (which == 0) {
-                        if (cur.isDoneToday()) cur.markUndone(); else cur.markDone();
+                        boolean toDone = !cur.isDoneToday();
+                        if (toDone) cur.markDone(); else cur.markUndone();
                         store.save(); adapter.notifyDataSetChanged();
+                        if (toDone) fireGuardAfterManualDone();
                     } else {
                         new AlertDialog.Builder(this)
                                 .setTitle("删除任务")

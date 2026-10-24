@@ -305,6 +305,14 @@ public class SettingsActivity extends Activity {
                     : (Strings.en() ? "NSFW back to two confirmations" : "黄色类恢复两次确认"));
         });
         row(Strings.rowNsfwOneShot(), null, ns, null);
+        // 任务衔接守卫（v1.10.0）：只存本地（IdleGuard prefs），不进同步；关掉时看门狗整体停用
+        Switch ng = mkSwitch(IdleGuard.enabled(this));
+        ng.setOnCheckedChangeListener((b, on) -> {
+            IdleGuard.setEnabled(this, on);
+            toast(on ? (Strings.en() ? "Next-task guard on" : "任务衔接守卫已打开：空档时会全屏问下一个任务")
+                    : (Strings.en() ? "Next-task guard off" : "任务衔接守卫已关闭：空档时不再自动弹出（暂停规则不受影响）"));
+        });
+        row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
         row(Strings.rowPerms(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, PermActivity.class)));
     }

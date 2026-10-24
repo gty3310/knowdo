@@ -27,6 +27,7 @@ public final class AlertHelper {
     public static final int TYPE_END = 2;
     public static final int NOTIF_GUARD = 201;
     public static final int NOTIF_TASK_ALARM = 203;
+    public static final int NOTIF_NEXT_TASK = 204;
 
     private AlertHelper() {}
 
@@ -173,6 +174,50 @@ public final class AlertHelper {
     public static void cancelTaskAlarm(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(NOTIF_TASK_ALARM);
+    }
+
+    /**
+     * 任务衔接守卫页的统一出口（v1.10.0）：与检查页同一策略——
+     * 亮屏未锁 + 悬浮权限 -> 直接启动；否则 FullScreenIntent 通知拉起。
+     */
+    public static void fireNextTask(Context c) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, NextTaskActivity.class);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                TimerState.logEvent(c, "已直接弹出衔接守卫页（亮屏路径，未经通知）");
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "衔接守卫页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        Intent intent = new Intent(c, NextTaskActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_NEXT_TASK, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("接下来干什么？")
+                .setContentText("现在没有任务在计时，点开定下一个任务")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_NEXT_TASK, b.build());
+        TimerState.logEvent(c, "已发出衔接守卫全屏提醒（通知路径）");
+    }
+
+    public static void cancelNextTask(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_NEXT_TASK);
     }
 
     public static void cancelAlert(Context c) {

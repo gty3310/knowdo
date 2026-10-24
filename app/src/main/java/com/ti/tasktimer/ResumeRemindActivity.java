@@ -2,6 +2,7 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -62,9 +63,27 @@ public class ResumeRemindActivity extends Activity {
         more.setOnClickListener(v -> showSnooze());
         root.addView(more);
 
-        Button dismiss = bigButton("先这样，不用再提醒");
-        dismiss.setOnClickListener(v -> finish());
+        // v1.10.0：原「先这样，不用再提醒」（无限期搁置）改为「换下一个任务」——
+        // 不继续当前任务就直接进衔接守卫页定下一个，不留空档。
+        // 暂停槽保留（原任务仍在暂停中，随时可从悬浮窗/主页继续）。
+        Button dismiss = bigButton("换下一个任务");
+        dismiss.setOnClickListener(v -> {
+            Intent i = new Intent(this, NextTaskActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(i); } catch (Exception ignored) { }
+            finish();
+        });
         root.addView(dismiss);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        TopPages.resumeRemindShown = true; // 衔接守卫避让：叫回页在显时不弹「下一个任务」页
+    }
+
+    @Override protected void onPause() {
+        TopPages.resumeRemindShown = false;
+        super.onPause();
     }
 
     private void showSnooze() {

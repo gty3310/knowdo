@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 
 /**
  * 悬浮窗常驻服务：用户打开过知行之后一直运行，让悬浮窗永远在——
@@ -23,6 +24,7 @@ public class FloatService extends Service {
     private static final int NOTIF_ID = 4401;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String lastText = "";
+    private int patrolCounter = 0; // 任务衔接守卫巡检计数（约每 30 秒一次）
     private final Runnable loop = new Runnable() {
         @Override public void run() {
             tick();
@@ -77,6 +79,22 @@ public class FloatService extends Service {
             lastText = text;
             showNotification(text);
         }
+        patrolIdle();
+    }
+
+    /**
+     * 任务衔接守卫巡检（v1.10.0）：约每 30 秒看一次——屏幕亮着、且本应用没有页面在前台时，
+     * 若处于空档（没计时、没有生效中的定时暂停），经 IdleGuard 拉起「下一个任务」页。
+     * 本应用页面在前台时不巡检打断：主页由它自己的 onResume 钩子负责，其余页面不该被打断。
+     * 开机后本服务由 BootReceiver/主页拉起，巡检即是开机兜底，不单独处理开机。
+     */
+    private void patrolIdle() {
+        if (++patrolCounter < 30) return;
+        patrolCounter = 0;
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm == null || !pm.isInteractive()) return; // 屏幕没亮，不巡检
+        if (KnowDoApp.ownActivityVisible()) return;
+        IdleGuard.checkAndFire(this);
     }
 
     private void showNotification(String text) {

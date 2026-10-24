@@ -30,6 +30,7 @@
     </queries>
 
     <application
+        android:name=".KnowDoApp"
         android:label="知行 KnowDo"
         android:icon="@android:drawable/ic_lock_idle_alarm"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -146,6 +147,17 @@
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
             android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- 「下一个任务」全屏页（任务衔接守卫 v1.10.0）：空档时全屏问下一个 -->
+        <activity
+            android:name=".NextTaskActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 

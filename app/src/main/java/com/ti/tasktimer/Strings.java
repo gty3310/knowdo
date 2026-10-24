@@ -89,7 +89,7 @@ public final class Strings {
     public static String dark() { return s("暗", "Dark"); }
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
-    public static String versionLine() { return "知行 KnowDo v1.9.0"; }
+    public static String versionLine() { return "知行 KnowDo v1.10.0"; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -113,6 +113,34 @@ public final class Strings {
     public static String langFollow() { return s("跟随系统", "System"); }
     public static String langZh() { return "中文"; }
     public static String langEn() { return "English"; }
+    // ---------------- 任务衔接守卫 + 暂停菜单（v1.10.0） ----------------
+    public static String nextTitle() { return s("接下来干什么？", "What's next?"); }
+    public static String nextNameHint() { return s("任务名称", "Task name"); }
+    public static String nextRest() { return s("休息", "Rest"); }
+    public static String nextDayUnit() { return s("天", "Days"); }
+    public static String nextHourUnit() { return s("小时", "Hours"); }
+    public static String nextMinuteUnit() { return s("分钟", "Minutes"); }
+    public static String nextTotal(int totalMin, String endsAt) {
+        return en ? "Total " + totalMin + " min · ends at " + endsAt
+                  : "合计 " + totalMin + " 分钟 · 到 " + endsAt + " 结束";
+    }
+    public static String nextStart() { return s("开始", "Start"); }
+    public static String nextTodayTitle() { return s("今日未完成（点一下直接开始）", "Not done today (tap to start)"); }
+    public static String nextNoneToday() { return s("（今天没有未完成的任务）", "(Nothing left today)"); }
+    public static String rowNextGuard() { return s("任务衔接守卫", "Next-task guard"); }
+    public static String rowNextGuardSub() {
+        return s("没有任务在计时时，全屏弹出「下一个任务」页",
+                "When nothing is timing, a full-screen page asks what's next");
+    }
+    public static String pauseAskTitle(String title) {
+        return en ? "Pause \"" + title + "\" — remind me in…"
+                  : "暂停「" + title + "」\n多久之后提醒你回来？";
+    }
+    public static String pauseCustom() { return s("自定义…", "Custom…"); }
+    public static String pauseCustomTitle() { return s("自定义提醒时间", "Custom remind time"); }
+    public static String btnOk() { return s("好", "OK"); }
+    public static String btnCancel() { return s("取消", "Cancel"); }
+
     public static String rowFocusGuard() { return s("专注守卫", "Focus guard"); }
     public static String rowFocusGuardSub() {
         return en ? "Set per task via Edit → Focus rule in the expanded panel; "
@@ -126,9 +154,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.9.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.10.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.9.0\n知行合一。\n"
+                  : "知行 KnowDo v1.10.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -201,12 +229,12 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.9.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.9.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.10.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.10.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
-    /** [标题, 正文] × 15 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
-     *  第五/十四节仅更新入口说法），第十五节为新增的界面说明；英文为对应译文。 */
+    /** [标题, 正文] × 16 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
+     *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增；英文为对应译文。 */
     public static String[][] helpSections() { return en ? HELP_EN : HELP_ZH; }
 
     private static final String[][] HELP_ZH = {
@@ -240,7 +268,7 @@ public final class Strings {
          + "永远显示「当前第一要务」——正在计时的任务优先，其次是刚暂停的任务，再次是任务列表排第一的未完成任务（必要优先、截止近的优先）。"
          + "没在计时也能直接在悬浮窗里开始/继续这个任务。全屏检查页弹出时它会让位，检查页关掉自动回来。三种模式互相切换，模式会被记住：\n"
          + "• 吸附：贴在屏幕左/右边缘的小标签，只显示分钟数（计时/暂停=剩余分钟，待开始=计划分钟，向上取整、最多 99+）。上面没有任何按钮、不能暂停。点它展开；沿边缘上下拖可换高度；往屏幕中间拖离边缘也会展开。\n"
-         + "• 小展开：半透明小窗：任务名 + 时间 + ▶/⏸ + 浅灰色的极简字符“✎”。点 ▶ 开始/继续；点 ⏸ 不会直接暂停——会先弹出菜单让你选多久后提醒（1/3/5/10/15/20/30/60 分钟、2 小时、自定义，或「立刻暂停」不提醒），到点全屏叫你回来继续。点内容区、或点“✎”，直接进入编辑模式并弹键盘；按住拖动可以移动，拖到屏幕左/右边缘松手就吸附成标签。\n"
+         + "• 小展开：半透明小窗：任务名 + 时间 + ▶/⏸ + 浅灰色的极简字符“✎”。点 ▶ 开始/继续；点 ⏸ 不会直接暂停——会先弹出菜单让你选多久后提醒（1/3/5/10/15/20/30/60 分钟、2 小时、自定义），到点全屏叫你回来继续。点内容区、或点“✎”，直接进入编辑模式并弹键盘；按住拖动可以移动，拖到屏幕左/右边缘松手就吸附成标签。\n"
          + "• 编辑：更不透明的完整卡片——任务名、大字时间、状态、笔记输入框（笔记就是输入框本身）。点笔记区直接打字，停笔约 1 秒自动保存（并随桥同步）；"
          + "时间行左边的大字是剩余时间，右边小字是「已用 / 计划总」：已用是这个任务在本机累计计时过的时间（从 v1.6.0 起记录），计划总是当前目标总时长（含加时后的）；"
          + "按钮：开始/暂停/继续（同上，暂停要选提醒时间）、AI、完成（计时中才显示，弹出结束检查页）、打开知行、收起。\n"
@@ -365,6 +393,23 @@ public final class Strings {
          + "设置页按「账号 / 显示 / 守卫 / 通用」四组放全部设置：账号（登录、实时同步、立即同步、桥文件）、"
          + "显示（列显隐、外观、语言）、守卫（专注守卫、屏幕内容守卫）、通用（悬浮窗、权限、记录、帮助、关于）。\n"
          + "亮版是白底清新风，暗版是深灰底配琥珀色强调；悬浮窗维持原样，不受主题切换影响。"},
+        {"十六、任务衔接守卫与暂停规则（v1.10.0）",
+         "知行的规矩是：任何时刻都要有一个任务在跑，不允许出现「没有状态的空档」。"
+         + "只有三种状态：正在计时一个任务；暂停中（必带时长，到点全屏叫回）；正在填「下一个任务」页。\n"
+         + "• 空档全屏问下一个：检查页确认完成、手动完成一个任务、打开 App，或者悬浮窗巡检发现——"
+         + "只要没在计时、也没有带时长的暂停在生效，就会全屏弹出「接下来干什么？」："
+         + "填名称、选时长（快捷按钮 2/3/5/10/15/20/30 分钟，或用天/时/分三个转轴自定义），"
+         + "页面实时显示合计分钟数与结束时刻，点「开始」就建好任务并立刻开始计时；"
+         + "页面下方列着今天未完成的任务，点一条直接按它的计划时长开始，不用重建。\n"
+         + "• 休息也要建任务：点「休息」快捷钮把名称填成休息、选个时长开始计时——"
+         + "睡觉也一样，建一个「睡觉」任务占位，没有静默时段。\n"
+         + "• 暂停必选时长：所有地方点暂停（悬浮窗、任务行、展开面板、日历）都会先弹菜单选多久"
+         + "（1/3/5/10/15/20/30/60 分钟、2 小时、自定义），没有「无限期暂停」了；"
+         + "到点叫回页会全屏问你回不回来，你选不继续当前任务时可以直接转到「下一个任务」页，闭环不留空档。\n"
+         + "• 两台设备互通：在另一台设备（如 Mac）上计时或定时暂停时，这台不会误弹；"
+         + "在设置页「守卫」组可以关掉「任务衔接守卫」，关掉后不再自动弹（暂停规则不受影响）。\n"
+         + "• 守卫页按返回键退出后会自动安静 3 分钟，让你临时翻任务列表或改设置；"
+         + "完成任务这类明确时刻触发的弹窗不受这 3 分钟限制。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -400,7 +445,7 @@ public final class Strings {
          + "• Docked: a small tab on the left/right screen edge showing only minutes (remaining when timing/paused, planned when pending; rounded up, max 99+). "
          + "No buttons, can't pause. Tap to expand; drag along the edge to change height; drag away from the edge to expand too.\n"
          + "• Mini: a translucent card — task name + time + ▶/⏸ + a pale minimal \"✎\". ▶ starts/resumes; ⏸ doesn't pause directly — it first asks when to remind you "
-         + "(1/3/5/10/15/20/30/60 minutes, 2 hours, custom, or \"pause now\" with no reminder); when it fires, a full-screen page calls you back. "
+         + "(1/3/5/10/15/20/30/60 minutes, 2 hours, or custom); when it fires, a full-screen page calls you back. "
          + "Tap the content, or ✎, to enter edit mode with the keyboard up; drag to move; drop near an edge to dock.\n"
          + "• Edit: a fuller, more opaque card — task name, big time, status, and the note field (the note is the input itself). Type and it autosaves after ~1 s idle (and syncs via the bridge). "
          + "The big number on the time row is the time left; the small text on the right is \"used / planned total\": used is this task's accumulated timed time on this device (recorded since v1.6.0), "
@@ -515,5 +560,25 @@ public final class Strings {
          + "Settings groups everything into Account / Display / Guards / General: Account (sign-in, realtime sync, sync now, bridge file), "
          + "Display (columns, appearance, language), Guards (focus guard, screen content guard), General (floating window, permissions, log, help, about).\n"
          + "Light is a clean white look; dark is deep grey with an amber accent. The floating window is unchanged and unaffected by theme switches."},
+        {"16. The next-task guard and the pause rule (v1.10.0)",
+         "KnowDo's rule: a task is always running — there is never an in-between gap. "
+         + "Only three states exist: timing a task; paused (always with a length, called back full-screen when it ends); "
+         + "or filling in the \"What's next?\" page.\n"
+         + "• Gaps ask full-screen: after you confirm Done on the check page, finish a task by hand, open the app, "
+         + "or the floating window's patrol notices — whenever nothing is timing and no timed pause is in effect, "
+         + "a full-screen \"What's next?\" page appears: type a name, pick a length (quick buttons 2/3/5/10/15/20/30 minutes, "
+         + "or the days/hours/minutes wheels), watch the total and the end time update live, and tap Start — "
+         + "the task is created and timing begins at once. Below it, today's unfinished tasks are listed; "
+         + "tap one to start it with its planned length, no need to create anything.\n"
+         + "• Rest is a task too: the Rest shortcut fills in the name; pick a length and start. "
+         + "Sleep is the same — create a \"Sleep\" task to hold the slot. There are no silent hours.\n"
+         + "• Pausing always needs a length: every pause entry (floating window, task rows, expanded panel, calendar) "
+         + "first asks for how long (1/3/5/10/15/20/30/60 minutes, 2 hours, or custom) — indefinite pause is gone. "
+         + "When the time is up, the call-back page asks full-screen; if you don't resume the current task, "
+         + "it hands you straight to the \"What's next?\" page, closing the loop with no gap.\n"
+         + "• Cross-device: while another device (e.g. your Mac) is timing or in a timed pause, this one stays quiet. "
+         + "You can turn the next-task guard off in Settings → Guards; the pause rule is unaffected.\n"
+         + "• Pressing Back on the guard page quiets automatic pop-ups for 3 minutes so you can browse the list or change settings; "
+         + "pop-ups triggered by finishing a task are not affected by those 3 minutes."},
     };
 }
