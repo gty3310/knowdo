@@ -38,6 +38,8 @@ import android.widget.TextView;
  * 到点由 ResumeRemindActivity 全屏叫回（静音暂停走亮屏通知链）。
  * v1.11.0：MINI 计时中有子任务时主行显示当前子任务＋其剩余、次行小字任务名；
  * 暂停时 MINI 两行（暂停「任务名」／目的＋还剩）；EDIT 加暂停条、子任务区与暂停按钮行。
+ * v1.12.0 追加规格：两窗主次统一——计时中有当前子任务时 MINI 子任务名放大加粗（与倒计时并列最大档）、
+ * EDIT 头部第一行换成子任务名＋时间大字换成子任务剩余、母任务名退到头部第二行细体小字；无子任务两窗原样。
  */
 public class FloatingWindow {
     public static final int MODE_EDIT = 0;
@@ -56,6 +58,7 @@ public class FloatingWindow {
     private static LinearLayout miniBox;
     private static TextView dockView;
     private static TextView titleView;
+    private static TextView headerSubView;
     private static TextView timeView;
     private static TextView miniTitle;
     private static TextView miniTime;
@@ -264,16 +267,38 @@ public class FloatingWindow {
         if (miniTitle != null && miniTime != null) {
             if (d.state == ST_PAUSED) {
                 miniTitle.setText(Strings.miniPausedTitle(d.title));
+                miniTitle.setTextSize(13);
+                miniTitle.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL);
                 miniTime.setText("");
                 miniTime.setVisibility(View.GONE);
             } else if (subRun) {
+                // 子任务是主角（v1.12.0 追加规格）：名字放大加粗，与右侧子任务倒计时并列全窗最大档
                 miniTitle.setText(TimerState.subTitle(c));
+                miniTitle.setTextSize(15);
+                miniTitle.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
                 miniTime.setVisibility(View.VISIBLE);
                 miniTime.setText(fmt(Math.max(0, TimerState.subEndAt(c) - System.currentTimeMillis())));
             } else {
                 miniTitle.setText(d.title);
+                miniTitle.setTextSize(13);
+                miniTitle.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL);
                 miniTime.setVisibility(View.VISIBLE);
                 miniTime.setText(timeText);
+            }
+        }
+        // EDIT 头部主次（v1.12.0 追加规格，与 MINI 统一）：计时中且有当前子任务时——
+        // 第一行＝子任务名（头部最大字号槽）＋时间大字改显子任务剩余；第二行＝母任务名（细体小字弱化）。
+        // 无子任务时维持原样；暂停态不动（暂停条自有呈现）。
+        if (titleView != null && timeView != null) {
+            if (subRun) {
+                titleView.setText(TimerState.subTitle(c));
+                timeView.setText(fmt(Math.max(0, TimerState.subEndAt(c) - System.currentTimeMillis())));
+                if (headerSubView != null) {
+                    headerSubView.setText(d.title);
+                    headerSubView.setVisibility(View.VISIBLE);
+                }
+            } else if (headerSubView != null) {
+                headerSubView.setVisibility(View.GONE);
             }
         }
         if (miniSub != null) {
@@ -531,6 +556,17 @@ public class FloatingWindow {
         titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
         titleView.setMaxLines(2);
         bodyBox.addView(titleView);
+
+        // EDIT 头部第二行（v1.12.0 追加规格）：计时中且有当前子任务时，第一行让给子任务名，
+        // 母任务名退到这一行——细体、小字、弱化显示；其余状态隐藏
+        headerSubView = new TextView(c);
+        headerSubView.setTextColor(Color.rgb(190, 200, 195));
+        headerSubView.setTextSize(11.5f);
+        headerSubView.setSingleLine(true);
+        headerSubView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        headerSubView.setPadding(0, dp(c, 2), 0, 0);
+        headerSubView.setVisibility(View.GONE);
+        bodyBox.addView(headerSubView);
 
         // 暂停条（v1.11.0）：只在暂停时出现，贴在任务内容顶部——大窗主体永远是任务本身
         pauseStrip = new LinearLayout(c);
