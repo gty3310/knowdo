@@ -2,6 +2,9 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -19,6 +22,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.DatePicker;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
@@ -501,6 +505,49 @@ public class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
     }
 
+    // ---------------- 复制任务信息（v1.6.1） ----------------
+    /** 把任务全字段文案复制到剪贴板（与 AI 按钮同一份 buildInfo）。noteOverride/ruleOverride
+     *  非空时用编辑框里的现行文字替换对应字段拼文案，拼完即恢复，不落盘、不改任务本身。 */
+    private void copyTaskInfo(final TaskItem t, String noteOverride, String ruleOverride) {
+        String oldNote = t.note, oldRule = t.focusRule;
+        if (noteOverride != null) t.note = noteOverride;
+        if (ruleOverride != null) t.focusRule = ruleOverride;
+        String info = AiLaunchActivity.buildInfo(this, t);
+        t.note = oldNote;
+        t.focusRule = oldRule;
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("知行任务", info));
+        toast("已复制任务信息");
+    }
+
+    /** 给整段内容编辑框套一层 FrameLayout：右上方常驻一个「复制」按钮（v1.6.1），
+     *  叠在编辑区右上角、不随文字滚动消失；编辑框右侧留位，长文字换行不钻到按钮底下。
+     *  kind="note" 时复制文案用编辑框现行文字作笔记；kind="rule" 时作专注规则。 */
+    private FrameLayout wrapWithCopyButton(final TaskItem t, final EditText input, final String kind) {
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.addView(input, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+        input.setPadding(input.getPaddingLeft(), input.getPaddingTop(), dp(56), input.getPaddingBottom());
+        TextView btn = new TextView(this);
+        btn.setText("复制");
+        btn.setTextSize(12);
+        btn.setTextColor(Color.WHITE);
+        btn.setBackgroundColor(Color.argb(210, 97, 97, 97));
+        btn.setPadding(dp(10), dp(4), dp(10), dp(4));
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.END);
+        blp.setMargins(0, dp(4), dp(6), 0);
+        btn.setLayoutParams(blp);
+        btn.setOnClickListener(v -> {
+            if ("note".equals(kind)) copyTaskInfo(t, input.getText().toString(), null);
+            else if ("rule".equals(kind)) copyTaskInfo(t, null, input.getText().toString());
+            else copyTaskInfo(t, null, null);
+        });
+        wrap.addView(btn);
+        return wrap;
+    }
+
     // ---------------- 编辑对话框 ----------------
     private void dialogNewTask() {
         final EditText input = new EditText(this);
@@ -774,7 +821,7 @@ public class MainActivity extends Activity {
         ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
         ruleInput.setMinLines(2);
         ruleInput.setTextSize(15);
-        box.addView(ruleInput);
+        box.addView(wrapWithCopyButton(t, ruleInput, "rule"));
 
         final TextView summary = new TextView(this);
         summary.setTextSize(13);
@@ -878,7 +925,7 @@ public class MainActivity extends Activity {
         input.setGravity(Gravity.TOP);
         new AlertDialog.Builder(this)
                 .setTitle("笔记 · " + t.title)
-                .setView(input)
+                .setView(wrapWithCopyButton(t, input, "note"))
                 .setPositiveButton("保存", (d, w) -> {
                     t.note = input.getText().toString().trim();
                     t.touch();

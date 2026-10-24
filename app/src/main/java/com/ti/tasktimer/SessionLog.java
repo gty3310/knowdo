@@ -75,6 +75,25 @@ public final class SessionLog {
         return s == null ? "" : s;
     }
 
+    /**
+     * 某任务累计计时过的总毫秒（悬浮窗 EDIT 卡「已用 / 计划总」用，v1.6.1）：
+     * 全部已关闭段（不限日期）＋当前打开段（若正是这个任务、计到此刻）。
+     * 注意口径：段记录从 v1.6.0 起才积累，且全表上限 500 段、超了丢最旧的，
+     * 所以这是「v1.6.0 装上之后、本机记录还在的范围内」的累计，不是任务全生命累计。
+     */
+    public static synchronized long totalMsForTask(Context c, String taskId) {
+        if (taskId == null || taskId.isEmpty()) return 0;
+        long sum = 0;
+        for (Seg s : readAll(c)) {
+            if (taskId.equals(s.taskId)) sum += Math.max(0, s.endMs - s.startMs);
+        }
+        long os = openStart(c);
+        if (os > 0 && taskId.equals(openTaskId(c))) {
+            sum += Math.max(0, System.currentTimeMillis() - os);
+        }
+        return sum;
+    }
+
     /** 取与某一天（yyyy-MM-dd，本地时区）有重叠的已关闭段，起止已裁剪到当天范围内，按开始时间排序。 */
     public static List<Seg> segmentsForDay(Context c, String date) {
         long dayStart = dayStartMs(date);

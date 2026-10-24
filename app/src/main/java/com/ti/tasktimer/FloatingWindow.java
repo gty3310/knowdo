@@ -17,6 +17,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -30,7 +31,8 @@ import android.widget.TextView;
  *  小展开 MINI：半透明小窗：任务名 + 时间 + ▶/⏸ + ✎；点内容区或 ✎ 进编辑；
  *            拖到屏幕左/右边缘松手吸附成 DOCK。
  *  编辑 EDIT：更不透明的大卡片：开始/暂停、AI（复制任务信息并打开助手）、完成、打开知行、收起；
- *            笔记就是输入框本身，点开直接写、停笔自动保存。
+ *            笔记就是输入框本身，点开直接写、停笔自动保存。时间行：左=剩余（大字），
+ *            右=已用 / 计划总（小字，v1.6.1）；笔记区右上角常驻「复制」按钮（只复制不开助手，v1.6.1）。
  * 暂停不直接生效（MINI/EDIT 点 ⏸ 时）：先弹暂停菜单，选多久后提醒（1/3/5/10/15/20/30/60 分钟、
  * 2 小时、自定义），或「立刻暂停」（不提醒）。到点由 ResumeRemindActivity 全屏叫回。
  */
@@ -56,6 +58,7 @@ public class FloatingWindow {
     private static TextView miniTime;
     private static TextView miniPlay;
     private static TextView stateView;
+    private static TextView usedView;
     private static TextView saveStateView;
     private static Button playPauseBtn;
     private static Button doneBtn;
@@ -246,6 +249,26 @@ public class FloatingWindow {
                     : d.state == ST_PAUSED ? "已暂停，点 ▶ 继续"
                     : d.state == ST_IDLE ? "第一要务，点 ▶ 开始" : "今天的任务都完成了");
         }
+        // EDIT 卡时间行右侧（v1.6.1）：已用 / 计划总。
+        // 已用 = SessionLog 全部段累计 + 正在跑的这一段（口径见 SessionLog.totalMsForTask）；
+        // 计划总 = 当前目标总时长（计时/暂停中取计时器目标，含加时；未开始取任务计划时长）。
+        if (usedView != null) {
+            if (d.task == null) {
+                usedView.setText("");
+            } else {
+                long totalMs;
+                if (d.state == ST_RUNNING) {
+                    totalMs = TimerState.totalSec(c) * 1000L;
+                } else if (d.state == ST_PAUSED) {
+                    int ts = TimerState.pausedTotalSec(c);
+                    totalMs = (ts > 0 ? ts : Math.max(1, d.task.durationMinutes) * 60) * 1000L;
+                } else {
+                    totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
+                }
+                if (totalMs <= 0) totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
+                usedView.setText(fmt(SessionLog.totalMsForTask(c, d.task.id)) + " / " + fmt(totalMs));
+            }
+        }
         if (playPauseBtn != null) {
             playPauseBtn.setText(d.state == ST_RUNNING ? "⏸ 暂停"
                     : d.state == ST_PAUSED ? "▶ 继续" : "▶ 开始");
@@ -392,7 +415,15 @@ public class FloatingWindow {
         stateView.setTextColor(Color.rgb(176, 176, 176));
         stateView.setTextSize(12);
         stateView.setPadding(dp(c, 10), 0, 0, 0);
+        stateView.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         timeRow.addView(stateView);
+        // 时间行最右侧（v1.6.1）：已用 / 计划总，字号小于左侧大字剩余时间
+        usedView = new TextView(c);
+        usedView.setTextColor(Color.rgb(200, 200, 200));
+        usedView.setTextSize(13);
+        usedView.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        timeRow.addView(usedView);
         bodyBox.addView(timeRow);
 
         noteEdit = new EditText(c);
@@ -408,7 +439,8 @@ public class FloatingWindow {
         noteEdit.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         noteEdit.setGravity(Gravity.TOP);
         noteEdit.setBackgroundColor(Color.TRANSPARENT);
-        noteEdit.setPadding(0, dp(c, 4), 0, 0);
+        // 右侧留位给叠在右上角的「复制」按钮，长文字换行时不钻到它底下
+        noteEdit.setPadding(0, dp(c, 4), dp(c, 48), 0);
         noteEdit.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_DOWN && !editing) beginEditFocus(c);
             return false;
@@ -425,7 +457,43 @@ public class FloatingWindow {
                 ui.postDelayed(pendingSave, 700);
             }
         });
-        bodyBox.addView(noteEdit);
+        // 笔记区套一层 FrameLayout：右上角常驻「复制」按钮（v1.6.1），叠在编辑区之上、
+        // 不随文字滚动消失；点它先把正在写的笔记落盘，再经 AiLaunchActivity 只复制
+        // （剪贴板写入必须由前台 Activity 做，与 AI 按钮同一个中转页，但不打开助手）。
+        FrameLayout noteWrap = new FrameLayout(c);
+        noteEdit.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+        noteWrap.addView(noteEdit);
+        TextView copyBtn = new TextView(c);
+        copyBtn.setText("复制");
+        copyBtn.setTextColor(Color.WHITE);
+        copyBtn.setTextSize(12);
+        GradientDrawable copyBg = new GradientDrawable();
+        copyBg.setColor(Color.argb(210, 80, 80, 80));
+        copyBg.setCornerRadius(6 * d);
+        copyBtn.setBackground(copyBg);
+        copyBtn.setPadding(dp(c, 10), dp(c, 4), dp(c, 10), dp(c, 4));
+        FrameLayout.LayoutParams copyLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.END);
+        copyLp.setMargins(0, dp(c, 2), dp(c, 2), 0);
+        copyBtn.setLayoutParams(copyLp);
+        copyBtn.setOnClickListener(v -> {
+            Display dd = resolveDisplay(c);
+            if (dd.task == null) {
+                android.widget.Toast.makeText(c, "现在没有可复制的任务", android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
+            persistNote(c, false); // 先落盘，复制的文案里带上刚写的笔记
+            Intent i = new Intent(c, AiLaunchActivity.class);
+            i.putExtra(AiLaunchActivity.EXTRA_TASK_ID, dd.task.id);
+            i.putExtra(AiLaunchActivity.EXTRA_COPY_ONLY, true);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+        });
+        noteWrap.addView(copyBtn);
+        bodyBox.addView(noteWrap);
 
         saveStateView = new TextView(c);
         saveStateView.setText("点笔记区直接写，停笔自动保存");

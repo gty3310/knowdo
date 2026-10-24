@@ -18,6 +18,8 @@ public class AiLaunchActivity extends Activity {
 public static final String EXTRA_TASK_ID = "task_id";
 /** 通用文本模式：调用方把现成文字放进这个 extra（如日历页「问 AI」拼好的今日日程），本页照常复制+打开助手。 */
 public static final String EXTRA_TEXT = "text";
+/** 只复制模式：只把任务信息复制到剪贴板并 Toast 提示，不打开助手（编辑框右上角「复制」按钮用，v1.6.1）。 */
+public static final String EXTRA_COPY_ONLY = "copy_only";
 
 @Override
 protected void onCreate(Bundle savedInstanceState) {
@@ -36,10 +38,15 @@ Toast.makeText(this, "没有可发送的任务", Toast.LENGTH_SHORT).show();
 finish();
 return;
 }
-info = buildInfo(t);
+info = buildInfo(this, t);
 }
 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 if (cm!= null) cm.setPrimaryClip(ClipData.newPlainText(textMode ? "知行日程" : "知行任务", info));
+if (getIntent().getBooleanExtra(EXTRA_COPY_ONLY, false)) {
+Toast.makeText(this, "已复制任务信息", Toast.LENGTH_SHORT).show();
+finish();
+return;
+}
 
 String pkg = FocusGuard.musePackage(this);
 if (pkg == null) {
@@ -76,7 +83,8 @@ Toast.makeText(this, what + "已同时复制到剪贴板（若没自动填入，
 finish();
 }
 
-private String buildInfo(TaskItem t) {
+/** 任务全字段文案（AI 按钮与各处「复制」按钮共用同一份，v1.6.1 起抽为静态供复用）。 */
+static String buildInfo(Context ctx, TaskItem t) {
 StringBuilder sb = new StringBuilder();
 sb.append("\n");
 sb.append("任务：").append(t.title).append('\n');
@@ -96,11 +104,11 @@ if (t.focusRule!= null &&!t.focusRule.isEmpty()) {
 sb.append("专注规则：").append(t.focusRule).append('\n');
 }
 // 当前计时状态
-if (TimerState.isRunning(this) && t.id.equals(TimerState.taskId(this))) {
-long remain = Math.max(0, (TimerState.endAt(this) - System.currentTimeMillis()) / 1000);
+if (TimerState.isRunning(ctx) && t.id.equals(TimerState.taskId(ctx))) {
+long remain = Math.max(0, (TimerState.endAt(ctx) - System.currentTimeMillis()) / 1000);
 sb.append("状态：正在计时，剩余 ").append(remain / 60).append(" 分 ").append(remain % 60).append(" 秒\n");
-} else if (t.id.equals(TimerState.pausedTaskId(this))) {
-long remain = Math.max(0, TimerState.pausedRemainMs(this) / 1000);
+} else if (t.id.equals(TimerState.pausedTaskId(ctx))) {
+long remain = Math.max(0, TimerState.pausedRemainMs(ctx) / 1000);
 sb.append("状态：已暂停，剩余 ").append(remain / 60).append(" 分 ").append(remain % 60).append(" 秒\n");
 } else {
 sb.append("状态：未开始\n");
