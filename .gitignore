@@ -2,3 +2,6 @@ build/
 *.apk
 .gradle/
 local.properties
+
+# 桥文件母本含真实任务数据，永不进仓库（母本在仓库外 ~/workspace/knowdo-bridge/）
+sync/
