@@ -15,6 +15,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
@@ -25,7 +26,9 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.HorizontalScrollView;
 import android.widget.PopupMenu;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,10 +49,28 @@ public class MainActivity extends Activity {
     private TaskItem pendingGuardTask; // 等待截图授权结果的待启动任务
 
     private TaskStore store;
-    private ListView listView;
     private TaskAdapter adapter;
-    private TextView statusView;
-    private Button realtimeBtn;
+    // ---- v1.8.0 新界面状态 ----
+    private boolean appliedDark;
+    private boolean appliedEn;
+    private TextView nowTitleView;
+    private TextView nowRemainView;
+    private TextView liveLeftView; // 正在计时行的「剩余」格，状态条每秒顺手刷新它
+    private LinearLayout headerInner;
+    private LinearLayout bodyInner;
+    private HorizontalScrollView headerScroll;
+    private HorizontalScrollView bodyHScroll;
+    private boolean syncingScroll;
+    private FrameLayout drawerRoot;
+    private TextView drawerAccountTitle;
+    private TextView drawerAccountSub;
+    private TextView segLangZh, segLangEn, segThemeLight, segThemeDark;
+    private FrameLayout calContainer;
+    private CalendarPanel calendarPanel;
+    private boolean calOpen;
+    private String expandedTaskId; // 手风琴：当前展开的任务 id（一次一个）
+    private final java.util.Set<String> expandedDays = new java.util.HashSet<>();
+    private static final int REQ_CAL_CAPTURE = 44;
     private android.content.BroadcastReceiver syncReceiver;
     // 数据变更监听（v1.6.2）：悬浮窗/同步在别处改了数据，本页前台时立刻跟上
     private final TaskStore.ChangeListener storeListener = this::onStoreChanged;
@@ -67,6 +88,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Strings.init(this);
+        appliedDark = Ui.dark(this);
+        appliedEn = Strings.en();
         store = new TaskStore(this);
         AlertHelper.createChannels(this);
         buildUi();
@@ -86,10 +110,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (Ui.dark(this) != appliedDark || Ui.en(this) != appliedEn) { recreate(); return; }
         store.load();
         adapter.notifyDataSetChanged();
         StartReminder.reschedule(this, store);
-        updateRealtimeBtn();
         handler.removeCallbacks(statusLoop);
         handler.post(statusLoop);
         if (syncReceiver == null) {
@@ -110,6 +134,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         handler.removeCallbacks(statusLoop);
+        if (calOpen) closeCalendar();
         TaskStore.removeChangeListener(storeListener);
         if (syncReceiver != null) {
             try { unregisterReceiver(syncReceiver); } catch (Exception ignored) { }
@@ -170,141 +195,473 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- UI 骨架 ----------------
+    // ---------------- UI 骨架（v1.8.0 改版） ----------------
+    // 顶栏：左 ☰ 菜单＋字标，右「日历」按钮；顶栏下细条＝当前任务＋剩余时间。
+    // 表格：表头与主体两个横向滚动区镜像同步；日历面板从右侧滑出（左缘拉手拖动定宽）；
+    // 抽屉从左侧滑出（账号/语言/外观/帮助/设置）。旧顶栏按钮的去向：账号→抽屉与设置页，
+    // 同步/实时→设置页账号组，帮助→抽屉与设置页，记录→设置页通用组，新增→右下 FAB。
     private void buildUi() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        adapter = new TaskAdapter();
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Ui.bg(this));
         setContentView(root);
 
-        LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.VERTICAL);
-        head.setPadding(dp(16), dp(18), dp(16), dp(6));
-        TextView title = new TextView(this);
-        title.setText("知行 KnowDo");
-        title.setTextSize(24);
-        title.setTextColor(Color.BLACK);
-        head.addView(title);
-        statusView = new TextView(this);
-        statusView.setTextSize(13);
-        statusView.setTextColor(Color.DKGRAY);
-        head.addView(statusView);
-        root.addView(head);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        root.addView(content, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(dp(12), dp(4), dp(12), dp(8));
-        bar.addView(barButton("＋ 新增", v -> dialogNewTask()));
-        bar.addView(barButton("同步", v -> {
-            if (SyncManager.isSupabaseMode(this)) runSync(true);
-            else if (SyncManager.getUri(this) == null) launchBridgePicker();
-            else runSync(true);
-        }));
-        realtimeBtn = barButton("", v -> toggleRealtime());
-        bar.addView(realtimeBtn);
-        bar.addView(barButton("账号", v -> dialogAccount()));
-        updateRealtimeBtn();
-        bar.addView(barButton("权限", v -> startActivity(new Intent(this, PermActivity.class))));
-        bar.addView(barButton("记录", v -> startActivity(new Intent(this, LogActivity.class))));
-        bar.addView(barButton("帮助", v -> startActivity(new Intent(this, HelpActivity.class))));
-        bar.addView(barButton("日历", v -> startActivity(new Intent(this, CalendarActivity.class))));
-        root.addView(bar);
+        // 顶栏
+        LinearLayout topbar = new LinearLayout(this);
+        topbar.setOrientation(LinearLayout.HORIZONTAL);
+        topbar.setGravity(Gravity.CENTER_VERTICAL);
+        topbar.setPadding(dp(6), dp(10), dp(12), dp(4));
+        TextView burger = new TextView(this);
+        burger.setText("☰");
+        burger.setTextSize(21);
+        burger.setTextColor(Ui.text(this));
+        burger.setGravity(Gravity.CENTER);
+        burger.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(40)));
+        burger.setOnClickListener(v -> openDrawer());
+        topbar.addView(burger);
+        TextView wordmark = new TextView(this);
+        wordmark.setText(Strings.appWordmark());
+        wordmark.setTextSize(19);
+        wordmark.setTextColor(Ui.text(this));
+        wordmark.setTypeface(wordmark.getTypeface(), android.graphics.Typeface.BOLD);
+        topbar.addView(wordmark);
+        View tsp = new View(this);
+        tsp.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
+        topbar.addView(tsp);
+        TextView calBtn = new TextView(this);
+        calBtn.setText(Strings.calendar());
+        calBtn.setTextSize(14);
+        calBtn.setTextColor(Ui.accent(this));
+        calBtn.setGravity(Gravity.CENTER);
+        calBtn.setPadding(dp(14), dp(6), dp(14), dp(6));
+        android.graphics.drawable.GradientDrawable calBg = new android.graphics.drawable.GradientDrawable();
+        calBg.setCornerRadius(dp(9));
+        calBg.setColor(Ui.muted(this));
+        calBtn.setBackground(calBg);
+        calBtn.setOnClickListener(v -> toggleCalendar());
+        topbar.addView(calBtn);
+        content.addView(topbar);
 
-        root.addView(headerRow());
+        // 细条：当前任务＋剩余时间
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setPadding(dp(16), dp(1), dp(16), dp(8));
+        nowTitleView = new TextView(this);
+        nowTitleView.setTextSize(14);
+        nowTitleView.setTextColor(Ui.text(this));
+        nowTitleView.setSingleLine(true);
+        nowTitleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        nowTitleView.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        strip.addView(nowTitleView);
+        nowRemainView = new TextView(this);
+        nowRemainView.setTextSize(14);
+        nowRemainView.setTextColor(Ui.accent(this));
+        nowRemainView.setTypeface(nowRemainView.getTypeface(), android.graphics.Typeface.BOLD);
+        nowRemainView.setPadding(dp(10), 0, 0, 0);
+        strip.addView(nowRemainView);
+        content.addView(strip);
+        View stripLine = new View(this);
+        stripLine.setBackgroundColor(Ui.line(this));
+        content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
-        listView = new ListView(this);
-        adapter = new TaskAdapter();
-        listView.setAdapter(adapter);
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            dialogRowMenu(adapter.visible.get(position));
-            return true;
-        });
-        root.addView(listView, new LinearLayout.LayoutParams(
+        // 表格区：表头滚动 + 主体（纵向滚动套横向滚动），两者横向镜像同步
+        FrameLayout tableArea = new FrameLayout(this);
+        content.addView(tableArea, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout tableCol = new LinearLayout(this);
+        tableCol.setOrientation(LinearLayout.VERTICAL);
+        tableArea.addView(tableCol, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        headerScroll = new HorizontalScrollView(this);
+        headerScroll.setHorizontalScrollBarEnabled(false);
+        headerInner = new LinearLayout(this);
+        headerInner.setOrientation(LinearLayout.HORIZONTAL);
+        headerInner.setBackgroundColor(Ui.surface(this));
+        headerScroll.addView(headerInner, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        tableCol.addView(headerScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(38)));
+        View headLine = new View(this);
+        headLine.setBackgroundColor(Ui.line(this));
+        tableCol.addView(headLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        ScrollView bodyScroll = new ScrollView(this);
+        bodyScroll.setFillViewport(true);
+        bodyHScroll = new HorizontalScrollView(this);
+        bodyHScroll.setHorizontalScrollBarEnabled(false);
+        bodyInner = new LinearLayout(this);
+        bodyInner.setOrientation(LinearLayout.VERTICAL);
+        bodyHScroll.addView(bodyInner, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        bodyScroll.addView(bodyHScroll, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        tableCol.addView(bodyScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        headerScroll.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+            if (!syncingScroll && bodyHScroll.getScrollX() != x) {
+                syncingScroll = true;
+                bodyHScroll.scrollTo(x, 0);
+                syncingScroll = false;
+            }
+        });
+        bodyHScroll.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+            if (!syncingScroll && headerScroll.getScrollX() != x) {
+                syncingScroll = true;
+                headerScroll.scrollTo(x, 0);
+                syncingScroll = false;
+            }
+        });
+        // 齿轮：sticky 在表格区右上角（盖在表头滚动区之上，不随横向滚动跑）
+        Button gear = new Button(this);
+        gear.setBackground(new Ui.GearDrawable(Ui.sub(this), Ui.surface(this)));
+        gear.setOnClickListener(v -> dialogColumns());
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dp(34), dp(38));
+        glp.gravity = Gravity.TOP | Gravity.END;
+        tableArea.addView(gear, glp);
+
+        // 新增任务 FAB（原顶栏「＋新增」的去向）
+        TextView fab = new TextView(this);
+        fab.setText("+");
+        fab.setTextSize(26);
+        fab.setTextColor(Ui.onAccent(this));
+        fab.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable fabBg = new android.graphics.drawable.GradientDrawable();
+        fabBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        fabBg.setColor(Ui.accent(this));
+        fab.setBackground(fabBg);
+        fab.setElevation(dp(4));
+        fab.setOnClickListener(v -> dialogNewTask());
+        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(dp(56), dp(56));
+        flp.gravity = Gravity.BOTTOM | Gravity.END;
+        flp.setMargins(0, 0, dp(18), dp(18));
+        root.addView(fab, flp);
+
+        // 日历面板容器（右侧滑出；宽度由 toggleCalendar/拉手决定）
+        calContainer = new FrameLayout(this);
+        calContainer.setBackgroundColor(Ui.surface(this));
+        calContainer.setVisibility(View.GONE);
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT);
+        clp.gravity = Gravity.END;
+        root.addView(calContainer, clp);
+
+        buildDrawer(root);
+        renderTable();
         refreshStatus();
     }
 
-    private void updateRealtimeBtn() {
-        if (realtimeBtn != null) {
-            realtimeBtn.setText(SyncManager.realtimeEnabled(this) ? "实时：开" : "实时：关");
-        }
+    // ---------------- 抽屉 ----------------
+
+    private void buildDrawer(FrameLayout root) {
+        drawerRoot = new FrameLayout(this);
+        drawerRoot.setVisibility(View.GONE);
+        root.addView(drawerRoot, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        View scrim = new View(this);
+        scrim.setBackgroundColor(android.graphics.Color.argb(90, 0, 0, 0));
+        scrim.setOnClickListener(v -> closeDrawer());
+        drawerRoot.addView(scrim, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(Ui.surface(this));
+        panel.setPadding(dp(20), dp(22), dp(18), dp(18));
+        panel.setOnClickListener(v -> { });
+        drawerRoot.addView(panel, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        TextView wm = new TextView(this);
+        wm.setText(Strings.appFull());
+        wm.setTextSize(17);
+        wm.setTextColor(Ui.text(this));
+        wm.setTypeface(wm.getTypeface(), android.graphics.Typeface.BOLD);
+        panel.addView(wm);
+
+        // 账号区：点整块打开账号弹窗（复用 AccountUi，与设置页同一套）
+        LinearLayout acct = new LinearLayout(this);
+        acct.setOrientation(LinearLayout.VERTICAL);
+        acct.setPadding(0, dp(16), 0, dp(14));
+        drawerAccountTitle = new TextView(this);
+        drawerAccountTitle.setTextSize(16);
+        drawerAccountTitle.setTextColor(Ui.text(this));
+        drawerAccountTitle.setTypeface(drawerAccountTitle.getTypeface(), android.graphics.Typeface.BOLD);
+        acct.addView(drawerAccountTitle);
+        drawerAccountSub = new TextView(this);
+        drawerAccountSub.setTextSize(12);
+        drawerAccountSub.setTextColor(Ui.sub(this));
+        drawerAccountSub.setPadding(0, dp(3), 0, 0);
+        acct.addView(drawerAccountSub);
+        acct.setOnClickListener(v -> { closeDrawer(); dialogAccount(); });
+        panel.addView(acct);
+        panel.addView(drawerLine());
+
+        panel.addView(drawerLabel(Strings.language()));
+        LinearLayout langSeg = segRow();
+        segLangZh = segItem("中文");
+        segLangEn = segItem("EN");
+        segLangZh.setOnClickListener(v -> { Ui.setLangPref(this, "zh"); recreate(); });
+        segLangEn.setOnClickListener(v -> { Ui.setLangPref(this, "en"); recreate(); });
+        langSeg.addView(segLangZh);
+        langSeg.addView(segLangEn);
+        panel.addView(langSeg);
+
+        panel.addView(drawerLabel(Strings.appearance()));
+        LinearLayout themeSeg = segRow();
+        segThemeLight = segItem(Strings.light());
+        segThemeDark = segItem(Strings.dark());
+        segThemeLight.setOnClickListener(v -> { Ui.setThemePref(this, "light"); recreate(); });
+        segThemeDark.setOnClickListener(v -> { Ui.setThemePref(this, "dark"); recreate(); });
+        themeSeg.addView(segThemeLight);
+        themeSeg.addView(segThemeDark);
+        panel.addView(themeSeg);
+        panel.addView(drawerLine());
+
+        panel.addView(drawerRow(Strings.help(), v -> {
+            closeDrawer();
+            startActivity(new Intent(this, HelpActivity.class));
+        }));
+        panel.addView(drawerRow(Strings.settings(), v -> {
+            closeDrawer();
+            startActivity(new Intent(this, SettingsActivity.class));
+        }));
+        View spacer = new View(this);
+        panel.addView(spacer, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        TextView ver = new TextView(this);
+        ver.setText(Strings.versionLine());
+        ver.setTextSize(11);
+        ver.setTextColor(Ui.sub(this));
+        panel.addView(ver);
+        updateDrawerAccount();
+        refreshSegStates();
     }
 
-    private void toggleRealtime() {
-        boolean on = !SyncManager.realtimeEnabled(this);
-        SyncManager.setRealtimeEnabled(this, on);
-        updateRealtimeBtn();
-        if (on) {
-            if (SyncManager.isSupabaseMode(this)) {
-                SyncService.start(this);
-                toast("实时同步已开：云端变更实时推送，另每 30 秒对账一次；带「立即开始」标记的任务会自动开始计时");
-            } else if (SyncManager.getUri(this) == null) {
-                toast("实时同步已开：先点「同步」选中 Drive 里的 tasks.json");
-                launchBridgePicker();
-            } else {
-                SyncService.start(this);
-                toast("实时同步已开：每 30 秒自动同步，带「立即开始」标记的任务会自动开始计时");
-            }
-        } else {
-            SyncService.stop(this);
-            toast("实时同步已关");
-        }
+    private View drawerLine() {
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        lp.setMargins(0, dp(10), 0, dp(2));
+        line.setLayoutParams(lp);
+        return line;
     }
 
-    private Button barButton(String s, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(s);
-        b.setTextSize(14);
-        b.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        lp.setMargins(dp(3), 0, dp(3), 0);
-        b.setLayoutParams(lp);
-        return b;
-    }
-
-    private View headerRow() {
-        LinearLayout h = new LinearLayout(this);
-        h.setOrientation(LinearLayout.HORIZONTAL);
-        h.setBackgroundColor(Color.rgb(238, 238, 238));
-        h.setPadding(dp(6), dp(6), dp(6), dp(6));
-        h.addView(headerCell("", 44));
-        h.addView(headerCell("任务", 0));
-        h.addView(headerCell("情景", 74));
-        h.addView(headerCell("截止", 70));
-        h.addView(headerCell("时长", 48));
-        h.addView(headerCell("专注", 62));
-        return h;
-    }
-
-    private TextView headerCell(String s, int widthDp) {
+    private TextView drawerLabel(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(13);
-        t.setTextColor(Color.DKGRAY);
-        if (widthDp == 0) t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        else t.setLayoutParams(new LinearLayout.LayoutParams(dp(widthDp), LinearLayout.LayoutParams.WRAP_CONTENT));
+        t.setTextSize(12);
+        t.setTextColor(Ui.sub(this));
+        t.setPadding(0, dp(14), 0, dp(6));
         return t;
     }
 
-    private void refreshStatus() {
-        if (statusView == null) return;
-        StringBuilder sb = new StringBuilder();
-        if (TimerState.isRunning(this)) {
-            long remain = Math.max(0, (TimerState.endAt(this) - System.currentTimeMillis()) / 1000);
-            sb.append("计时中：「").append(TimerState.taskTitle(this)).append("」剩余 ")
-              .append(remain / 60).append(":").append(String.format("%02d", remain % 60)).append("  ");
-        } else if (TimerState.isPaused(this)) {
-            long remain = Math.max(0, TimerState.pausedRemainMs(this) / 1000);
-            sb.append("已暂停：「").append(TimerState.pausedTitle(this)).append("」剩余 ")
-              .append(remain / 60).append(":").append(String.format("%02d", remain % 60))
-              .append("，点它的 ▶ 继续  ");
-        }
-        if (SyncManager.isSupabaseMode(this)) {
-            sb.append(SbSync.statusText(this, store));
+    private TextView drawerRow(String s, View.OnClickListener cl) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(15);
+        t.setTextColor(Ui.text(this));
+        t.setPadding(0, dp(11), 0, dp(11));
+        t.setOnClickListener(cl);
+        return t;
+    }
+
+    /** 分段控件外框（语言/外观共用）：圆角描边，选中项填强调色。 */
+    private LinearLayout segRow() {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(8));
+        bg.setStroke(1, Ui.line(this));
+        bg.setColor(Ui.surface(this));
+        r.setBackground(bg);
+        r.setPadding(dp(3), dp(3), dp(3), dp(3));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        r.setLayoutParams(lp);
+        return r;
+    }
+
+    private TextView segItem(String s) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(13);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(16), dp(5), dp(16), dp(5));
+        return t;
+    }
+
+    private void segPaint(TextView t, boolean selected) {
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(6));
+        bg.setColor(selected ? Ui.accent(this) : android.graphics.Color.TRANSPARENT);
+        t.setBackground(bg);
+        t.setTextColor(selected ? Ui.onAccent(this) : Ui.sub(this));
+    }
+
+    private void refreshSegStates() {
+        if (segLangZh == null) return;
+        boolean en = Ui.en(this);
+        segPaint(segLangZh, !en);
+        segPaint(segLangEn, en);
+        boolean dark = Ui.dark(this);
+        segPaint(segThemeLight, !dark);
+        segPaint(segThemeDark, dark);
+    }
+
+    private void updateDrawerAccount() {
+        if (drawerAccountTitle == null) return;
+        if (Supa.isLoggedIn(this)) {
+            drawerAccountTitle.setText(Supa.userEmail(this));
+            drawerAccountSub.setText(Strings.en()
+                    ? (SbSync.isSyncing() ? "Syncing…" : SbSync.pendingCount(this, store) > 0
+                        ? SbSync.pendingCount(this, store) + " pending" : "Synced")
+                    : SbSync.statusText(this, store));
         } else {
-            String last = SyncManager.lastResult(this);
-            sb.append(last.isEmpty() ? "点「同步」连接 Drive 的 tasks.json" : last);
+            drawerAccountTitle.setText(Strings.notLoggedIn());
+            drawerAccountSub.setText(Strings.loginHint());
         }
-        statusView.setText(sb.toString());
+    }
+
+    private void openDrawer() {
+        if (drawerRoot == null) return;
+        View panel = ((ViewGroup) drawerRoot).getChildAt(1);
+        int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.68f);
+        ViewGroup.LayoutParams lp = panel.getLayoutParams();
+        if (lp.width != w) { lp.width = w; panel.setLayoutParams(lp); }
+        updateDrawerAccount();
+        refreshSegStates();
+        drawerRoot.setVisibility(View.VISIBLE);
+    }
+
+    private void closeDrawer() {
+        if (drawerRoot != null) drawerRoot.setVisibility(View.GONE);
+    }
+
+    // ---------------- 日历面板 ----------------
+
+    private void toggleCalendar() {
+        if (calOpen) { closeCalendar(); return; }
+        if (calendarPanel == null) {
+            calendarPanel = new CalendarPanel(this);
+            calContainer.addView(calendarPanel, 0, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            calContainer.addView(buildCalGrip(), new FrameLayout.LayoutParams(
+                    dp(16), FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START));
+        }
+        int rootW = ((View) calContainer.getParent()).getWidth();
+        if (rootW <= 0) rootW = getResources().getDisplayMetrics().widthPixels;
+        int w = Math.round(rootW * Ui.calPanelPct(this) / 100f);
+        w = Math.max(dp(160), Math.min(w, Math.round(rootW * 0.94f)));
+        ViewGroup.LayoutParams lp = calContainer.getLayoutParams();
+        lp.width = w;
+        calContainer.setLayoutParams(lp);
+        calContainer.setVisibility(View.VISIBLE);
+        calOpen = true;
+        calendarPanel.panelStart();
+        calContainer.post(() -> { if (calendarPanel != null) calendarPanel.refreshNow(); });
+    }
+
+    private void closeCalendar() {
+        calOpen = false;
+        if (calendarPanel != null) calendarPanel.panelStop();
+        if (calContainer != null) calContainer.setVisibility(View.GONE);
+    }
+
+    /** 面板左缘拉手：拖它决定展开幅度；拖到 <16% 松手自动关，上限 94%。 */
+    private View buildCalGrip() {
+        FrameLayout grip = new FrameLayout(this);
+        grip.setBackgroundColor(Ui.muted(this));
+        View line = new View(this);
+        line.setBackgroundColor(Ui.sub(this));
+        grip.addView(line, new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.CENTER));
+        grip.setOnTouchListener(new View.OnTouchListener() {
+            private float startX;
+            private int startW;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                int rootW = ((View) calContainer.getParent()).getWidth();
+                if (rootW <= 0) return false;
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startX = e.getRawX();
+                        startW = calContainer.getLayoutParams().width;
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        int nw = startW + Math.round(startX - e.getRawX());
+                        nw = Math.max(dp(60), Math.min(nw, Math.round(rootW * 0.94f)));
+                        ViewGroup.LayoutParams lp = calContainer.getLayoutParams();
+                        lp.width = nw;
+                        calContainer.setLayoutParams(lp);
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL: {
+                        int w = calContainer.getLayoutParams().width;
+                        if (w < rootW * 0.16f) { closeCalendar(); return true; }
+                        Ui.setCalPanelPct(MainActivity.this, Math.round(w * 100f / rootW));
+                        if (calendarPanel != null) calendarPanel.refreshNow();
+                        return true;
+                    }
+                    default:
+                        return false;
+                }
+            }
+        });
+        return grip;
+    }
+
+    // ---------------- 列显隐（与设置页共用 Ui 同一份本地存储） ----------------
+
+    private void dialogColumns() {
+        final String[] ids = {"start", "used", "left", "dur", "dl", "pri", "sc"};
+        String[] labels = new String[ids.length];
+        boolean[] checked = new boolean[ids.length];
+        for (int i = 0; i < ids.length; i++) {
+            labels[i] = SettingsActivity.colLabel(ids[i]);
+            checked[i] = Ui.colVisible(this, ids[i], SettingsActivity.colDefVisible(ids[i]));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.columnsTitle())
+                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> {
+                    Ui.setColVisible(this, ids[which], isChecked);
+                    renderTable();
+                })
+                .setPositiveButton(Strings.en() ? "Done" : "完成", null)
+                .show();
+    }
+
+    private void refreshStatus() {
+        if (nowTitleView == null) return;
+        if (TimerState.isRunning(this)) {
+            TaskItem cur = store.byId(TimerState.taskId(this));
+            nowTitleView.setText(cur != null ? cur.title : TimerState.taskTitle(this));
+            nowRemainView.setText(Strings.remain() + " "
+                    + mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
+        } else if (TimerState.pausedTaskId(this) != null) {
+            TaskItem cur = store.byId(TimerState.pausedTaskId(this));
+            nowTitleView.setText((cur != null ? cur.title : TimerState.pausedTitle(this))
+                    + Strings.pausedTag());
+            nowRemainView.setText(Strings.remain() + " " + mmss(TimerState.pausedRemainMs(this)));
+        } else {
+            TaskItem first = null;
+            for (TaskItem t : store.visibleSorted()) {
+                if (!t.isDoneToday()) { first = t; break; }
+            }
+            if (first != null) {
+                nowTitleView.setText(first.title);
+                nowRemainView.setText(Strings.plannedMin(first.durationMinutes));
+            } else {
+                nowTitleView.setText(Strings.appFull());
+                nowRemainView.setText("");
+            }
+        }
+        if (liveLeftView != null && TimerState.isRunning(this)) {
+            liveLeftView.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
+        }
+        updateDrawerAccount();
     }
 
     // ---------------- 任务行 ----------------
@@ -319,181 +676,509 @@ public class MainActivity extends Activity {
         static Row history(TaskItem t) { Row r = new Row(); r.kind = 2; r.t = t; return r; }
     }
 
-    private class TaskAdapter extends BaseAdapter {
-        List<TaskItem> visible = new ArrayList<>();
-        List<Row> rows = new ArrayList<>();
-        final java.util.Set<String> expandedNotes = new java.util.HashSet<>();
-        final java.util.Set<String> expandedDays = new java.util.HashSet<>();
+    // ---------------- 任务表渲染（v1.8.0） ----------------
+    // 列模型：task 常显；start/used/left/dur/dl/pri/sc 可显隐、宽度可拖（Ui 本地偏好）。
+    // 渲染方式与旧 ListView 一致地整表重建（notifyDataSetChanged 仍是唯一刷新入口），
+    // 行内所有操作都接回原有真实入口（onPlay / 各 dialog* / markDone 语义），无平行逻辑。
+    private static class ColDef {
+        final String id;
+        final int defW;
+        ColDef(String id, int defW) { this.id = id; this.defW = defW; }
+    }
 
-        TaskAdapter() { reload(); }
+    private static final ColDef[] ALL_COLS = {
+            new ColDef("task", 150), new ColDef("start", 80), new ColDef("used", 56),
+            new ColDef("left", 56), new ColDef("dur", 56), new ColDef("dl", 92),
+            new ColDef("pri", 52), new ColDef("sc", 76),
+    };
 
-        void reload() {
-            visible = store.visibleSorted();
-            rows = new ArrayList<>();
-            for (TaskItem t : visible) rows.add(Row.task(t));
-            // 历史：按完成日期（今天之前）分组，日期倒序；每组一个可展开的日期头
-            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                    .format(new java.util.Date());
-            java.util.Map<String, List<TaskItem>> byDate = new java.util.TreeMap<>(
-                    java.util.Collections.reverseOrder());
-            for (TaskItem t : store.tasks) {
-                if (t.deleted || t.doneDates == null) continue;
-                for (String d : t.doneDates) {
-                    if (d != null && d.compareTo(today) < 0) {
-                        byDate.computeIfAbsent(d, k -> new ArrayList<>()).add(t);
+    private final java.util.Map<String, java.util.List<View>> colViews = new java.util.HashMap<>();
+    private final java.util.List<View> fullViews = new ArrayList<>();
+    private int curTableW;
+    private float dragStartX;
+    private int dragStartW;
+    private int dragCurW;
+
+    private java.util.List<ColDef> visibleCols() {
+        java.util.List<ColDef> out = new ArrayList<>();
+        for (ColDef c : ALL_COLS) {
+            if ("task".equals(c.id) || Ui.colVisible(this, c.id, SettingsActivity.colDefVisible(c.id))) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    private int colPx(ColDef c) { return dp(Ui.colWidthDp(this, c.id, c.defW)); }
+
+    private int tableWidthPx() {
+        int w = dp(30);
+        for (ColDef c : visibleCols()) w += colPx(c);
+        return w + dp(36);
+    }
+
+    private String colTitle(String id) {
+        switch (id) {
+            case "task": return Strings.colTask();
+            case "start": return Strings.colStart();
+            case "used": return Strings.colUsed();
+            case "left": return Strings.colLeft();
+            case "dur": return Strings.colDur();
+            case "dl": return Strings.colDeadline();
+            case "pri": return Strings.colPriority();
+            case "sc": return Strings.colScenarios();
+            default: return id;
+        }
+    }
+
+    private void regCol(String id, View v) {
+        colViews.computeIfAbsent(id, k -> new ArrayList<>()).add(v);
+    }
+
+    private void setW(View v, int px) {
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
+        if (lp != null && lp.width != px) { lp.width = px; v.setLayoutParams(lp); }
+    }
+
+    /** 拖列宽时实时调宽：只改已注册视图的 LayoutParams，不重建（手势不中断）；松手才落盘。 */
+    private void applyColWidth(String id, int newPx) {
+        int delta = newPx - dragCurW;
+        if (delta == 0) return;
+        dragCurW = newPx;
+        java.util.List<View> vs = colViews.get(id);
+        if (vs != null) for (View v : vs) setW(v, newPx);
+        curTableW += delta;
+        setW(headerInner, curTableW);
+        setW(bodyInner, curTableW);
+        for (View v : fullViews) setW(v, curTableW);
+    }
+
+    private void renderTable() {
+        if (bodyInner == null) return;
+        colViews.clear();
+        fullViews.clear();
+        liveLeftView = null;
+        curTableW = tableWidthPx();
+        buildHeader();
+        bodyInner.removeAllViews();
+        for (Row r : buildRows()) {
+            if (r.kind == 1) bodyInner.addView(dateHeaderView(r));
+            else if (r.kind == 2) bodyInner.addView(historyRowView(r));
+            else bodyInner.addView(taskRowView(r.t));
+        }
+        setW(headerInner, curTableW);
+        setW(bodyInner, curTableW);
+    }
+
+    /** 行数据（与旧 TaskAdapter.reload 完全同口径）：可见任务在前，其后按完成日期倒序的历史分组。 */
+    private java.util.List<Row> buildRows() {
+        java.util.List<Row> rows = new ArrayList<>();
+        for (TaskItem t : store.visibleSorted()) rows.add(Row.task(t));
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+        java.util.Map<String, java.util.List<TaskItem>> byDate = new java.util.TreeMap<>(
+                java.util.Collections.reverseOrder());
+        for (TaskItem t : store.tasks) {
+            if (t.deleted || t.doneDates == null) continue;
+            for (String d : t.doneDates) {
+                if (d != null && d.compareTo(today) < 0) {
+                    byDate.computeIfAbsent(d, k -> new ArrayList<>()).add(t);
+                }
+            }
+        }
+        for (java.util.Map.Entry<String, java.util.List<TaskItem>> e : byDate.entrySet()) {
+            rows.add(Row.header(e.getKey(), e.getValue().size()));
+            if (expandedDays.contains(e.getKey())) {
+                for (TaskItem t : e.getValue()) rows.add(Row.history(t));
+            }
+        }
+        return rows;
+    }
+
+    private void buildHeader() {
+        headerInner.removeAllViews();
+        View cb = new View(this);
+        cb.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(38)));
+        headerInner.addView(cb);
+        for (ColDef c : visibleCols()) headerInner.addView(headerCellView(c));
+        View gearSpacer = new View(this);
+        gearSpacer.setLayoutParams(new LinearLayout.LayoutParams(dp(36), dp(38)));
+        headerInner.addView(gearSpacer);
+    }
+
+    private View headerCellView(final ColDef c) {
+        FrameLayout cell = new FrameLayout(this);
+        cell.setLayoutParams(new LinearLayout.LayoutParams(colPx(c), dp(38)));
+        TextView lab = new TextView(this);
+        lab.setText(colTitle(c.id));
+        lab.setTextSize(12);
+        lab.setTextColor(Ui.sub(this));
+        lab.setGravity(Gravity.CENTER_VERTICAL);
+        lab.setPadding(dp(6), 0, dp(12), 0);
+        lab.setSingleLine(true);
+        cell.addView(lab, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        cell.addView(line, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, 1, Gravity.BOTTOM));
+        // 右缘拖拽区：按住横拖改本列宽度
+        View handle = new View(this);
+        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(dp(14),
+                FrameLayout.LayoutParams.MATCH_PARENT, Gravity.END);
+        cell.addView(handle, hlp);
+        handle.setOnTouchListener((v, e) -> {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    dragStartX = e.getRawX();
+                    dragStartW = colPx(c);
+                    dragCurW = dragStartW;
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    int nw = dragStartW + Math.round(e.getRawX() - dragStartX);
+                    nw = Math.max(dp(44), Math.min(nw, dp(340)));
+                    applyColWidth(c.id, nw);
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    Ui.setColWidthDp(MainActivity.this, c.id,
+                            Math.round(dragCurW / getResources().getDisplayMetrics().density));
+                    return true;
+                default:
+                    return false;
+            }
+        });
+        regCol(c.id, cell);
+        return cell;
+    }
+
+    private View dateHeaderView(final Row r) {
+        TextView h = new TextView(this);
+        boolean open = expandedDays.contains(r.date);
+        h.setText((open ? "▼ " : "▶ ") + r.date + (Strings.en()
+                ? " · " + r.count + " done (tap to open)"
+                : " · 完成 " + r.count + " 个（点开看那天做了什么）"));
+        h.setTextSize(14);
+        h.setTextColor(Ui.sub(this));
+        h.setBackgroundColor(Ui.muted(this));
+        h.setPadding(dp(12), dp(10), dp(12), dp(10));
+        h.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
+        h.setOnClickListener(v -> {
+            if (expandedDays.contains(r.date)) expandedDays.remove(r.date);
+            else expandedDays.add(r.date);
+            renderTable();
+        });
+        fullViews.add(h);
+        return h;
+    }
+
+    private View historyRowView(final Row r) {
+        TextView h = new TextView(this);
+        h.setText("✓ " + r.t.title + (Strings.en()
+                ? " (" + r.t.durationMinutes + " min)"
+                : "（" + r.t.durationMinutes + " 分）"));
+        h.setTextSize(14);
+        h.setTextColor(Ui.sub(this));
+        h.setPadding(dp(28), dp(8), dp(12), dp(8));
+        h.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
+        h.setOnClickListener(v -> dialogNote(r.t));
+        fullViews.add(h);
+        return h;
+    }
+
+    private String mmss(long ms) {
+        long s = Math.max(0, ms / 1000);
+        return String.format(java.util.Locale.US, "%d:%02d", s / 60, s % 60);
+    }
+
+    private String hmOf(long ms) {
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(ms);
+        return String.format(java.util.Locale.US, "%02d:%02d",
+                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+    }
+
+    private String startCellText(TaskItem t) {
+        long ms = t.nextStartMs();
+        if (ms <= 0) return "—";
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(ms);
+        String day = String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
+        return day.equals(TaskItem.today()) ? hmOf(ms) : day.substring(5) + " " + hmOf(ms);
+    }
+
+    /** Deadline 格（v1.8.0）：只放日期/每日＋截止时刻；开始时间独立成列，不再拼 ▶ 尾巴。 */
+    private String deadlineOnlyText(TaskItem t) {
+        if ("daily".equals(t.repeat)) return Strings.dateDaily();
+        if (t.deadline == null) return Strings.dateEmpty();
+        return t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime);
+    }
+
+    private View taskRowView(final TaskItem t) {
+        final boolean done = t.isDoneToday();
+        final boolean isRunningThis = TimerState.isRunning(this) && t.id.equals(TimerState.taskId(this));
+        final boolean isPausedThis = !TimerState.isRunning(this) && t.id.equals(TimerState.pausedTaskId(this));
+        final boolean expanded = t.id.equals(expandedTaskId);
+
+        LinearLayout rowRoot = new LinearLayout(this);
+        rowRoot.setOrientation(LinearLayout.HORIZONTAL);
+        rowRoot.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
+        rowRoot.setBackgroundColor(done ? Ui.doneBg(this) : isRunningThis ? Ui.runningBg(this) : Ui.bg(this));
+        fullViews.add(rowRoot);
+        View bar = new View(this);
+        bar.setBackgroundColor(isRunningThis ? Ui.accent(this) : android.graphics.Color.TRANSPARENT);
+        rowRoot.addView(bar, new LinearLayout.LayoutParams(dp(3), LinearLayout.LayoutParams.MATCH_PARENT));
+        LinearLayout colV = new LinearLayout(this);
+        colV.setOrientation(LinearLayout.VERTICAL);
+        rowRoot.addView(colV, new LinearLayout.LayoutParams(curTableW - dp(3),
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(8), 0, dp(8));
+        row.setOnLongClickListener(v -> { dialogRowMenu(t); return true; });
+        colV.addView(row);
+
+        CheckBox doneBox = new CheckBox(this);
+        doneBox.setChecked(done);
+        doneBox.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(44)));
+        doneBox.setOnClickListener(v -> {
+            if (doneBox.isChecked()) t.markDone(); else t.markUndone();
+            store.save();
+            adapter.notifyDataSetChanged();
+            refreshStatus();
+        });
+        row.addView(doneBox);
+
+        for (ColDef c : visibleCols()) row.addView(cellView(c, t, done, isRunningThis, isPausedThis, expanded));
+
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        colV.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+
+        if (expanded) colV.addView(expansionView(t, done, isRunningThis, isPausedThis));
+        return rowRoot;
+    }
+
+    private View cellView(final ColDef c, final TaskItem t, boolean done,
+                          boolean isRunningThis, boolean isPausedThis, boolean expanded) {
+        TextView v = new TextView(this);
+        v.setTextSize(13);
+        v.setTextColor(Ui.text(this));
+        v.setPadding(dp(6), 0, dp(2), 0);
+        v.setLayoutParams(new LinearLayout.LayoutParams(colPx(c), LinearLayout.LayoutParams.WRAP_CONTENT));
+        switch (c.id) {
+            case "task": {
+                // 任务格：名字（点它展开/收起）＋右侧小箭头；外层 FrameLayout 承接列宽注册
+                FrameLayout cell = new FrameLayout(this);
+                cell.setLayoutParams(new LinearLayout.LayoutParams(colPx(c),
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+                v.setLayoutParams(new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+                String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
+                        + (isPausedThis ? Strings.pausedTag() : "");
+                v.setText(done ? titleText + " ✓" : titleText);
+                v.setTextSize(15);
+                v.setSingleLine(true);
+                v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                v.setPadding(dp(6), 0, dp(16), 0);
+                v.setTextColor(done ? Ui.sub(this) : Ui.text(this));
+                if (isRunningThis) v.setTypeface(v.getTypeface(), android.graphics.Typeface.BOLD);
+                if (done) v.setPaintFlags(v.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+                v.setOnClickListener(x -> {
+                    expandedTaskId = expanded ? null : t.id;
+                    renderTable();
+                });
+                cell.addView(v);
+                TextView chev = new TextView(this);
+                chev.setText("›");
+                chev.setTextSize(15);
+                chev.setTextColor(Ui.sub(this));
+                chev.setGravity(Gravity.CENTER);
+                if (expanded) chev.setRotation(90);
+                FrameLayout.LayoutParams chlp = new FrameLayout.LayoutParams(dp(16), dp(24),
+                        Gravity.END | Gravity.CENTER_VERTICAL);
+                cell.addView(chev, chlp);
+                regCol(c.id, cell);
+                return cell;
+            }
+            case "start":
+                v.setText(startCellText(t));
+                v.setTextColor(t.nextStartMs() > 0 ? Ui.link(this) : Ui.sub(this));
+                v.setOnClickListener(x -> dialogDeadline(t));
+                break;
+            case "used": {
+                int usedMin = (int) (SessionLog.totalMsForTask(this, t.id) / 60000);
+                v.setText(Strings.fmtMin(usedMin));
+                v.setOnClickListener(x -> dialogDuration(t));
+                break;
+            }
+            case "left":
+                if (isRunningThis) {
+                    v.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
+                    v.setTextColor(Ui.accent(this));
+                    v.setTypeface(v.getTypeface(), android.graphics.Typeface.BOLD);
+                    liveLeftView = v;
+                } else if (isPausedThis) {
+                    v.setText(mmss(TimerState.pausedRemainMs(this)));
+                    v.setTextColor(Ui.accent(this));
+                } else if (done) {
+                    v.setText("—");
+                    v.setTextColor(Ui.sub(this));
+                } else {
+                    int usedToday = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
+                    v.setText(Strings.fmtMin(Math.max(0, t.durationMinutes - usedToday)));
+                }
+                break;
+            case "dur":
+                v.setText(Strings.fmtDur(t.durationMinutes)
+                        + (t.actualMinutes > 0 ? "\n" + (Strings.en() ? "act " : "实") + t.actualMinutes : ""));
+                v.setTextColor(Ui.link(this));
+                v.setOnClickListener(x -> dialogDuration(t));
+                break;
+            case "dl":
+                v.setText(deadlineOnlyText(t));
+                v.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Ui.sub(this) : Ui.link(this));
+                v.setOnClickListener(x -> dialogDeadline(t));
+                break;
+            case "pri":
+                if ("must".equals(t.priority)) {
+                    v.setText(Strings.priMust());
+                    v.setTextColor(Ui.danger(this));
+                } else if ("secondary".equals(t.priority)) {
+                    v.setText(Strings.priSecondary());
+                    v.setTextColor(Ui.sub(this));
+                } else {
+                    v.setText("—");
+                    v.setTextColor(Ui.sub(this));
+                }
+                v.setOnClickListener(x -> dialogTitle(t));
+                break;
+            case "sc":
+                v.setText(t.scenarios.isEmpty() ? Strings.scenariosEmpty() : String.join("、", t.scenarios));
+                v.setTextColor(t.scenarios.isEmpty() ? Ui.sub(this) : Ui.link(this));
+                v.setOnClickListener(x -> dialogScenarios(t));
+                break;
+            default:
+                break;
+        }
+        regCol(c.id, v);
+        return v;
+    }
+
+    /** 展开面板（手风琴）：笔记＋元信息＋操作 chips，全部接现有真实入口。 */
+    private View expansionView(final TaskItem t, boolean done,
+                               final boolean isRunningThis, boolean isPausedThis) {
+        LinearLayout exp = new LinearLayout(this);
+        exp.setOrientation(LinearLayout.VERTICAL);
+        exp.setBackgroundColor(Ui.muted(this));
+        exp.setPadding(dp(42), dp(10), dp(14), dp(12));
+        boolean hasNote = t.note != null && !t.note.trim().isEmpty();
+        TextView note = new TextView(this);
+        note.setText(hasNote ? t.note : Strings.noNote());
+        note.setTextSize(13);
+        note.setTextColor(hasNote ? Ui.text(this) : Ui.sub(this));
+        note.setOnClickListener(v -> dialogNote(t));
+        exp.addView(note);
+
+        int usedMin = (int) (SessionLog.totalMsForTask(this, t.id) / 60000);
+        int segs = SessionLog.countForTask(this, t.id)
+                + (t.id.equals(SessionLog.openTaskId(this)) ? 1 : 0);
+        String startPart = t.nextStartMs() > 0
+                ? Strings.metaStart(startCellText(t)) : Strings.metaNotStarted();
+        TextView meta = new TextView(this);
+        meta.setText(startPart + " · " + Strings.metaUsed(usedMin, segs)
+                + " · " + Strings.metaFocus(focusCellText(t).toString()));
+        meta.setTextSize(12);
+        meta.setTextColor(Ui.sub(this));
+        meta.setPadding(0, dp(6), 0, 0);
+        exp.addView(meta);
+
+        LinearLayout chips = new LinearLayout(this);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        chips.setPadding(0, dp(10), 0, 0);
+        String primary = isRunningThis ? Strings.chipPause()
+                : isPausedThis ? Strings.chipResume() : Strings.chipStart();
+        chips.addView(chip(primary, true, v -> onPlay(t)));
+        chips.addView(chip(Strings.chipEdit(), false, v -> dialogEditMenu(t)));
+        if (isRunningThis) {
+            chips.addView(chip(Strings.chipPlus15(), false, v -> {
+                TimerService.extendTimer(MainActivity.this, 15 * 60);
+                toast(Strings.en() ? "Extended by 15 minutes" : "已加时 15 分钟");
+                handler.postDelayed(() -> { renderTable(); refreshStatus(); }, 650);
+            }));
+        }
+        chips.addView(chip(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
+            if (done) t.markUndone(); else t.markDone();
+            store.save();
+            expandedTaskId = null;
+            adapter.notifyDataSetChanged();
+            refreshStatus();
+        }));
+        exp.addView(chips);
+        return exp;
+    }
+
+    private TextView chip(String label, boolean filled, View.OnClickListener cl) {
+        TextView c = new TextView(this);
+        c.setText(label);
+        c.setTextSize(13);
+        c.setGravity(Gravity.CENTER);
+        c.setPadding(dp(14), dp(7), dp(14), dp(7));
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setCornerRadius(dp(17));
+        if (filled) {
+            g.setColor(Ui.accent(this));
+            c.setTextColor(Ui.onAccent(this));
+        } else {
+            g.setColor(Ui.surface(this));
+            g.setStroke(1, Ui.line(this));
+            c.setTextColor(Ui.text(this));
+        }
+        c.setBackground(g);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, dp(8), 0);
+        c.setLayoutParams(lp);
+        c.setOnClickListener(cl);
+        return c;
+    }
+
+    /** 「编辑」菜单：全部字段编辑入口集中在此（与设置页说明一致）。 */
+    private void dialogEditMenu(final TaskItem t) {
+        boolean en = Strings.en();
+        String[] items = {
+                en ? "Name & priority" : "名称与优先级",
+                en ? "Contexts" : "情景",
+                en ? "Deadline & start time" : "截止与开始时间",
+                en ? "Length" : "时长",
+                en ? "Focus rule" : "专注规则",
+                en ? "Note" : "笔记",
+                en ? "Reset timer" : "重置计时",
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.editMenuTitle())
+                .setItems(items, (d, which) -> {
+                    switch (which) {
+                        case 0: dialogTitle(t); break;
+                        case 1: dialogScenarios(t); break;
+                        case 2: dialogDeadline(t); break;
+                        case 3: dialogDuration(t); break;
+                        case 4: dialogFocus(t); break;
+                        case 5: dialogNote(t); break;
+                        case 6: resetTask(t); break;
+                        default: break;
                     }
-                }
-            }
-            for (java.util.Map.Entry<String, List<TaskItem>> e : byDate.entrySet()) {
-                rows.add(Row.header(e.getKey(), e.getValue().size()));
-                if (expandedDays.contains(e.getKey())) {
-                    for (TaskItem t : e.getValue()) rows.add(Row.history(t));
-                }
-            }
-        }
+                })
+                .show();
+    }
 
-        @Override public int getCount() { return rows.size(); }
-        @Override public Object getItem(int p) { return rows.get(p); }
-        @Override public long getItemId(int p) { return p; }
-
-        @Override public void notifyDataSetChanged() { reload(); super.notifyDataSetChanged(); }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            final Row rowObj = rows.get(position);
-            if (rowObj.kind == 1) {
-                TextView h = new TextView(MainActivity.this);
-                boolean open = expandedDays.contains(rowObj.date);
-                h.setText((open ? "▼ " : "▶ ") + rowObj.date + " · 完成 " + rowObj.count + " 个（点开看那天做了什么）");
-                h.setTextSize(14);
-                h.setTextColor(Color.rgb(97, 97, 97));
-                h.setBackgroundColor(Color.rgb(238, 238, 238));
-                h.setPadding(dp(12), dp(10), dp(12), dp(10));
-                h.setOnClickListener(v -> {
-                    if (expandedDays.contains(rowObj.date)) expandedDays.remove(rowObj.date);
-                    else expandedDays.add(rowObj.date);
-                    notifyDataSetChanged();
-                });
-                return h;
-            }
-            if (rowObj.kind == 2) {
-                TextView h = new TextView(MainActivity.this);
-                h.setText("✓ " + rowObj.t.title + "（" + rowObj.t.durationMinutes + " 分）");
-                h.setTextSize(14);
-                h.setTextColor(Color.GRAY);
-                h.setPadding(dp(28), dp(8), dp(12), dp(8));
-                h.setOnClickListener(v -> dialogNote(rowObj.t));
-                return h;
-            }
-            final TaskItem t = rowObj.t;
-            LinearLayout col = new LinearLayout(MainActivity.this);
-            col.setOrientation(LinearLayout.VERTICAL);
-            boolean done = t.isDoneToday();
-            col.setBackgroundColor(done ? Color.rgb(245, 245, 245) : Color.WHITE);
-            LinearLayout row = new LinearLayout(MainActivity.this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(6), dp(8), dp(6), dp(8));
-            col.addView(row);
-
-            CheckBox doneBox = new CheckBox(MainActivity.this);
-            doneBox.setChecked(done);
-            doneBox.setLayoutParams(new LinearLayout.LayoutParams(dp(36), dp(48)));
-            doneBox.setOnClickListener(v -> {
-                if (doneBox.isChecked()) t.markDone(); else t.markUndone();
-                store.save();
-                adapter.notifyDataSetChanged();
-                refreshStatus();
-            });
-            row.addView(doneBox);
-
-            boolean isRunningThis = TimerState.isRunning(MainActivity.this) && t.id.equals(TimerState.taskId(MainActivity.this));
-            Button play = new Button(MainActivity.this);
-            play.setText(isRunningThis ? "⏸" : "▶");
-            play.setTextSize(15);
-            play.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(48)));
-            play.setOnClickListener(v -> onPlay(t));
-            play.setOnLongClickListener(v -> {
-                PopupMenu pm = new PopupMenu(MainActivity.this, v);
-                pm.getMenu().add("重置（从 0 重新开始计时）");
-                pm.setOnMenuItemClickListener(item -> { resetTask(t); return true; });
-                pm.show();
-                return true;
-            });
-            row.addView(play);
-
-            boolean hasNote = t.note != null && !t.note.trim().isEmpty();
-            if (hasNote) {
-                TextView tri = new TextView(MainActivity.this);
-                boolean open = expandedNotes.contains(t.id);
-                tri.setText(open ? "▼" : "▶");
-                tri.setTextSize(13);
-                tri.setTextColor(Color.rgb(21, 101, 192));
-                tri.setGravity(Gravity.CENTER);
-                tri.setLayoutParams(new LinearLayout.LayoutParams(dp(28), dp(48)));
-                tri.setOnClickListener(v -> {
-                    if (expandedNotes.contains(t.id)) expandedNotes.remove(t.id);
-                    else expandedNotes.add(t.id);
-                    notifyDataSetChanged();
-                });
-                row.addView(tri);
-            }
-
-            TextView titleCell = new TextView(MainActivity.this);
-            String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
-                    + (t.id.equals(TimerState.pausedTaskId(MainActivity.this)) && !TimerState.isRunning(MainActivity.this) ? "（已暂停）" : "");
-            titleCell.setText(done ? titleText + " ✓" : titleText);
-            titleCell.setTextSize(16);
-            titleCell.setTextColor(done ? Color.GRAY : Color.BLACK);
-            if (done) titleCell.setPaintFlags(titleCell.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-            titleCell.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-            titleCell.setOnClickListener(v -> dialogTitle(t));
-            row.addView(titleCell);
-
-            TextView scCell = new TextView(MainActivity.this);
-            scCell.setText(t.scenarios.isEmpty() ? "＋情景" : String.join("、", t.scenarios));
-            scCell.setTextSize(13);
-            scCell.setTextColor(t.scenarios.isEmpty() ? Color.GRAY : Color.rgb(21, 101, 192));
-            scCell.setLayoutParams(new LinearLayout.LayoutParams(dp(66), LinearLayout.LayoutParams.WRAP_CONTENT));
-            scCell.setOnClickListener(v -> dialogScenarios(t));
-            row.addView(scCell);
-
-            TextView dlCell = new TextView(MainActivity.this);
-            dlCell.setText(deadlineCellText(t));
-            dlCell.setTextSize(13);
-            dlCell.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Color.GRAY : Color.rgb(21, 101, 192));
-            dlCell.setLayoutParams(new LinearLayout.LayoutParams(dp(62), LinearLayout.LayoutParams.WRAP_CONTENT));
-            dlCell.setOnClickListener(v -> dialogDeadline(t));
-            row.addView(dlCell);
-
-            TextView duCell = new TextView(MainActivity.this);
-            duCell.setText(t.durationMinutes + " 分" + (t.actualMinutes > 0 ? "\n实" + t.actualMinutes : ""));
-            duCell.setTextSize(13);
-            duCell.setTextColor(Color.rgb(21, 101, 192));
-            duCell.setLayoutParams(new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
-            duCell.setOnClickListener(v -> dialogDuration(t));
-            row.addView(duCell);
-
-            TextView foCell = new TextView(MainActivity.this);
-            foCell.setText(focusCellText(t));
-            foCell.setTextSize(12);
-            foCell.setMaxLines(2);
-            foCell.setTextColor("off".equals(t.focusMode) ? Color.GRAY : Color.rgb(198, 40, 40));
-            foCell.setLayoutParams(new LinearLayout.LayoutParams(dp(56), LinearLayout.LayoutParams.WRAP_CONTENT));
-            foCell.setOnClickListener(v -> dialogFocus(t));
-            row.addView(foCell);
-
-            if (hasNote && expandedNotes.contains(t.id)) {
-                TextView noteArea = new TextView(MainActivity.this);
-                noteArea.setText("📝 " + t.note);
-                noteArea.setTextSize(13);
-                noteArea.setTextColor(Color.rgb(66, 66, 66));
-                noteArea.setPadding(dp(52), dp(2), dp(10), dp(10));
-                noteArea.setOnClickListener(v -> dialogNote(t));
-                col.addView(noteArea);
-            }
-            return col;
-        }
+    /** 兼容旧调用点：所有 adapter.notifyDataSetChanged() 仍走整表重画（语义不变）。 */
+    private class TaskAdapter {
+        void notifyDataSetChanged() { renderTable(); }
     }
 
     private String focusCellText(TaskItem t) {
@@ -1047,109 +1732,13 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    // ---------------- 账号与同步（Supabase，v1.7.0） ----------------
-    /** 账号区：未登录显示邮箱+密码+登录/注册；已登录显示邮箱、同步状态、立即同步与退出登录。
-     *  未登录不硬挡：App 本地与 Drive 桥照常可用。 */
+    // ---------------- 账号与同步（Supabase；v1.8.0 弹窗逻辑抽到 AccountUi，抽屉与设置页共用） ----------------
     private void dialogAccount() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(12), dp(20), 0);
-        if (Supa.isLoggedIn(this)) {
-            TextView who = new TextView(this);
-            who.setText("已登录：" + Supa.userEmail(this));
-            who.setTextSize(16);
-            who.setTextColor(Color.BLACK);
-            box.addView(who);
-            TextView st = new TextView(this);
-            st.setText(SbSync.statusText(this, store)
-                    + "\n\n任务与计时状态都存在云端（Supabase），手机与电脑共用同一份；"
-                    + "另一台设备开始计时，这台会立刻镜像同一个倒计时。");
-            st.setTextSize(14);
-            st.setTextColor(Color.DKGRAY);
-            box.addView(st);
-            new AlertDialog.Builder(this)
-                    .setTitle("账号与同步")
-                    .setView(box)
-                    .setPositiveButton("立即同步", (d, w) -> runSync(true))
-                    .setNeutralButton("退出登录", (d, w) -> doLogout())
-                    .setNegativeButton("关闭", null)
-                    .show();
-            return;
-        }
-        final EditText email = new EditText(this);
-        email.setHint("邮箱");
-        email.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        box.addView(email);
-        final EditText password = new EditText(this);
-        password.setHint("密码（至少 6 位）");
-        password.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        box.addView(password);
-        TextView tip = new TextView(this);
-        tip.setText("登录后进入云端同步：本机现有任务会全量成为你的云端数据，不会丢失。"
-                + "没登录也能照常用本机与 Drive 桥。");
-        tip.setTextSize(13);
-        tip.setTextColor(Color.DKGRAY);
-        box.addView(tip);
-        new AlertDialog.Builder(this)
-                .setTitle("账号与同步（Supabase）")
-                .setView(box)
-                .setPositiveButton("登录", (d, w) -> doAuth(true,
-                        email.getText().toString().trim(), password.getText().toString()))
-                .setNeutralButton("注册", (d, w) -> doAuth(false,
-                        email.getText().toString().trim(), password.getText().toString()))
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void doAuth(final boolean signIn, final String email, final String password) {
-        if (email.isEmpty() || password.isEmpty()) {
-            toast("邮箱和密码都要填");
-            return;
-        }
-        toast(signIn ? "正在登录…" : "正在注册…");
-        new Thread(() -> {
-            try {
-                String pendingMsg = null;
-                if (signIn) {
-                    Supa.signIn(this, email, password);
-                } else {
-                    pendingMsg = Supa.signUp(this, email, password);
-                }
-                if (pendingMsg != null) {
-                    final String m = pendingMsg;
-                    handler.post(() -> toast(m));
-                    return;
-                }
-                handler.post(() -> {
-                    SyncManager.setSupabaseMode(this, true);
-                    if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-                    toast("登录成功，正在同步");
-                    runSync(true);
-                });
-            } catch (Supa.Err e) {
-                final String m = e.network ? "网络连不上，稍后再试"
-                        : (signIn ? "登录失败：" : "注册失败：") + e.getMessage();
-                handler.post(() -> toast(m));
-            } catch (Exception e) {
-                final String m = (signIn ? "登录失败：" : "注册失败：") + e.getMessage();
-                handler.post(() -> toast(m));
-            }
-        }).start();
-    }
-
-    private void doLogout() {
-        new Thread(() -> {
-            Supa.signOut(this);
-            handler.post(() -> {
-                SyncManager.setSupabaseMode(this, false);
-                SupaRealtime.shutdown();
-                SyncService.stop(this);
-                refreshStatus();
-                toast("已退出登录：回到 Drive 桥模式（本机数据都在）");
-            });
-        }).start();
+        AccountUi.show(this, store, () -> {
+            store.load();
+            if (adapter != null) adapter.notifyDataSetChanged();
+            refreshStatus();
+        });
     }
 
     // ---------------- Drive 同步 ----------------
@@ -1166,6 +1755,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_CAL_CAPTURE) {
+            if (calendarPanel != null) calendarPanel.onCaptureResult(resultCode, data);
+            return;
+        }
         if (requestCode == REQ_CAPTURE) {
             TaskItem t = pendingGuardTask;
             pendingGuardTask = null;

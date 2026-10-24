@@ -94,6 +94,31 @@ public final class SessionLog {
         return sum;
     }
 
+    /** 某任务的已关闭段总数（不限日期；展开面板「已用 N 分（M 段）」的段数用，v1.8.0）。 */
+    public static synchronized int countForTask(Context c, String taskId) {
+        if (taskId == null || taskId.isEmpty()) return 0;
+        int n = 0;
+        for (Seg s : readAll(c)) if (taskId.equals(s.taskId)) n++;
+        return n;
+    }
+
+    /** 某任务今天已计时的毫秒（已关闭段按当天裁剪＋打开段若正是它且是今天开的，计到此刻）。 */
+    public static synchronized long todayMsForTask(Context c, String taskId) {
+        if (taskId == null || taskId.isEmpty()) return 0;
+        long sum = 0;
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+        for (Seg s : segmentsForDay(c, today)) {
+            if (taskId.equals(s.taskId)) sum += Math.max(0, s.endMs - s.startMs);
+        }
+        long os = openStart(c);
+        if (os > 0 && taskId.equals(openTaskId(c))) {
+            long dayStart = dayStartMs(today);
+            if (os >= dayStart) sum += Math.max(0, System.currentTimeMillis() - os);
+        }
+        return sum;
+    }
+
     /** 取与某一天（yyyy-MM-dd，本地时区）有重叠的已关闭段，起止已裁剪到当天范围内，按开始时间排序。 */
     public static List<Seg> segmentsForDay(Context c, String date) {
         long dayStart = dayStartMs(date);

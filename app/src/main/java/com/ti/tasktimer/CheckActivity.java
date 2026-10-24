@@ -3,11 +3,14 @@ package com.ti.tasktimer;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -19,12 +22,17 @@ import android.widget.TextView;
  * 全屏检查页：由 AlertHelper 拉起（熄屏走 FSI，亮屏走直接启动），两种状态同一个页面。
  * 过半页：能做完 / 做不完→写下办法。
  * 结束页：做完了→回写任务完成状态并回列表；没做完→加时（+50% / +5 / +10 / +15 分钟 / 自定义）。
+ * v1.8.0：只改外观为极简全屏（主题色＋圆角纵排大按钮，文案走 Strings 中/英）；
+ * 按钮语义、选项、日志与回写行为与旧版完全一致。另按定稿设计补键盘：回车=主按钮、
+ * Q/W/E=前三个加时选项（旧版无键盘处理，本次为纯加法；输入框聚焦时不拦截）。
  */
 public class CheckActivity extends Activity {
     public static final String EXTRA_TYPE = "type";
 
     private int type;
     private LinearLayout root;
+    private Runnable primaryAction; // 回车触发的主按钮动作（当前阶段的主按钮）
+    private Runnable keyQ, keyW, keyE; // 结束页前三个加时选项
 
     // 跨设备跟随（v1.7.0）：另一端已处理（结束/加时/换任务）时，本页若还在显就关掉，别停在过期状态上
     private final android.content.BroadcastReceiver timerRemoteReceiver =
@@ -41,6 +49,7 @@ public class CheckActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Strings.init(this);
         android.content.IntentFilter tf = new android.content.IntentFilter(SbTimerSync.ACTION_TIMER_REMOTE);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(timerRemoteReceiver, tf, RECEIVER_NOT_EXPORTED);
         else registerReceiver(timerRemoteReceiver, tf);
@@ -55,7 +64,7 @@ public class CheckActivity extends Activity {
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Ui.bg(this));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
         setContentView(root);
@@ -71,37 +80,59 @@ public class CheckActivity extends Activity {
         super.onDestroy();
     }
 
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (getCurrentFocus() instanceof EditText) return super.onKeyDown(keyCode, event);
+        if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            if (primaryAction != null) { primaryAction.run(); return true; }
+        } else if (keyCode == KeyEvent.KEYCODE_Q) {
+            if (keyQ != null) { keyQ.run(); return true; }
+        } else if (keyCode == KeyEvent.KEYCODE_W) {
+            if (keyW != null) { keyW.run(); return true; }
+        } else if (keyCode == KeyEvent.KEYCODE_E) {
+            if (keyE != null) { keyE.run(); return true; }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
     private String taskName() { return TimerState.taskTitle(this); }
 
     // ---------- 过半页 ----------
     private void showHalfStage1() {
         clear();
-        title("你的时间过了一半了");
-        subtitle("任务：" + taskName() + "\n剩下的时间还够你做完吗？");
-        Button ok = bigButton("能做完", Color.rgb(46, 125, 50));
-        ok.setOnClickListener(v -> {
+        primaryAction = null;
+        keyQ = keyW = keyE = null;
+        title(Strings.chkHalfTitle());
+        subtitle(Strings.chkHalfSub(taskName()));
+        Runnable okAct = () -> {
             TimerState.logEvent(this, "过半检查[" + taskName() + "]：能做完");
             finish();
-        });
+        };
+        Button ok = bigButton(Strings.chkCan(), true, "Enter");
+        ok.setOnClickListener(v -> okAct.run());
+        primaryAction = okAct;
         root.addView(ok);
         spacer();
-        Button no = bigButton("做不完", Color.rgb(198, 40, 40));
+        Button no = bigButton(Strings.chkCannot(), false, null);
         no.setOnClickListener(v -> showHalfStage2());
         root.addView(no);
     }
 
     private void showHalfStage2() {
         clear();
-        title("我如何做才能做完？");
-        subtitle("写下你的办法，写完继续计时（计时不会暂停）。");
+        primaryAction = null;
+        title(Strings.chkHowTitle());
+        subtitle(Strings.chkHowSub());
         final EditText input = new EditText(this);
-        input.setHint("比如：先跳过细节，先把主体做完");
+        input.setHint(Strings.chkHowHint());
         input.setTextSize(18);
         input.setMinLines(3);
         input.setGravity(Gravity.TOP);
+        input.setTextColor(Ui.text(this));
+        input.setHintTextColor(Ui.sub(this));
         root.addView(input);
         spacer();
-        Button go = bigButton("想好了，继续", Color.rgb(46, 125, 50));
+        Button go = bigButton(Strings.chkGo(), true, null);
         go.setOnClickListener(v -> {
             TimerState.logEvent(this, "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim());
             finish();
@@ -112,10 +143,10 @@ public class CheckActivity extends Activity {
     // ---------- 结束页 ----------
     private void showEnd() {
         clear();
-        title("时间到了");
-        subtitle("我们看一下：「" + taskName() + "」做完了吗？");
-        Button done = bigButton("做完了，做下一个任务", Color.rgb(46, 125, 50));
-        done.setOnClickListener(v -> {
+        keyQ = keyW = keyE = null;
+        title(Strings.chkEndTitle());
+        subtitle(Strings.chkEndSub(taskName()));
+        Runnable doneAct = () -> {
             // 回写完成状态（一次性任务置 done，每日任务记今日完成）
             TaskStore store = new TaskStore(this);
             TaskItem t = store.byId(TimerState.taskId(this));
@@ -126,29 +157,41 @@ public class CheckActivity extends Activity {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);
             finish();
-        });
+        };
+        Button done = bigButton(Strings.chkDone(), true, "Enter");
+        done.setOnClickListener(v -> doneAct.run());
+        primaryAction = doneAct;
         root.addView(done);
         spacer();
         TextView label = new TextView(this);
-        label.setText("没做完？加一点时间：");
-        label.setTextSize(17);
+        label.setText(Strings.chkExtendLabel());
+        label.setTextSize(16);
+        label.setTextColor(Ui.sub(this));
+        label.setGravity(Gravity.CENTER);
         root.addView(label);
         spacerSmall();
         int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
-        root.addView(extendButton("+50%（+" + Math.max(1, totalMin / 2) + " 分钟）", Math.max(1, totalMin / 2) * 60));
+        final int halfSec = Math.max(1, totalMin / 2) * 60;
+        root.addView(extendButton(Strings.chkPlus50(Math.max(1, totalMin / 2)), halfSec, "Q"));
+        keyQ = () -> doExtend(halfSec);
         spacerSmall();
-        root.addView(extendButton("+5 分钟", 300));
+        root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
+        keyW = () -> doExtend(300);
         spacerSmall();
-        root.addView(extendButton("+10 分钟", 600));
+        root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
+        keyE = () -> doExtend(600);
         spacerSmall();
-        root.addView(extendButton("+15 分钟", 900));
+        root.addView(extendButton(Strings.chkPlus15(), 900, null));
         spacerSmall();
         final EditText custom = new EditText(this);
-        custom.setHint("或输入想加的分钟数");
+        custom.setHint(Strings.chkCustomHint());
         custom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         custom.setTextSize(17);
+        custom.setTextColor(Ui.text(this));
+        custom.setHintTextColor(Ui.sub(this));
+        custom.setGravity(Gravity.CENTER);
         root.addView(custom);
-        Button customBtn = bigButton("按输入加时", Color.rgb(21, 101, 192));
+        Button customBtn = bigButton(Strings.chkCustomBtn(), false, null);
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
@@ -158,8 +201,8 @@ public class CheckActivity extends Activity {
         root.addView(customBtn);
     }
 
-    private Button extendButton(String text, final int addSec) {
-        Button b = bigButton(text, Color.rgb(21, 101, 192));
+    private Button extendButton(String text, final int addSec, String kbd) {
+        Button b = bigButton(text, false, kbd);
         b.setOnClickListener(v -> doExtend(addSec));
         return b;
     }
@@ -177,7 +220,9 @@ public class CheckActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(30);
-        t.setTextColor(Color.BLACK);
+        t.setTextColor(Ui.text(this));
+        t.setTypeface(t.getTypeface(), Typeface.BOLD);
+        t.setGravity(Gravity.CENTER);
         t.setPadding(0, 0, 0, dp(10));
         root.addView(t);
     }
@@ -185,27 +230,50 @@ public class CheckActivity extends Activity {
     private void subtitle(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(19);
-        t.setTextColor(Color.DKGRAY);
-        t.setPadding(0, 0, 0, dp(28));
+        t.setTextSize(17);
+        t.setTextColor(Ui.sub(this));
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, 0, 0, dp(30));
         root.addView(t);
     }
 
-    private Button bigButton(String s, int bg) {
+    /** 极简大按钮：主按钮＝强调色填充；次按钮＝描边。kbd 非空时在文案尾部缀一个小字快捷键提示。 */
+    private Button bigButton(String s, boolean primary, String kbd) {
         Button b = new Button(this);
-        b.setText(s);
-        b.setTextSize(21);
-        b.setTextColor(Color.WHITE);
-        b.setBackgroundColor(bg);
+        CharSequence label = s;
+        if (kbd != null) {
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(s + "  · " + kbd);
+            int st = s.length();
+            sb.setSpan(new android.text.style.RelativeSizeSpan(0.62f), st, sb.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new android.text.style.ForegroundColorSpan(
+                    primary ? Ui.onAccent(this) : Ui.sub(this)), st, sb.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            label = sb;
+        }
+        b.setText(label);
+        b.setTextSize(20);
+        b.setAllCaps(false);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(14));
+        if (primary) {
+            g.setColor(Ui.accent(this));
+            b.setTextColor(Ui.onAccent(this));
+        } else {
+            g.setColor(Ui.surface(this));
+            g.setStroke(dp(1), Ui.line(this));
+            b.setTextColor(Ui.text(this));
+        }
+        b.setBackground(g);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(76));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(68));
         b.setLayoutParams(lp);
         return b;
     }
 
     private void spacer() {
         View v = new View(this);
-        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(20)));
+        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(18)));
         root.addView(v);
     }
 
