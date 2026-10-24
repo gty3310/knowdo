@@ -67,6 +67,16 @@ public final class Strings {
     public static String metaFocus(String sum) { return en ? "Focus: " + sum : "专注：" + sum; }
     public static String editMenuTitle() { return s("编辑任务", "Edit task"); }
 
+    // ---------------- 任务闹钟（v1.9.0） ----------------
+    public static String chipAlarm() { return s("闹钟", "Alarm"); }
+    public static String alarmTitle() { return s("闹钟", "Alarm"); }
+    public static String alarmTimeLabel() { return s("闹钟时间", "Alarm time"); }
+    public static String alarmNotSet() { return s("未设置", "Not set"); }
+    public static String alarmRingOnEnd() { return s("计时结束时响铃", "Ring when timer ends"); }
+    public static String alarmGotIt() { return s("知道了", "Got it"); }
+    public static String alarmTimerEnded() { return s("计时结束了", "Time is up"); }
+    public static String alarmTimeArrived() { return s("闹钟时间到了", "Alarm time"); }
+
     // ---------------- 抽屉 ----------------
     public static String notLoggedIn() { return s("未登录", "Not signed in"); }
     public static String loginHint() {
@@ -79,7 +89,7 @@ public final class Strings {
     public static String dark() { return s("暗", "Dark"); }
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
-    public static String versionLine() { return "知行 KnowDo v1.8.0"; }
+    public static String versionLine() { return "知行 KnowDo v1.9.0"; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -93,6 +103,7 @@ public final class Strings {
     public static String rowBridgeFile() { return s("Drive 桥文件", "Drive bridge file"); }
     public static String rowBridgePick() { return s("选择 / 更换", "Choose / change"); }
     public static String rowBridgeNone() { return s("（未选择）", "(not chosen)"); }
+    public static String rowBridgeSelected() { return s("已选择", "Selected"); }
     public static String rowColumns() { return s("显示哪些列", "Columns to show"); }
     public static String rowAppearance() { return s("外观", "Appearance"); }
     public static String rowLanguage() { return s("语言", "Language"); }
@@ -115,9 +126,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.8.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.9.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.8.0\n知行合一。\n"
+                  : "知行 KnowDo v1.9.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -190,8 +201,8 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.8.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.8.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.9.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.9.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
     /** [标题, 正文] × 15 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、

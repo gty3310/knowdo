@@ -86,6 +86,7 @@ public final class SbSync {
     private static String doSync(Context c, TaskStore store) throws Exception {
         String uid = Supa.userId(c);
         boolean hasExtra = probeExtraCols(c);
+        boolean hasAlarm = probeAlarmCols(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -96,7 +97,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 adoptServerTimes(back, store);
                 store.save();
@@ -124,7 +125,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             adoptServerTimes(back, store);
             for (TaskItem t : toPush) remoteMs.put(t.id, t.updatedAtMs);
@@ -137,6 +138,7 @@ public final class SbSync {
 
         prefs(c).edit().putLong("last_sync_at", System.currentTimeMillis()).apply();
         StartReminder.reschedule(c, store);
+        AlarmScheduler.rescheduleAll(c, store);
 
         // 6) autoStart 消费（合并之后，与桥时代同一语义）
         handleAutoStart(c, store);
@@ -328,6 +330,8 @@ public final class SbSync {
                 sig.put(remote.id, remote.updatedAtMs);
                 saveSig(c, sig);
             }
+            // 远端可能刚改了某任务的闹钟：按合并后的本地状态重排一次
+            AlarmScheduler.rescheduleAll(c, store);
             if (remoteAutoStart(row)) handleAutoStart(c, new TaskStore(c));
             return true;
         } catch (Exception e) {
@@ -343,6 +347,7 @@ public final class SbSync {
     public static void handleAutoStart(Context c, TaskStore store) {
         if (TimerState.isRunning(c)) return; // 有计时在跑就不打断，标记留着等空闲轮次
         boolean hasExtra = prefs(c).getBoolean("has_extra", false);
+        boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
         for (TaskItem t : store.tasks) {
             if (t.deleted || !t.autoStart) continue;
             if (SyncManager.autoStartHandled(c, t.id)) {
@@ -350,7 +355,7 @@ public final class SbSync {
                 t.autoStart = false;
                 t.touch();
                 store.save();
-                pushOneQuiet(c, store, t, hasExtra);
+                pushOneQuiet(c, store, t, hasExtra, hasAlarm);
                 continue;
             }
             SyncManager.markAutoStartHandled(c, t.id);
@@ -359,15 +364,16 @@ public final class SbSync {
             store.save();
             TimerService.startTimer(c, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
             TimerState.logEvent(c, "Supabase 同步：自动开始计时[" + t.title + "] " + t.durationMinutes + " 分钟");
-            pushOneQuiet(c, store, t, hasExtra); // 立刻把清掉的标记回写云端，防另一端重复启动
+            pushOneQuiet(c, store, t, hasExtra, hasAlarm); // 立刻把清掉的标记回写云端，防另一端重复启动
             break; // 一次只启动一个
         }
     }
 
-    private static void pushOneQuiet(Context c, TaskStore store, TaskItem t, boolean hasExtra) {
+    private static void pushOneQuiet(Context c, TaskStore store, TaskItem t,
+                                     boolean hasExtra, boolean hasAlarm) {
         try {
             JSONArray payload = new JSONArray();
-            payload.put(SbMapper.toRow(t, Supa.userId(c), hasExtra));
+            payload.put(SbMapper.toRow(t, Supa.userId(c), hasExtra, hasAlarm));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             adoptServerTimes(back, store);
             store.save();
@@ -410,6 +416,17 @@ public final class SbSync {
             has = true;
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_extra", has).apply();
+        return has;
+    }
+
+    /** 服务端有没有闹钟两列 alarm_at / alarm_on_timer_end（v1.9.0，与附加列同法探测）。 */
+    private static boolean probeAlarmCols(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=alarm_at&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_alarm", has).apply();
         return has;
     }
 

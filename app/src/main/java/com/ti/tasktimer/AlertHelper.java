@@ -26,6 +26,7 @@ public final class AlertHelper {
     public static final int TYPE_HALF = 1;
     public static final int TYPE_END = 2;
     public static final int NOTIF_GUARD = 201;
+    public static final int NOTIF_TASK_ALARM = 203;
 
     private AlertHelper() {}
 
@@ -59,6 +60,8 @@ public final class AlertHelper {
     }
 
     public static void fire(Context c, int type) {
+        // 计时结束且该任务开了「结束时响铃」：先响铃，点「知道了」后响铃页再拉起检查页
+        if (type == TYPE_END && fireTaskAlarmIfNeeded(c)) return;
         createChannels(c);
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
@@ -105,6 +108,71 @@ public final class AlertHelper {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(NOTIF_ALERT, b.build());
         TimerState.logEvent(c, type == TYPE_HALF ? "已发出[过半]全屏提醒（通知路径）" : "已发出[结束]全屏提醒（通知路径）");
+    }
+
+    /** 当前计时任务是否要求结束响铃：是则先拉起响铃页（thenCheck），检查页随后。 */
+    private static boolean fireTaskAlarmIfNeeded(Context c) {
+        try {
+            String tid = TimerState.taskId(c);
+            if (tid == null) return false;
+            TaskItem t = new TaskStore(c).byId(tid);
+            if (t == null || t.deleted || !t.alarmOnTimerEnd) return false;
+            fireTaskAlarm(c, t.id, t.title, true);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 任务闹钟响铃页的统一出口（v1.9.0）：亮屏未锁 + 悬浮权限 -> 直接启动；
+     * 否则 FullScreenIntent 通知拉起（与检查页同一策略）。铃声由响铃页本身播放
+     * （USAGE_ALARM 通道），通知不带声音。
+     */
+    public static void fireTaskAlarm(Context c, String taskId, String title, boolean thenCheck) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, TaskAlarmActivity.class);
+                direct.putExtra(TaskAlarmActivity.EXTRA_TASK_ID, taskId);
+                direct.putExtra(TaskAlarmActivity.EXTRA_TASK_TITLE, title);
+                direct.putExtra(TaskAlarmActivity.EXTRA_THEN_CHECK, thenCheck);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                TimerState.logEvent(c, "已直接弹出任务闹钟响铃页（亮屏路径，未经通知）");
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "响铃页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        Intent intent = new Intent(c, TaskAlarmActivity.class);
+        intent.putExtra(TaskAlarmActivity.EXTRA_TASK_ID, taskId);
+        intent.putExtra(TaskAlarmActivity.EXTRA_TASK_TITLE, title);
+        intent.putExtra(TaskAlarmActivity.EXTRA_THEN_CHECK, thenCheck);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_TASK_ALARM, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("⏰ " + title)
+                .setContentText(thenCheck ? "计时结束了，点开停铃" : "闹钟时间到了，点开停铃")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_TASK_ALARM, b.build());
+        TimerState.logEvent(c, "已发出任务闹钟全屏提醒（通知路径）");
+    }
+
+    public static void cancelTaskAlarm(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_TASK_ALARM);
     }
 
     public static void cancelAlert(Context c) {

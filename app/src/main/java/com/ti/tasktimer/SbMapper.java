@@ -14,6 +14,8 @@ import java.util.TimeZone;
  * 读回时把瞬间按本机时区格式化回桥格式，日期不会差一天（deadline 只取本地日期）。
  * 服务端目前没有 deadline_time / actual_minutes 两列：hasExtraCols=false 时这两项
  * 不进云端，合并时从本地同 id 任务保全下来，不会被远端行覆盖丢掉。
+ * 闹钟两列（alarm_at / alarm_on_timer_end，v1.9.0）同法处理：hasAlarmCols 单独探测，
+ * 服务端没列时不进云端、合并时本地保全，补列后自动纳入同步。
  */
 public final class SbMapper {
     private SbMapper() {}
@@ -91,7 +93,8 @@ public final class SbMapper {
      * 任务 → 行。updated_at 不写（服务端默认 now()，回读后再对齐本地 updatedAtMs）；
      * created_at 写入以便多端看到一致的创建时间。
      */
-    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols) throws Exception {
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -118,6 +121,11 @@ public final class SbMapper {
         if (hasExtraCols) {
             o.put("deadline_time", t.deadlineTime == null ? JSONObject.NULL : t.deadlineTime);
             o.put("actual_minutes", t.actualMinutes);
+        }
+        if (hasAlarmCols) {
+            String al = nextStartToTs(t.alarmAt);
+            o.put("alarm_at", al == null ? JSONObject.NULL : al);
+            o.put("alarm_on_timer_end", t.alarmOnTimerEnd);
         }
         return o;
     }
@@ -154,6 +162,13 @@ public final class SbMapper {
         } else if (preserveFrom != null) {
             t.deadlineTime = preserveFrom.deadlineTime;
             t.actualMinutes = preserveFrom.actualMinutes;
+        }
+        if (o.has("alarm_at")) {
+            t.alarmAt = o.isNull("alarm_at") ? null : tsToNextStart(o.optString("alarm_at", ""));
+            t.alarmOnTimerEnd = o.optBoolean("alarm_on_timer_end", false);
+        } else if (preserveFrom != null) {
+            t.alarmAt = preserveFrom.alarmAt;
+            t.alarmOnTimerEnd = preserveFrom.alarmOnTimerEnd;
         }
         return t;
     }

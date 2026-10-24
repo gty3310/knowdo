@@ -163,6 +163,20 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 
+        <!-- 任务闹钟（v1.9.0）：到点由接收器拉起响铃页，展示属性与开始提醒页一致 -->
+        <receiver
+            android:name=".TaskAlarmReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".TaskAlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <!-- AI 按钮中转页：复制任务信息到剪贴板并打开设定的 AI 助手 -->
         <activity
             android:name=".AiLaunchActivity"

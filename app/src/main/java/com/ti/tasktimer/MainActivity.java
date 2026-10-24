@@ -114,6 +114,7 @@ public class MainActivity extends Activity {
         store.load();
         adapter.notifyDataSetChanged();
         StartReminder.reschedule(this, store);
+        AlarmScheduler.rescheduleAll(this, store);
         handler.removeCallbacks(statusLoop);
         handler.post(statusLoop);
         if (syncReceiver == null) {
@@ -1089,9 +1090,14 @@ public class MainActivity extends Activity {
                 + (t.id.equals(SessionLog.openTaskId(this)) ? 1 : 0);
         String startPart = t.nextStartMs() > 0
                 ? Strings.metaStart(startCellText(t)) : Strings.metaNotStarted();
+        String alarmPart = "";
+        if (t.alarmMs() > 0) alarmPart += " · ⏰ " + t.alarmAt.substring(5).replace('T', ' ');
+        if (t.alarmOnTimerEnd) {
+            alarmPart += " · " + (Strings.en() ? "Rings at end" : "结束响铃");
+        }
         TextView meta = new TextView(this);
         meta.setText(startPart + " · " + Strings.metaUsed(usedMin, segs)
-                + " · " + Strings.metaFocus(focusCellText(t).toString()));
+                + " · " + Strings.metaFocus(focusCellText(t).toString()) + alarmPart);
         meta.setTextSize(12);
         meta.setTextColor(Ui.sub(this));
         meta.setPadding(0, dp(6), 0, 0);
@@ -1104,6 +1110,7 @@ public class MainActivity extends Activity {
                 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
         chips.addView(chip(primary, true, v -> onPlay(t)));
         chips.addView(chip(Strings.chipEdit(), false, v -> dialogEditMenu(t)));
+        chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
         if (isRunningThis) {
             chips.addView(chip(Strings.chipPlus15(), false, v -> {
                 TimerService.extendTimer(MainActivity.this, 15 * 60);
@@ -1157,6 +1164,7 @@ public class MainActivity extends Activity {
                 en ? "Length" : "时长",
                 en ? "Focus rule" : "专注规则",
                 en ? "Note" : "笔记",
+                Strings.alarmTitle(),
                 en ? "Reset timer" : "重置计时",
         };
         new AlertDialog.Builder(this)
@@ -1169,10 +1177,76 @@ public class MainActivity extends Activity {
                         case 3: dialogDuration(t); break;
                         case 4: dialogFocus(t); break;
                         case 5: dialogNote(t); break;
-                        case 6: resetTask(t); break;
+                        case 6: dialogAlarm(t); break;
+                        case 7: resetTask(t); break;
                         default: break;
                     }
                 })
+                .show();
+    }
+
+    /** 闹钟设置（v1.9.0）：闹钟时间（到点响铃、与计时无关）＋计时结束时响铃开关。 */
+    private void dialogAlarm(final TaskItem t) {
+        boolean en = Strings.en();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+        // 闹钟时间（可选）：打开选择器时默认带入该任务的开始时间 nextStartAt
+        final String[] alarmHolder = {t.alarmAt};
+        final Button alarmBtn = new Button(this);
+        final Runnable refreshAlarmBtn = () -> alarmBtn.setText(
+                alarmHolder[0] == null
+                        ? Strings.alarmTimeLabel() + "：" + Strings.alarmNotSet()
+                        : Strings.alarmTimeLabel() + "：" + alarmHolder[0].replace('T', ' '));
+        refreshAlarmBtn.run();
+        alarmBtn.setOnClickListener(v -> {
+            final String init = alarmHolder[0] != null ? alarmHolder[0] : t.nextStartAt;
+            Calendar ac = Calendar.getInstance();
+            if (init != null && init.length() >= 10) {
+                try {
+                    String[] dp2 = init.substring(0, 10).split("-");
+                    ac.set(Integer.parseInt(dp2[0]), Integer.parseInt(dp2[1]) - 1,
+                            Integer.parseInt(dp2[2]));
+                } catch (Exception ignored) { }
+            }
+            new android.app.DatePickerDialog(this, (dv, y, mo, da) -> {
+                int ah = 7, am2 = 0;
+                if (init != null && init.length() >= 16) {
+                    try {
+                        String[] tp2 = init.substring(11, 16).split(":");
+                        ah = Integer.parseInt(tp2[0]);
+                        am2 = Integer.parseInt(tp2[1]);
+                    } catch (Exception ignored) { }
+                }
+                android.app.TimePickerDialog atp = new android.app.TimePickerDialog(this,
+                        (tv, h3, m3) -> {
+                            alarmHolder[0] = String.format("%04d-%02d-%02dT%02d:%02d",
+                                    y, mo + 1, da, h3, m3);
+                            refreshAlarmBtn.run();
+                        }, ah, am2, true);
+                atp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL,
+                        en ? "Clear" : "清除时间",
+                        (d3, w3) -> { alarmHolder[0] = null; refreshAlarmBtn.run(); });
+                atp.show();
+            }, ac.get(Calendar.YEAR), ac.get(Calendar.MONTH),
+                    ac.get(Calendar.DAY_OF_MONTH)).show();
+        });
+        box.addView(alarmBtn);
+        final CheckBox endBox = new CheckBox(this);
+        endBox.setText(Strings.alarmRingOnEnd());
+        endBox.setChecked(t.alarmOnTimerEnd);
+        box.addView(endBox);
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.alarmTitle())
+                .setView(box)
+                .setPositiveButton(en ? "Save" : "保存", (d, w) -> {
+                    TaskItem cur = freshCopyOf(t);
+                    cur.alarmAt = alarmHolder[0];
+                    cur.alarmOnTimerEnd = endBox.isChecked();
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
+                    AlarmScheduler.rescheduleAll(this, store);
+                })
+                .setNegativeButton(en ? "Cancel" : "取消", null)
                 .show();
     }
 

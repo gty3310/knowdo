@@ -19,6 +19,8 @@ public class TaskItem {
     public String deadline;            // YYYY-MM-DD，可空
     public String deadlineTime;        // "HH:mm" 完成时间（当天几点前做完），可空
     public String nextStartAt;         // "YYYY-MM-DDTHH:mm" 下一个开始时间（本地时间），到点全屏提醒开始，可空
+    public String alarmAt;             // "yyyy-MM-dd'T'HH:mm" 闹钟时间（本地时间）：到点响铃，与计时状态无关，可空（v1.9.0）
+    public boolean alarmOnTimerEnd = false; // 计时结束时响铃（响完再进结束检查页），默认关（v1.9.0）
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
@@ -87,6 +89,8 @@ public class TaskItem {
         o.put("deadline", deadline == null ? JSONObject.NULL : deadline);
         o.put("deadlineTime", deadlineTime == null ? JSONObject.NULL : deadlineTime);
         o.put("nextStartAt", nextStartAt == null ? JSONObject.NULL : nextStartAt);
+        o.put("alarmAt", alarmAt == null ? JSONObject.NULL : alarmAt);
+        o.put("alarmOnTimerEnd", alarmOnTimerEnd);
         o.put("repeat", repeat);
         o.put("durationMinutes", durationMinutes);
         o.put("actualMinutes", actualMinutes);
@@ -126,6 +130,9 @@ public class TaskItem {
         if (t.deadlineTime != null && t.deadlineTime.isEmpty()) t.deadlineTime = null;
         t.nextStartAt = o.isNull("nextStartAt") ? null : o.optString("nextStartAt", null);
         if (t.nextStartAt != null && t.nextStartAt.isEmpty()) t.nextStartAt = null;
+        t.alarmAt = o.isNull("alarmAt") ? null : o.optString("alarmAt", null);
+        if (t.alarmAt != null && t.alarmAt.isEmpty()) t.alarmAt = null;
+        t.alarmOnTimerEnd = o.optBoolean("alarmOnTimerEnd", false);
         t.repeat = o.optString("repeat", "none");
         t.durationMinutes = o.optInt("durationMinutes", 30);
         t.actualMinutes = o.optInt("actualMinutes", 0);
@@ -158,6 +165,16 @@ public class TaskItem {
         if (nextStartAt == null || nextStartAt.isEmpty()) return 0;
         try {
             return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).parse(nextStartAt).getTime();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** alarmAt（"yyyy-MM-dd'T'HH:mm"，本地时间）解析成毫秒；未设或格式坏返回 0。 */
+    public long alarmMs() {
+        if (alarmAt == null || alarmAt.isEmpty()) return 0;
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).parse(alarmAt).getTime();
         } catch (Exception e) {
             return 0;
         }

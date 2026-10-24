@@ -16,6 +16,8 @@ public class BootReceiver extends BroadcastReceiver {
             if (FloatingWindow.enabled(context)) FloatService.start(context);
             // 开始提醒：开机后把最近的一个 nextStartAt 闹钟重新排上（闹钟不跨重启保留）
             try { StartReminder.reschedule(context, new TaskStore(context)); } catch (Exception ignored) { }
+            // 任务闹钟同理：开机后按本地任务逐个重排（v1.9.0）
+            try { AlarmScheduler.rescheduleAll(context, new TaskStore(context)); } catch (Exception ignored) { }
         }
     }
 }

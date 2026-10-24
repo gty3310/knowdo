@@ -19,6 +19,8 @@ import android.widget.Toast;
  * 设置页（v1.8.0 新设）：按「账号／显示／守卫／通用」四组承接原主页顶栏、权限页的全部设置与入口。
  * 红线：只是搬位置——开关都写回各自原有的存储（SyncManager / ScreenGuardPrefs / FloatingWindow /
  * Ui 本地偏好），同步与守卫语义一律不变。
+ * v1.9.0：账号区状态精简为一行、桥文件行只显示已选择/未选择、「实时同步」开关整行去掉
+ * （云端实时推送常开，语义见 SyncManager.realtimeEnabled）。
  */
 public class SettingsActivity extends Activity {
     private static final int REQ_PICK_BRIDGE = 42;
@@ -136,6 +138,7 @@ public class SettingsActivity extends Activity {
 
     // ---------------- 账号组 ----------------
 
+    /** 账号区状态只留一行简洁文本（v1.9.0 按用户定案）：不露桥文件原始串与同步明细。 */
     private String accountStatusText() {
         if (Supa.isLoggedIn(this)) {
             if (Strings.en()) {
@@ -145,13 +148,7 @@ public class SettingsActivity extends Activity {
             }
             return SbSync.statusText(this, store);
         }
-        Uri uri = SyncManager.getUri(this);
-        if (Strings.en()) {
-            return Strings.bridgeModeLabel() + " · "
-                    + (uri == null ? Strings.rowBridgeNone() : bridgeName(uri));
-        }
-        return "Drive 桥：" + (uri == null ? "还没选桥文件" : bridgeName(uri))
-                + " · " + SyncManager.lastResult(this);
+        return Strings.bridgeModeLabel();
     }
 
     private void buildAccountGroup() {
@@ -162,35 +159,12 @@ public class SettingsActivity extends Activity {
                 v -> AccountUi.show(this, store, this::buildUi));
         row(Strings.rowSyncNow(), null, arrowBtn("›"),
                 v -> AccountUi.runSync(this, store, this::buildUi, true));
-        Switch rt = mkSwitch(SyncManager.realtimeEnabled(this));
-        rt.setOnCheckedChangeListener((b, on) -> toggleRealtime(on));
-        row(Strings.rowRealtime(), Strings.en() ? "Bridge: ~30s poll · Cloud: realtime push"
-                : "桥模式约 30 秒轮询 · 云端模式实时推送", rt, null);
+        // 「实时同步」开关已按用户定案去掉（v1.9.0）：云端模式实时推送常开，
+        // 桥模式维持原 30 秒轮询，常开语义收进 SyncManager.realtimeEnabled。
         Uri uri = SyncManager.getUri(this);
         row(Strings.rowBridgeFile(), uri == null ? Strings.rowBridgeNone()
-                        : bridgeName(uri),
+                        : Strings.rowBridgeSelected(),
                 arrowBtn(Strings.rowBridgePick()), v -> pickBridgeFile());
-    }
-
-    private void toggleRealtime(boolean on) {
-        SyncManager.setRealtimeEnabled(this, on);
-        if (on) {
-            if (SyncManager.isSupabaseMode(this)) {
-                SyncService.start(this);
-                toast(Strings.en() ? "Realtime on (cloud)" : "实时已开（云端推送）");
-            } else if (SyncManager.getUri(this) != null) {
-                SyncService.start(this);
-                AccountUi.runSync(this, store, this::buildUi, false);
-                toast(Strings.en() ? "Realtime on: syncs about every 30 seconds"
-                        : "实时已开：约 30 秒自动同步一次");
-            } else {
-                toast(Strings.en() ? "Realtime on: pick the bridge file or sign in first"
-                        : "实时已开：请先选桥文件（本页账号组）或登录云端账号");
-            }
-        } else {
-            SyncService.stop(this);
-            toast(Strings.en() ? "Realtime off" : "实时已关：只在打开 App 时同步");
-        }
     }
 
     private void pickBridgeFile() {

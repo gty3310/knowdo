@@ -49,6 +49,9 @@ public class SyncManager {
 
     // ---- 实时同步开关与 autoStart 防重复 ----
     public static boolean realtimeEnabled(Context c) {
+        // v1.9.0 起设置页不再提供「实时同步」开关：云端（Supabase）模式实时推送常开；
+        // 桥模式仍读原偏好（30 秒轮询行为不变）。
+        if (isSupabaseMode(c)) return true;
         return prefs(c).getBoolean("realtime", true);
     }
 
@@ -121,6 +124,7 @@ public class SyncManager {
             if (taskSignature(merged).equals(taskSignature(remote.tasks))
                     && eventKeys(mergedEvents).equals(eventKeys(remote.guardEvents))) {
                 StartReminder.reschedule(c, store);
+                AlarmScheduler.rescheduleAll(c, store);
                 return "同步完成：" + counts + "，内容无变化，未回写（" + TaskItem.nowIso() + "）";
             }
             // 4) 写前复读：两次读之间远端若又变了（多半是 Muse 刚写入），以第二次为准重新合并再写
@@ -140,6 +144,7 @@ public class SyncManager {
             // 5) 回写远端
             if (!writeRemote(c, uri, store, writeEvents)) {
                 StartReminder.reschedule(c, store);
+                AlarmScheduler.rescheduleAll(c, store);
                 return "合并完成，但回写桥文件失败（未能打开输出流）";
             }
             // 6) 写后校验：再读一次，若合并结果里非 deleted 的任务有缺失，
@@ -160,6 +165,7 @@ public class SyncManager {
                 }
             } catch (Exception ignored) { }
             StartReminder.reschedule(c, store);
+            AlarmScheduler.rescheduleAll(c, store);
             return "同步完成：" + counts + "（" + TaskItem.nowIso() + "）";
         } catch (Exception e) {
             return "同步失败：" + e.getMessage();
