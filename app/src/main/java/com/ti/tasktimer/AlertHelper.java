@@ -20,6 +20,7 @@ import android.provider.Settings;
 public final class AlertHelper {
     public static final String CHANNEL_RUNNING = "timer_running";
     public static final String CHANNEL_ALERTS = "timer_alerts";
+    public static final String CHANNEL_HABIT = "habit_remind";
     public static final int NOTIF_RUNNING = 100;
     public static final int NOTIF_ALERT = 200;
 
@@ -48,6 +49,12 @@ public final class AlertHelper {
         alerts.setVibrationPattern(new long[]{0, 400, 200, 400});
         alerts.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(alerts);
+
+        // 习惯提醒（v1.16.0）：每习惯独立提醒时间的本地通知，普通横幅即可
+        NotificationChannel habit = new NotificationChannel(
+                CHANNEL_HABIT, "习惯提醒", NotificationManager.IMPORTANCE_DEFAULT);
+        habit.setDescription("每个习惯自己设的提醒时间到了，通知你记一下");
+        nm.createNotificationChannel(habit);
     }
 
     public static boolean canUseFullScreen(Context c) {

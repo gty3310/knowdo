@@ -36,6 +36,35 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e116 = new Entry("v1.16.0", "2026-10-24");
+        e116.add(new Group(s("新功能", "New"),
+                s("底部多了两个页签：「习惯」和「知行」。",
+                  "Two new bottom tabs: \"Habits\" and \"Zhixing\"."),
+                s("习惯有四种记法——至少型（每周至少几天，达标就是满分）、至多型（越少越好，超标扣分）、"
+                        + "数值型（每天填个数，如步数）、累积型（一件件攒总数，如善事）；"
+                        + "可以从默认习惯库里选，也可以自定义，每个习惯能设自己的提醒时间。",
+                  "Habits come in four kinds — At-least (so many days a week; hitting the target is full marks), "
+                        + "At-most (fewer is better; going over costs points), Number (one value a day, like steps), "
+                        + "and Accumulating (a growing total, like good deeds). Pick from the built-in library or "
+                        + "create your own; each habit gets its own reminder time."),
+                s("知行页：知行合一指数（习惯达成＋任务完成比例＋分神控制三项合成）、本周和上周逐项对照、落差清单、下周目标。",
+                  "The Zhixing page: a Unity of Knowledge and Action index (habits + task completion + drift control "
+                        + "combined), this week vs last week item by item, a gap list, and next week's goals."),
+                s("晨间首填（在设置里开启）：每天先填昨日习惯、看昨日小报、写晨间日记，再开启今天。",
+                  "Morning check-in (turn it on in Settings): each day starts by filling in yesterday's habits, "
+                        + "reading yesterday's mini report, and writing a morning diary line.")));
+        e116.why = s("单个任务做没做只是一天的事；你想看的是这一周「知」与「行」对没对上。"
+                        + "把习惯和任务完成汇成一个分数，每天早上先对昨天的账，一天从对齐开始。",
+                "Whether a single task got done is one day's business; what you want to see is whether a whole "
+                        + "week's knowing matched its doing. Habits and task completion now add up to one score, "
+                        + "and every morning starts by settling yesterday's account — the day begins aligned.");
+        e116.tryIt = s("点底部「习惯」→「＋添加习惯」从库里选一个（比如步数）→ 去「知行」看指数的构成；"
+                        + "再到设置里打开「晨间首填」，明早打开知行会先进晨间页。",
+                "Tap Habits at the bottom → \"+ Add a habit\" and pick one from the library (Steps, say) → "
+                        + "open Zhixing to see how the index is made; then turn on \"Morning check-in\" in "
+                        + "Settings — tomorrow morning, KnowDo opens on the morning page first.");
+        out.add(e116);
+
         Entry e115 = new Entry("v1.15.0", "2026-10-24");
         e115.add(new Group(s("新功能", "New"),
                 s("日历里能把任务拖进去了——打开日历的「任务列表」，左边出任务、右边是日历，"
@@ -168,30 +197,6 @@ public final class Changelog {
                         + "exact moments you are most likely to drift, and self-checks turn every drift and every "
                         + "extension into a record you can later review.");
         out.add(e112);
-
-        Entry e111 = new Entry("v1.11.0", "2026-10-24");
-        e111.add(new Group(s("新功能", "New"),
-                s("「子任务」：大任务拆成一串子任务逐个计时——主页展开区和大号悬浮窗里都能加、改、拖动排序；"
-                        + "每个子任务到点弹检查页逐个推进（下一个／加时／跳过／整个完成）；"
-                        + "任务总时长自动等于子任务之和。",
-                  "\"Subtasks\": split a big task into a queue of small timed pieces — add, edit and drag to "
-                        + "reorder them in the home expansion or the large floating window. Each subtask's end "
-                        + "pops a check page to advance one by one (next / extend / skip / finish whole task), "
-                        + "and the task total is always the sum of its subtasks."),
-                s("「暂停模式」：点暂停先选目的（emoji 大格子：上厕所、喝水、吃饭、回电话、喊去帮忙、睡午觉、"
-                        + "换换脑子🏃、去上课，或自定义）和时长，还能开静音（选「去上课」自动开）。"
-                        + "普通模式到点先短震，60 秒没反馈就响 60 秒由小渐大的鸟鸣；"
-                        + "静音模式只亮屏＋通知，没反馈每 5 分钟再提醒一次。",
-                  "\"Pause mode\": pausing first asks what for — big emoji tiles (bathroom, water, meal, call back, "
-                        + "help out, nap, go for a run 🏃, class, or custom) — and for how long, with an optional "
-                        + "silent mode (\"class\" turns it on automatically). A normal pause vibrates at the end and, "
-                        + "after 60 seconds without a response, rings a 60-second fade-in birdsong; silent mode only "
-                        + "lights the screen with a notification, repeating every 5 minutes until you respond.")));
-        e111.why = s("大任务容易拖，拆成小段更容易开始、更容易推进；暂停也不该是无底洞——"
-                        + "它本身就是一件有名字、有时长的临时任务。",
-                "Big tasks invite delay; small pieces are easier to start and easier to finish. And a pause "
-                        + "shouldn't be a void — it is a small named task with a length of its own.");
-        out.add(e111);
 
         return out;
     }

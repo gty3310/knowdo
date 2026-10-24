@@ -77,7 +77,69 @@ public class SettingsActivity extends Activity {
         buildAccountGroup();
         buildDisplayGroup();
         buildGuardsGroup();
+        buildMorningGroup();
         buildGeneralGroup();
+    }
+
+    // ---------------- 晨间组（v1.16.0）：晨间首填开关＋新一天起始时刻 ----------------
+    // 存放走 HabitData（本地 habit_data.json ＋云端 user_state.habit_data 同步，Mac 共用一份）。
+
+    private void buildMorningGroup() {
+        groupTitle(Strings.grpMorning());
+        org.json.JSONObject hroot = HabitData.load(this);
+        Switch ms = mkSwitch(HabitData.morningEnabled(hroot));
+        ms.setOnCheckedChangeListener((b, on) -> {
+            org.json.JSONObject r = HabitData.load(this);
+            HabitData.setMorning(r, on, HabitData.morningDayStartMinutes(r));
+            HabitData.save(this, r);
+            toast(on ? (Strings.en() ? "Morning check-in on: the morning page comes first each day"
+                            : "晨间首填已打开：每天先过晨间页，填完才开启今天")
+                    : (Strings.en() ? "Morning check-in off" : "晨间首填已关闭"));
+            buildUi();
+        });
+        row(Strings.rowMorning(), Strings.rowMorningSub(), ms, null);
+        final int ds = HabitData.morningDayStartMinutes(hroot);
+        row(Strings.rowDayStart(), Strings.en() ? "The first open after this time counts as a new day"
+                        : "这个时间之后第一次打开，算新的一天",
+                arrowBtn(dayStartText(ds) + " ›"), v -> pickDayStart(ds));
+        TextView note = new TextView(this);
+        note.setText(Strings.en()
+                ? "When on: after that time, the first open of KnowDo each day goes to the morning page — "
+                + "yesterday's habit check-in, yesterday's mini report, and a morning diary line — "
+                + "and the day only starts once all three are filled."
+                : "开启后，每天这个时间之后第一次打开知行，先进入晨间页：昨日习惯打卡＋昨日小报＋晨间日记，填完才开启今天。");
+        note.setTextSize(12);
+        note.setTextColor(Ui.sub(this));
+        note.setPadding(0, dp(6), 0, dp(2));
+        root.addView(note);
+    }
+
+    static String dayStartText(int mins) {
+        int h = mins / 60, m = mins % 60;
+        if (Strings.en()) return String.format(java.util.Locale.US, "%d:%02d", h, m);
+        return (h < 5 ? "凌晨 " : "早上 ") + h + ":" + (m == 0 ? "00" : String.valueOf(m));
+    }
+
+    private void pickDayStart(int cur) {
+        final int[] opts = new int[13];
+        String[] labels = new String[13];
+        int sel = 0;
+        for (int i = 0; i < 13; i++) {
+            opts[i] = 120 + i * 30;
+            labels[i] = dayStartText(opts[i]);
+            if (opts[i] == cur) sel = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.rowDayStart())
+                .setSingleChoiceItems(labels, sel, (d, which) -> {
+                    org.json.JSONObject r = HabitData.load(this);
+                    HabitData.setMorning(r, HabitData.morningEnabled(r), opts[which]);
+                    HabitData.save(this, r);
+                    d.dismiss();
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
     }
 
     // ---------------- 我的志（v1.12.0） ----------------

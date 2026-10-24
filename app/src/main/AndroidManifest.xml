@@ -217,5 +217,17 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 晨间页（v1.16.0）：晨间首填开启后每天先到这里，填完才开启今天；不进最近任务 -->
+        <activity
+            android:name=".MorningActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 习惯提醒接收器（v1.16.0）：每习惯独立提醒时间到点发通知 -->
+        <receiver
+            android:name=".HabitReceiver"
+            android:exported="false" />
     </application>
 </manifest>

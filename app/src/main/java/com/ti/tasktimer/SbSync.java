@@ -219,6 +219,7 @@ public final class SbSync {
         boolean hasAsp = probeUserStateCol(c, "aspiration");
         boolean hasSc = probeUserStateCol(c, "self_checks");
         boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
+        boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
@@ -263,6 +264,27 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasHabit) {
+                // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
+                // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
+                // 合并结果变了先落本地、与云端不同才回写。
+                JSONObject remoteHabit = urow.isNull("habit_data") ? null : urow.optJSONObject("habit_data");
+                if (!HabitData.hasLocal(c) && remoteHabit != null) {
+                    HabitData.adopt(c, remoteHabit);
+                    HabitReminder.rescheduleAll(c);
+                } else if (HabitData.hasLocal(c)) {
+                    JSONObject localHabit = HabitData.load(c);
+                    JSONObject mergedHabit = HabitData.merge(localHabit, remoteHabit);
+                    if (!HabitData.contentEquals(mergedHabit, localHabit)) {
+                        HabitData.saveQuiet(c, mergedHabit);
+                        HabitReminder.rescheduleAll(c);
+                    }
+                    if (!HabitData.contentEquals(mergedHabit, remoteHabit)) {
+                        write.put("habit_data", mergedHabit);
+                        needWrite = true;
+                    }
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -288,6 +310,10 @@ public final class SbSync {
             }
             if (hasNag && IdleNag.hasLocal(c)) {
                 write.put("idle_nag", IdleNag.toCloudJson(c));
+                needWrite = true;
+            }
+            if (hasHabit && HabitData.hasLocal(c)) {
+                write.put("habit_data", HabitData.load(c));
                 needWrite = true;
             }
         }
@@ -330,6 +356,21 @@ public final class SbSync {
                 if (rn != null) {
                     IdleNag.adoptCloud(c, rn);
                     IdleAlarm.reevaluate(c);
+                }
+            }
+            // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
+            if (!row.isNull("habit_data")) {
+                JSONObject rh = row.optJSONObject("habit_data");
+                if (rh != null) {
+                    if (!HabitData.hasLocal(c)) {
+                        HabitData.adopt(c, rh);
+                    } else {
+                        JSONObject mergedH = HabitData.merge(HabitData.load(c), rh);
+                        if (!HabitData.contentEquals(mergedH, HabitData.load(c))) {
+                            HabitData.saveQuiet(c, mergedH);
+                        }
+                    }
+                    try { HabitReminder.rescheduleAll(c); } catch (Exception ignored) { }
                 }
             }
             if (!row.isNull("timer_state")) {

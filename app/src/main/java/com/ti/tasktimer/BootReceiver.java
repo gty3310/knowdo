@@ -21,6 +21,8 @@ public class BootReceiver extends BroadcastReceiver {
             // 空档催促：开机后按持久化状态续排（v1.14.0）；悬浮窗 snooze 截止时刻是
             // 持久化的，FloatService 起来后由 FloatSnooze.isActive/poll 照算，无需这里处理
             try { IdleAlarm.ensureScheduled(context); } catch (Exception ignored) { }
+            // 习惯提醒：开机后按当前习惯定义全量续排（v1.16.0，闹钟不跨重启保留）
+            try { HabitReminder.rescheduleAll(context); } catch (Exception ignored) { }
         }
     }
 }

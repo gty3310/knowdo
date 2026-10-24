@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.15.0 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.16.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -233,9 +233,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.11.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.16.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.11.0\n知行合一。\n"
+                  : "知行 KnowDo v1.16.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -335,16 +335,29 @@ public final class Strings {
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }
 
+    // ---------------- 底部三 Tab + 习惯/知行/晨间（v1.16.0） ----------------
+    public static String tabSchedule() { return s("日程", "Schedule"); }
+    public static String tabHabits() { return s("习惯", "Habits"); }
+    public static String tabZhixing() { return s("知行", "Zhixing"); }
+    public static String grpMorning() { return s("晨间", "Morning"); }
+    public static String rowMorning() { return s("晨间首填（每天先填习惯）", "Morning check-in (fill habits first)"); }
+    public static String rowMorningSub() {
+        return s("打开知行先过晨间页，填完才开启今天",
+                "Opening KnowDo starts with the morning page until it's filled");
+    }
+    public static String rowDayStart() { return s("新一天从几点算起", "The new day starts at"); }
+
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.15.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.15.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.16.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.16.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
-    /** [标题, 正文] × 20 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
+    /** [标题, 正文] × 23 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
      *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增、
-     *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增，第二十节为 v1.13.0 新增；英文为对应译文。 */
+     *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增，第二十节为 v1.13.0 新增，
+     *  第二十一至二十三节为 v1.16.0 习惯系统新增；英文为对应译文。 */
     public static String[][] helpSections() { return en ? HELP_EN : HELP_ZH; }
 
     private static final String[][] HELP_ZH = {
@@ -587,6 +600,38 @@ public final class Strings {
          + "• 顺带说一句本版的核心修复：正在计时的任务中途加子任务，现在会立刻开始计子任务——"
          + "在大号悬浮窗或主页展开区给它加一个子任务，两个悬浮窗的第一行马上换成子任务名和它的倒计时；"
          + "排在后面的子任务、删掉正在计的、改时长，队列都会当场跟着变，不用等下一次开始。"},
+        {"二十一、习惯（v1.16.0）",
+         "底部中间的「习惯」页是你的长年账本：单个任务做没做只是一天的事，习惯看的是你这个人。\n"
+         + "• 四种目标类型（仿 WHOOP 的目标种类）：至少型——每周至少做到 X 天，达标就是 100%，多做也 100%（封顶）；"
+         + "至多型——这种事每周至多 X 次，越少越好，达标 100%，超标按 目标÷实际 扣分；"
+         + "数值型——每天填一个数（如步数 6000），单日按 实际÷目标 算（封顶 100%），一周取平均；"
+         + "累积型——每天记一个增量（一件件攒，如善事），核心是从起始日以来的累计总和，可设总量目标看进度，"
+         + "知行页里按「本周增量 ÷ 周增量目标」算达成率（没设周目标时本周有增量记 100%）。\n"
+         + "• 添加习惯：点「＋ 添加习惯」，先从默认习惯库选（早起、站桩、静坐、冥想、读经、写日记、运动、戒晚睡、少刷手机、步数、善事，"
+         + "都预置好了类型与默认目标），或点「自定义习惯」自己建；第二步选类型、填目标、设提醒时间。\n"
+         + "• 每个习惯能设自己的提醒时间：到点发一条本地通知，点开直接进习惯页；改时间或关掉立即生效，重启也会续排。\n"
+         + "• 习惯卡上有年格（最近 365 天，列是周、行是周一到周日）：点任何一格可以给那天补记/改记；"
+         + "点习惯名可以改名称、目标、提醒，或删除习惯（记录会一起删）。卡上还有本周进度与三项统计（本年天数/连续/最长等，按类型略有不同）。\n"
+         + "• 习惯数据（定义、每天的记录、晨间日记、晨间设置）存在你账号的云端（habit_data），手机与电脑共用一份，离线先存本机、联网自动合并。"},
+        {"二十二、知行合一指数（v1.16.0）",
+         "底部右边的「知行」页把一周的「知」与「行」对成一本账，核心是一个 0–100 的知行合一指数：\n"
+         + "指数 ＝ 习惯达成 ×50% ＋ 任务完成 ×35% ＋ 分神控制 ×15%。\n"
+         + "• 习惯达成：全部习惯本周达成率的平均（每种习惯按自己的目标类型算，见第二十一节）；还没有任何习惯时按满分起算。\n"
+         + "• 任务完成：本周到期/排期的任务里完成数 ÷ 总数——非每日任务按截止日算，每日任务按天算（做到那天记一天），"
+         + "日历里排过的块也算进来；本周没有到期的任务时按满分起算。\n"
+         + "• 分神控制：本周分神次数 ＝ 自检里答「没有」的次数 ＋ 守卫事件数；控制分 ＝ 100 − 5×次数（最低 0），没有数据时是满分。\n"
+         + "• 页面构成：大圆环指数（带较上周的涨跌）、本周构成三项（各带与上周的差）、逐习惯本周 vs 上周对照、"
+         + "知行落差清单（没跟上节奏的习惯、超标的至多型、本周到期的未完成必做任务等），以及下周目标——"
+         + "每个习惯一个步进器，改动即存、下周一自动生效，不改就沿用本周目标（WHOOP 的 Continue 口径）。"},
+        {"二十三、晨间首填（v1.16.0）",
+         "在设置页「晨间」组开启「晨间首填」后，每天「新一天从几点算起」（默认凌晨 4:00，可在 2:00–8:00 间每半小时一档调）"
+         + "之后第一次打开知行，会先进入全屏晨间页——没有返回键，填完才能开启今天：\n"
+         + "• A 昨日习惯：逐项回想昨天——至少/至多型点「做到了/没做到」（至多型点「有/没有」），数值型填昨天的数，累积型记昨天的增量；"
+         + "留空不算数，必须全答。\n"
+         + "• B 昨日知行小报：只读——用和知行页同一套公式按单日口径算出的昨日指数、承诺与做到的件数、漏项、昨日分神次数与自检状态。\n"
+         + "• C 晨间日记：必填，写一句即可，存到新一天名下。\n"
+         + "三节填完「开启今天」才点亮：习惯记到昨天、日记记到今天，当天不会再弹。\n"
+         + "• 另一个入口：你添加第一个习惯后，习惯页顶部会出现一次建议卡，问要不要顺手开启晨间首填，点「不用」后不再出现。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -827,5 +872,43 @@ public final class Strings {
          + "• And this version's core fix: adding a subtask to a task that is already timing now starts that subtask immediately — "
          + "add one in the large floating window or the home expansion, and the first line of both floating windows switches to the subtask and its countdown at once; "
          + "appending, deleting the running one, or changing a length re-shapes the queue on the spot, no need to wait for the next start."},
+        {"21. Habits (v1.16.0)",
+         "The middle bottom tab, Habits, is your long-term ledger: whether one task got done is a day's business; habits are about who you are.\n"
+         + "• Four goal types (after WHOOP's goal kinds): At-least — do it at least X days a week; hitting the target is 100% and more is still 100% (capped). "
+         + "At-most — this thing may happen at most X times a week; fewer is better, meeting the cap is 100%, going over scores target ÷ actual. "
+         + "Number — one value a day (e.g. 6,000 steps); each day scores actual ÷ target (capped at 100%), averaged over the week. "
+         + "Accumulating — log an increment a day (e.g. good deeds) and watch the all-time total since the start date grow; an optional total goal shows progress, "
+         + "and the Zhixing page scores it as this week's increment ÷ weekly increment goal (with no weekly goal, any increment that week counts as 100%).\n"
+         + "• Adding: tap \"+ Add a habit\", pick from the built-in library (Get up early, Standing meditation, Sitting meditation, Meditation, Scripture reading, "
+         + "Diary, Exercise, No late nights, Less phone, Steps, Good deeds — each with a preset type and default target), or create a custom one; then set the type, "
+         + "the target, and a reminder time.\n"
+         + "• Each habit has its own reminder: a local notification at that time, tapping it opens the Habits page. Changing or clearing it takes effect at once, "
+         + "and reminders are rescheduled after a reboot.\n"
+         + "• Each card carries a year grid (the last 365 days; columns are weeks, rows Mon–Sun): tap any cell to backfill or fix that day. Tap the habit's name to rename "
+         + "it, change its target or reminder, or delete it (its records go with it). Cards also show this week's progress and three stats (this year / streak / longest, "
+         + "varying a little by type).\n"
+         + "• Habit data (definitions, daily logs, morning diaries, morning settings) lives in your account's cloud (habit_data), shared between phone and computer; "
+         + "offline it is stored on the device first and merged automatically when back online."},
+        {"22. The Unity index (v1.16.0)",
+         "The right bottom tab, Zhixing, settles one week's knowing against its doing in a single 0–100 Unity of Knowledge and Action index:\n"
+         + "Index = Habits ×50% + Tasks done ×35% + Drift control ×15%.\n"
+         + "• Habits: the average of all habits' attainment rates this week (each scored by its own goal type, see section 21). With no habits at all it starts at full marks.\n"
+         + "• Tasks done: completed ÷ total among tasks due or scheduled this week — one-off tasks count by their deadline, daily tasks count per day (a day done is a day counted), "
+         + "and blocks planned on the calendar count too. With nothing due this week it starts at full marks.\n"
+         + "• Drift control: this week's drift count = self-checks answered \"No\" plus guard events; the score is 100 − 5 per drift (floor 0), and full marks when there is no data.\n"
+         + "• The page: the big ring (with its change vs last week), the three components (each with its delta vs last week), a per-habit this-week-vs-last table, "
+         + "a gap list (habits behind pace, at-most habits over their cap, unfinished must-do tasks due this week), and next week's goals — one stepper per habit, "
+         + "saved as you tap, effective next Monday, carrying over unchanged when untouched (WHOOP's Continue rule)."},
+        {"23. Morning check-in (v1.16.0)",
+         "Turn on \"Morning check-in\" in Settings → Morning, and the first time you open KnowDo after \"The new day starts at\" (default 4:00 AM, adjustable in half-hour "
+         + "steps between 2:00 and 8:00) you land on a full-screen morning page — no back button; the day only starts when it's filled:\n"
+         + "• A Yesterday's habits: go through them one by one — At-least/At-most take Done/Not done (At-most takes Yes/No), Number takes yesterday's value, "
+         + "Accumulating takes yesterday's increment. Blanks don't count; every row must be answered.\n"
+         + "• B Yesterday's report: read-only — yesterday's index computed with the same formula as the Zhixing page but on a single-day basis, what was promised vs done, "
+         + "what was missed, yesterday's drift count and self-check states.\n"
+         + "• C Morning diary: required, one line is enough, filed under the new day.\n"
+         + "When all three are done, \"Start the day\" lights up: habits are filed under yesterday, the diary under today, and the page won't appear again that day.\n"
+         + "• Another way in: after you add your first habit, a suggestion card appears once at the top of the Habits page asking whether to turn morning check-in on; "
+         + "tapping \"No thanks\" dismisses it for good."},
     };
 }

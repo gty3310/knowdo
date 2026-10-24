@@ -68,6 +68,20 @@ public class MainActivity extends Activity {
     private FrameLayout calContainer;
     private CalendarPanel calendarPanel;
     private boolean calOpen;
+    // ---- v1.16.0 底部三 Tab：日程（原主页内容）／习惯／知行 ----
+    public static final String EXTRA_OPEN_TAB = "open_tab";
+    public static final int TAB_SCHEDULE = 0;
+    public static final int TAB_HABITS = 1;
+    public static final int TAB_ZHIXING = 2;
+    private int currentTab = TAB_SCHEDULE;
+    private FrameLayout scheduleWrap;
+    private FrameLayout habitContainer;
+    private FrameLayout zhixingContainer;
+    private final LinearLayout[] tabCells = new LinearLayout[3];
+    private final TextView[] tabLabels = new TextView[3];
+    private final View[] tabMarks = new View[3];
+    private HabitPage habitPage;
+    private ZhixingPage zhixingPage;
     private String expandedTaskId; // 手风琴：当前展开的任务 id（一次一个）
     private final java.util.Set<String> expandedDays = new java.util.HashSet<>();
     private static final int REQ_CAL_CAPTURE = 44;
@@ -107,6 +121,19 @@ public class MainActivity extends Activity {
         }
         // 更新日志（v1.13.0 起的长期规矩）：升级后首次打开弹一次，全新安装不弹
         WhatsNew.maybeShow(this);
+        // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
+        if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
+            switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && intent.hasExtra(EXTRA_OPEN_TAB)) {
+            switchTab(intent.getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+        }
     }
 
     @Override
@@ -114,6 +141,15 @@ public class MainActivity extends Activity {
         super.onResume();
         if (Ui.dark(this) != appliedDark || Ui.en(this) != appliedEn) { recreate(); return; }
         store.load();
+        // 晨间首填（v1.16.0）：开关开着且当前 session 未完成 → 先进晨间页，填完才回来
+        // （排在衔接守卫之前：晨间页回来后 onResume 会再走一遍正常流程）
+        try {
+            org.json.JSONObject hroot = HabitData.load(this);
+            if (HabitData.shouldShowMorning(hroot)) {
+                startActivity(new Intent(this, MorningActivity.class));
+                return;
+            }
+        } catch (Exception ignored) { }
         adapter.notifyDataSetChanged();
         StartReminder.reschedule(this, store);
         AlarmScheduler.rescheduleAll(this, store);
@@ -213,9 +249,31 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Ui.bg(this));
         setContentView(root);
 
+        // v1.16.0：根改为「页面区（权重 1）＋底部三 Tab」纵列；日程页＝原主页内容整套，
+        // 习惯/知行是同级的两个页面容器（懒构建、切过去时刷新），日历与抽屉仍盖在最上层。
+        LinearLayout mainCol = new LinearLayout(this);
+        mainCol.setOrientation(LinearLayout.VERTICAL);
+        root.addView(mainCol, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        FrameLayout pages = new FrameLayout(this);
+        mainCol.addView(pages, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        scheduleWrap = new FrameLayout(this);
+        pages.addView(scheduleWrap, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        habitContainer = new FrameLayout(this);
+        habitContainer.setVisibility(View.GONE);
+        pages.addView(habitContainer, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        zhixingContainer = new FrameLayout(this);
+        zhixingContainer.setVisibility(View.GONE);
+        pages.addView(zhixingContainer, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        buildTabBar(mainCol);
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        root.addView(content, new FrameLayout.LayoutParams(
+        scheduleWrap.addView(content, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         // 顶栏
@@ -346,7 +404,7 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(dp(56), dp(56));
         flp.gravity = Gravity.BOTTOM | Gravity.END;
         flp.setMargins(0, 0, dp(18), dp(18));
-        root.addView(fab, flp);
+        scheduleWrap.addView(fab, flp); // FAB 只属于日程页（v1.16.0 起随页面切换显隐）
 
         // 日历面板容器（右侧滑出；宽度由 toggleCalendar/拉手决定）
         calContainer = new FrameLayout(this);
@@ -359,6 +417,84 @@ public class MainActivity extends Activity {
         buildDrawer(root);
         renderTable();
         refreshStatus();
+    }
+
+    // ---------------- 底部三 Tab（v1.16.0） ----------------
+    // 日程＝原主页内容整套（顶栏/细条/任务表/FAB 都在 scheduleWrap 里），习惯与知行是
+    // 懒构建的同级页面；切换只改可见性，不销毁任何页面，状态不丢。日历面板与抽屉是
+    // root 层的覆盖物，盖在 Tab 栏之上（与 v1.15.0 以前的行为一致）。
+
+    private void buildTabBar(LinearLayout mainCol) {
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        mainCol.addView(line, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackgroundColor(Ui.surface(this));
+        bar.setPadding(dp(6), dp(4), dp(6), dp(6));
+        mainCol.addView(bar);
+        String[] icons = {"🗓️", "🌱", "◎"};
+        String[] labels = {Strings.tabSchedule(), Strings.tabHabits(), Strings.tabZhixing()};
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER_HORIZONTAL);
+            cell.setPadding(0, dp(2), 0, 0);
+            TextView ic = new TextView(this);
+            ic.setText(icons[i]);
+            ic.setTextSize(19);
+            ic.setGravity(Gravity.CENTER);
+            cell.addView(ic);
+            TextView lab = new TextView(this);
+            lab.setText(labels[i]);
+            lab.setTextSize(11.5f);
+            lab.setGravity(Gravity.CENTER);
+            cell.addView(lab);
+            View mark = new View(this);
+            android.graphics.drawable.GradientDrawable mg = new android.graphics.drawable.GradientDrawable();
+            mg.setColor(Ui.accent(this));
+            mg.setCornerRadius(dp(2));
+            mark.setBackground(mg);
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(18), dp(3));
+            mlp.topMargin = dp(3);
+            cell.addView(mark, mlp);
+            cell.setOnClickListener(v -> switchTab(idx));
+            bar.addView(cell, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            tabCells[i] = cell;
+            tabLabels[i] = lab;
+            tabMarks[i] = mark;
+        }
+        paintTabs();
+    }
+
+    private void paintTabs() {
+        for (int i = 0; i < 3; i++) {
+            if (tabLabels[i] == null) continue;
+            boolean on = i == currentTab;
+            tabLabels[i].setTextColor(on ? Ui.text(this) : Ui.sub(this));
+            tabLabels[i].setTypeface(tabLabels[i].getTypeface(),
+                    on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            tabMarks[i].setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        }
+    }
+
+    public void switchTab(int tab) {
+        if (tab < TAB_SCHEDULE || tab > TAB_ZHIXING) tab = TAB_SCHEDULE;
+        currentTab = tab;
+        if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
+        if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
+        if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
+        paintTabs();
+        if (tab != TAB_SCHEDULE && calOpen) closeCalendar();
+        if (tab == TAB_HABITS) {
+            if (habitPage == null) habitPage = new HabitPage(this, habitContainer);
+            habitPage.refresh();
+        } else if (tab == TAB_ZHIXING) {
+            if (zhixingPage == null) zhixingPage = new ZhixingPage(this, zhixingContainer);
+            zhixingPage.refresh(store);
+        }
     }
 
     // ---------------- 抽屉 ----------------
