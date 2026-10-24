@@ -24,6 +24,7 @@ public class SyncManager {
     private static final String PREF = "sync";
     private static final String KEY_URI = "tasks_json_uri";
     private static final String KEY_SCHEDULE = "schedule_json";
+    private static final String KEY_GCAL = "gcal_json";
 
     public static void setUri(Context c, Uri uri) {
         prefs(c).edit().putString(KEY_URI, uri.toString()).apply();
@@ -162,6 +163,87 @@ public class SyncManager {
         }
     }
 
+    /**
+     * 桥上的 gcal 顶层字段（Muse 写入的 Google 日历事件，App 只渲染不改，v1.6.2）。
+     * 结构：{"date":"YYYY-MM-DD","events":[{"id","title","start":"HH:mm","end":"HH:mm","allDay":false}]}。
+     * 读到就缓存一份，回写整表时原样带回——和 schedule 一样只是保管员，防被整表回写吞掉。
+     */
+    public static JSONObject latestGcal(Context c) {
+        String s = prefs(c).getString(KEY_GCAL, null);
+        if (s == null) return null;
+        try {
+            return new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 【App 对 schedule 的唯一写入口】（用户 2026-10-24 定案，随 v1.6.2 落地）
+     *
+     * 只允许一件事：用户在日历页把「今天」的某个计划块拖到了新时间，把那个块的
+     * start/end 改掉（时长不变）。除此之外的任何代码都不许动 schedule——它仍是
+     * Muse 排的日程，本 App 只是保管员。
+     *
+     * 纪律（与 syncNow 同一条）：先读远端最新版 → 只替换命中的那个块（taskId＋
+     * oldStart 双中才算，防桥上已变还硬写）→ 写回 → 再读一次校验该块已是新时间。
+     * 任务表与 guardEvents 用刚读到的远端原样带回，本方法不碰它们。
+     * 命中并写成功时同步更新本地 schedule 缓存，日历页立刻能重渲染。
+     * 必须在后台线程调用。返回 null 表示成功，否则是可读的失败原因。
+     */
+    public static String updateScheduleBlock(Context c, String taskId, String oldStart,
+                                             String newStart, String newEnd) {
+        Uri uri = getUri(c);
+        if (uri == null) return "尚未选择桥文件，无法保存新时间";
+        try {
+            RemoteSnapshot remote = readRemote(c, uri);
+            JSONObject sch = remote.schedule;
+            if (sch == null) return "桥上现在没有日程";
+            if (!TaskItem.today().equals(sch.optString("date", ""))) return "桥上日程不是今天的，先让 Muse 重排";
+            JSONArray blocks = sch.optJSONArray("blocks");
+            if (blocks == null) return "日程里没有时段块";
+            boolean hit = false;
+            for (int i = 0; i < blocks.length(); i++) {
+                JSONObject o = blocks.optJSONObject(i);
+                if (o == null) continue;
+                if (taskId.equals(o.optString("taskId", ""))
+                        && oldStart.equals(o.optString("start", ""))) {
+                    o.put("start", newStart);
+                    o.put("end", newEnd);
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) return "那个时段在桥上已经变了，页面刷新后请重新拖一次";
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", "KnowDo App（用户在日历页拖拽）");
+            prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+            // 写回：任务表/守卫事件用刚读到的远端原样，schedule 用刚改好的这一份覆盖
+            TaskStore carrier = new TaskStore(c);
+            carrier.tasks.clear();
+            carrier.tasks.addAll(remote.tasks.values());
+            if (!writeRemote(c, uri, carrier, remote.guardEvents, sch)) {
+                return "回写桥文件失败（未能打开输出流）";
+            }
+            // 回读校验：那块确实已是新时间才算落定
+            RemoteSnapshot check = readRemote(c, uri);
+            boolean ok = false;
+            if (check.schedule != null) {
+                JSONArray cb = check.schedule.optJSONArray("blocks");
+                if (cb != null) for (int i = 0; i < cb.length(); i++) {
+                    JSONObject o = cb.optJSONObject(i);
+                    if (o == null) continue;
+                    if (taskId.equals(o.optString("taskId", ""))
+                            && newStart.equals(o.optString("start", ""))
+                            && newEnd.equals(o.optString("end", ""))) { ok = true; break; }
+                }
+            }
+            return ok ? null : "已写回但回读没看到新时间，请刷新页面确认";
+        } catch (Exception e) {
+            return "保存新时间失败：" + e.getMessage();
+        }
+    }
+
     private static RemoteSnapshot readRemote(Context c, Uri uri) throws Exception {
         RemoteSnapshot snap = new RemoteSnapshot();
         InputStream in = c.getContentResolver().openInputStream(uri);
@@ -180,6 +262,12 @@ public class SyncManager {
         if (sch != null) {
             snap.schedule = sch;
             prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+        }
+        // gcal（Google 日历事件）同理：Muse 写入、App 只渲染，读到就缓存，
+        // 回写时原样带回，绝不能在整表回写时把它吞掉（v1.6.2）。
+        JSONObject gcal = root.optJSONObject("gcal");
+        if (gcal != null) {
+            prefs(c).edit().putString(KEY_GCAL, gcal.toString()).apply();
         }
         return snap;
     }
@@ -215,14 +303,32 @@ public class SyncManager {
 
     /** 把 store 当前任务表 + 给定 guardEvents 整表写回桥文件；打不开输出流返回 false。 */
     private static boolean writeRemote(Context c, Uri uri, TaskStore store, JSONArray events) throws Exception {
+        return writeRemote(c, uri, store, events, null);
+    }
+
+    /**
+     * 整表写回的实现：schedule 默认用本地缓存的那份原样带回；scheduleOverride 非空时用它
+     * （只有 updateScheduleBlock 这一个入口会传，它刚按纪律改好了一个块）。
+     * gcal 与 schedule 同等待遇：读到过的那份原样带回，一个字不改。
+     */
+    private static boolean writeRemote(Context c, Uri uri, TaskStore store, JSONArray events,
+                                       JSONObject scheduleOverride) throws Exception {
         OutputStream out = c.getContentResolver().openOutputStream(uri, "wt");
         if (out == null) return false;
         JSONObject root = store.toRootJson();
         root.put("guardEvents", events);
         // 把最近一次读到的 schedule 原样带回（内容一字不改，App 只是保管员）
-        String sch = prefs(c).getString(KEY_SCHEDULE, null);
-        if (sch != null) {
-            try { root.put("schedule", new JSONObject(sch)); } catch (Exception ignored) { }
+        if (scheduleOverride != null) {
+            root.put("schedule", scheduleOverride);
+        } else {
+            String sch = prefs(c).getString(KEY_SCHEDULE, null);
+            if (sch != null) {
+                try { root.put("schedule", new JSONObject(sch)); } catch (Exception ignored) { }
+            }
+        }
+        String gcal = prefs(c).getString(KEY_GCAL, null);
+        if (gcal != null) {
+            try { root.put("gcal", new JSONObject(gcal)); } catch (Exception ignored) { }
         }
         out.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
         out.close();

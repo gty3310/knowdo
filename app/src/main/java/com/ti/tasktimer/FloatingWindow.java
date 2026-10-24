@@ -68,7 +68,9 @@ public class FloatingWindow {
     private static boolean suppressed = false;
     private static boolean noteDirty = false;
     private static String cachedTaskId = null;
+    private static String boundNoteText = null; // 笔记框上次与数据源对齐的文字（v1.6.2 同步修复）
     private static String displayTaskId = null;
+    private static TaskStore.ChangeListener storeListener = null; // 数据一变就重渲染（v1.6.2）
     private static final Handler ui = new Handler(Looper.getMainLooper());
     private static Runnable pendingSave;
 
@@ -282,12 +284,19 @@ public class FloatingWindow {
             else mins = 0;
             dockView.setText(d.state == ST_NONE ? "✓" : mins > 99 ? "99+" : String.valueOf(mins));
         }
-        // 笔记绑定到当前显示的任务；任务变了才重载，避免打断输入
-        if (noteEdit != null && (cachedTaskId == null || !cachedTaskId.equals(displayTaskId))) {
-            cachedTaskId = displayTaskId;
-            settingText = true;
-            noteEdit.setText(d.task == null || d.task.note == null ? "" : d.task.note);
-            settingText = false;
+        // 笔记与数据源对齐（v1.6.2 修复「悬浮窗与主页改同一条笔记不同步」）：
+        // 不只任务变了才重载——同一个任务的笔记在主页/同步里被改了，这里也要跟着变；
+        // 唯一例外是自己正在编辑且有未保存的修改（noteDirty），那时以手头的输入为准、不许覆盖。
+        if (noteEdit != null) {
+            String diskNote = d.task == null || d.task.note == null ? "" : d.task.note;
+            boolean taskSwitched = cachedTaskId == null || !cachedTaskId.equals(displayTaskId);
+            if (taskSwitched || (!diskNote.equals(boundNoteText) && !(editing && noteDirty))) {
+                cachedTaskId = displayTaskId;
+                boundNoteText = diskNote;
+                settingText = true;
+                noteEdit.setText(diskNote);
+                settingText = false;
+            }
         }
     }
 
@@ -299,6 +308,10 @@ public class FloatingWindow {
     private static void hideInternal() {
         PauseMenu.close();
         if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
+        if (storeListener != null) {
+            TaskStore.removeChangeListener(storeListener);
+            storeListener = null;
+        }
         if (wm != null && rootView != null) {
             try { wm.removeView(rootView); } catch (Exception ignored) { }
         }
@@ -306,6 +319,7 @@ public class FloatingWindow {
         editing = false;
         noteDirty = false;
         cachedTaskId = null;
+        boundNoteText = null;
         displayTaskId = null;
     }
 
@@ -517,6 +531,9 @@ public class FloatingWindow {
             i.putExtra(AiLaunchActivity.EXTRA_TASK_ID, dd.task.id);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             c.startActivity(i);
+            // 用户定案（v1.6.2）：点「AI」跳去助手后，悬浮窗自动缩回 MINI。
+            // setMode 顺带 endEditFocus，先把正在写的笔记落盘，AI 读到的文案带最新笔记。
+            setMode(c, MODE_MINI);
         });
         btns.addView(aiBtn);
         doneBtn = smallButton(c, "完成");
@@ -537,6 +554,8 @@ public class FloatingWindow {
             Intent i = new Intent(c, MainActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             c.startActivity(i);
+            // 用户定案（v1.6.2）：点「打开知行」拉起主界面后，悬浮窗自动缩回 MINI，不留大卡占屏。
+            setMode(c, MODE_MINI);
         });
         btns2.addView(openBtn);
         Button miniBtn = smallButton(c, "收起");
@@ -562,6 +581,12 @@ public class FloatingWindow {
         } catch (Exception e) {
             rootView = null;
             return;
+        }
+        // 数据变更即时重渲染（v1.6.2）：主页/同步在别处改了任务，这里不等下一秒节拍。
+        if (storeListener == null) {
+            final Context app = c.getApplicationContext();
+            storeListener = () -> refresh(app);
+            TaskStore.addChangeListener(storeListener);
         }
         applyMode(c);
         refresh(c);
@@ -610,6 +635,7 @@ public class FloatingWindow {
             t.note = v;
             t.touch();
             store.save();
+            boundNoteText = v; // 已与数据源对齐，refresh 不要再重设一遍输入框
         }
         if (saveStateView != null) saveStateView.setText("已保存 ✓");
         if (fromEnd && noteDirty) {

@@ -51,6 +51,14 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private Button realtimeBtn;
     private android.content.BroadcastReceiver syncReceiver;
+    // 数据变更监听（v1.6.2）：悬浮窗/同步在别处改了数据，本页前台时立刻跟上
+    private final TaskStore.ChangeListener storeListener = this::onStoreChanged;
+    // 正在打开的内容编辑弹窗（笔记/专注规则）状态：外部改动来了要刷新它，但不覆盖手头输入
+    private AlertDialog openDialog;
+    private EditText openDialogInput;
+    private String openDialogTaskId;
+    private String openDialogKind; // "note" / "rule"
+    private String openDialogText; // 打开弹窗时输入框的文字；与现行文字一致＝用户还没改动
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable statusLoop = new Runnable() {
         @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); }
@@ -93,15 +101,69 @@ public class MainActivity extends Activity {
         IntentFilter f = new IntentFilter(SyncService.ACTION_SYNC_UPDATED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(syncReceiver, f, RECEIVER_NOT_EXPORTED);
         else registerReceiver(syncReceiver, f);
+        TaskStore.addChangeListener(storeListener);
     }
 
     @Override
     protected void onPause() {
         handler.removeCallbacks(statusLoop);
+        TaskStore.removeChangeListener(storeListener);
         if (syncReceiver != null) {
             try { unregisterReceiver(syncReceiver); } catch (Exception ignored) { }
         }
         super.onPause();
+    }
+
+    /** 任意来源改完数据（悬浮窗编辑、后台同步合并、检查页回写）都会走到这里：
+     *  列表整表重读刷新；正开着的笔记/专注弹窗按「没动过才刷新」的规则跟上最新值。 */
+    private void onStoreChanged() {
+        store.load();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        refreshStatus();
+        refreshOpenDialog();
+    }
+
+    /** 打开中的内容弹窗跟上数据源：输入框文字与打开时一致（用户没改过）才换成最新值；
+     *  用户已经动手改了就保持他的输入（弹窗关闭重开时自然读到最新，保存时也会按 id 重取对象）。 */
+    private void refreshOpenDialog() {
+        if (openDialog == null || !openDialog.isShowing() || openDialogInput == null
+                || openDialogTaskId == null) return;
+        TaskItem fresh = store.byId(openDialogTaskId);
+        if (fresh == null) return;
+        String freshText = "rule".equals(openDialogKind)
+                ? (fresh.focusRule == null ? "" : fresh.focusRule)
+                : (fresh.note == null ? "" : fresh.note);
+        if (openDialogInput.getText().toString().equals(openDialogText)) {
+            openDialogText = freshText;
+            openDialogInput.setText(freshText);
+            openDialogInput.setSelection(openDialogInput.getText().length());
+        }
+    }
+
+    /** 登记一个正打开的内容编辑弹窗，关闭时自动注销（供 refreshOpenDialog 跟踪）。 */
+    private AlertDialog trackOpenDialog(AlertDialog d, EditText input, TaskItem t, String kind) {
+        openDialog = d;
+        openDialogInput = input;
+        openDialogTaskId = t.id;
+        openDialogKind = kind;
+        openDialogText = input.getText().toString();
+        d.setOnDismissListener(x -> {
+            if (openDialog == d) {
+                openDialog = null;
+                openDialogInput = null;
+                openDialogTaskId = null;
+                openDialogKind = null;
+                openDialogText = null;
+            }
+        });
+        return d;
+    }
+
+    /** 保存前按 id 重取最新对象：弹窗持有的是打开那一刻的副本，期间数据可能已被别处改过，
+     *  直接拿旧副本改完存盘会把别人的新改动整表盖掉（v1.6.2 同步 bug 的一半根因）。 */
+    private TaskItem freshCopyOf(TaskItem t) {
+        TaskItem cur = store.byId(t.id);
+        return cur != null ? cur : t;
     }
 
     // ---------------- UI 骨架 ----------------
@@ -575,11 +637,15 @@ public class MainActivity extends Activity {
                 .setView(input)
                 .setPositiveButton("保存", (d, w) -> {
                     String name = input.getText().toString().trim();
-                    if (!name.isEmpty()) { t.title = name; t.touch(); store.save(); adapter.notifyDataSetChanged(); }
+                    if (!name.isEmpty()) {
+                        TaskItem cur = freshCopyOf(t);
+                        cur.title = name; cur.touch(); store.save(); adapter.notifyDataSetChanged();
+                    }
                 })
                 .setNeutralButton("设为必要/取消必要", (d, w) -> {
-                    t.priority = "must".equals(t.priority) ? null : "must";
-                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    TaskItem cur = freshCopyOf(t);
+                    cur.priority = "must".equals(cur.priority) ? null : "must";
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -604,8 +670,9 @@ public class MainActivity extends Activity {
                             else sel.remove(known.get(which));
                         })
                 .setPositiveButton("保存", (d, w) -> {
-                    t.scenarios = new ArrayList<>(sel);
-                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    TaskItem cur = freshCopyOf(t);
+                    cur.scenarios = new ArrayList<>(sel);
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNeutralButton("＋新增情景", (d, w) -> {
                     final EditText input = new EditText(this);
@@ -615,9 +682,10 @@ public class MainActivity extends Activity {
                             .setView(input)
                             .setPositiveButton("添加", (d2, w2) -> {
                                 String s = input.getText().toString().trim();
-                                if (!s.isEmpty() && !t.scenarios.contains(s)) {
-                                    t.scenarios.add(s);
-                                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                                TaskItem cur = freshCopyOf(t);
+                                if (!s.isEmpty() && !cur.scenarios.contains(s)) {
+                                    cur.scenarios.add(s);
+                                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                                 }
                             })
                             .setNegativeButton("取消", null)
@@ -734,26 +802,28 @@ public class MainActivity extends Activity {
                 .setTitle("截止日期")
                 .setView(box)
                 .setPositiveButton("保存", (d, w) -> {
+                    TaskItem cur = freshCopyOf(t);
                     if (repeatBox.isChecked()) {
-                        t.repeat = "daily";
-                        t.deadline = null;
-                        t.deadlineTime = null;
+                        cur.repeat = "daily";
+                        cur.deadline = null;
+                        cur.deadlineTime = null;
                     } else {
-                        t.repeat = "none";
-                        t.deadline = String.format("%04d-%02d-%02d",
+                        cur.repeat = "none";
+                        cur.deadline = String.format("%04d-%02d-%02d",
                                 picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
-                        t.deadlineTime = timeHolder[0];
+                        cur.deadlineTime = timeHolder[0];
                     }
-                    t.nextStartAt = startHolder[0];
-                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    cur.nextStartAt = startHolder[0];
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                     StartReminder.reschedule(this, store);
                 })
                 .setNeutralButton("清除日期", (d, w) -> {
-                    t.repeat = "none";
-                    t.deadline = null;
-                    t.deadlineTime = null;
-                    t.nextStartAt = null;
-                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    TaskItem cur = freshCopyOf(t);
+                    cur.repeat = "none";
+                    cur.deadline = null;
+                    cur.deadlineTime = null;
+                    cur.nextStartAt = null;
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                     StartReminder.reschedule(this, store);
                 })
                 .setNegativeButton("取消", null)
@@ -784,20 +854,21 @@ public class MainActivity extends Activity {
                 .setTitle("时长")
                 .setView(box)
                 .setPositiveButton("保存", (d, w) -> {
+                    TaskItem cur = freshCopyOf(t);
                     try {
                         int m = Integer.parseInt(planInput.getText().toString().trim());
-                        if (m > 0) t.durationMinutes = m;
+                        if (m > 0) cur.durationMinutes = m;
                     } catch (NumberFormatException ignored) { }
                     String a = actualInput.getText().toString().trim();
                     if (a.isEmpty()) {
-                        t.actualMinutes = 0;
+                        cur.actualMinutes = 0;
                     } else {
                         try {
                             int am = Integer.parseInt(a);
-                            if (am >= 0) t.actualMinutes = am;
+                            if (am >= 0) cur.actualMinutes = am;
                         } catch (NumberFormatException ignored) { }
                     }
-                    t.touch(); store.save(); adapter.notifyDataSetChanged();
+                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -880,21 +951,23 @@ public class MainActivity extends Activity {
         box.addView(pickPrimary);
         refresh[0].run();
 
-        new AlertDialog.Builder(this)
+        AlertDialog focusDialog = new AlertDialog.Builder(this)
                 .setTitle("专注规则")
                 .setView(box)
                 .setPositiveButton("保存", (d, w) -> {
-                    t.focusRule = ruleInput.getText().toString().trim();
-                    t.focusMode = mode[0];
-                    t.blockedApps = new ArrayList<>(blocked);
-                    t.allowedApps = new ArrayList<>(allowed);
-                    t.primaryApp = primary[0];
-                    t.touch();
+                    TaskItem cur = freshCopyOf(t);
+                    cur.focusRule = ruleInput.getText().toString().trim();
+                    cur.focusMode = mode[0];
+                    cur.blockedApps = new ArrayList<>(blocked);
+                    cur.allowedApps = new ArrayList<>(allowed);
+                    cur.primaryApp = primary[0];
+                    cur.touch();
                     store.save();
                     adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
+        trackOpenDialog(focusDialog, ruleInput, t, "rule");
     }
 
     private void pickAppsMulti(String title, List<AppLister.AppInfo> apps, String[] labels,
@@ -923,17 +996,19 @@ public class MainActivity extends Activity {
         input.setSelection(input.getText().length());
         input.setMinLines(3);
         input.setGravity(Gravity.TOP);
-        new AlertDialog.Builder(this)
+        AlertDialog d = new AlertDialog.Builder(this)
                 .setTitle("笔记 · " + t.title)
                 .setView(wrapWithCopyButton(t, input, "note"))
-                .setPositiveButton("保存", (d, w) -> {
-                    t.note = input.getText().toString().trim();
-                    t.touch();
+                .setPositiveButton("保存", (dg, w) -> {
+                    TaskItem cur = freshCopyOf(t);
+                    cur.note = input.getText().toString().trim();
+                    cur.touch();
                     store.save();
                     adapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("取消", null)
                 .show();
+        trackOpenDialog(d, input, t, "note");
     }
 
     private void dialogRowMenu(final TaskItem t) {
@@ -941,15 +1016,16 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(t.title)
                 .setItems(items, (d, which) -> {
+                    TaskItem cur = freshCopyOf(t);
                     if (which == 0) {
-                        if (t.isDoneToday()) t.markUndone(); else t.markDone();
+                        if (cur.isDoneToday()) cur.markUndone(); else cur.markDone();
                         store.save(); adapter.notifyDataSetChanged();
                     } else {
                         new AlertDialog.Builder(this)
                                 .setTitle("删除任务")
-                                .setMessage("确定删除「" + t.title + "」吗？")
+                                .setMessage("确定删除「" + cur.title + "」吗？")
                                 .setPositiveButton("删除", (d2, w2) -> {
-                                    store.remove(t);
+                                    store.remove(freshCopyOf(t));
                                     adapter.notifyDataSetChanged();
                                 })
                                 .setNegativeButton("取消", null)

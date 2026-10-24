@@ -1,6 +1,7 @@
 package com.ti.tasktimer;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -9,12 +10,14 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,13 +32,19 @@ import java.util.Set;
 
 /**
 * 日历页（今日时间表）：纵向一天时间轴，左泳道是计划、右泳道是实际。
-* 计划来自桥文件顶层 schedule（Muse 排的，App 只读）；实际来自本地计时段记录 SessionLog。
+* 计划来自桥文件顶层 schedule（Muse 排的）；实际来自本地计时段记录 SessionLog。
+* 桥上若有 gcal（Google 日历事件，Muse 写入），在计划泳道以独立样式只读渲染。
 * 本页在前台时每 10 秒同步一次桥并重画——Muse 在桥端改了 schedule，这里很快就能看到新版。
+*
+* v1.6.2 交互：计划块可长按拖拽改时间（用户定案：App 对 schedule 的写权限仅此一处，
+* 经 SyncManager.updateScheduleBlock 按读-改-写-校验纪律回写）；计划块与未排任务带 ▶，
+* 点了立即开始/暂停该任务（与主页同一条计时路径）；计划块长按拾起时有 lift 放大效果。
 */
 public class CalendarActivity extends Activity {
 private static final int DAY_START_MIN = 5 * 60; // 轴默认 05:00
 private static final int DAY_END_MIN = 23 * 60; // 轴默认 23:00
 private static final int SLEEP_MIN = 22 * 60 + 30; // 22:30 睡觉，自由时间算到这里
+private static final int REQ_CAPTURE = 44; // 与主页同款：开始计时前的截图授权请求
 
 private TaskStore store;
 private TextView overviewView;
@@ -46,6 +55,8 @@ private LinearLayout listBox;
 private final Handler handler = new Handler(Looper.getMainLooper());
 private boolean foreground = false;
 private boolean syncing = false;
+private boolean dragging = false; // 有块正被拖动时，周期 render 不要打断它
+private TaskItem pendingGuardTask; // 等截图授权结果的待开始任务（与主页同语义）
 
 private final Runnable refresher = new Runnable() {
 @Override public void run() {
@@ -59,6 +70,37 @@ String taskId = "";
 String title = "";
 int startMin, endMin;
 boolean done, running;
+}
+
+/** Google 日历事件（桥 gcal，只读渲染）：有起止的是定时事件，allDay 的只在清单里列一行。 */
+private static class GcalEvent {
+String title = "";
+int startMin = -1, endMin = -1;
+boolean allDay;
+}
+
+/** 读桥上缓存的 gcal；date 不是今天或结构不全返回空列表。 */
+private List<GcalEvent> gcalEvents() {
+List<GcalEvent> out = new ArrayList<>();
+JSONObject g = SyncManager.latestGcal(this);
+if (g == null) return out;
+if (!today().equals(g.optString("date", ""))) return out;
+JSONArray arr = g.optJSONArray("events");
+if (arr == null) return out;
+for (int i = 0; i < arr.length(); i++) {
+JSONObject o = arr.optJSONObject(i);
+if (o == null) continue;
+GcalEvent e = new GcalEvent();
+e.title = o.optString("title", "（无标题日程）");
+e.allDay = o.optBoolean("allDay", false);
+if (!e.allDay) {
+e.startMin = parseMin(o.optString("start", ""));
+e.endMin = parseMin(o.optString("end", ""));
+if (e.startMin < 0 || e.endMin <= e.startMin) { e.allDay = true; e.startMin = e.endMin = -1; }
+}
+out.add(e);
+}
+return out;
 }
 
 @Override
@@ -262,9 +304,13 @@ return Math.max(0, (to - from) - used);
 
 private void render() {
 if (canvas == null) return;
+if (dragging) return; // 拖拽进行中不重画，免得把手里那块销毁
 store.load();
 List<Block> plan = planBlocks();
 List<Block> actual = actualBlocks();
+List<GcalEvent> gcal = gcalEvents();
+List<GcalEvent> gcalTimed = new ArrayList<>();
+for (GcalEvent e : gcal) if (!e.allDay) gcalTimed.add(e);
 List<TaskItem> done = new ArrayList<>();
 List<TaskItem> todo = new ArrayList<>();
 for (TaskItem t: store.tasks) {
@@ -293,6 +339,10 @@ all.addAll(actual);
 for (Block b: all) {
 axisStart = Math.min(axisStart, (b.startMin / 30) * 30);
 axisEnd = Math.max(axisEnd, ((b.endMin + 29) / 30) * 30);
+}
+for (GcalEvent e : gcalTimed) {
+axisStart = Math.min(axisStart, (e.startMin / 30) * 30);
+axisEnd = Math.max(axisEnd, ((e.endMin + 29) / 30) * 30);
 }
 int nowMin = minOfDay(System.currentTimeMillis());
 axisStart = Math.min(axisStart, (nowMin / 60) * 60);
@@ -326,8 +376,10 @@ tlp.leftMargin = 0;
 tlp.topMargin = Math.max(0, y - dp(7));
 canvas.addView(lab, tlp);
 }
-// 计划块（左泳道，浅色描边）
-if (plan!= null) for (Block b: plan) addBlock(b, planX, laneW, axisStart, scale, true);
+// 计划块（左泳道，浅色描边，可拖、带 ▶）
+if (plan!= null) for (Block b: plan) addPlanBlock(b, planX, laneW, axisStart, scale);
+// Google 日历事件（左泳道，独立灰紫样式，只读：不可拖、无 ▶、点一下看全文）
+for (GcalEvent e : gcalTimed) addGcalBlock(e, planX, laneW, axisStart, scale);
 // 实际块（右泳道，实心）
 for (Block b: actual) addBlock(b, actX, laneW, axisStart, scale, false);
 // 现在线
@@ -365,9 +417,15 @@ addListTitle("未排入日程的任务");
 if (unscheduled.isEmpty()) {
 addListLine(plan == null? "（今天没有未完成的任务）": "（未完成的任务都已排入日程）", Color.rgb(120, 120, 120));
 } else {
-for (TaskItem t: unscheduled) {
-addListLine("• " + t.title + "（计划 " + t.durationMinutes + " 分钟"
-+ ("must".equals(t.priority)? " · 必做": "") + "）", Color.rgb(33, 33, 33));
+for (TaskItem t: unscheduled) addTaskRow(t);
+}
+boolean hasAllDay = false;
+for (GcalEvent e : gcal) if (e.allDay) { hasAllDay = true; break; }
+if (hasAllDay) {
+addListTitle("今天的 Google 日历日程");
+for (GcalEvent e : gcal) {
+if (e.allDay) addListLine("📅 全天 · " + e.title, Color.rgb(94, 53, 177));
+else addListLine("📅 " + hhmm(e.startMin) + "–" + hhmm(e.endMin) + " · " + e.title, Color.rgb(94, 53, 177));
 }
 }
 if (!actual.isEmpty()) {
@@ -376,6 +434,263 @@ for (Block b: actual) {
 addListLine("• " + hhmm(b.startMin) + "–" + hhmm(b.endMin) + " " + b.title
 + (b.running? "（正在计时）": ""), Color.rgb(46, 125, 50));
 }
+}
+}
+
+/** 计划块（v1.6.2）：容器＋文字＋右上角 ▶；未完成的块可长按拖拽改时间。 */
+private void addPlanBlock(final Block b, int x, int w, final int axisStart, final int scale) {
+FrameLayout box = new FrameLayout(this);
+GradientDrawable bg = new GradientDrawable();
+bg.setCornerRadius(dp(4));
+if (b.done) {
+bg.setColor(Color.rgb(238, 238, 238));
+bg.setStroke(dp(1), Color.rgb(158, 158, 158));
+} else if (b.running) {
+bg.setColor(Color.rgb(187, 222, 251));
+bg.setStroke(dp(2), Color.rgb(25, 118, 210));
+} else {
+bg.setColor(Color.rgb(227, 242, 253));
+bg.setStroke(dp(1), Color.rgb(25, 118, 210));
+}
+box.setBackground(bg);
+TextView label = new TextView(this);
+label.setText(hhmm(b.startMin) + "–" + hhmm(b.endMin) + "\n" + b.title);
+label.setTextSize(11);
+label.setTextColor(b.done? Color.rgb(130, 130, 130): Color.rgb(13, 71, 161));
+label.setPadding(dp(5), dp(2), dp(26), dp(2));
+label.setMaxLines(3);
+label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+box.addView(label, new FrameLayout.LayoutParams(
+FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+if (!b.done) {
+TextView play = new TextView(this);
+boolean isRunningThis = TimerState.isRunning(this) && b.taskId.equals(TimerState.taskId(this));
+play.setText(isRunningThis? "⏸": "▶");
+play.setTextSize(13);
+play.setTextColor(Color.rgb(13, 71, 161));
+play.setGravity(Gravity.CENTER);
+play.setPadding(dp(4), dp(1), dp(4), dp(1));
+FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(24), dp(22), Gravity.TOP | Gravity.END);
+box.addView(play, plp);
+play.setOnClickListener(v -> togglePlayTask(b.taskId));
+attachDrag(box, label, b, axisStart, scale);
+}
+int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
+FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
+lp.leftMargin = x;
+lp.topMargin = (b.startMin - axisStart) * scale;
+canvas.addView(box, lp);
+}
+
+/** Google 日历事件块：灰紫描边、标题带 📅，只读——点一下 Toast 看全名与时间，不能拖、没有 ▶。 */
+private void addGcalBlock(final GcalEvent e, int x, int w, int axisStart, int scale) {
+TextView v = new TextView(this);
+v.setText(hhmm(e.startMin) + "–" + hhmm(e.endMin) + "\n📅 " + e.title);
+v.setTextSize(11);
+v.setPadding(dp(5), dp(2), dp(3), dp(2));
+v.setMaxLines(3);
+v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+GradientDrawable bg = new GradientDrawable();
+bg.setCornerRadius(dp(4));
+bg.setColor(Color.rgb(237, 231, 246));
+bg.setStroke(dp(1), Color.rgb(126, 87, 194));
+v.setTextColor(Color.rgb(69, 39, 160));
+v.setBackground(bg);
+v.setOnClickListener(view -> Toast.makeText(this,
+"📅 " + e.title + "\n" + hhmm(e.startMin) + "–" + hhmm(e.endMin) + "（Google 日历）",
+Toast.LENGTH_LONG).show());
+int hPx = Math.max(dp(20), (e.endMin - e.startMin) * scale);
+FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
+lp.leftMargin = x;
+lp.topMargin = (e.startMin - axisStart) * scale;
+canvas.addView(v, lp);
+}
+
+/**
+ * 长按拖拽改计划块时间（v1.6.2）：
+ * 长按 400ms 拾起——拾起瞬间 lift 动画（放大到 1.04＋加深阴影＋微微透出，学 iOS/Google 日历）；
+ * 拖动中按 5 分钟吸附实时预览新起止，拖动态全程保持放大；松手后短促回落动画恢复原大小，
+ * 再经 SyncManager.updateScheduleBlock 写回桥（App 对 schedule 的唯一写入口）。
+ * 已完成的块不挂拖拽（addPlanBlock 只给未完成块调用本方法）。
+ */
+private void attachDrag(final FrameLayout box, final TextView label, final Block b,
+                        final int axisStart, final int scale) {
+box.setOnTouchListener(new View.OnTouchListener() {
+float downRawY;
+int downStartMin;
+int curStartMin;
+boolean lifted = false;
+boolean moved = false;
+final Runnable lift = () -> {
+lifted = true;
+moved = false;
+dragging = true;
+curStartMin = b.startMin;
+box.requestDisallowInterceptTouchEvent(true);
+box.bringToFront();
+box.animate().scaleX(1.04f).scaleY(1.04f).alpha(0.96f).setDuration(120).start();
+box.setElevation(dp(10));
+try { box.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) {}
+};
+@Override public boolean onTouch(View v, MotionEvent ev) {
+switch (ev.getActionMasked()) {
+case MotionEvent.ACTION_DOWN:
+downRawY = ev.getRawY();
+downStartMin = b.startMin;
+handler.postDelayed(lift, 400);
+return true;
+case MotionEvent.ACTION_MOVE:
+if (!lifted) return true;
+float dyPx = ev.getRawY() - downRawY;
+int raw = downStartMin + Math.round(dyPx / scale);
+int snapped = Math.round(raw / 5f) * 5;
+int dur = b.endMin - b.startMin;
+snapped = Math.max(DAY_START_MIN, Math.min(snapped, DAY_END_MIN - dur));
+curStartMin = snapped;
+FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) box.getLayoutParams();
+lp.topMargin = (snapped - axisStart) * scale;
+box.setLayoutParams(lp);
+if (snapped!= downStartMin) moved = true;
+label.setText(hhmm(snapped) + "–" + hhmm(snapped + dur) + "\n" + b.title);
+return true;
+case MotionEvent.ACTION_UP:
+case MotionEvent.ACTION_CANCEL:
+handler.removeCallbacks(lift);
+if (!lifted) return true;
+lifted = false;
+// 回落动画：缩放/透明度/阴影都收回，再落定写回
+box.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(150).start();
+box.setElevation(0);
+final int dur2 = b.endMin - b.startMin;
+final int ns = curStartMin;
+final String taskId = b.taskId;
+final String oldStart = hhmm(b.startMin);
+handler.postDelayed(() -> {
+dragging = false;
+if (!moved || ns == downStartMin) { render(); return; }
+String newStart = hhmm(ns), newEnd = hhmm(ns + dur2);
+new Thread(() -> {
+String err = SyncManager.updateScheduleBlock(
+CalendarActivity.this, taskId, oldStart, newStart, newEnd);
+handler.post(() -> {
+if (err == null) {
+toast("「" + b.title + "」已改到 " + newStart + "–" + newEnd);
+} else {
+toast(err);
+}
+render();
+});
+}).start();
+}, 160);
+return true;
+}
+return false;
+}
+});
+}
+
+/** 未排入日程的任务行：标题＋时长，右侧一个 ▶/⏸，点法与计划块完全一致。 */
+private void addTaskRow(final TaskItem t) {
+LinearLayout row = new LinearLayout(this);
+row.setOrientation(LinearLayout.HORIZONTAL);
+row.setGravity(Gravity.CENTER_VERTICAL);
+row.setPadding(0, dp(2), 0, dp(2));
+TextView lab = new TextView(this);
+lab.setText("• " + t.title + "（计划 " + t.durationMinutes + " 分钟"
++ ("must".equals(t.priority)? " · 必做": "") + "）");
+lab.setTextSize(13);
+lab.setTextColor(Color.rgb(33, 33, 33));
+lab.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+row.addView(lab);
+TextView play = new TextView(this);
+boolean isRunningThis = TimerState.isRunning(this) && t.id.equals(TimerState.taskId(this));
+play.setText(isRunningThis? "⏸": "▶");
+play.setTextSize(16);
+play.setTextColor(Color.rgb(13, 71, 161));
+play.setGravity(Gravity.CENTER);
+play.setPadding(dp(10), dp(2), dp(6), dp(2));
+play.setOnClickListener(v -> togglePlayTask(t.id));
+row.addView(play);
+listBox.addView(row);
+}
+
+// ---------------- 开始 / 暂停（与主页 ▶ 同一条路径） ----------------
+
+/**
+ * 与主页任务行 ▶ 完全相同的切换语义（同一个 TimerService 入口）：
+ * 计时中的就是它→暂停；暂停中的就是它→继续；别的任务在计时→先确认「暂停并切换」；
+ * 都没有→开始。悬浮窗的当前任务由 TimerState 推导（FloatService 每秒重渲染），
+ * 这里开始/暂停后它会自动跟着切换，无需额外通知。
+ */
+private void togglePlayTask(String taskId) {
+store.load();
+final TaskItem t = store.byId(taskId);
+if (t == null) { toast("任务已不在列表里"); render(); return; }
+if (TimerState.isRunning(this)) {
+if (t.id.equals(TimerState.taskId(this))) {
+TimerService.pauseTimer(this);
+toast("已暂停：「" + t.title + "」，点 ▶ 继续");
+handler.postDelayed(this::render, 350);
+return;
+}
+String warn = TimerState.isPaused(this) && !TimerState.pausedTaskId(this).equals(TimerState.taskId(this))
+? "\n（注意：之前暂停的「" + TimerState.pausedTitle(this) + "」的进度会被覆盖）" : "";
+new AlertDialog.Builder(this)
+.setTitle("已有任务在计时")
+.setMessage("「" + TimerState.taskTitle(this) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
+.setPositiveButton("暂停并切换", (d, w) -> {
+TimerService.pauseTimer(this);
+handler.postDelayed(() -> startTaskTimer(t), 350);
+})
+.setNegativeButton("取消", null)
+.show();
+return;
+}
+if (t.id.equals(TimerState.pausedTaskId(this))) {
+int total = TimerState.pausedTotalSec(this);
+if (total <= 0) total = Math.max(1, t.durationMinutes) * 60;
+int remain = (int) Math.max(1, TimerState.pausedRemainMs(this) / 1000);
+TimerService.resumeTimer(this, total, remain, t.id, t.title);
+toast("继续计时：" + t.title + "（剩余约 " + (remain / 60) + " 分 " + (remain % 60) + " 秒）");
+handler.postDelayed(this::render, 350);
+return;
+}
+startTaskTimer(t);
+}
+
+/** 与主页 startTaskTimer 同语义：屏幕内容守卫未授权时先走一次截图授权，拿到结果都照常开始。 */
+private void startTaskTimer(final TaskItem t) {
+if (ScreenGuardPrefs.enabled(this) && !ScreenCaptureService.isAuthorized(this)) {
+android.media.projection.MediaProjectionManager mpm =
+(android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+if (mpm != null) {
+pendingGuardTask = t;
+toast("屏幕内容守卫已开：请在系统弹窗里允许这一次截图授权（每个任务一次）");
+startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+return;
+}
+}
+doStartTaskTimer(t);
+}
+
+private void doStartTaskTimer(TaskItem t) {
+TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
+toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
+handler.postDelayed(this::render, 350);
+}
+
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == REQ_CAPTURE) {
+TaskItem t = pendingGuardTask;
+pendingGuardTask = null;
+if (resultCode == RESULT_OK && data != null) {
+ProjectionAuth.store(resultCode, data);
+} else {
+toast("未获得截图授权：本次计时不做屏幕内容采样，其余功能照常");
+}
+if (t != null) doStartTaskTimer(t);
 }
 }
 
@@ -390,21 +705,6 @@ v.setMaxLines(3);
 v.setEllipsize(android.text.TextUtils.TruncateAt.END);
 GradientDrawable bg = new GradientDrawable();
 bg.setCornerRadius(dp(4));
-if (planned) {
-if (b.done) {
-bg.setColor(Color.rgb(238, 238, 238));
-bg.setStroke(dp(1), Color.rgb(158, 158, 158));
-v.setTextColor(Color.rgb(130, 130, 130));
-} else if (b.running) {
-bg.setColor(Color.rgb(187, 222, 251));
-bg.setStroke(dp(2), Color.rgb(25, 118, 210));
-v.setTextColor(Color.rgb(13, 71, 161));
-} else {
-bg.setColor(Color.rgb(227, 242, 253));
-bg.setStroke(dp(1), Color.rgb(25, 118, 210));
-v.setTextColor(Color.rgb(13, 71, 161));
-}
-} else {
 if (b.done) {
 bg.setColor(Color.rgb(224, 224, 224));
 v.setTextColor(Color.rgb(120, 120, 120));
@@ -415,7 +715,6 @@ v.setTextColor(Color.rgb(20, 60, 24));
 } else {
 bg.setColor(Color.rgb(165, 214, 167));
 v.setTextColor(Color.rgb(27, 94, 32));
-}
 }
 v.setBackground(bg);
 int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
@@ -495,6 +794,14 @@ un.append(t.title).append("（计划 ").append(t.durationMinutes).append(" 分�
 .append("must".equals(t.priority)? "，必做": "").append("）［id:").append(t.id).append('］');
 }
 sb.append("未排入日程的任务：").append(un.length() == 0? "无": un.toString()).append('\n');
+List<GcalEvent> gcal = gcalEvents();
+if (!gcal.isEmpty()) {
+sb.append("已有日程（Google 日历，这些时段我已经有安排了，是忙碌时段）：\n");
+for (GcalEvent e : gcal) {
+if (e.allDay) sb.append("全天 · ").append(e.title).append('\n');
+else sb.append(hhmm(e.startMin)).append('–').append(hhmm(e.endMin)).append(' ').append(e.title).append('\n');
+}
+}
 if (!actual.isEmpty()) {
 sb.append("今天实际计时记录：");
 for (int i = 0; i < actual.size(); i++) {
@@ -511,6 +818,7 @@ sb.append("请按这个规则帮我更新今天剩下的安排，并写回桥文
 .append("1）必做任务（priority=must 或截止在今天）必须排入；次要任务按重要程度穿插进空档；\n")
 .append("2）每件任务按计划时长 ×1.5 占时段（留 50% 缓冲）；\n")
 .append("3）已经过去的时段和已完成任务的时段不要动，未完成的从现在往后排，不要排到 22:30 之后；排不下请直接告诉我。\n")
+.append("4）上面「已有日程（Google 日历）」是真实日历上的忙碌时段，任务不要排上去、也不要和它们重叠，必须避让；我在日历页手动拖动改过的块也当作固定块，不要再挪回去。\n")
 .append("schedule 格式：{\"date\":\"").append(today)
 .append("\",\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"HH:mm\",\"end\":\"HH:mm\"}],\"updatedAtMs\":毫秒时间戳,\"updatedBy\":\"Muse\"}。\n")
 .append("写好后我这边日历页会自动刷新显示新版。");
@@ -556,6 +864,8 @@ java.util.Calendar n = java.util.Calendar.getInstance();
 return c.get(java.util.Calendar.YEAR) == n.get(java.util.Calendar.YEAR)
 && c.get(java.util.Calendar.DAY_OF_YEAR) == n.get(java.util.Calendar.DAY_OF_YEAR);
 }
+
+private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
 
 private int dp(int v) {
 return (int) (v * getResources().getDisplayMetrics().density + 0.5f);

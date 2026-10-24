@@ -17,11 +17,41 @@ import java.util.List;
 /**
  * 本地任务仓库：应用私有目录里的 tasks_local.json（含已删除墓碑）。
  * 这是数据层的唯一入口（对应研究报告的 TaskRepository），日后换 Room/远端只动这一层。
+ *
+ * 单一数据源 + 变更通知（v1.6.2）：每个 TaskStore 实例都从同一份磁盘文件读写，
+ * save() 落盘后会通知所有注册的 ChangeListener（主线程回调）。主页与悬浮窗各注册
+ * 一个，任意一边（或后台同步）改完数据，另一边立刻 reload 刷新，不再各存一份旧副本。
  */
 public class TaskStore {
     private static final String FILE = "tasks_local.json";
     private final Context ctx;
     public final List<TaskItem> tasks = new ArrayList<>();
+
+    /** 数据变更监听：save() 成功落盘后在主线程通知。注册方在不可见时务必反注册。 */
+    public interface ChangeListener { void onTasksChanged(); }
+
+    private static final List<ChangeListener> listeners = new ArrayList<>();
+    private static final android.os.Handler MAIN =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+
+    public static void addChangeListener(ChangeListener l) {
+        synchronized (listeners) { if (!listeners.contains(l)) listeners.add(l); }
+    }
+
+    public static void removeChangeListener(ChangeListener l) {
+        synchronized (listeners) { listeners.remove(l); }
+    }
+
+    private static void notifyChanged() {
+        final List<ChangeListener> copy;
+        synchronized (listeners) { copy = new ArrayList<>(listeners); }
+        if (copy.isEmpty()) return;
+        MAIN.post(() -> {
+            for (ChangeListener l : copy) {
+                try { l.onTasksChanged(); } catch (Exception ignored) { }
+            }
+        });
+    }
 
     public TaskStore(Context ctx) {
         this.ctx = ctx.getApplicationContext();
@@ -50,6 +80,7 @@ public class TaskStore {
             FileOutputStream out = new FileOutputStream(file());
             out.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
             out.close();
+            notifyChanged();
         } catch (Exception ignored) { }
     }
 
