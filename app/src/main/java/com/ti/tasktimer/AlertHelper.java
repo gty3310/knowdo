@@ -25,9 +25,11 @@ public final class AlertHelper {
 
     public static final int TYPE_HALF = 1;
     public static final int TYPE_END = 2;
+    public static final int TYPE_SUB = 3;
     public static final int NOTIF_GUARD = 201;
     public static final int NOTIF_TASK_ALARM = 203;
     public static final int NOTIF_NEXT_TASK = 204;
+    public static final int NOTIF_RESUME_SILENT = 205;
 
     private AlertHelper() {}
 
@@ -68,7 +70,7 @@ public final class AlertHelper {
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = kg != null && kg.isKeyguardLocked();
-        String label = type == TYPE_HALF ? "过半" : "结束";
+        String label = type == TYPE_HALF ? "过半" : type == TYPE_SUB ? "子任务" : "结束";
         if (interactive && !locked && canDrawOverlays(c)) {
             try {
                 Intent direct = new Intent(c, CheckActivity.class);
@@ -92,9 +94,11 @@ public final class AlertHelper {
         PendingIntent pi = PendingIntent.getActivity(c, type, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        String title = type == TYPE_HALF ? "时间过了一半了" : "时间到了";
+        String title = type == TYPE_HALF ? "时间过了一半了" : type == TYPE_SUB ? "子任务时间到" : "时间到了";
         String text = type == TYPE_HALF
                 ? "剩下的时间还够你做完吗？点开确认"
+                : type == TYPE_SUB
+                ? "这个子任务做完了吗？点开确认，或开始下一个"
                 : "做完了吗？点开确认，或给自己加一点时间";
 
         Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
@@ -108,7 +112,35 @@ public final class AlertHelper {
                 .setFullScreenIntent(pi, true);
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(NOTIF_ALERT, b.build());
-        TimerState.logEvent(c, type == TYPE_HALF ? "已发出[过半]全屏提醒（通知路径）" : "已发出[结束]全屏提醒（通知路径）");
+        TimerState.logEvent(c, type == TYPE_HALF ? "已发出[过半]全屏提醒（通知路径）"
+                : type == TYPE_SUB ? "已发出[子任务]全屏提醒（通知路径）" : "已发出[结束]全屏提醒（通知路径）");
+    }
+
+    /**
+     * 静音暂停到点的亮屏通知（v1.11.0）：普通通知（不全屏、不出声），点开进叫回页处理。
+     * 与普通叫回的 FSI 路径互斥——静音分支由 ResumeReceiver 分流，只走这里。
+     */
+    public static void notifySilentResume(Context c, String taskTitle) {
+        createChannels(c);
+        Intent intent = new Intent(c, ResumeRemindActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_RESUME_SILENT, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_RUNNING)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("⏸ 暂停时间到")
+                .setContentText("该继续「" + taskTitle + "」了，点开处理")
+                .setContentIntent(pi)
+                .setPriority(Notification.PRIORITY_DEFAULT)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_RESUME_SILENT, b.build());
+    }
+
+    public static void cancelSilentResume(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_RESUME_SILENT);
     }
 
     /** 当前计时任务是否要求结束响铃：是则先拉起响铃页（thenCheck），检查页随后。 */

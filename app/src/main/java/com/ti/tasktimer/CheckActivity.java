@@ -40,8 +40,8 @@ public class CheckActivity extends Activity {
                 @Override public void onReceive(android.content.Context c, Intent i) {
                     if (!TimerState.isRunning(CheckActivity.this)) {
                         finish(); // 远端已结束/停止：本页没有存在的意义了
-                    } else if (type == AlertHelper.TYPE_END) {
-                        finish(); // 还在跑但结束点已被远端改动（多半是加时）：旧结束页过期
+                    } else if (type == AlertHelper.TYPE_END || type == AlertHelper.TYPE_SUB) {
+                        finish(); // 还在跑但检查点已被远端改动（加时/推进）：旧页过期
                     }
                 }
             };
@@ -70,7 +70,12 @@ public class CheckActivity extends Activity {
         setContentView(root);
 
         if (type == AlertHelper.TYPE_HALF) showHalfStage1();
-        else showEnd();
+        else if (type == AlertHelper.TYPE_SUB) showSub();
+        else if (TimerState.subActive(this)
+                && TimerState.subIndex(this) < TimerState.subCount(this) - 1) {
+            // 手动从悬浮窗/主页打开结束页、但子任务还没跑到最后一个：先过子任务检查
+            showSub();
+        } else showEnd();
     }
 
     @Override protected void onResume() {
@@ -150,26 +155,125 @@ public class CheckActivity extends Activity {
         root.addView(go);
     }
 
+    /** 整个任务完成：回写完成状态＋停表＋衔接守卫（结束页与子任务页共用）。 */
+    private void completeWholeTask() {
+        // 回写完成状态（一次性任务置 done，每日任务记今日完成）
+        TaskStore store = new TaskStore(this);
+        TaskItem t = store.byId(TimerState.taskId(this));
+        if (t != null) { t.markDone(); store.save(); }
+        TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
+        TimerService.stopTimer(this);
+        // v1.10.0 衔接守卫：确认完成后若没顺势开始下一个，约 0.6 秒后全屏问「下一个任务」
+        IdleGuard.fireSoon(CheckActivity.this);
+        Intent i = new Intent(this, MainActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        startActivity(i);
+        finish();
+    }
+
+    // ---------- 子任务页（v1.11.0） ----------
+    private void showSub() {
+        clear();
+        keyQ = keyW = keyE = null;
+        final int idx = TimerState.subIndex(this);
+        final int count = TimerState.subCount(this);
+        final String subName = TimerState.subTitle(this);
+        title(Strings.subCheckTitle());
+        subtitle(Strings.subCheckSub(taskName(), idx + 1, count, subName));
+        Runnable nextAct = () -> {
+            TimerState.logEvent(this, "子任务检查[" + taskName() + " · " + subName + "]：完成，下一个");
+            if (idx >= count - 1) { showEnd(); return; }
+            TimerService.advanceSubtask(this);
+            finish();
+        };
+        Button next = bigButton(Strings.subNext(), true, "Enter");
+        next.setOnClickListener(v -> nextAct.run());
+        primaryAction = nextAct;
+        root.addView(next);
+        spacer();
+        Button extend = bigButton(Strings.subExtend(), false, null);
+        extend.setOnClickListener(v -> showSubExtend());
+        root.addView(extend);
+        spacer();
+        Button skip = bigButton(Strings.subSkip(), false, null);
+        skip.setOnClickListener(v -> {
+            TimerState.logEvent(this, "子任务检查[" + taskName() + " · " + subName + "]：跳过");
+            if (idx >= count - 1) { showEnd(); return; }
+            TimerService.advanceSubtask(this);
+            finish();
+        });
+        root.addView(skip);
+        spacer();
+        Button whole = bigButton(Strings.subWholeDone(), false, null);
+        whole.setOnClickListener(v -> completeWholeTask());
+        root.addView(whole);
+    }
+
+    /** 子任务加时：口径与结束页相同（+50% 按当前子任务的计划分钟算）。 */
+    private void showSubExtend() {
+        clear();
+        primaryAction = null;
+        keyQ = keyW = keyE = null;
+        title(Strings.subExtend());
+        subtitle(Strings.subCheckSub(taskName(), TimerState.subIndex(this) + 1,
+                TimerState.subCount(this), TimerState.subTitle(this)));
+        TextView label = new TextView(this);
+        label.setText(Strings.chkExtendLabel());
+        label.setTextSize(16);
+        label.setTextColor(Ui.sub(this));
+        label.setGravity(Gravity.CENTER);
+        root.addView(label);
+        spacerSmall();
+        int subMin = currentSubMinutes();
+        final int halfSec = Math.max(1, subMin / 2) * 60;
+        root.addView(extendButton(Strings.chkPlus50(Math.max(1, subMin / 2)), halfSec, "Q"));
+        keyQ = () -> doExtend(halfSec);
+        spacerSmall();
+        root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
+        keyW = () -> doExtend(300);
+        spacerSmall();
+        root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
+        keyE = () -> doExtend(600);
+        spacerSmall();
+        root.addView(extendButton(Strings.chkPlus15(), 900, null));
+        spacerSmall();
+        final EditText custom = new EditText(this);
+        custom.setHint(Strings.chkCustomHint());
+        custom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        custom.setTextSize(17);
+        custom.setTextColor(Ui.text(this));
+        custom.setHintTextColor(Ui.sub(this));
+        custom.setGravity(Gravity.CENTER);
+        root.addView(custom);
+        Button customBtn = bigButton(Strings.chkCustomBtn(), false, null);
+        customBtn.setOnClickListener(v -> {
+            try {
+                int min = Integer.parseInt(custom.getText().toString().trim());
+                if (min > 0) doExtend(min * 60);
+            } catch (NumberFormatException ignored) { }
+        });
+        root.addView(customBtn);
+    }
+
+    /** 当前子任务的计划分钟（从任务的子任务表按运行态 id 查，查不到退回总时长）。 */
+    private int currentSubMinutes() {
+        TaskItem t = new TaskStore(this).byId(TimerState.taskId(this));
+        if (t != null) {
+            String sid = TimerState.subId(this);
+            for (Subtask s : t.subtasks) if (s.id.equals(sid)) return Math.max(1, s.minutes);
+            int i = TimerState.subIndex(this);
+            if (i >= 0 && i < t.subtasks.size()) return Math.max(1, t.subtasks.get(i).minutes);
+        }
+        return Math.max(1, TimerState.totalSec(this) / 60);
+    }
+
     // ---------- 结束页 ----------
     private void showEnd() {
         clear();
         keyQ = keyW = keyE = null;
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
-        Runnable doneAct = () -> {
-            // 回写完成状态（一次性任务置 done，每日任务记今日完成）
-            TaskStore store = new TaskStore(this);
-            TaskItem t = store.byId(TimerState.taskId(this));
-            if (t != null) { t.markDone(); store.save(); }
-            TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
-            TimerService.stopTimer(this);
-            // v1.10.0 衔接守卫：确认完成后若没顺势开始下一个，约 0.6 秒后全屏问「下一个任务」
-            IdleGuard.fireSoon(CheckActivity.this);
-            Intent i = new Intent(this, MainActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            startActivity(i);
-            finish();
-        };
+        Runnable doneAct = this::completeWholeTask;
         Button done = bigButton(Strings.chkDone(), true, "Enter");
         done.setOnClickListener(v -> doneAct.run());
         primaryAction = doneAct;
@@ -302,7 +406,7 @@ public class CheckActivity extends Activity {
     private void vibrate() {
         Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vib == null) return;
-        if (type == AlertHelper.TYPE_END) {
+        if (type == AlertHelper.TYPE_END || type == AlertHelper.TYPE_SUB) {
             vib.vibrate(VibrationEffect.createWaveform(new long[]{0, 400, 200, 400}, -1));
         } else {
             vib.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE));

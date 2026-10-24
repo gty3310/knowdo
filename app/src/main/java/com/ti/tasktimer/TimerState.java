@@ -25,6 +25,8 @@ public final class TimerState {
             .putString("taskTitle", taskTitle == null ? "" : taskTitle)
             .putBoolean("halfFired", false)
             .putBoolean("endFired", false)
+            .remove("sub_active").remove("sub_index").remove("sub_count")
+            .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired")
             .apply();
     }
 
@@ -37,44 +39,152 @@ public final class TimerState {
     public static void extend(Context c, int addSec) {
         SharedPreferences p = sp(c);
         long base = Math.max(System.currentTimeMillis(), p.getLong("endAt", 0));
-        p.edit()
+        SharedPreferences.Editor e = p.edit()
             .putLong("endAt", base + addSec * 1000L)
             .putInt("totalSec", p.getInt("totalSec", 0) + addSec)
             .putBoolean("endFired", false)
-            .putBoolean("running", true)
-            .apply();
+            .putBoolean("running", true);
+        // 子任务模式：加时同时顺延当前子任务的边界（给当前子任务加时即走这里）
+        if (p.getBoolean("sub_active", false)) {
+            e.putLong("sub_end", p.getLong("sub_end", 0) + addSec * 1000L);
+        }
+        e.apply();
     }
 
     public static void stop(Context c) {
-        sp(c).edit().putBoolean("running", false).apply();
+        sp(c).edit().putBoolean("running", false)
+            .remove("sub_active").remove("sub_index").remove("sub_count")
+            .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired")
+            .apply();
     }
+
+    // ---------- 子任务运行态（v1.11.0） ----------
+    // 当前子任务的序号/名称/边界绝对时间；边界一到由 TimerService 弹子任务检查页（最后一个
+    // 子任务的边界即任务结束点，走原结束页）。子任务模式下不触发任务级过半检查。
+    public static void beginSubtasks(Context c, TaskItem t) {
+        if (t == null || !t.hasSubtasks()) return;
+        Subtask s = t.subtasks.get(0);
+        long now = System.currentTimeMillis();
+        sp(c).edit()
+            .putBoolean("sub_active", true)
+            .putInt("sub_index", 0)
+            .putInt("sub_count", t.subtasks.size())
+            .putString("sub_id", s.id)
+            .putString("sub_title", s.title == null ? "" : s.title)
+            .putLong("sub_end", now + Math.max(1, s.minutes) * 60_000L)
+            .putBoolean("sub_fired", false)
+            .putBoolean("halfFired", true) // 子任务模式：检查点只在子任务边界
+            .apply();
+    }
+
+    /** 推进到第 index 个子任务：从现在起给它完整的 minutes。 */
+    public static void advanceSub(Context c, int index, Subtask s, int count) {
+        long now = System.currentTimeMillis();
+        sp(c).edit()
+            .putBoolean("sub_active", true)
+            .putInt("sub_index", index)
+            .putInt("sub_count", count)
+            .putString("sub_id", s.id)
+            .putString("sub_title", s.title == null ? "" : s.title)
+            .putLong("sub_end", now + Math.max(1, s.minutes) * 60_000L)
+            .putBoolean("sub_fired", false)
+            .apply();
+    }
+
+    /** 跨设备镜像：远端子任务状态落到本机（index<0 表示远端任务没有子任务，清掉）。 */
+    public static void applyMirrorSub(Context c, int index, String subId, String subTitle,
+                                      int count, long subEndMs) {
+        SharedPreferences.Editor e = sp(c).edit();
+        if (index < 0) {
+            e.remove("sub_active").remove("sub_index").remove("sub_count")
+             .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired");
+        } else {
+            e.putBoolean("sub_active", true)
+             .putInt("sub_index", index)
+             .putInt("sub_count", count)
+             .putString("sub_id", subId == null ? "" : subId)
+             .putString("sub_title", subTitle == null ? "" : subTitle)
+             .putLong("sub_end", subEndMs)
+             .putBoolean("sub_fired", false)
+             .putBoolean("halfFired", true);
+        }
+        e.apply();
+    }
+
+    public static boolean subActive(Context c) { return sp(c).getBoolean("sub_active", false); }
+    public static int subIndex(Context c) { return sp(c).getInt("sub_index", 0); }
+    public static int subCount(Context c) { return sp(c).getInt("sub_count", 0); }
+    public static String subTitle(Context c) {
+        String s = sp(c).getString("sub_title", "");
+        return s == null ? "" : s;
+    }
+    public static String subId(Context c) {
+        String s = sp(c).getString("sub_id", "");
+        return s == null ? "" : s;
+    }
+    public static long subEndAt(Context c) { return sp(c).getLong("sub_end", 0); }
+    public static boolean subFired(Context c) { return sp(c).getBoolean("sub_fired", false); }
+    public static void markSubFired(Context c) { sp(c).edit().putBoolean("sub_fired", true).apply(); }
 
     // ---------- 暂停 / 继续（全局只留一个暂停槽） ----------
     public static void setPaused(Context c, long remainMs) {
         SharedPreferences p = sp(c);
-        p.edit()
+        SharedPreferences.Editor e = p.edit()
             .putString("p_taskId", p.getString("taskId", ""))
             .putString("p_title", p.getString("taskTitle", ""))
             .putInt("p_totalSec", p.getInt("totalSec", 0))
             .putLong("p_remainMs", Math.max(0, remainMs))
-            .remove("p_reason") // 新一次暂停从无目的开始（字段预留，见 pauseReason）
-            .apply();
+            .remove("p_reason").remove("p_emoji").remove("p_silent"); // 新暂停从无目的开始，卡选完再写
+        // 子任务进度一并冻进暂停槽：恢复时按剩余继续当前子任务
+        if (p.getBoolean("sub_active", false)) {
+            e.putBoolean("p_subActive", true)
+             .putInt("p_subIndex", p.getInt("sub_index", 0))
+             .putInt("p_subCount", p.getInt("sub_count", 0))
+             .putString("p_subId", p.getString("sub_id", ""))
+             .putString("p_subTitle", p.getString("sub_title", ""))
+             .putLong("p_subRemainMs", Math.max(0, p.getLong("sub_end", 0) - System.currentTimeMillis()));
+        } else {
+            e.remove("p_subActive").remove("p_subIndex").remove("p_subCount")
+             .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs");
+        }
+        e.apply();
     }
 
     public static void clearPaused(Context c) {
         sp(c).edit().remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
-            .remove("p_reason").apply();
+            .remove("p_reason").remove("p_emoji").remove("p_silent")
+            .remove("p_subActive").remove("p_subIndex").remove("p_subCount")
+            .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs")
+            .apply();
     }
 
-    // ---------- 暂停目的（预留字段，v1.10.0 只留存储，UI 下一版） ----------
-    // 「暂停要带目的」的扩展：暂停时选/填去干什么（如上厕所、吃饭），MINI 窗口同时显示
-    // 暂停活动与原任务——界面在定稿中，本版先把数据位留好：可空字符串，随暂停槽同生同灭
-    // （setPaused/setPausedRemote 新暂停时清为 null、clearPaused/startResumed 时一并清）。
-    // 注意：本版不写入 Supabase timer_state（同步语义零变化），仅本地存储。
+    // 暂停槽里的子任务快照（恢复/镜像用）
+    public static boolean pausedSubActive(Context c) { return sp(c).getBoolean("p_subActive", false); }
+    public static int pausedSubIndex(Context c) { return sp(c).getInt("p_subIndex", 0); }
+    public static int pausedSubCount(Context c) { return sp(c).getInt("p_subCount", 0); }
+    public static String pausedSubTitle(Context c) {
+        String s = sp(c).getString("p_subTitle", "");
+        return s == null ? "" : s;
+    }
+    public static long pausedSubRemainMs(Context c) { return sp(c).getLong("p_subRemainMs", 0); }
+
+    // ---------- 暂停目的（v1.10.0 预留 p_reason，v1.11.0 暂停模式正式启用） ----------
+    // 暂停卡选的目的三件套，随暂停槽同生同灭（setPaused/setPausedRemote 新暂停时清、
+    // clearPaused/startResumed 时一并清），并镜像进 Supabase timer_state（老端忽略未知字段）：
+    // p_reason＝目的显示名（预设名或自定义文本）、p_emoji＝目的 emoji、p_silent＝静音模式。
     public static void setPauseReason(Context c, String reason) {
         SharedPreferences p = sp(c);
         if (reason == null) p.edit().remove("p_reason").apply();
         else p.edit().putString("p_reason", reason).apply();
+    }
+
+    /** 一次写入暂停目的三件套（暂停卡确认、EDIT「换个目的」都走这里）。 */
+    public static void setPauseMeta(Context c, String reason, String emoji, boolean silent) {
+        SharedPreferences.Editor e = sp(c).edit();
+        if (reason == null) e.remove("p_reason"); else e.putString("p_reason", reason);
+        if (emoji == null) e.remove("p_emoji"); else e.putString("p_emoji", emoji);
+        e.putBoolean("p_silent", silent);
+        e.apply();
     }
 
     /** 当前暂停槽的目的；没设过（或旧暂停）返回 null。 */
@@ -82,6 +192,13 @@ public final class TimerState {
         String s = sp(c).getString("p_reason", null);
         return s == null || s.isEmpty() ? null : s;
     }
+
+    public static String pauseEmoji(Context c) {
+        String s = sp(c).getString("p_emoji", "");
+        return s == null ? "" : s;
+    }
+
+    public static boolean pauseSilent(Context c) { return sp(c).getBoolean("p_silent", false); }
 
     public static String pausedTaskId(Context c) {
         String s = sp(c).getString("p_taskId", "");
@@ -114,8 +231,23 @@ public final class TimerState {
             .putBoolean("halfFired", half)
             .putBoolean("endFired", false)
             .remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
-            .remove("p_reason")
+            .remove("p_reason").remove("p_emoji").remove("p_silent")
             .apply();
+        // 子任务进度恢复：暂停槽里冻着的子任务按剩余继续（边界重算为 now＋冻存剩余）
+        if (p.getBoolean("p_subActive", false)) {
+            sp(c).edit()
+                .putBoolean("sub_active", true)
+                .putInt("sub_index", p.getInt("p_subIndex", 0))
+                .putInt("sub_count", p.getInt("p_subCount", 0))
+                .putString("sub_id", p.getString("p_subId", ""))
+                .putString("sub_title", p.getString("p_subTitle", ""))
+                .putLong("sub_end", now + Math.max(0, p.getLong("p_subRemainMs", 0)))
+                .putBoolean("sub_fired", false)
+                .putBoolean("halfFired", true)
+                .remove("p_subActive").remove("p_subIndex").remove("p_subCount")
+                .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs")
+                .apply();
+        }
     }
 
     /**
@@ -139,13 +271,33 @@ public final class TimerState {
 
     /** 远端暂停的镜像：把暂停槽设成任意任务（setPaused 是从本机运行态转存的，不适用）。 */
     public static void setPausedRemote(Context c, String taskId, String title, int totalSec, long remainMs) {
-        sp(c).edit()
+        setPausedRemote(c, taskId, title, totalSec, remainMs,
+                -1, "", 0, 0, null, null, false);
+    }
+
+    /** 远端暂停镜像（完整版）：带子任务快照与暂停目的三件套（远端没带时按无处理，老端兼容）。 */
+    public static void setPausedRemote(Context c, String taskId, String title, int totalSec, long remainMs,
+                                       int subIndex, String subTitle, int subCount, long subRemainMs,
+                                       String reason, String emoji, boolean silent) {
+        SharedPreferences.Editor e = sp(c).edit()
             .putString("p_taskId", taskId == null ? "" : taskId)
             .putString("p_title", title == null ? "" : title)
             .putInt("p_totalSec", totalSec)
-            .putLong("p_remainMs", Math.max(0, remainMs))
-            .remove("p_reason") // 远端暂停的目的不在本机存（字段预留，见 pauseReason）
-            .apply();
+            .putLong("p_remainMs", Math.max(0, remainMs));
+        if (reason == null) e.remove("p_reason"); else e.putString("p_reason", reason);
+        if (emoji == null) e.remove("p_emoji"); else e.putString("p_emoji", emoji);
+        e.putBoolean("p_silent", silent);
+        if (subIndex >= 0) {
+            e.putBoolean("p_subActive", true)
+             .putInt("p_subIndex", subIndex)
+             .putInt("p_subCount", subCount)
+             .putString("p_subTitle", subTitle == null ? "" : subTitle)
+             .putLong("p_subRemainMs", Math.max(0, subRemainMs));
+        } else {
+            e.remove("p_subActive").remove("p_subIndex").remove("p_subCount")
+             .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs");
+        }
+        e.apply();
     }
 
     public static boolean isRunning(Context c) { return sp(c).getBoolean("running", false); }
@@ -165,7 +317,43 @@ public final class TimerState {
     }
 
     public static void clearRemind(Context c) {
-        sp(c).edit().remove("r_taskId").remove("r_at").apply();
+        sp(c).edit().remove("r_taskId").remove("r_at")
+            .remove("sn_active").remove("sn_taskId").apply();
+    }
+
+    // ---------- 静音暂停的亮屏提醒链（v1.11.0） ----------
+    // 静音暂停到点后不弹全屏：只亮屏＋通知，无反馈每 5 分钟重复，直到用户点开处理。
+    // sn_active 标记链是否在跑；ResumeReceiver 静音分支置位，处理/恢复/清除提醒时清掉。
+    public static void setSilentNudge(Context c, String taskId) {
+        sp(c).edit().putBoolean("sn_active", true)
+            .putString("sn_taskId", taskId == null ? "" : taskId).apply();
+    }
+
+    public static boolean silentNudgeActive(Context c) { return sp(c).getBoolean("sn_active", false); }
+
+    public static String silentNudgeTaskId(Context c) {
+        String s = sp(c).getString("sn_taskId", "");
+        return s == null ? "" : s;
+    }
+
+    public static void clearSilentNudge(Context c) {
+        sp(c).edit().remove("sn_active").remove("sn_taskId").apply();
+    }
+
+    // ---------- 暂停叫回的闹铃升级（v1.11.0） ----------
+    // 普通暂停到点弹叫回页时武装：60 秒无反馈由 PauseEscalationReceiver 起渐强闹铃（只一轮）。
+    public static void armEscalation(Context c, String taskId, long atMs) {
+        sp(c).edit().putString("esc_taskId", taskId == null ? "" : taskId)
+            .putLong("esc_at", atMs).apply();
+    }
+
+    public static String escalationTaskId(Context c) {
+        String s = sp(c).getString("esc_taskId", "");
+        return s == null ? "" : s;
+    }
+
+    public static void clearEscalation(Context c) {
+        sp(c).edit().remove("esc_taskId").remove("esc_at").apply();
     }
 
     public static long remindAt(Context c) { return sp(c).getLong("r_at", 0); }

@@ -17,6 +17,8 @@ public class ResumeRemindActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 静音暂停从通知点开本页＝已处理：停掉每 5 分钟的亮屏链并撤通知（普通模式下是 no-op）
+        SilentResume.cancel(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
@@ -44,6 +46,7 @@ public class ResumeRemindActivity extends Activity {
 
         Button go = bigButton("继续任务");
         go.setOnClickListener(v -> {
+            PauseEscalation.cancel(this); // 有反馈：撤掉 60 秒渐强闹铃升级
             TaskStore store = new TaskStore(this);
             TaskItem t = store.byId(TimerState.pausedTaskId(this));
             if (t == null) {
@@ -60,7 +63,10 @@ public class ResumeRemindActivity extends Activity {
         root.addView(go);
 
         Button more = bigButton("再歇一会");
-        more.setOnClickListener(v -> showSnooze());
+        more.setOnClickListener(v -> {
+            PauseEscalation.cancel(this); // 点开选时长就算反馈，不起闹铃
+            showSnooze();
+        });
         root.addView(more);
 
         // v1.10.0：原「先这样，不用再提醒」（无限期搁置）改为「换下一个任务」——
@@ -68,6 +74,7 @@ public class ResumeRemindActivity extends Activity {
         // 暂停槽保留（原任务仍在暂停中，随时可从悬浮窗/主页继续）。
         Button dismiss = bigButton("换下一个任务");
         dismiss.setOnClickListener(v -> {
+            PauseEscalation.cancel(this); // 有反馈：撤掉 60 秒渐强闹铃升级
             Intent i = new Intent(this, NextTaskActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try { startActivity(i); } catch (Exception ignored) { }

@@ -2,67 +2,38 @@ package com.ti.tasktimer;
 
 import android.app.AlertDialog;
 import android.content.Context;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.EditText;
-import android.widget.Toast;
 
 /**
- * 暂停必带时长（v1.10.0）：所有暂停入口统一走的「选时长」流程。
- * - Activity 上下文（主页任务行、展开面板 chips、日历面板）：系统 AlertDialog 版（本类）；
- * - 非 Activity 上下文（悬浮窗 MINI/EDIT）：FloatingWindow 自己的 overlay 菜单，
- *   两边共用 ResumeReminder 的时长项与文案，且都没有「立刻暂停（无限期）」这一项了。
- * 选完时长后，普通暂停直接调 TimerService.pauseWithReminder（暂停+到点叫回在服务里一次办好，
- * 与悬浮窗菜单同一原语）；「暂停并切换到新任务」还要在新任务启动后经
- * {@link #armRemindAfterSwitch} 补设叫回（启动动作会 cancel 掉先前设的提醒）。
+ * 暂停卡流程（v1.11.0 暂停模式，替换 v1.10.0 的选时长菜单）：
+ * 所有暂停入口统一走 PauseCard——先选目的（emoji 大格子）、再选时长、静音开关、
+ * 预览确认。Activity 上下文（主页任务行、展开面板 chips、日历面板）走本类的
+ * AlertDialog；非 Activity 上下文（悬浮窗 MINI/EDIT）走 PauseCard 的 overlay，
+ * 两边同一张卡。确认后调用方走既有原语 TimerService.pauseWithReminder（带目的三件套）；
+ * 「暂停并切换到新任务」还要在新任务启动后经 {@link #armRemindAfterSwitch} 补设叫回
+ * （启动动作会 cancel 掉先前设的提醒）。取消卡＝什么都不做（不暂停）。
  */
 public final class PauseFlow {
-    public interface OnPick { void onPick(long delayMs); }
-
     private PauseFlow() { }
 
-    /** 弹选时长菜单（标准项 + 自定义）。canceled 时什么都不做（不暂停）。 */
-    public static void ask(final Context c, String taskTitle, final OnPick onPick) {
-        String[] labels = new String[ResumeReminder.LABELS.length + 1];
-        System.arraycopy(ResumeReminder.LABELS, 0, labels, 0, ResumeReminder.LABELS.length);
-        labels[ResumeReminder.LABELS.length] = Strings.pauseCustom();
-        new AlertDialog.Builder(c)
-                .setTitle(Strings.pauseAskTitle(taskTitle))
-                .setItems(labels, (d, which) -> {
-                    if (which < ResumeReminder.DELAYS_MS.length) {
-                        onPick.onPick(ResumeReminder.DELAYS_MS[which]);
-                    } else {
-                        askCustom(c, onPick);
-                    }
-                })
-                .setNegativeButton(Strings.btnCancel(), null)
-                .show();
-    }
-
-    /** 自定义时长（小时 + 分钟），与悬浮窗菜单的自定义项同口径。 */
-    private static void askCustom(final Context c, final OnPick onPick) {
-        View form = LayoutInflater.from(c).inflate(R.layout.dialog_pause_custom, null);
-        final EditText hours = form.findViewById(R.id.pauseHours);
-        final EditText minutes = form.findViewById(R.id.pauseMinutes);
-        new AlertDialog.Builder(c)
-                .setTitle(Strings.pauseCustomTitle())
-                .setView(form)
-                .setPositiveButton(Strings.btnOk(), (d, w) -> {
-                    long h = parseLong(hours.getText().toString());
-                    long m = parseLong(minutes.getText().toString());
-                    long ms = (h * 60 + m) * 60_000L;
-                    if (ms <= 0) {
-                        Toast.makeText(c, "时长要大于 0", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    onPick.onPick(ms);
-                })
-                .setNegativeButton(Strings.btnCancel(), null)
-                .show();
-    }
-
-    private static long parseLong(String s) {
-        try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0; }
+    /** 弹暂停卡。onPick 收到完整选择（时长＋目的＋emoji＋静音）后才触发暂停。 */
+    public static void ask(final Context c, String taskTitle, final PauseCard.OnPick onPick) {
+        final AlertDialog[] holder = new AlertDialog[1];
+        View card = PauseCard.buildCard(c, taskTitle, Strings.pauseStartBtn(),
+                ch -> {
+                    if (holder[0] != null) holder[0].dismiss();
+                    onPick.onPick(ch);
+                },
+                () -> { if (holder[0] != null) holder[0].dismiss(); });
+        AlertDialog dlg = new AlertDialog.Builder(c)
+                .setView(card)
+                .setOnCancelListener(dlg2 -> { })
+                .create();
+        holder[0] = dlg;
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
     }
 
     /**

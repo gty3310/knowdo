@@ -1131,7 +1131,119 @@ public class MainActivity extends Activity {
             if (!done) fireGuardAfterManualDone();
         }));
         exp.addView(chips);
+
+        // 子任务区（v1.11.0）：与大号悬浮窗共用同一面板组件
+        View line2 = new View(this);
+        line2.setBackgroundColor(Ui.line(this));
+        LinearLayout.LayoutParams l2lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        l2lp.setMargins(0, dp(12), 0, dp(8));
+        line2.setLayoutParams(l2lp);
+        exp.addView(line2);
+        SubtaskPanel panel = new SubtaskPanel(this, false, false);
+        panel.bind(t, subtaskHost);
+        exp.addView(panel);
         return exp;
+    }
+
+    /** 子任务面板宿主（主页）：落盘走 store，编辑走对话框。 */
+    private final SubtaskPanel.Host subtaskHost = new SubtaskPanel.Host() {
+        @Override public void onSubtasksEdited(TaskItem t) {
+            store.save();
+            adapter.notifyDataSetChanged();
+            refreshStatus();
+        }
+        @Override public void requestEditSubtask(TaskItem t, int index) {
+            dialogSubtask(t, index);
+        }
+        @Override public int runningIndex(TaskItem t) {
+            if (TimerState.isRunning(MainActivity.this)
+                    && t.id.equals(TimerState.taskId(MainActivity.this))
+                    && TimerState.subActive(MainActivity.this)) {
+                return TimerState.subIndex(MainActivity.this);
+            }
+            return -1;
+        }
+        @Override public String runningRemainText(TaskItem t) {
+            return mmss(Math.max(0, TimerState.subEndAt(MainActivity.this) - System.currentTimeMillis()));
+        }
+        @Override public String headerRightText(TaskItem t) {
+            int ri = runningIndex(t);
+            if (ri >= 0) {
+                return Strings.subProgress(ri + 1, TimerState.subCount(MainActivity.this),
+                        TimerState.subTitle(MainActivity.this));
+            }
+            if (t.hasSubtasks()) return Strings.subTotalNote(t.subtasksTotalMinutes());
+            return null;
+        }
+    };
+
+    /** 子任务编辑（新增 index=-1 / 改名改分钟 / 删除带二次确认）。 */
+    private void dialogSubtask(final TaskItem t, final int index) {
+        final Subtask cur = index >= 0 && index < t.subtasks.size() ? t.subtasks.get(index) : null;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), 0);
+        final EditText nameIn = new EditText(this);
+        nameIn.setHint(Strings.subNameHint());
+        if (cur != null) nameIn.setText(cur.title);
+        box.addView(nameIn);
+        final EditText minIn = new EditText(this);
+        minIn.setHint(Strings.subMinutesHint());
+        minIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        minIn.setText(cur != null ? String.valueOf(cur.minutes) : "5");
+        box.addView(minIn);
+        AlertDialog.Builder b = new AlertDialog.Builder(this)
+                .setTitle(cur == null ? Strings.subEditNew() : Strings.subEditTitle())
+                .setView(box)
+                .setPositiveButton(Strings.subSave(), (d, w) -> {
+                    TaskItem task = freshCopyOf(t);
+                    String name = nameIn.getText().toString().trim();
+                    if (name.isEmpty()) name = Strings.subtasksTitle() + (task.subtasks.size() + 1);
+                    int mins = 5;
+                    try {
+                        mins = Integer.parseInt(minIn.getText().toString().trim());
+                    } catch (NumberFormatException ignored) { }
+                    if (mins <= 0) mins = 5;
+                    if (cur == null) {
+                        task.subtasks.add(Subtask.create(name, mins));
+                    } else {
+                        Subtask s = null;
+                        for (Subtask x : task.subtasks) if (x.id.equals(cur.id)) s = x;
+                        if (s == null) return;
+                        s.title = name;
+                        s.minutes = mins;
+                    }
+                    task.syncDurationFromSubtasks();
+                    task.touch();
+                    store.save();
+                    adapter.notifyDataSetChanged();
+                    refreshStatus();
+                })
+                .setNegativeButton(Strings.btnCancel(), null);
+        if (cur != null) {
+            b.setNeutralButton(Strings.subDelete(), (d, w) -> {
+                new AlertDialog.Builder(this)
+                        .setMessage(Strings.subDeleteConfirm())
+                        .setPositiveButton(Strings.subDelete(), (d2, w2) -> {
+                            TaskItem task = freshCopyOf(t);
+                            for (int i = 0; i < task.subtasks.size(); i++) {
+                                if (task.subtasks.get(i).id.equals(cur.id)) {
+                                    task.subtasks.remove(i);
+                                    break;
+                                }
+                            }
+                            task.syncDurationFromSubtasks();
+                            task.touch();
+                            store.save();
+                            adapter.notifyDataSetChanged();
+                            refreshStatus();
+                        })
+                        .setNegativeButton(Strings.btnCancel(), null)
+                        .show();
+            });
+        }
+        b.show();
     }
 
     private TextView chip(String label, boolean filled, View.OnClickListener cl) {
@@ -1281,9 +1393,9 @@ public class MainActivity extends Activity {
         if (TimerState.isRunning(this)) {
             String runningId = TimerState.taskId(this);
             if (t.id.equals(runningId)) {
-                // v1.10.0：暂停必须带时长——先弹菜单选多久后叫回，选完才真正暂停
-                PauseFlow.ask(this, t.title, delayMs -> {
-                    TimerService.pauseWithReminder(this, delayMs);
+                // 暂停必须带时长＋目的——先过暂停卡，确认才真正暂停
+                PauseFlow.ask(this, t.title, ch -> {
+                    TimerService.pauseWithReminder(this, ch.delayMs, ch.reason, ch.emoji, ch.silent);
                     toast("已暂停：「" + t.title + "」，到点会提醒你回来");
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         adapter.notifyDataSetChanged();
@@ -1298,12 +1410,12 @@ public class MainActivity extends Activity {
                     .setTitle("已有任务在计时")
                     .setMessage("「" + TimerState.taskTitle(this) + "」正在计时。切换会先把它暂停（进度保留），再开始「" + t.title + "」。" + warn)
                     .setPositiveButton("暂停并切换", (d, w) -> {
-                        // v1.10.0：切换时的暂停同样先选时长（暂停谁就问谁的菜单）
+                        // 切换时的暂停同样先过暂停卡（暂停谁就问谁的卡）
                         final String curTitle = TimerState.taskTitle(this);
-                        PauseFlow.ask(this, curTitle, delayMs -> {
-                            TimerService.pauseWithReminder(this, delayMs);
+                        PauseFlow.ask(this, curTitle, ch -> {
+                            TimerService.pauseWithReminder(this, ch.delayMs, ch.reason, ch.emoji, ch.silent);
                             new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
-                            PauseFlow.armRemindAfterSwitch(this, delayMs);
+                            PauseFlow.armRemindAfterSwitch(this, ch.delayMs);
                         });
                     })
                     .setNegativeButton("取消", null)
@@ -1326,12 +1438,12 @@ public class MainActivity extends Activity {
     /** 重置：把这个任务的计时清零，从完整时长重新开始（长按 ▶ 弹出）。 */
     private void resetTask(final TaskItem t) {
         if (TimerState.isRunning(this) && !t.id.equals(TimerState.taskId(this))) {
-            // v1.10.0：这里的暂停也走选时长菜单（暂停必须带时长，全入口统一）
+            // 这里的暂停也走暂停卡（暂停必须带时长＋目的，全入口统一）
             final String curTitle = TimerState.taskTitle(this);
-            PauseFlow.ask(this, curTitle, delayMs -> {
-                TimerService.pauseWithReminder(this, delayMs);
+            PauseFlow.ask(this, curTitle, ch -> {
+                TimerService.pauseWithReminder(this, ch.delayMs, ch.reason, ch.emoji, ch.silent);
                 new Handler(Looper.getMainLooper()).postDelayed(() -> startTaskTimer(t), 350);
-                PauseFlow.armRemindAfterSwitch(this, delayMs);
+                PauseFlow.armRemindAfterSwitch(this, ch.delayMs);
             });
         } else {
             startTaskTimer(t);
@@ -1636,6 +1748,14 @@ public class MainActivity extends Activity {
         planInput.setText(String.valueOf(t.durationMinutes));
         planInput.setSelectAllOnFocus(true);
         box.addView(planInput);
+        if (t.hasSubtasks()) {
+            // 子任务口径（v1.11.0）：总时长恒等于子任务之和，这里改不了，去改子任务分钟
+            planInput.setEnabled(false);
+            TextView lockNote = new TextView(this);
+            lockNote.setText(Strings.subDurationLocked());
+            lockNote.setTextSize(12);
+            box.addView(lockNote);
+        }
         TextView actualLabel = new TextView(this);
         actualLabel.setText("实际用时（分钟，可空）");
         box.addView(actualLabel);

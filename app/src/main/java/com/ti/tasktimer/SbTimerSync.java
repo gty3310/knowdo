@@ -51,6 +51,14 @@ public final class SbTimerSync {
                 o.put("started_at", TimerState.startedAt(c));
                 o.put("accumulated_seconds", 0);
                 o.put("duration_seconds", TimerState.totalSec(c));
+                // 子任务进度（v1.11.0）：老端忽略未知字段
+                if (TimerState.subActive(c)) {
+                    o.put("sub_index", TimerState.subIndex(c));
+                    o.put("sub_title", TimerState.subTitle(c));
+                    o.put("sub_id", TimerState.subId(c));
+                    o.put("sub_count", TimerState.subCount(c));
+                    o.put("sub_end_at", TimerState.subEndAt(c));
+                }
             } else if (TimerState.isPaused(c)) {
                 int total = TimerState.pausedTotalSec(c);
                 long remainSec = Math.max(0, TimerState.pausedRemainMs(c) / 1000);
@@ -60,6 +68,18 @@ public final class SbTimerSync {
                 o.put("started_at", TimerState.startedAt(c));
                 o.put("accumulated_seconds", Math.max(0, total - (int) remainSec));
                 o.put("duration_seconds", total);
+                if (TimerState.pausedSubActive(c)) {
+                    o.put("sub_index", TimerState.pausedSubIndex(c));
+                    o.put("sub_title", TimerState.pausedSubTitle(c));
+                    o.put("sub_count", TimerState.pausedSubCount(c));
+                    o.put("sub_remain_ms", TimerState.pausedSubRemainMs(c));
+                }
+                // 暂停目的三件套（v1.11.0）：老端忽略未知字段
+                String reason = TimerState.pauseReason(c);
+                if (reason != null) o.put("pause_reason", reason);
+                String emoji = TimerState.pauseEmoji(c);
+                if (!emoji.isEmpty()) o.put("pause_emoji", emoji);
+                if (TimerState.pauseSilent(c)) o.put("pause_silent", true);
             } else {
                 o.put("task_id", "");
                 o.put("task_title", "");
@@ -143,22 +163,41 @@ public final class SbTimerSync {
         if ("running".equals(phase) && duration > 0) {
             long endAtR = startedAt + (long) Math.max(0, duration - accumulated) * 1000L;
             long virtualStart = endAtR - (long) duration * 1000L;
+            // 远端子任务状态（老端没带则 subIndex=-1，镜像时清掉本机子任务态）
+            int subIndex = ts.has("sub_index") ? ts.optInt("sub_index", -1) : -1;
+            String subId = ts.optString("sub_id", "");
+            String subTitle = ts.optString("sub_title", "");
+            int subCount = ts.optInt("sub_count", 0);
+            long subEndR = ts.optLong("sub_end_at", 0);
             boolean same = TimerState.isRunning(c)
                     && taskId.equals(TimerState.taskId(c))
-                    && Math.abs(TimerState.endAt(c) - endAtR) < 2000;
+                    && Math.abs(TimerState.endAt(c) - endAtR) < 2000
+                    && (subIndex < 0
+                        ? !TimerState.subActive(c)
+                        : TimerState.subActive(c) && TimerState.subIndex(c) == subIndex
+                            && Math.abs(TimerState.subEndAt(c) - subEndR) < 2000);
             if (!same) {
-                TimerService.mirrorStart(c, duration, virtualStart, endAtR, taskId, title);
+                TimerService.mirrorStart(c, duration, virtualStart, endAtR, taskId, title,
+                        subIndex, subId, subTitle, subCount, subEndR);
                 TimerState.logEvent(c, "跨设备同步：镜像远端计时[" + title + "]");
                 changed = true;
             }
         } else if ("paused".equals(phase) && duration > 0) {
             long remainMs = (long) Math.max(0, duration - accumulated) * 1000L;
+            int subIndex = ts.has("sub_index") ? ts.optInt("sub_index", -1) : -1;
+            String subTitle = ts.optString("sub_title", "");
+            int subCount = ts.optInt("sub_count", 0);
+            long subRemainMs = ts.optLong("sub_remain_ms", 0);
+            String reason = ts.isNull("pause_reason") ? null : ts.optString("pause_reason", null);
+            String emoji = ts.isNull("pause_emoji") ? null : ts.optString("pause_emoji", null);
+            boolean silent = ts.optBoolean("pause_silent", false);
             boolean same = !TimerState.isRunning(c) && TimerState.isPaused(c)
                     && taskId.equals(TimerState.pausedTaskId(c))
                     && Math.abs(TimerState.pausedRemainMs(c) - remainMs) < 2000;
             if (!same) {
                 if (TimerState.isRunning(c)) TimerService.stopTimer(c);
-                TimerState.setPausedRemote(c, taskId, title, duration, remainMs);
+                TimerState.setPausedRemote(c, taskId, title, duration, remainMs,
+                        subIndex, subTitle, subCount, subRemainMs, reason, emoji, silent);
                 TimerState.logEvent(c, "跨设备同步：远端已暂停[" + title + "]");
                 changed = true;
             }

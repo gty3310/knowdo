@@ -8,6 +8,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.PowerManager;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 
 /** 暂停提醒到点：双路径叫回——亮屏未锁且有悬浮权限直接开页，否则全屏通知（与计时提醒同法）。 */
 public class ResumeReceiver extends BroadcastReceiver {
@@ -23,7 +25,15 @@ public class ResumeReceiver extends BroadcastReceiver {
             return;
         }
         TimerState.clearRemind(c); // 一次性
+        // 静音暂停（v1.11.0）：不弹全屏、不震动、不出声——只亮屏＋通知，之后每 5 分钟重复
+        if (TimerState.pauseSilent(c)) {
+            SilentResume.onDue(c);
+            return;
+        }
         TimerState.logEvent(c, "暂停提醒到点：叫回「" + TimerState.pausedTitle(c) + "」");
+        // 普通模式：到点先短震一次，并武装 60 秒无反馈的渐强闹铃升级
+        vibrateShort(c);
+        PauseEscalation.arm(c, taskId);
         AlertHelper.createChannels(c);
         Intent page = new Intent(c, ResumeRemindActivity.class);
         page.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -50,5 +60,15 @@ public class ResumeReceiver extends BroadcastReceiver {
                 .build();
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(7780, n);
+    }
+
+    /** 到点短震一次：一小段节奏（约 0.8 秒），不长震（v1.11.0）。 */
+    private void vibrateShort(Context c) {
+        try {
+            Vibrator vib = (Vibrator) c.getSystemService(Context.VIBRATOR_SERVICE);
+            if (vib != null) {
+                vib.vibrate(VibrationEffect.createWaveform(new long[]{0, 300, 150, 300}, -1));
+            }
+        } catch (Exception ignored) { }
     }
 }

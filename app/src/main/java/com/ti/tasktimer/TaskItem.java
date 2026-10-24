@@ -28,6 +28,7 @@ public class TaskItem {
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
     public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
     public String note = "";           // 任务笔记，可在计时悬浮窗里随手写，随桥同步
+    public List<Subtask> subtasks = new ArrayList<>(); // 子任务队列（v1.11.0）：非空时总时长＝其分钟之和
     // ---- 专注守卫 ----
     public String focusRule = "";      // 自然语言规则（人读的，App 不解析；结构化名单才执行）
     public String focusMode = "off";   // off / block（拦 blockedApps）/ allow（只许 allowedApps）
@@ -57,6 +58,20 @@ public class TaskItem {
     }
 
     public void touch() { updatedAtMs = System.currentTimeMillis(); }
+
+    // ---------- 子任务（v1.11.0） ----------
+    public boolean hasSubtasks() { return subtasks != null && !subtasks.isEmpty(); }
+
+    public int subtasksTotalMinutes() {
+        int sum = 0;
+        if (subtasks != null) for (Subtask s : subtasks) sum += Math.max(1, s.minutes);
+        return sum;
+    }
+
+    /** 时长口径：有子任务时总时长恒等于子任务之和；任何子任务编辑后调它对齐 durationMinutes。 */
+    public void syncDurationFromSubtasks() {
+        if (hasSubtasks()) durationMinutes = Math.max(1, subtasksTotalMinutes());
+    }
 
     public boolean isDoneToday() {
         if ("daily".equals(repeat)) return doneDates.contains(today());
@@ -98,6 +113,9 @@ public class TaskItem {
         o.put("status", status);
         o.put("autoStart", autoStart);
         o.put("note", note);
+        JSONArray subs = new JSONArray();
+        if (subtasks != null) for (Subtask s : subtasks) subs.put(s.toJson());
+        o.put("subtasks", subs);
         o.put("focusRule", focusRule);
         o.put("focusMode", focusMode);
         JSONArray ba = new JSONArray();
@@ -141,6 +159,11 @@ public class TaskItem {
         t.status = o.optString("status", "todo");
         t.autoStart = o.optBoolean("autoStart", false);
         t.note = o.optString("note", "");
+        JSONArray subs = o.optJSONArray("subtasks");
+        if (subs != null) for (int i = 0; i < subs.length(); i++) {
+            JSONObject so = subs.optJSONObject(i);
+            if (so != null) t.subtasks.add(Subtask.fromJson(so));
+        }
         t.focusRule = o.optString("focusRule", "");
         t.focusMode = o.optString("focusMode", "off");
         JSONArray ba = o.optJSONArray("blockedApps");

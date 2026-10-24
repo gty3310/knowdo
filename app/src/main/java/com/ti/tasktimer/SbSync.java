@@ -87,6 +87,7 @@ public final class SbSync {
         String uid = Supa.userId(c);
         boolean hasExtra = probeExtraCols(c);
         boolean hasAlarm = probeAlarmCols(c);
+        boolean hasSub = probeSubtaskCols(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -97,7 +98,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 adoptServerTimes(back, store);
                 store.save();
@@ -125,7 +126,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             adoptServerTimes(back, store);
             for (TaskItem t : toPush) remoteMs.put(t.id, t.updatedAtMs);
@@ -348,6 +349,7 @@ public final class SbSync {
         if (TimerState.isRunning(c)) return; // 有计时在跑就不打断，标记留着等空闲轮次
         boolean hasExtra = prefs(c).getBoolean("has_extra", false);
         boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
+        boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
         for (TaskItem t : store.tasks) {
             if (t.deleted || !t.autoStart) continue;
             if (SyncManager.autoStartHandled(c, t.id)) {
@@ -355,7 +357,7 @@ public final class SbSync {
                 t.autoStart = false;
                 t.touch();
                 store.save();
-                pushOneQuiet(c, store, t, hasExtra, hasAlarm);
+                pushOneQuiet(c, store, t, hasExtra, hasAlarm, hasSub);
                 continue;
             }
             SyncManager.markAutoStartHandled(c, t.id);
@@ -364,16 +366,16 @@ public final class SbSync {
             store.save();
             TimerService.startTimer(c, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
             TimerState.logEvent(c, "Supabase 同步：自动开始计时[" + t.title + "] " + t.durationMinutes + " 分钟");
-            pushOneQuiet(c, store, t, hasExtra, hasAlarm); // 立刻把清掉的标记回写云端，防另一端重复启动
+            pushOneQuiet(c, store, t, hasExtra, hasAlarm, hasSub); // 立刻把清掉的标记回写云端，防另一端重复启动
             break; // 一次只启动一个
         }
     }
 
     private static void pushOneQuiet(Context c, TaskStore store, TaskItem t,
-                                     boolean hasExtra, boolean hasAlarm) {
+                                     boolean hasExtra, boolean hasAlarm, boolean hasSub) {
         try {
             JSONArray payload = new JSONArray();
-            payload.put(SbMapper.toRow(t, Supa.userId(c), hasExtra, hasAlarm));
+            payload.put(SbMapper.toRow(t, Supa.userId(c), hasExtra, hasAlarm, hasSub));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             adoptServerTimes(back, store);
             store.save();
@@ -427,6 +429,17 @@ public final class SbSync {
             has = true;
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_alarm", has).apply();
+        return has;
+    }
+
+    /** 服务端有没有子任务列 subtasks（jsonb，v1.11.0，与附加列同法探测）。 */
+    private static boolean probeSubtaskCols(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=subtasks&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_subtasks", has).apply();
         return has;
     }
 

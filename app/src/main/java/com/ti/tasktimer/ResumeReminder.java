@@ -41,5 +41,8 @@ public class ResumeReminder {
         TimerState.clearRemind(c);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am != null) am.cancel(alarmIntent(c));
+        // v1.11.0：叫回的升级闹铃与静音亮屏链都挂在同一次叫回上，暂停被恢复/开始新任务时一并撤
+        PauseEscalation.cancel(c);
+        SilentResume.cancel(c);
     }
 }

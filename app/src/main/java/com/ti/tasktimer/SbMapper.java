@@ -16,6 +16,7 @@ import java.util.TimeZone;
  * 不进云端，合并时从本地同 id 任务保全下来，不会被远端行覆盖丢掉。
  * 闹钟两列（alarm_at / alarm_on_timer_end，v1.9.0）同法处理：hasAlarmCols 单独探测，
  * 服务端没列时不进云端、合并时本地保全，补列后自动纳入同步。
+ * 子任务列 subtasks（jsonb，v1.11.0）同法：hasSubtaskCols 单独探测，没列时本地保全。
  */
 public final class SbMapper {
     private SbMapper() {}
@@ -95,6 +96,11 @@ public final class SbMapper {
      */
     public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
                                    boolean hasAlarmCols) throws Exception {
+        return toRow(t, userId, hasExtraCols, hasAlarmCols, false);
+    }
+
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols, boolean hasSubtaskCols) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -126,6 +132,11 @@ public final class SbMapper {
             String al = nextStartToTs(t.alarmAt);
             o.put("alarm_at", al == null ? JSONObject.NULL : al);
             o.put("alarm_on_timer_end", t.alarmOnTimerEnd);
+        }
+        if (hasSubtaskCols) {
+            JSONArray subs = new JSONArray();
+            if (t.subtasks != null) for (Subtask s : t.subtasks) subs.put(s.toJson());
+            o.put("subtasks", subs);
         }
         return o;
     }
@@ -169,6 +180,16 @@ public final class SbMapper {
         } else if (preserveFrom != null) {
             t.alarmAt = preserveFrom.alarmAt;
             t.alarmOnTimerEnd = preserveFrom.alarmOnTimerEnd;
+        }
+        if (o.has("subtasks") && !o.isNull("subtasks")) {
+            JSONArray subs = o.optJSONArray("subtasks");
+            if (subs != null) for (int i = 0; i < subs.length(); i++) {
+                JSONObject so = subs.optJSONObject(i);
+                if (so != null) t.subtasks.add(Subtask.fromJson(so));
+            }
+            t.syncDurationFromSubtasks(); // 总时长口径：有子任务即等于子任务之和
+        } else if (preserveFrom != null && preserveFrom.subtasks != null) {
+            for (Subtask s : preserveFrom.subtasks) t.subtasks.add(s.copy());
         }
         return t;
     }

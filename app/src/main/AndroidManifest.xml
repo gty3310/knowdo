@@ -141,6 +141,16 @@
             android:name=".ResumeReceiver"
             android:exported="false" />
 
+        <!-- 暂停叫回 60 秒无反馈：渐强闹铃升级（v1.11.0） -->
+        <receiver
+            android:name=".PauseEscalationReceiver"
+            android:exported="false" />
+
+        <!-- 静音暂停：每 5 分钟亮屏提醒链（v1.11.0） -->
+        <receiver
+            android:name=".SilentNudgeReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".ResumeRemindActivity"
             android:exported="false"

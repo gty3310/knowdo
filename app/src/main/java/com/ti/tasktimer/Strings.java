@@ -89,7 +89,7 @@ public final class Strings {
     public static String dark() { return s("暗", "Dark"); }
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
-    public static String versionLine() { return "知行 KnowDo v1.10.0"; }
+    public static String versionLine() { return "知行 KnowDo v1.11.0"; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -138,6 +138,84 @@ public final class Strings {
     }
     public static String pauseCustom() { return s("自定义…", "Custom…"); }
     public static String pauseCustomTitle() { return s("自定义提醒时间", "Custom remind time"); }
+
+    // ---------- 暂停模式（v1.11.0）：暂停卡 ----------
+    public static String pauseCardTitle(String title) {
+        return en ? "Pause \"" + title + "\" — what are you pausing for?"
+                  : "暂停「" + title + "」，去干什么？";
+    }
+    /** 暂停目的预设名，与 PauseCard.PURPOSE_EMOJIS 一一对应。 */
+    public static String[] pausePurposeNames() {
+        return en ? new String[]{"Restroom", "Water", "Eat", "Call back", "Go help",
+                "Nap", "Go run", "Class", "Custom"}
+                  : new String[]{"上厕所", "喝水", "吃饭", "回电话", "喊去帮忙",
+                "睡午觉", "换换脑子", "去上课", "自定义"};
+    }
+    public static String pausePurposeCustomDefault() { return s("自定义", "Custom"); }
+    public static String pausePurposeHint() { return s("写下暂停要去做的事", "What are you pausing for?"); }
+    public static String pauseDurationLabel() { return s("去多久", "For how long"); }
+    public static String pauseSilent() { return s("静音", "Silent"); }
+    public static String pauseSilentSub() {
+        return s("到点只亮屏提醒，不震动、不出声 · 点「去上课」自动打开",
+                "When time's up: screen lights only, no vibration, no sound · turns on automatically for Class");
+    }
+    public static String pauseStartBtn() { return s("开始暂停", "Start pause"); }
+    public static String pauseSaveBtn() { return s("保存", "Save"); }
+    public static String pausePreview(String emoji, String name, String dur, String backAt, boolean silent) {
+        return en ? emoji + " " + name + " · " + dur + " · back at " + backAt + (silent ? " · 🔕 silent" : "")
+                  : emoji + " " + name + " · " + dur + "，到 " + backAt + " 回来" + (silent ? " · 🔕 静音" : "");
+    }
+    public static String pausePreviewEmpty() {
+        return s("先选去干什么、去多久", "Pick what you're pausing for, and for how long");
+    }
+    public static String pauseStrip(String emoji, String name, String remain) {
+        return en ? "⏸ Paused · " + emoji + name + " · " + remain + " left"
+                  : "⏸ 暂停中 · " + emoji + name + " · 还剩 " + remain;
+    }
+    public static String pauseStripNoRemind(String emoji, String name) {
+        return en ? "⏸ Paused · " + emoji + name : "⏸ 暂停中 · " + emoji + name;
+    }
+    public static String miniPausedTitle(String title) {
+        return en ? "⏸ Paused \"" + title + "\"" : "⏸ 暂停「" + title + "」";
+    }
+    public static String pauseLeftLabel() { return s("还剩", "left"); }
+    public static String pauseMore5() { return s("再加 5 分钟", "+5 min"); }
+    public static String pauseChangePurpose() { return s("换个目的", "Change purpose"); }
+
+    // ---------- 子任务（v1.11.0） ----------
+    public static String subtasksTitle() { return s("子任务", "Subtasks"); }
+    public static String subAdd() { return s("＋ 加子任务", "＋ Add subtask"); }
+    public static String subEditNew() { return s("新增子任务", "New subtask"); }
+    public static String subEditTitle() { return s("编辑子任务", "Edit subtask"); }
+    public static String subNameHint() { return s("子任务名称", "Subtask name"); }
+    public static String subMinutesHint() { return s("分钟", "Minutes"); }
+    public static String subDelete() { return s("删除", "Delete"); }
+    public static String subDeleteConfirm() { return s("删除这个子任务？", "Delete this subtask?"); }
+    public static String subSave() { return s("保存", "Save"); }
+    public static String subProgress(int cur, int total, String name) {
+        return en ? "Subtask " + cur + "/" + total + " · " + name
+                  : "子任务 " + cur + "/" + total + " · " + name;
+    }
+    public static String subTotalNote(int totalMin) {
+        return en ? "Total = sum of subtasks: " + totalMin + " min"
+                  : "总时长＝子任务之和：" + totalMin + " 分钟";
+    }
+    public static String subDurationLocked() {
+        return s("有子任务时总时长＝子任务之和，在子任务里改分钟即可",
+                "With subtasks, the total is their sum — edit subtask minutes instead");
+    }
+    public static String subCheckTitle() { return s("✓ 子任务时间到", "✓ Subtask done"); }
+    public static String subCheckSub(String task, int cur, int total, String name) {
+        return en ? task + " · subtask " + cur + "/" + total + " \"" + name + "\" — done?"
+                  : task + " · 子任务 " + cur + "/" + total + "「" + name + "」做完了吗？";
+    }
+    public static String subNext() { return s("下一个", "Next"); }
+    public static String subExtend() { return s("加时", "Extend"); }
+    public static String subSkip() { return s("跳过", "Skip"); }
+    public static String subWholeDone() { return s("整个任务完成", "Finish whole task"); }
+    public static String miniSubCount(int n) {
+        return en ? n + " subtasks" : "子任务共 " + n + " 个";
+    }
     public static String btnOk() { return s("好", "OK"); }
     public static String btnCancel() { return s("取消", "Cancel"); }
 
@@ -154,9 +232,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.10.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.11.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.10.0\n知行合一。\n"
+                  : "知行 KnowDo v1.11.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -229,8 +307,8 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.10.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.10.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.11.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.11.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
     /** [标题, 正文] × 16 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
@@ -409,7 +487,28 @@ public final class Strings {
          + "• 两台设备互通：在另一台设备（如 Mac）上计时或定时暂停时，这台不会误弹；"
          + "在设置页「守卫」组可以关掉「任务衔接守卫」，关掉后不再自动弹（暂停规则不受影响）。\n"
          + "• 守卫页按返回键退出后会自动安静 3 分钟，让你临时翻任务列表或改设置；"
-         + "完成任务这类明确时刻触发的弹窗不受这 3 分钟限制。"},
+         + "完成任务这类明确时刻触发的弹窗不受这 3 分钟限制。\\n"
+         + "• 暂停模式（v1.11.0）：点暂停先过暂停卡——先选去干什么（emoji 大格子：上厕所、喝水、吃饭、回电话、"
+         + "喊去帮忙、睡午觉、换换脑子🏃、去上课，或自定义），再选去多久，底部有预览，点「开始暂停」才停。\\n"
+         + "• 静音开关：卡上打开后，到点只亮屏＋给一条通知，不震动、不出声；你没回复就每 5 分钟再亮一次，"
+         + "一直到你点开处理。点「去上课」时静音会自动打开（也可以手动再关）。\\n"
+         + "• 暂停期间：中号悬浮窗两行——第一行「暂停『任务名』」，第二行目的＋还剩多久；"
+         + "大号悬浮窗内容仍是任务本身，暂停只是顶部一条琥珀色条；在大窗里可以「换个目的」重选目的与时长。\\n"
+         + "• 普通模式到点：全屏叫回＋短震一次；60 秒里你没有任何反馈（继续/再歇/换任务），"
+         + "会响起 60 秒大自然鸟鸣闹铃，声音由小渐大到最大，你一操作就停，响满自动停，只响这一轮。"},
+        {"十七、子任务（v1.11.0）",
+         "大任务可以拆成一串子任务，按队列逐个计时（样子参考 Smart Countdown Timer 的 context→queue）。\\n"
+         + "• 怎么拆：主页展开任务，下方有「子任务」区；大号悬浮窗里也有同一区。点「＋ 加子任务」新增一行，"
+         + "填名字和分钟数；点任意一行可以改名、改分钟或删除；按住行首的拖动手柄上下拖，可以改顺序。\\n"
+         + "• 总时长＝子任务之和：只要任务有子任务，它的计划时长就自动等于各子任务分钟数加起来，"
+         + "改子任务分钟，总时长和日程安排跟着变；这时直接改任务时长会被拦下，去改子任务即可。\\n"
+         + "• 检查跟着子任务走：开始计时后逐个跑子任务，每个子任务到点就弹全屏检查页——"
+         + "「下一个」开始下一个，「加时」给当前子任务加时间，「跳过」跳到下一个，"
+         + "「整个任务完成」提前结束整个任务。有子任务时不再弹任务级过半检查；"
+         + "最后一个子任务结束，就是整个任务的结束检查页。\\n"
+         + "• 呈现：计时中悬浮窗中号窗主行显示当前子任务名和它的剩余时间，次行小字是任务名；"
+         + "主页展开区能看到「子任务 2/3 · 当前名字」的进度，没开始时列出整个队列。"
+         + "暂停/恢复时当前子任务的剩余会冻住、恢复后继续。日历和日程仍按整个任务一块显示，不拆块。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -579,6 +678,30 @@ public final class Strings {
          + "• Cross-device: while another device (e.g. your Mac) is timing or in a timed pause, this one stays quiet. "
          + "You can turn the next-task guard off in Settings → Guards; the pause rule is unaffected.\n"
          + "• Pressing Back on the guard page quiets automatic pop-ups for 3 minutes so you can browse the list or change settings; "
-         + "pop-ups triggered by finishing a task are not affected by those 3 minutes."},
+         + "pop-ups triggered by finishing a task are not affected by those 3 minutes.\\n"
+         + "• Pause mode (v1.11.0): tapping Pause opens the pause card — first pick what you're pausing for "
+         + "(big emoji tiles: Restroom, Water, Eat, Call back, Go help, Nap, Go run, Class, or Custom), then for how long; "
+         + "check the preview at the bottom and tap Start pause.\\n"
+         + "• Silent switch: with it on, when the time is up the screen only lights up with a notification — no vibration, no sound; "
+         + "if you don't respond it lights up again every 5 minutes until you handle it. Picking Class turns Silent on automatically (you can turn it back off).\\n"
+         + "• While paused: the mini floating window shows two lines — \"Paused {task}\" and the purpose with time left; "
+         + "the big window still shows the task itself, with the pause as an amber strip on top; "
+         + "from there you can change the purpose and length.\\n"
+         + "• Normal mode when time's up: the call-back page pops full-screen with one short vibration; "
+         + "if you give no response (resume / snooze / next task) within 60 seconds, a 60-second nature-sounds alarm fades in to full volume — "
+         + "any response stops it, and it stops on its own after one round."},
+        {"17. Subtasks (v1.11.0)",
+         "A big task can be split into a queue of subtasks, timed one by one (the context→queue shape of Smart Countdown Timer).\\n"
+         + "• How: expand a task on the home page — there's a Subtasks section; the big floating window has the same section. "
+         + "Tap \"+ Add subtask\" for a new row (name + minutes); tap any row to rename, change minutes or delete; "
+         + "drag the handle at the row's start to reorder.\\n"
+         + "• The total is the sum: while a task has subtasks, its planned length always equals the sum of the subtask minutes — "
+         + "edit subtask minutes and the total (and scheduling) follows; direct length edits are refused in that case.\\n"
+         + "• Checks follow subtasks: timing runs the queue; each subtask's end pops the full-screen check — "
+         + "Next starts the next one, Extend adds time to the current one, Skip jumps ahead, Finish whole task ends everything early. "
+         + "There is no task-level halfway check when subtasks exist; the last subtask's end is the task's own end check.\\n"
+         + "• Display: while timing, the mini floating window's main line shows the current subtask and its remaining time, "
+         + "with the task name small underneath; the home expansion shows progress like \"Subtask 2/3 · name\" and, before starting, the whole queue. "
+         + "Pausing freezes the current subtask's remaining time and resuming continues it. Calendar and schedule still show the task as one block."},
     };
 }
