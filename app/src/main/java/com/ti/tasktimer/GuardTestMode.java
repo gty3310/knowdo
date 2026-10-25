@@ -23,6 +23,9 @@ import java.util.concurrent.TimeUnit;
  * 不跳回、不设宽限；连续命中计数是本类自维护的展示口径（语义与 VerdictEngine
  * 一致：同类连续命中计数、nsfw 一张即触发时第 1 张就算已确认）。
  * 与正式守卫互不干扰：正式守卫在计时中照常采样与处置，测试只多截自己的帧。
+ * 测试路径与正式采样的两点刻意不同（v1.21.2，用户验收口径）：①不做「画面未变
+ * 跳过」——停在一个画面不动也要每 10 秒跑一遍完整分析刷读数，不然没法验收；
+ * ②截图前先把测试窗自己藏起来、帧到手再恢复，免得窗里的读数文字被拍进帧里。
  */
 public final class GuardTestMode {
     private static final long INTERVAL_MS = 10_000L;
@@ -38,8 +41,6 @@ public final class GuardTestMode {
     // 展示用连续命中计数（自维护，不读 VerdictEngine 的状态）
     private static String dispLastCat;
     private static int dispStreak;
-    private static long dispHash;
-    private static boolean dispHasHash;
 
     private GuardTestMode() {}
 
@@ -58,7 +59,8 @@ public final class GuardTestMode {
         running = true;
         dispLastCat = null;
         dispStreak = 0;
-        dispHasHash = false;
+        // 窗口一开先占位，让用户立刻知道它活着；第一帧读数到了会把这行替换掉
+        GuardTestWindow.update("测试模式已开，正在截第一帧…");
         handler.post(loop);
     }
 
@@ -95,22 +97,32 @@ public final class GuardTestMode {
             return;
         }
 
-        // 借帧：回调在专用执行器上投递，测试线程在这里等结果（截图本身是异步的）
+        // 借帧：回调在专用执行器上投递，测试线程在这里等结果（截图本身是异步的）。
+        // 截图前先把测试窗藏起来（INVISIBLE），免得窗里的读数文字被拍进帧里污染
+        // 「读到」与判定；帧一到手（或失败/超时/中断）就在 finally 里恢复显示。
         final Bitmap[] box = new Bitmap[1];
         final int[] err = new int[]{Integer.MIN_VALUE};
         final boolean[] abandoned = new boolean[1];
         final CountDownLatch latch = new CountDownLatch(1);
-        svc.captureFrame(SHOT_EXEC, new KnowDoAccessibilityService.ShotCallback() {
-            @Override public void onBitmap(Bitmap bmp) {
-                if (abandoned[0]) { bmp.recycle(); return; } // 已超时放弃：迟到的帧直接销毁
-                box[0] = bmp;
-                latch.countDown();
-            }
-            @Override public void onError(int errorCode) { err[0] = errorCode; latch.countDown(); }
-        });
+        GuardTestWindow.setCaptureHidden(true);
         boolean arrived;
-        try { arrived = latch.await(9, TimeUnit.SECONDS); }
-        catch (InterruptedException e) { abandoned[0] = true; return; }
+        try {
+            // 等合成器把窗口撤下再截（亚秒级），避免抢拍到半透明的残影
+            try { Thread.sleep(150); } catch (InterruptedException ignored) { }
+            svc.captureFrame(SHOT_EXEC, new KnowDoAccessibilityService.ShotCallback() {
+                @Override public void onBitmap(Bitmap bmp) {
+                    if (abandoned[0]) { bmp.recycle(); return; } // 已超时放弃：迟到的帧直接销毁
+                    box[0] = bmp;
+                    latch.countDown();
+                }
+                @Override public void onError(int errorCode) { err[0] = errorCode; latch.countDown(); }
+            });
+            try { arrived = latch.await(9, TimeUnit.SECONDS); }
+            catch (InterruptedException e) { abandoned[0] = true; arrived = false; }
+        } finally {
+            GuardTestWindow.setCaptureHidden(false);
+        }
+        if (abandoned[0]) return; // 被中断：与原口径一致，静默收尾（窗口已在 finally 恢复）
         if (!arrived) {
             abandoned[0] = true;
             if (box[0] != null) { box[0].recycle(); box[0] = null; }
@@ -142,14 +154,8 @@ public final class GuardTestMode {
                 GuardTestWindow.update(time + " · " + appLabel + "\n状态：安全窗口不可见（黑帧），不判定");
                 return;
             }
-            long h = FrameUtil.aHash(bmp);
-            if (dispHasHash && h == dispHash) {
-                GuardTestWindow.update(time + " · " + appLabel + "\n状态：画面未变，跳过");
-                return;
-            }
-            dispHash = h;
-            dispHasHash = true;
-
+            // 测试路径不做正式守卫的「画面未变跳过」（v1.21.2）：停在同一画面不动，
+            // 也要每帧跑完整分析、刷出识别与判定，用户才能逐帧验收
             TaskItem task = currentTask(c);
             String nodeText = svc.collectVisibleText();
             ContentAnalyzer.Result r = ANALYZER.analyze(c, bmp, task, fg, nodeText);

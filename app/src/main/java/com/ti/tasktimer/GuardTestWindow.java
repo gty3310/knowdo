@@ -14,6 +14,9 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 /**
  * 守卫测试模式的专用悬浮窗（v1.21.0）：与计时悬浮窗（FloatingWindow）完全独立，
  * 只干一件事——把测试采样每帧的读数（时间/前台应用/读到的文字/判定/证据/连续命中）
@@ -55,6 +58,25 @@ public final class GuardTestWindow {
         });
     }
 
+    /**
+     * 截图前临时藏起本窗（v1.21.2）：无障碍截图是全屏的，不藏的话测试窗自己的
+     * 读数文字会被拍进帧里、污染「读到」与判定。INVISIBLE 保留占位与位置，
+     * 帧到手后恢复 VISIBLE。同步等主线程真正执行完才返回（超时兜底），
+     * 调用方随即可截图；窗口没在显示时直接返回。
+     */
+    public static void setCaptureHidden(boolean hidden) {
+        if (rootView == null) return;
+        final CountDownLatch latch = new CountDownLatch(1);
+        ui.post(() -> {
+            if (rootView != null) {
+                rootView.setVisibility(hidden ? View.INVISIBLE : View.VISIBLE);
+            }
+            latch.countDown();
+        });
+        try { latch.await(600, TimeUnit.MILLISECONDS); }
+        catch (InterruptedException ignored) { }
+    }
+
     private static void build(final Context c) {
         if (rootView != null) return;
         wm = (WindowManager) c.getSystemService(Context.WINDOW_SERVICE);
@@ -93,7 +115,7 @@ public final class GuardTestWindow {
         rootView.addView(head);
 
         bodyView = new TextView(c);
-        bodyView.setText("正在准备第一帧…");
+        bodyView.setText("测试模式已开，正在截第一帧…");
         bodyView.setTextColor(Color.rgb(226, 224, 218));
         bodyView.setTextSize(11.5f);
         bodyView.setLineSpacing(0, 1.25f);

@@ -207,8 +207,14 @@ public class FloatingWindow {
         return dockSide(c) == 0 ? 0 : w - (int) (46 * d);
     }
 
-    /** 预览（权限页用）：无需计时，显示 10 秒样例；常驻服务在跑时预览会被实时内容覆盖，属正常。 */
+    /** 预览（权限页用）：无需计时，显示 10 秒样例。计时中不给样例（v1.21.2）：
+     *  常驻服务不到 1 秒就会把样例覆盖回真实任务，用户只看到闪一下——改为直接
+     *  Toast 说明悬浮窗显示的就是当前任务，预览只在没计时时看。 */
     public static void showPreview(final Context c) {
+        if (TimerState.isRunning(c)) {
+            android.widget.Toast.makeText(c, "正在计时，悬浮窗显示的就是当前任务；预览只在没计时时看", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
         if (!AlertHelper.canDrawOverlays(c)) {
             android.widget.Toast.makeText(c, "先把上面的「上层显示」权限开成 ✓，悬浮窗才能显示", android.widget.Toast.LENGTH_LONG).show();
             return;
