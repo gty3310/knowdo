@@ -50,6 +50,16 @@ The UI is native Java/Views, layered as TaskStore (data) / SyncManager (sync) / 
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.24.2 — 2026-10-25
+
+**Why:** Guard test mode is the most direct tool you have for verifying the guard's verdicts on the spot — while it is broken, there is no way to see with your own eyes whether the guard judges rightly. Build commit `e2eb395` · [compare v1.24.1...v1.24.2](https://github.com/gty3310/knowdo/compare/v1.24.1...v1.24.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Guard test mode no longer opens to a full white screen.** Root cause, pinned to the code: `GuardTestPickActivity` — the ruler picker added in v1.21.3 — never called `setContentView`. Its `onCreate` built the entire view tree (white root layout, instructions, task buttons, the temporary-task form) and never attached it to the window, so the activity showed nothing but the app theme's (`Theme.Material.Light.NoActionBar`) white window background. Tapping the test-mode switch in Settings passed every pre-check (accessibility channel on, overlay permission granted) and launched the picker — into a full-screen blank: no ruler could be picked, sampling never started, and the test window never appeared. The picker now attaches its root view first and builds the rest inside a try/catch: any failure is reported through `ErrorReporter` (visible with Tester mode on) and the page falls back to a plain message plus a Back button instead of a silent white screen; a failed test-mode start likewise reports and stays on the page instead of pretending success and closing.
+- **Test-window hardening.** `GuardTestWindow.show()` no longer returns silently when overlay permission is missing — it reports the reason. `build()` now validates the window parameters before attaching (width must be a positive fixed size narrower than the screen, height must be `WRAP_CONTENT`, background must not be opaque white) and aborts with a report rather than ever covering the screen; an `addView` failure is reported instead of swallowed.
+
+Guard verdict logic and timer behaviour are untouched (only the test mode's display path changed); no new permissions, no Supabase schema changes. Not yet verified on a real device: the picker appearing after tapping Guard test mode, the test window coming up after a ruler is picked with readings refreshing every 10 seconds, and a clean restore with no white residue after leaving test mode; the failure-fallback page and the parameter check are defensive paths not deliberately triggered on a device.
+
 ### v1.24.1 — 2026-10-25
 
 **Why:** When something breaks and the cause stays invisible, all anyone can do is guess. Show the error code and you can pinpoint it yourself — and I can fix the actual problem straight from the code you report. Build commit `1d48906` · [compare v1.24.0...v1.24.1](https://github.com/gty3310/knowdo/compare/v1.24.0...v1.24.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
