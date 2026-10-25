@@ -50,14 +50,18 @@ The UI is native Java/Views, layered as TaskStore (data) / SyncManager (sync) / 
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
-### v1.16.1 — 2026-10-24
+### v1.17.0 — 2026-10-25
 
-**Why:** Switching and pausing are two different things — switching means "move on to another task", pausing means "stop this task for a mid-task break". The switch had been wrongly routed through the pause flow, so changing tasks first demanded a pause purpose and length for the task you were leaving.
+**Why:** Morning check-in is meant to be the day's very first thing, but it only appeared when you opened KnowDo — easy to arrive late or skip entirely if the morning started in another app. And a real emergency (an alarm to silence, an urgent message, a call) must not be blocked by one page. This release gives the morning gate its full loop: it shows up on first touch, can step aside, can be rehearsed in the daytime, and can be backfilled afterwards.
 
-**Fixed**
-- **Switching tasks is instant again.** While a task is timing, tapping another task's Start — on the home list, in the expanded row, in the calendar's split view, or via Reset — switches straight to it. The old task stops at that moment and its in-progress segment is filed, so its accumulated time is kept; it does not enter the paused state (no purpose, no pause countdown, no call-back), and its Start resumes it at any time. The "another task is timing" confirmation dialog and the switch-path pause card are gone from every entry point, and a different task sitting in the pause slot is no longer overwritten by a switch.
-- **Remote starts switch too.** The `autoStart` trigger (a task flagged from the account side to start on this device) no longer waits for an idle moment while something is timing; it switches directly, like a local tap. A cross-device mirror switch likewise files this device's open segment for the old task at the switch moment instead of leaving it open until the new task ends.
-- **Pausing is unchanged.** Tapping Pause on the task that is timing still brings up the pause card (purpose + length + silent) exactly as before — that card is only for genuine mid-task breaks, and those breaks still never appear in the task list.
+**Improved**
+- **The morning page meets you at first touch.** With morning check-in on and today's round unfinished, the first unlock of the morning brings the morning page up full-screen over whatever app you're opening — no need to open KnowDo first. It fires once per morning (later encounters go through the deferral alarm below or opening KnowDo, whose own entry still works), it never barges into a phone call (it catches up after the call ends, on the next patrol pass, or on the next unlock), and a patrol fallback covers the case where the resident service wasn't yet running at the unlock moment.
+
+**New**
+- **"Pause for a bit" on the morning page.** Something urgent first? Pick 5/10/15/20/30/60 minutes or a custom length — the page steps aside and an exact alarm brings it back full-screen when the time is up, as many times as you need. The deferral deadline is persisted, so killing the app or rebooting re-arms it (an overdue one fires right away); opening KnowDo during a pause brings the page up early.
+- **"Test the morning page" in Settings → Morning.** Opens the genuine page in gate mode at any time of day, ignoring the clock and whether today is already done: finishing it counts as today's real check-in, or leave via "Pause for a bit" (its alarm is real too).
+- **"Morning records: backfill / edit" on the Habits page.** The morning page's edit mode: Back works, nothing is forced, and a switcher at the top picks the record day (today / yesterday / the day before, or any date) — section A files that record day's previous day's habits, B is that day's report, C is the record day's diary. Editing never marks the morning gate done; editing today's round leaves the gate armed, prefilled with what you saved.
+- **The morning page now saves as you type.** Every answer (yes/no taps, number fields, the diary) is written to the habit data immediately, so pausing, the page being killed, or switching dates in edit mode never loses what's filled — the gate reopens prefilled, diary included.
 
 ## Build
 
