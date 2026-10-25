@@ -38,8 +38,8 @@ public final class Changelog {
 
         Entry e1214 = new Entry("v1.21.4", "2026-10-25");
         e1214.add(new Group(s("新功能", "New"),
-                s("模型改为按需下载：黄色识别模型和语义小模型不再装进安装包，安装包瘦了约 12 MB；谁开哪个功能，就在设置「模型下载」里把对应模型下到手机上，下完自动校验、坏了会自己报错让你重下",
-                  "Models are downloaded on demand now: the image model and the semantic mini-model no longer ride inside the install package, which is about 12 MB slimmer. Whatever feature you turn on, download its model in Settings → Model downloads; each one is verified after downloading, and a bad file reports itself and asks to be downloaded again"),
+                s("模型改为按需下载：黄色识别模型和语义小模型不再装进安装包，安装包瘦了约 10 MB；谁开哪个功能，就在设置「模型下载」里把对应模型下到手机上，下完自动校验、坏了会自己报错让你重下",
+                  "Models are downloaded on demand now: the image model and the semantic mini-model no longer ride inside the install package, which is about 10 MB slimmer. Whatever feature you turn on, download its model in Settings → Model downloads; each one is verified after downloading, and a bad file reports itself and asks to be downloaded again"),
                 s("守卫能判「内容和任务合不合」了：以前守卫只认应用类别和关键词——任务是看张雪机车的视频、你却在看美食视频，它多半看不出来。现在粗判拿不准的画面会多问一层：先用手机本地的小模型比一比内容和任务像不像，还拿不准才把文字（敏感信息已自动打码，绝不发图）发给云端大模型终判。云端连不上时自动改用本地模型接着判，不耽误守卫工作",
                   "The guard can now judge whether content matches the task: before, it only knew app categories and keywords — if the task was watching Zhangxue motorcycle videos and you were watching food videos instead, it mostly couldn't tell. Now, a frame the quick checks can't decide gets one more layer: an on-device mini-model first compares how alike the content and the task are, and only if that is still unsure does it send the text (sensitive bits auto-masked, never an image) to a cloud model for the final call. If the cloud is unreachable it quietly keeps judging with the local model, so the guard never stops working"),
                 s("设置里多了两个开关：「语义判定」关掉后只用本地判定、任何数据不出手机；「测试模式」是给愿意帮忙查错的用户准备的，打开后判定结果会显示来源等诊断信息",
