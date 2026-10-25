@@ -1,5 +1,6 @@
 package com.ti.tasktimer;
 
+import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.content.Intent;
 
@@ -22,5 +23,20 @@ public final class GuardActions {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         c.startActivity(i);
         TimerState.logEvent(c, "专注守卫：已回到「当前任务页」");
+    }
+
+    /**
+     * 把当前前台应用切到后台：借无障碍服务的全局 HOME 动作（v1.21.3，宽限到点
+     * 处理用）。安卓不许一个应用杀掉另一个应用，能做的就是按 HOME 让它退到
+     * 后台。无障碍服务不在时返回 false，调用方自行决定兜底与记录口径。
+     */
+    public static boolean pressHome(Context c) {
+        KnowDoAccessibilityService svc = KnowDoAccessibilityService.get();
+        if (svc == null) return false;
+        try {
+            return svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

@@ -23,6 +23,8 @@ public class BootReceiver extends BroadcastReceiver {
             try { IdleAlarm.ensureScheduled(context); } catch (Exception ignored) { }
             // 结束页催促：开机后按持久化状态续排（v1.21.1；结束已被处置时 EndNag 自己会清）
             try { EndNag.ensureScheduled(context); } catch (Exception ignored) { }
+            // 宽限到点处理：开机后按持久化宽限状态续排（v1.21.3；已过点则补触发，由 applyEnforcement 复查前台）
+            try { GraceEnforcer.ensureScheduled(context); } catch (Exception ignored) { }
             // 习惯提醒：开机后按当前习惯定义全量续排（v1.16.0，闹钟不跨重启保留）
             try { HabitReminder.rescheduleAll(context); } catch (Exception ignored) { }
             // 晨间页「暂停一会儿」推后闹钟：开机后按持久化截止时刻续排（v1.17.0；

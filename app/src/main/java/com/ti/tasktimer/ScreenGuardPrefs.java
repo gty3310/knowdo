@@ -43,4 +43,43 @@ public final class ScreenGuardPrefs {
     public static void setTestMode(Context c, boolean on) {
         prefs(c).edit().putBoolean("test_mode", on).apply();
     }
+
+    // ---- 测试模式的「尺子」任务（v1.21.3） ----
+    /** 临时任务的哨兵 id：只活在测试会话里，永不写入 TaskStore/云端/任务列表。 */
+    public static final String TEST_TEMP_ID = "temp";
+
+    /**
+     * 开测试前选定的尺子任务：id 为真实任务 id，或 TEST_TEMP_ID（临时任务，
+     * title/note 一并存）；没选过（或选了「不选任务」）时 id 为 null，判定回落到
+     * 正在计时的任务（v1.21.2 之前的口径）。测试模式关闭即清（会话结束）。
+     */
+    public static void setTestTask(Context c, String id, String title, String note) {
+        prefs(c).edit()
+                .putString("test_task_id", id)
+                .putString("test_task_title", title)
+                .putString("test_task_note", note)
+                .apply();
+    }
+
+    public static void clearTestTask(Context c) {
+        prefs(c).edit().remove("test_task_id").remove("test_task_title")
+                .remove("test_task_note").apply();
+    }
+
+    public static String testTaskId(Context c) { return prefs(c).getString("test_task_id", null); }
+    public static String testTaskTitle(Context c) { return prefs(c).getString("test_task_title", null); }
+    public static String testTaskNote(Context c) { return prefs(c).getString("test_task_note", null); }
+
+    // ---- 宽限到点后的处理方式（v1.21.3） ----
+    /**
+     * 屏幕内容守卫问询页选宽限时一并选的到点处理：「退掉这个软件」（默认，
+     * quit=true）或「只放到后台」。选一次记一次，下次默认沿用上次的选择。
+     */
+    public static boolean graceActionQuit(Context c) {
+        return prefs(c).getBoolean("grace_action_quit", true);
+    }
+
+    public static void setGraceActionQuit(Context c, boolean quit) {
+        prefs(c).edit().putBoolean("grace_action_quit", quit).apply();
+    }
 }

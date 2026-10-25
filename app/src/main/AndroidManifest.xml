@@ -231,6 +231,11 @@
             android:name=".EndNagReceiver"
             android:exported="false" />
 
+        <!-- 宽限到点处理闹钟接收器（v1.21.3）：宽限到期主动复查前台并执行所选处理 -->
+        <receiver
+            android:name=".GraceEnforceReceiver"
+            android:exported="false" />
+
         <!-- 悬浮窗「关闭」选择页（v1.14.0）：半透明中转页 -->
         <activity
             android:name=".FloatCloseActivity"
@@ -283,6 +288,11 @@
         <!-- 建议设置清单（v1.19.0）：五项系统开关逐项检测＋跳转，普通设置页 -->
         <activity
             android:name=".SuggestedSettingsActivity"
+            android:exported="false" />
+
+        <!-- 守卫测试选尺子页（v1.21.3）：开测试前选判定对照的任务／临时任务 -->
+        <activity
+            android:name=".GuardTestPickActivity"
             android:exported="false" />
     </application>
 </manifest>

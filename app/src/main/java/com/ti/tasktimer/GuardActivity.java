@@ -37,6 +37,10 @@ public class GuardActivity extends Activity {
     private final List<Button> scDidBtns = new ArrayList<>();
     private final List<Button> scStateBtns = new ArrayList<>();
 
+    // 宽限到点处理方式（v1.21.3，仅 content 模式）：true=退掉这个软件（默认），false=只放到后台
+    private boolean graceQuit = true;
+    private final List<Button> graceModeBtns = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -105,6 +109,8 @@ public class GuardActivity extends Activity {
         root.addView(now);
         spacer(root, 16);
 
+        if (contentMode) buildGraceModeRow(root);
+
         Button g30 = bigButton("给我 30 秒收尾", Color.rgb(21, 101, 192));
         g30.setOnClickListener(v -> {
             if (contentMode) VerdictEngine.contentGrace(this, category, 30);
@@ -130,6 +136,46 @@ public class GuardActivity extends Activity {
             finish();
         });
         root.addView(allow);
+    }
+
+    // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
+    /**
+     * 选宽限时长时一并选到点怎么办：「退掉这个软件」（默认）或「只放到后台」。
+     * 点选即存进 ScreenGuardPrefs，下次问询默认沿用上次的选择；到点由
+     * VerdictEngine.applyEnforcement 按这个选择执行。
+     */
+    private void buildGraceModeRow(LinearLayout root) {
+        graceQuit = ScreenGuardPrefs.graceActionQuit(this);
+        TextView label = new TextView(this);
+        label.setText("宽限到点后，这个软件：");
+        label.setTextSize(17);
+        label.setTextColor(Color.BLACK);
+        root.addView(label);
+        LinearLayout row = scRow(root);
+        Button quit = scButton("退掉这个软件");
+        quit.setOnClickListener(v -> {
+            graceQuit = true;
+            ScreenGuardPrefs.setGraceActionQuit(this, true);
+            refreshGraceModeStyles();
+        });
+        Button bg = scButton("只放到后台");
+        bg.setOnClickListener(v -> {
+            graceQuit = false;
+            ScreenGuardPrefs.setGraceActionQuit(this, false);
+            refreshGraceModeStyles();
+        });
+        graceModeBtns.add(quit);
+        graceModeBtns.add(bg);
+        row.addView(quit);
+        row.addView(bg);
+        refreshGraceModeStyles();
+        spacer(root, 14);
+    }
+
+    private void refreshGraceModeStyles() {
+        for (int i = 0; i < graceModeBtns.size(); i++) {
+            styleScButton(graceModeBtns.get(i), graceQuit == (i == 0));
+        }
     }
 
     // ---------------- 磨练自检（v1.12.0） ----------------

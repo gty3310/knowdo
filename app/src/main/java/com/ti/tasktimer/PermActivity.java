@@ -234,8 +234,9 @@ public class PermActivity extends Activity {
                     buildUi();
                     return;
                 }
-                ScreenGuardPrefs.setTestMode(this, true);
-                GuardTestMode.start(this);
+                // v1.21.3：开测试先去选尺子页选任务，选定后由那一页开测试；
+                // 这里不先置开，开关状态等回到本页 onResume 重画时按 prefs 显示
+                startActivity(new Intent(this, GuardTestPickActivity.class));
             } else {
                 ScreenGuardPrefs.setTestMode(this, false);
                 GuardTestMode.stop();

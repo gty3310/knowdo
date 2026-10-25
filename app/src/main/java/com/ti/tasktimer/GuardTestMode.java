@@ -23,9 +23,13 @@ import java.util.concurrent.TimeUnit;
  * 不跳回、不设宽限；连续命中计数是本类自维护的展示口径（语义与 VerdictEngine
  * 一致：同类连续命中计数、nsfw 一张即触发时第 1 张就算已确认）。
  * 与正式守卫互不干扰：正式守卫在计时中照常采样与处置，测试只多截自己的帧。
- * 测试路径与正式采样的两点刻意不同（v1.21.2，用户验收口径）：①不做「画面未变
- * 跳过」——停在一个画面不动也要每 10 秒跑一遍完整分析刷读数，不然没法验收；
- * ②截图前先把测试窗自己藏起来、帧到手再恢复，免得窗里的读数文字被拍进帧里。
+ * 截图前先把测试窗自己藏起来、帧到手再恢复，免得窗里的读数文字被拍进帧里
+ * （v1.21.2）。
+ * v1.21.3 两点改定：①判定要有「尺子」——开测试前先选任务（GuardTestPickActivity：
+ * 现有任务／临时任务／不选），判定对照优先级＝选定的任务＞正在计时的任务＞无，
+ * 窗里写明当前尺子是哪条；临时任务只存 prefs、只活在本次测试会话里，绝不进
+ * TaskStore/云端。②恢复画面未变跳过（用户改定：该跳就跳）——只恢复测试类自己
+ * 这一份；跳过时把上一帧的判定正文原样复显，不让窗口只剩一行状态。
  */
 public final class GuardTestMode {
     private static final long INTERVAL_MS = 10_000L;
@@ -41,6 +45,10 @@ public final class GuardTestMode {
     // 展示用连续命中计数（自维护，不读 VerdictEngine 的状态）
     private static String dispLastCat;
     private static int dispStreak;
+    // 画面未变跳过（v1.21.3 恢复）：上一帧的感知哈希与判定正文（跳过时复显）
+    private static long dispHash;
+    private static boolean dispHasHash;
+    private static String lastVerdictBody;
 
     private GuardTestMode() {}
 
@@ -59,6 +67,8 @@ public final class GuardTestMode {
         running = true;
         dispLastCat = null;
         dispStreak = 0;
+        dispHasHash = false;
+        lastVerdictBody = null;
         // 窗口一开先占位，让用户立刻知道它活着；第一帧读数到了会把这行替换掉
         GuardTestWindow.update("测试模式已开，正在截第一帧…");
         handler.post(loop);
@@ -68,6 +78,8 @@ public final class GuardTestMode {
         running = false;
         if (handler != null) handler.removeCallbacks(loop);
         GuardTestWindow.hide();
+        // 测试会话结束：选定的尺子只活在会话内，一并清掉
+        if (appCtx != null) ScreenGuardPrefs.clearTestTask(appCtx);
     }
 
     private static final Runnable loop = new Runnable() {
@@ -154,51 +166,91 @@ public final class GuardTestMode {
                 GuardTestWindow.update(time + " · " + appLabel + "\n状态：安全窗口不可见（黑帧），不判定");
                 return;
             }
-            // 测试路径不做正式守卫的「画面未变跳过」（v1.21.2）：停在同一画面不动，
-            // 也要每帧跑完整分析、刷出识别与判定，用户才能逐帧验收
-            TaskItem task = currentTask(c);
+            // 画面未变跳过（v1.21.3 恢复，用户改定「该跳就跳」）：只恢复测试类
+            // 自己这一份，正式守卫两条采样通道的跳帧逻辑从未动过；跳过时把上一
+            // 帧的判定正文原样复显，不让窗口只剩一行状态
+            long h = FrameUtil.aHash(bmp);
+            if (dispHasHash && h == dispHash) {
+                GuardTestWindow.update(time + " · " + appLabel + "\n状态：画面未变，跳过"
+                        + (lastVerdictBody != null
+                            ? "\n—— 上一帧判定 ——\n" + lastVerdictBody : ""));
+                return;
+            }
+            dispHash = h;
+            dispHasHash = true;
+            TaskItem task = rulerTask(c);
             String nodeText = svc.collectVisibleText();
             ContentAnalyzer.Result r = ANALYZER.analyze(c, bmp, task, fg, nodeText);
-            GuardTestWindow.update(render(c, time, appLabel, task, r));
+            GuardTestWindow.update(render(c, time, appLabel, rulerLabel(c, task), task, r));
         } finally {
             bmp.recycle(); // 与正式管线同一红线：原图只在内存、用完销毁
         }
     }
 
-    private static String render(Context c, String time, String appLabel, TaskItem task,
-                                 ContentAnalyzer.Result r) {
+    private static String render(Context c, String time, String appLabel, String ruler,
+                                 TaskItem task, ContentAnalyzer.Result r) {
         StringBuilder sb = new StringBuilder();
         sb.append(time).append(" · ").append(appLabel).append('\n');
         sb.append("状态：已分析").append('\n');
+        sb.append(ruler).append('\n');
         String text = ANALYZER.lastText == null ? "" : ANALYZER.lastText.replaceAll("\\s+", " ").trim();
         if (!text.isEmpty()) {
             sb.append("读到：").append(text.length() > 120 ? text.substring(0, 120) + "…" : text).append('\n');
         } else {
             sb.append("读到：（没有读到文字）").append('\n');
         }
+        // 判定正文单独成段存下：下一帧画面未变跳过时原样复显
+        StringBuilder vb = new StringBuilder();
         if (r == null || r.category == null) {
             dispLastCat = null;
             dispStreak = 0;
             boolean relevant = task != null && ANALYZER.relevantToTask(
                     ANALYZER.lastText == null ? "" : ANALYZER.lastText, task);
-            sb.append("判定：不判分神").append(relevant ? "（与任务相关）" : "");
-            return sb.toString();
+            vb.append("判定：不判分神").append(relevant ? "（与任务相关）" : "");
+            lastVerdictBody = vb.toString();
+            return sb.toString() + vb.toString();
         }
         // 展示用 streak：与 VerdictEngine 同口径——同类连续计数；nsfw 且设置一张即触发时第 1 张即确认
         if (r.category.equals(dispLastCat)) dispStreak++;
         else { dispLastCat = r.category; dispStreak = 1; }
         boolean oneShot = ContentAnalyzer.CAT_NSFW.equals(r.category) && ScreenGuardPrefs.nsfwOneShot(c);
         boolean confirmed = oneShot || dispStreak >= 2;
-        sb.append("判定：分神嫌疑「").append(ContentAnalyzer.label(r.category)).append("」 置信 ")
+        vb.append("判定：分神嫌疑「").append(ContentAnalyzer.label(r.category)).append("」 置信 ")
                 .append(String.format(Locale.US, "%.2f", r.confidence)).append('\n');
         if (r.detail != null && !r.detail.isEmpty()) {
-            sb.append("证据：").append(r.detail).append('\n');
+            vb.append("证据：").append(r.detail).append('\n');
         }
-        sb.append("同类连续命中：第 ").append(dispStreak).append(" 张")
+        vb.append("同类连续命中：第 ").append(dispStreak).append(" 张")
                 .append(confirmed ? "（已确认，正式模式会弹问询页）" : "（等下一张确认）");
-        if (oneShot) sb.append("（黄色类一张即触发）");
-        sb.append("\n测试模式只显示，不会真的弹窗");
-        return sb.toString();
+        if (oneShot) vb.append("（黄色类一张即触发）");
+        vb.append("\n测试模式只显示，不会真的弹窗");
+        lastVerdictBody = vb.toString();
+        return sb.toString() + vb.toString();
+    }
+
+    /** 判定对照的「尺子」任务：开测试前选定的（真实／临时）＞正在计时的＞无。 */
+    private static TaskItem rulerTask(Context c) {
+        String id = ScreenGuardPrefs.testTaskId(c);
+        if (ScreenGuardPrefs.TEST_TEMP_ID.equals(id)) {
+            String tt = ScreenGuardPrefs.testTaskTitle(c);
+            TaskItem t = TaskItem.create(tt == null || tt.isEmpty() ? "临时任务" : tt);
+            t.id = ScreenGuardPrefs.TEST_TEMP_ID; // 哨兵 id：只在内存里当尺子，永不落盘
+            String note = ScreenGuardPrefs.testTaskNote(c);
+            t.note = note == null ? "" : note;
+            return t;
+        }
+        if (id != null) {
+            TaskItem t = new TaskStore(c).byId(id);
+            if (t != null) return t; // 选定的任务被删了：回落到正在计时的任务
+        }
+        return currentTask(c);
+    }
+
+    private static String rulerLabel(Context c, TaskItem task) {
+        if (task != null && ScreenGuardPrefs.TEST_TEMP_ID.equals(task.id)) {
+            return "尺子：" + task.title + "（临时）";
+        }
+        return task != null ? "尺子：" + task.title : "尺子：无（只按内容类别判）";
     }
 
     private static TaskItem currentTask(Context c) {
