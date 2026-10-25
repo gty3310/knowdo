@@ -2,6 +2,33 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.21.1] - 2026-10-25（versionCode 46）
+
+为什么：本版是三个真机反馈的热修合集。①用户实测 v1.19.0：任务到点后停在「时间到了」结束页，3–5 分钟无声无震、等再久也永远不会响——查实是状态盲区：结束待确认时 running 未清，空档催促（IdleGuard 要求 !isRunning）永远看不见它，结束页自己又没有任何升级计时。②用户实测：暂停任务 A→开始任务 B→再点 A 的开始，A 从完整总时长重新倒计时——v1.16.1 说的「之后随时点它的开始接着计」只落盘了已用统计、倒计时从没接上，暂停槽又是单槽，切走即丢。③邀请邮件实测进了 163 的垃圾箱（非丢失），用户拍板初期测试阶段不折腾投递通道，改为在注册流程里显著提醒去垃圾箱找确认邮件，并称「这非常重要」。
+
+发布提交：`9522deb`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.21.0...v1.21.1 比较](https://github.com/gty3310/knowdo/compare/v1.21.0...v1.21.1)
+
+### 修复
+
+**结束页催促 EndNag（结束待确认状态盲区）**
+
+1. 新增 EndNag：仿 IdleAlarm/IdleStage 的持久化＋精确闹钟架构（独立 prefs `end_nag_state` 存锚点/轮次/下次时刻/结束点键，AlarmManager 精确排期、新增 EndNagReceiver 推进阶段，状态与空档状态机分开互不污染），不依赖 Activity 计时器（页面被杀照常推进）。锚点＝到点时刻；结束页 60 秒无回应进入与空档催促同节奏的 staging 循环：先震动段（IdleNag 的 vibrate_seconds，不出声）→声音段（复用现成 AlarmRing 渐强，ring_seconds）→静默 repeat_minutes 后下一轮，直到用户回应为止。
+2. 裁决与空档催促完全一致：IdleNag 总开关关或 gentle 档不进循环、standard 封顶 max_rounds、strict 无限轮。per-task alarmMode 照搬 v1.20.0 既有语义：off→不进 EndNag；silent→只震不响（跳过声音段）；sound/follow→按档位全套。路人静音 BystanderMute 生效中、或响铃页（TaskAlarmActivity）在显期间，本轮静默消耗不演。声音段起前互查 IdleStage.isRinging 防双响。
+3. 武装与停止：TimerService 直达检查页路径在 AlertHelper.fire 里武装（锚点取到点时刻）；开了结束响铃的任务先走响铃页，用户点「知道了」进检查页后由 CheckActivity.showEnd 展示时武装（锚点取展示时刻，再等 60 秒接管）。任一停止条件成立即停并清状态：用户在结束页做任何处置（做完了/加时——加时后 endFired 清除、新 endAt 产生，EndNag 随之重置待命）、计时被停止或远端结束、开始新任务/镜像接管——统一挂在 TimerService 动作分发处（START/PAUSE/PAUSE_REMIND/EXTEND/RESUME/MIRROR/STOP）。作用范围只限 TYPE_END 结束页；IdleGuard.isIdle/timedPauseActive 判定语义未动，盲区由 EndNag 正面补上。开机由 BootReceiver 续排，设置变更经 SettingsActivity 与 SbSync 两处 reevaluate 跟随。已知边界沿用空档口径：震动段中进程被杀则该轮声音段不触发、靠持久排期下一轮续上。
+
+**按今日已用抵扣：切走/暂停后回来从剩余时间接着倒数**
+
+1. 中央收口只有一份：新增 TimerService.startTimerSmart——所有用户本地开始入口（主页、悬浮窗、日历、选任务页 NextTaskActivity、空档页 IdleAlarmActivity、致谢页 ThanksActivity、开始提醒页 StartRemindActivity 的开始入口，含主页/日历的守卫授权回调漏斗）开始前先过它：该任务今天已有累计已用且 0＜已用＜总时长时，经 ACTION_START 的新 extra 把剩余秒数带进服务，TimerState.startWithElapsed 按剩余起表（虚拟起点＝now−已用，halfFired 沿用 startResumed 预标口径），并弹出与暂停恢复同款的「继续计时：X（剩余约 …）」提示。已用≥总时长按完整时长全新开始，绝不出现 0 或负数剩余。
+2. 抵扣基数＝SessionLog 今日分段、且只算基线之后的部分（新增 SessionLog.todayMsForTaskSince，按段与 [基线，段尾] 的重叠求和）：基线＝新 StartBaseline（本机 prefs，按任务存上次完成时刻与上次重置时刻，取较晚者）。完成写路径全部打戳（主页勾选/展开条/行菜单、日历拖过线完成与展开条、结束页「做完了」；撤销完成清戳），两个重置入口（主页/日历 resetTask，含编辑弹层经回调汇入的同一路径）在起表前打重置戳——完成后再开始（每日重复次日、当天重做）与重置后都从完整时长开始。
+3. 不抵扣的路径：跨设备镜像 ACTION_MIRROR、同步 autoStart 远程开始（SyncService/SbSync 仍直调 startTimer）、暂停槽恢复本身（有精确 remain，走 resumeTimer 不叠加；暂停槽只在点中同任务时按既有逻辑清，别的任务的槽原样不动）。带子任务的任务本版不做抵扣——其队列位置无法由总已用简单还原，仍走普通开始/暂停槽恢复（明确边界）。
+
+### 改进
+
+**注册流程提醒确认邮件可能进垃圾箱**
+
+1. 注册页（AccountUi）在既有验证邮件说明下方独立成段加粗提醒：知行处于初期测试阶段，确认邮件（「知行」发自 noreply@tiguo.net）很有可能被邮箱放进垃圾箱；收件箱找不到请去垃圾箱（垃圾邮件文件夹）里找，并带一句致歉。用户填邮箱、点注册之前就能看到。
+2. 注册提交后的等待确认提示（Supa.signUp 返回文案，即当前注册后状态的呈现处；App 内尚无独立等待确认页与重发按钮）末尾再加一句短提醒：「还没收到？多半在垃圾箱里，先去那里看看。」
+
 ## [1.21.0] - 2026-10-25（versionCode 45）
 
 为什么：用户看了 Truple 的研究报告后连问三件事——采样能不能像它那样密（平均 30 秒一张）、耗电会多多少、以及他 2026-10-25 亲口补的两条省电法（画面没变不算、先看屏幕现成的文字再决定要不要跑贵分析）；更要紧的是判定质量一直无法亲眼核：守卫从没提示过，到底是没分神还是采样太稀＋两张确认的复合漏检，没人说得清。研究结论同时指出录屏通道在 Pixel 上的头号死因是锁屏自动停投影＋单次授权的制度性缺陷。本版一次解决：换无障碍一次性截图通道（消灭录屏的制度性死因）、采样加密到平均 30 秒、并做一个用户能亲手验收判定质量的测试模式。
