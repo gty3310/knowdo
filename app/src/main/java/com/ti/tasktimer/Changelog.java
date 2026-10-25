@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1243 = new Entry("v1.24.3", "2026-10-25");
+        e1243.add(new Group(s("新功能", "New"),
+                s("守卫判错时，问询页多了「分析错误」按钮——点它，这次分神不算数，还能顺手留一条 20 字以内的纪律，比如「查资料用浏览器算正事」；往后联网判定会带着你的纪律一起判，同类误报会变少；纪律在设置里随时能看、能删",
+                  "When the guard gets a verdict wrong, the inquiry page now has an \"Analysis error\" button — tap it and that drift doesn't count; you can also leave a rule of up to 20 characters, e.g. \"looking things up in the browser counts as work\". From then on, online verdicts judge with your rules included, so the same kind of false alarm happens less; your rules can be viewed and deleted any time in Settings")));
+        e1243.why = s("守卫再准也有判错的时候，让你一键纠正、顺手教它一条规矩，它越用越懂你",
+                "However accurate the guard gets, it will still be wrong sometimes. One tap corrects it, and leaving a rule teaches it a standard of yours — the more you use it, the better it knows you");
+        e1243.tryIt = s("1）下次被判分神时，在问询页点「分析错误」；2）写一条纪律保存，不写也行，只标误报；3）去设置 → 屏幕守卫 → 我的纪律，看纪律在不在、能不能删",
+                "1) Next time you're judged as drifting, tap \"Analysis error\" on the inquiry page. 2) Write a rule and save it — or skip it and just mark the false alarm. 3) Go to Settings → Guards → My guard rules, and check the rule is there and can be deleted");
+        out.add(e1243);
+
         Entry e1242 = new Entry("v1.24.2", "2026-10-25");
         e1242.add(new Group(s("修复", "Fixed"),
                 s("修复在设置里点「守卫测试模式」时整个屏幕变白、测试窗不出来的问题。现在点它会正常先出选尺子页、再出测试窗，判定读数照常刷新；万一哪一步出问题，也会直接把错误亮出来，不再白屏把你晾在那",

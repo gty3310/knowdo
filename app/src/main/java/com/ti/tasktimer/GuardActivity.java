@@ -5,12 +5,20 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.TextWatcher;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +48,12 @@ public class GuardActivity extends Activity {
     // 宽限到点处理方式（v1.21.3，仅 content 模式）：true=退掉这个软件（默认），false=只放到后台
     private boolean graceQuit = true;
     private final List<Button> graceModeBtns = new ArrayList<>();
+
+    // 分析错误（v1.24.3）：应答按钮区与纪律输入区（二选一显示，原页切换）
+    private LinearLayout actionsBox;
+    private LinearLayout ruleBox;
+    private EditText ruleInput;
+    private TextView ruleCounter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,16 +114,21 @@ public class GuardActivity extends Activity {
 
         buildSelfCheck(root);
 
+        // 应答按钮区：点「分析错误」后整区收起、原页展开纪律输入区（见 ruleBox）
+        actionsBox = new LinearLayout(this);
+        actionsBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(actionsBox);
+
         Button now = bigButton("立即回到任务", Color.rgb(46, 125, 50));
         now.setOnClickListener(v -> {
             if (contentMode) VerdictEngine.contentImmediate(this);
             else FocusGuard.chooseImmediate(this);
             finish();
         });
-        root.addView(now);
-        spacer(root, 16);
+        actionsBox.addView(now);
+        spacer(actionsBox, 16);
 
-        if (contentMode) buildGraceModeRow(root);
+        if (contentMode) buildGraceModeRow(actionsBox);
 
         Button g30 = bigButton("给我 30 秒收尾", Color.rgb(21, 101, 192));
         g30.setOnClickListener(v -> {
@@ -117,8 +136,8 @@ public class GuardActivity extends Activity {
             else FocusGuard.chooseGrace(this, fgPkg, 30);
             finish();
         });
-        root.addView(g30);
-        spacer(root, 12);
+        actionsBox.addView(g30);
+        spacer(actionsBox, 12);
 
         Button g60 = bigButton("给我 60 秒收尾", Color.rgb(21, 101, 192));
         g60.setOnClickListener(v -> {
@@ -126,8 +145,8 @@ public class GuardActivity extends Activity {
             else FocusGuard.chooseGrace(this, fgPkg, 60);
             finish();
         });
-        root.addView(g60);
-        spacer(root, 24);
+        actionsBox.addView(g60);
+        spacer(actionsBox, 24);
 
         Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
         allow.setOnClickListener(v -> {
@@ -135,8 +154,21 @@ public class GuardActivity extends Activity {
             else FocusGuard.chooseAllow(this, fgPkg);
             finish();
         });
-        root.addView(allow);
-        spacer(root, 12);
+        actionsBox.addView(allow);
+        spacer(actionsBox, 12);
+
+        // 分析错误（v1.24.3）：与「误判放行」是两回事——放行只是本次计时内不再判
+        // 这一类，这次判定照样计分神；分析错误是把本次判定按误报撤销（不计分神、
+        // 事件打 overturned 标记），并在原页展开纪律输入区，可留一条 ≤20 字的
+        // 纪律，往后云端终判带上它判。样式克制：白底描边的次级按钮。
+        Button overturn = plainButton(Strings.en() ? "Analysis error" : "分析错误");
+        overturn.setOnClickListener(v -> {
+            if (contentMode) VerdictEngine.contentOverturn(this);
+            else FocusGuard.chooseOverturn(this, fgPkg);
+            showRuleBox();
+        });
+        actionsBox.addView(overturn);
+        spacer(actionsBox, 12);
 
         // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
         // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
@@ -152,7 +184,9 @@ public class GuardActivity extends Activity {
             try { startActivity(i); } catch (Exception ignored) { }
             finish();
         });
-        root.addView(chat);
+        actionsBox.addView(chat);
+
+        buildRuleBox(root);
 
         // 诊断行（v1.21.4）：只在 diag_mode 开启、且本次问询是语义判定在
         // 降级状态下触发时，才在页底显示这一行；普通用户永不出现
@@ -165,6 +199,126 @@ public class GuardActivity extends Activity {
             diag.setPadding(0, dp(20), 0, 0);
             root.addView(diag);
         }
+    }
+
+    // ---------------- 分析错误：纪律输入区（v1.24.3） ----------------
+    /**
+     * 点「分析错误」后在原页展开：误报撤销在点按钮那一刻已经生效（见
+     * VerdictEngine.contentOverturn / FocusGuard.chooseOverturn），这里只管
+     * 可选的纪律输入——写一条 ≤20 字的规矩保存，或跳过只标误报。
+     * 保存走 GuardRules.add（本地落盘＋踢同步＋随云端终判带参）。
+     */
+    private void buildRuleBox(LinearLayout root) {
+        ruleBox = new LinearLayout(this);
+        ruleBox.setOrientation(LinearLayout.VERTICAL);
+        ruleBox.setVisibility(View.GONE);
+        root.addView(ruleBox);
+
+        TextView label = new TextView(this);
+        label.setText(Strings.en()
+                ? "Marked as a false alarm — this one doesn't count. Leave a rule if you like: "
+                        + "online verdicts will judge with it from now on (optional)"
+                : "已按误报处理，这次不算分神。想留一条纪律也行：往后联网判定会带着它一起判（可跳过）");
+        label.setTextSize(17);
+        label.setTextColor(Color.BLACK);
+        ruleBox.addView(label);
+
+        ruleInput = new EditText(this);
+        ruleInput.setHint(Strings.en() ? "e.g. Looking things up in the browser is work"
+                : "例：查资料用浏览器算正事");
+        ruleInput.setTextSize(18);
+        ruleInput.setSingleLine(true);
+        ruleInput.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(GuardRules.MAX_LEN) });
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        ilp.setMargins(0, dp(12), 0, 0);
+        ruleInput.setLayoutParams(ilp);
+        ruleBox.addView(ruleInput);
+
+        ruleCounter = new TextView(this);
+        ruleCounter.setText("0/" + GuardRules.MAX_LEN);
+        ruleCounter.setTextSize(13);
+        ruleCounter.setTextColor(Color.GRAY);
+        ruleCounter.setGravity(android.view.Gravity.END);
+        ruleBox.addView(ruleCounter);
+        ruleInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int n) {
+                ruleCounter.setText(s.length() + "/" + GuardRules.MAX_LEN);
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.setMargins(0, dp(10), 0, 0);
+        row.setLayoutParams(rlp);
+        ruleBox.addView(row);
+
+        Button save = bigButton(Strings.en() ? "Save rule" : "保存纪律", Color.rgb(46, 125, 50));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(60), 1f);
+        blp.setMargins(0, 0, dp(6), 0);
+        save.setLayoutParams(blp);
+        save.setOnClickListener(v -> {
+            String t = ruleInput.getText() == null ? "" : ruleInput.getText().toString().trim();
+            if (!t.isEmpty()) {
+                GuardRules.add(this, t);
+                Toast.makeText(this, Strings.en() ? "Rule saved — this one doesn't count"
+                        : "纪律已保存，这次不算分神", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, Strings.en() ? "Marked as a false alarm"
+                        : "已标记误报，这次不算分神", Toast.LENGTH_SHORT).show();
+            }
+            finish();
+        });
+        row.addView(save);
+
+        Button skip = plainButton(Strings.en() ? "Skip" : "跳过");
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, dp(60), 1f);
+        slp.setMargins(dp(6), 0, 0, 0);
+        skip.setLayoutParams(slp);
+        skip.setOnClickListener(v -> {
+            Toast.makeText(this, Strings.en() ? "Marked as a false alarm"
+                    : "已标记误报，这次不算分神", Toast.LENGTH_SHORT).show();
+            finish();
+        });
+        row.addView(skip);
+    }
+
+    private void showRuleBox() {
+        if (actionsBox != null) actionsBox.setVisibility(View.GONE);
+        if (ruleBox != null) {
+            ruleBox.setVisibility(View.VISIBLE);
+            if (ruleInput != null) {
+                ruleInput.requestFocus();
+                ruleInput.post(() -> {
+                    try {
+                        InputMethodManager imm = (InputMethodManager)
+                                getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null) imm.showSoftInput(ruleInput, InputMethodManager.SHOW_IMPLICIT);
+                    } catch (Exception ignored) { }
+                });
+            }
+        }
+    }
+
+    /** 克制的次级按钮（白底描边、深灰字），与 bigButton 的主按钮区分。 */
+    private Button plainButton(String s) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setTextSize(18);
+        b.setAllCaps(false);
+        b.setTextColor(Color.DKGRAY);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(Color.WHITE);
+        g.setStroke(dp(1), Color.rgb(190, 190, 190));
+        g.setCornerRadius(dp(10));
+        b.setBackground(g);
+        b.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
+        return b;
     }
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------

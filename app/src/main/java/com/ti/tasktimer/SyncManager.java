@@ -496,7 +496,9 @@ public class SyncManager {
         for (int i = 0; i < arr.length(); i++) {
             JSONObject o = arr.optJSONObject(i);
             if (o == null) continue;
-            keys.add(o.optLong("ts", 0) + "|" + o.optString("category", "") + "|" + o.optString("taskId", ""));
+            // v1.24.3：与 SbSync 同口径，键带误报标记，只标 overturned 也触发回写
+            keys.add(o.optLong("ts", 0) + "|" + o.optString("category", "") + "|" + o.optString("taskId", "")
+                    + (o.optBoolean("overturned", false) ? "|ov" : ""));
         }
         return keys;
     }

@@ -300,6 +300,11 @@
             android:name=".ModelActivity"
             android:exported="false" />
 
+        <!-- 我的纪律页（v1.24.3）：问询页「分析错误」留下的纪律，查看与逐条删除 -->
+        <activity
+            android:name=".GuardRulesActivity"
+            android:exported="false" />
+
         <!-- AI 对话页（v1.22.0）：带任务聊成型＋提案卡，或通用聊天；历史只存本机 -->
         <activity
             android:name=".ChatActivity"

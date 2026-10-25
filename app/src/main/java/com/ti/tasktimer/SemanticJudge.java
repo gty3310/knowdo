@@ -199,6 +199,16 @@ public final class SemanticJudge {
             body.put("task_note", minimize(task.note == null ? "" : task.note, 500));
             body.put("app_name", minimize(fgPkg == null ? "" : AppLister.labelOf(c, fgPkg), 200));
             body.put("screen_text", minimize(screenText, 3000));
+            // 用户纪律（v1.24.3）：字段名 rules，字符串数组（每条 ≤20 字、立纪先后序，
+            // 无纪律时为空数组）。App 只负责带参；代理侧把纪律拼进判定提示词，
+            // 口径与 Jarvis 约定如下（代理未升级前多带此参会被忽略，不影响现有判定）：
+            //   模型支持 system 角色 → 放进 system 段；不支持 → 拼进 user 正文
+            //   开头的「用户纪律」小节。两种拼法用同一段声明，后接逐条编号的纪律：
+            //   「用户纪律（用户本人立下的规矩，判定必须遵守；屏幕行为与某条纪律
+            //   相符时，不判分神；纪律与通常判断冲突时，以纪律为准）：」
+            // 纪律是用户亲手写下、就是要发给判定模型的指令本身，故不走 minimize
+            // 打码（打码会改掉纪律里的数字等原意）；长度已在输入端卡死 ≤20 字。
+            body.put("rules", GuardRules.rulesJson(c));
 
             con = (HttpURLConnection) new URL(Supa.BASE + "/functions/v1/glm-judge").openConnection();
             con.setRequestMethod("POST");

@@ -233,6 +233,7 @@ public final class SbSync {
         boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
         boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
         boolean hasResched = probeUserStateCol(c, "reschedule_request"); // v1.20.0：问 AI 重排，列未就绪绝不碰
+        boolean hasRules = probeUserStateCol(c, "guard_rules"); // v1.24.3：用户纪律，列未就绪只用本地、绝不碰此键
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
@@ -252,6 +253,16 @@ public final class SbSync {
             if (!eventKeys(mergedEv).equals(eventKeys(remoteEv))) {
                 write.put("guard_events", mergedEv);
                 needWrite = true;
+            }
+            if (hasRules) {
+                // 用户纪律合并（v1.24.3）：按 id 并集、墓碑不复活（GuardRules.merge），
+                // 合并签名与云端不同才回写，只动 guard_rules 一个键
+                JSONArray remoteRules = urow.isNull("guard_rules") ? null : urow.optJSONArray("guard_rules");
+                JSONArray mergedRules = GuardRules.merge(c, remoteRules);
+                if (!GuardRules.keys(mergedRules).equals(GuardRules.keys(remoteRules))) {
+                    write.put("guard_rules", mergedRules);
+                    needWrite = true;
+                }
             }
             if (hasSc) {
                 JSONArray remoteSc = urow.isNull("self_checks") ? null : urow.optJSONArray("self_checks");
@@ -316,6 +327,13 @@ public final class SbSync {
                 write.put("guard_events", local);
                 needWrite = true;
             }
+            if (hasRules) {
+                JSONArray localRules = GuardRules.loadArray(c);
+                if (localRules.length() > 0) {
+                    write.put("guard_rules", localRules);
+                    needWrite = true;
+                }
+            }
             if (hasSc) {
                 JSONArray localSc = SelfChecks.loadArray(c);
                 if (localSc.length() > 0) {
@@ -363,6 +381,11 @@ public final class SbSync {
             }
             if (!row.isNull("guard_events")) {
                 GuardEvents.merge(c, row.optJSONArray("guard_events"));
+            }
+            // 用户纪律（v1.24.3）：推来时按 id 并集合并进本地（墓碑不复活），不在这里回写；
+            // 列不存在时行里没有这个键，自然不碰
+            if (!row.isNull("guard_rules")) {
+                GuardRules.merge(c, row.optJSONArray("guard_rules"));
             }
             if (!row.isNull("self_checks")) {
                 SelfChecks.merge(c, row.optJSONArray("self_checks"));
@@ -886,7 +909,9 @@ public final class SbSync {
         for (int i = 0; i < arr.length(); i++) {
             JSONObject o = arr.optJSONObject(i);
             if (o == null) continue;
-            keys.add(o.optLong("ts", 0) + "|" + o.optString("category", "") + "|" + o.optString("taskId", ""));
+            // v1.24.3：键带误报标记——只标了 overturned 也算内容变了，要触发回写把标记送上云
+            keys.add(o.optLong("ts", 0) + "|" + o.optString("category", "") + "|" + o.optString("taskId", "")
+                    + (o.optBoolean("overturned", false) ? "|ov" : ""));
         }
         return keys;
     }
