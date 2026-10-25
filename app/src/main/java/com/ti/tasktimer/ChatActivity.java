@@ -18,7 +18,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * AI 对话页（v1.22.0）：「和 AI 聊聊这个任务」。
@@ -26,7 +28,10 @@ import java.util.List;
  * 计划时长／deadline 与重复／今日已用／子任务，AI 陪用户把任务聊成型，它提出的
  * 结构化改法渲染成「提案卡」，用户点「应用」才走既有任务写路径真正改，点「不用」
  * 丢弃，AI 永远不能静默改任务；②通用入口（主界面侧边栏）不带任务，只注入今日
- * 任务概览，想到什么聊什么，不产生提案卡。
+ * 任务概览，想到什么聊什么，不产生任务提案卡。
+ * v1.23.0 加排程：两种对话都注入今日 schedule 与时间账，AI 可以用 knowdo-schedule
+ * 代码块给一版新排程，渲染成「排程卡」——同样是点「应用」才落盘（SyncManager 的
+ * sanction 写入口：先回读云端合并、已过去/已完成的块保留、只按卡落盘）。
  * 对话经 Supabase 代理 chat-proxy 走 OpenRouter 免费模型（服务端自动挑最强、
  * 失败顺延），顶部小字显示本轮实际用的模型 id，换了跟着变。
  * 历史只存本机（ChatStore），按任务 id 分开，设置里可一键清除，不上云。
@@ -213,7 +218,10 @@ public class ChatActivity extends Activity {
             tv.setLineSpacing(0, 1.35f);
             tv.setPadding(dp(2), dp(10), dp(24), dp(6));
             msgCol.addView(tv);
-            if (m.proposal != null) msgCol.addView(buildProposalCard(m));
+            if (m.proposal != null) {
+                msgCol.addView("schedule".equals(m.propKind)
+                        ? buildScheduleCard(m) : buildProposalCard(m));
+            }
         }
     }
 
@@ -280,6 +288,153 @@ public class ChatActivity extends Activity {
         };
         renderState[0].run();
         return card;
+    }
+
+    /**
+     * 排程卡（v1.23.0）：把 AI 给的一版新排程摆成人看的清单——逐块「几点到几点 做什么」，
+     * 排不下的单列一行。点「应用」才落盘：后台走 SyncManager 的排程写入口
+     * （先回读云端合并、已过去/已完成的块原样保留、只按卡落盘），成功卡片转「已应用」。
+     */
+    private View buildScheduleCard(final ChatStore.Msg m) {
+        final LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(14));
+        g.setColor(Ui.surface(this));
+        g.setStroke(1, Ui.line(this));
+        card.setBackground(g);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        clp.setMargins(0, dp(4), 0, dp(10));
+        card.setLayoutParams(clp);
+
+        TextView head = new TextView(this);
+        head.setText(en() ? "Suggested plan for today" : "它建议这样排今天");
+        head.setTextSize(13);
+        head.setTextColor(Ui.accent(this));
+        head.setTypeface(head.getTypeface(), Typeface.BOLD);
+        card.addView(head);
+
+        for (String s : scheduleSummaryLines(m.proposal)) {
+            TextView line = new TextView(this);
+            line.setText(s);
+            line.setTextSize(15);
+            line.setTextColor(Ui.text(this));
+            line.setPadding(0, dp(3), 0, 0);
+            card.addView(line);
+        }
+
+        final LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setPadding(0, dp(10), 0, 0);
+        card.addView(btnRow);
+        final Runnable[] renderState = new Runnable[1];
+        renderState[0] = () -> {
+            btnRow.removeAllViews();
+            if (m.propState == ChatStore.PROP_APPLIED) {
+                btnRow.addView(stateText(en() ? "Plan applied" : "已按这个排好了"));
+            } else if (m.propState == ChatStore.PROP_DISMISSED) {
+                btnRow.addView(stateText(en() ? "Left as it was" : "没采用，日程没动"));
+            } else {
+                TextView apply = cardBtn(en() ? "Apply" : "应用", true);
+                apply.setOnClickListener(v -> applyScheduleCard(m, renderState[0]));
+                btnRow.addView(apply);
+                TextView dismiss = cardBtn(en() ? "No, thanks" : "不用", false);
+                dismiss.setOnClickListener(v -> {
+                    m.propState = ChatStore.PROP_DISMISSED;
+                    ChatStore.save(ChatActivity.this, histKey, msgs);
+                    renderState[0].run();
+                });
+                btnRow.addView(dismiss);
+            }
+        };
+        renderState[0].run();
+        return card;
+    }
+
+    /** 排程提案 JSON → 卡面人话清单（块逐条列，排不下的单列；无效块在解析时已剔除）。 */
+    private List<String> scheduleSummaryLines(String proposalJson) {
+        List<String> lines = new ArrayList<>();
+        for (LocalAutoScheduler.Block b : parseScheduleBlocks(proposalJson)) {
+            TaskItem t = store.byId(b.taskId);
+            lines.add(LocalAutoScheduler.hhmm(b.startMin) + "–" + LocalAutoScheduler.hhmm(b.endMin)
+                    + "  " + (t != null ? t.title : b.taskId));
+        }
+        for (String name : scheduleUnscheduled(proposalJson)) {
+            lines.add((en() ? "No room for: " : "排不下：") + name);
+        }
+        if (lines.isEmpty()) {
+            lines.add(en() ? "Nothing schedulable in this plan" : "这版排程里没有能落盘的块");
+        }
+        return lines;
+    }
+
+    /**
+     * 排程提案里的块做落盘前校验：任务必须真实存在、时间合法、不排过 22:30、
+     * 开始时间不许早于现在（已经过去的块落不了盘，应用时既有块由合并逻辑保留）。
+     */
+    private List<LocalAutoScheduler.Block> parseScheduleBlocks(String proposalJson) {
+        List<LocalAutoScheduler.Block> out = new ArrayList<>();
+        try {
+            JSONObject p = new JSONObject(proposalJson);
+            JSONArray arr = p.optJSONArray("blocks");
+            if (arr == null) return out;
+            int nowMin = DayAccount.nowMinutes();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String tid = o.optString("taskId", "");
+                if (tid.isEmpty() || store.byId(tid) == null) continue;
+                int s = LocalAutoScheduler.parseHhmm(o.optString("start", ""));
+                int e = LocalAutoScheduler.parseHhmm(o.optString("end", ""));
+                if (s < 0 || e <= s || e > DayAccount.DAY_END_MIN) continue;
+                if (s < nowMin) continue;
+                out.add(new LocalAutoScheduler.Block(tid, s, e));
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** 排程提案里「排不下」的任务名清单。 */
+    private List<String> scheduleUnscheduled(String proposalJson) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray arr = new JSONObject(proposalJson).optJSONArray("unscheduled");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    String s = arr.optString(i, "").trim();
+                    if (!s.isEmpty()) out.add(s);
+                }
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** 排程卡点「应用」：后台走 sanction 写入口落盘，回来按结果翻卡状态。 */
+    private void applyScheduleCard(final ChatStore.Msg m, final Runnable renderState) {
+        final List<LocalAutoScheduler.Block> blocks = parseScheduleBlocks(m.proposal);
+        if (blocks.isEmpty()) {
+            toast(en() ? "Nothing in this plan can be placed now (its times may have passed)"
+                    : "这张排程卡里没有现在能落盘的块（时间可能已经过去了）");
+            return;
+        }
+        store.load();
+        toast(en() ? "Saving the plan…" : "正在保存排程…");
+        new Thread(() -> {
+            final String err = SyncManager.applyScheduleProposal(
+                    ChatActivity.this, store, blocks, "KnowDo App（聊天排程）");
+            runOnUiThread(() -> {
+                if (err == null) {
+                    m.propState = ChatStore.PROP_APPLIED;
+                    ChatStore.save(ChatActivity.this, histKey, msgs);
+                    toast(en() ? "Plan applied — check the calendar" : "已按这个排好了，去日历页就能看到");
+                } else {
+                    toast(err);
+                }
+                renderState.run();
+            });
+        }).start();
     }
 
     private TextView stateText(String s) {
@@ -489,19 +644,33 @@ public class ChatActivity extends Activity {
         toast(friendlyMsg);
     }
 
-    /** 展示正文：提案代码块不给用户看原文，流式中出现块开头即截断显示。 */
+    /** 展示正文：提案代码块（任务/排程两种）不给用户看原文，流式中出现任一块开头即截断显示。 */
     private static String displayPart(String fullText) {
+        int cut = -1;
         int i = fullText.indexOf(FENCE);
-        if (i >= 0) return fullText.substring(0, i).trim();
+        if (i >= 0) cut = i;
+        int j = fullText.indexOf(FENCE_SCHED);
+        if (j >= 0 && (cut < 0 || j < cut)) cut = j;
+        if (cut >= 0) return fullText.substring(0, cut).trim();
         return fullText;
     }
 
-    /** 流结束：剥离提案块、解析提案 JSON，组装成要落盘的助手消息。 */
+    /**
+     * 流结束：剥离提案块、解析提案 JSON，组装成要落盘的助手消息。
+     * 两种围栏谁先出现算谁的（一次回复至多收一个提案，与 system 提示的口径一致）：
+     * knowdo-proposal＝任务提案（仅带任务的对话收，沿用 v1.22.0）；
+     * knowdo-schedule＝排程提案（v1.23.0，两种对话都收）。
+     */
     private ChatStore.Msg parseAssistant(String fullText) {
         ChatStore.Msg m = new ChatStore.Msg("assistant", "");
         String proposal = null;
+        String kind = "task";
         String text = fullText == null ? "" : fullText;
-        int start = text.indexOf(FENCE);
+        int ti = text.indexOf(FENCE);
+        int si = text.indexOf(FENCE_SCHED);
+        int start = -1;
+        if (ti >= 0 && (si < 0 || ti < si)) { start = ti; kind = "task"; }
+        else if (si >= 0) { start = si; kind = "schedule"; }
         if (start >= 0) {
             int jsonStart = text.indexOf('\n', start);
             int end = jsonStart < 0 ? -1 : text.indexOf(FENCE_MARK, jsonStart);
@@ -522,9 +691,20 @@ public class ChatActivity extends Activity {
                     ? (en() ? "Here is my suggestion:" : "我的建议在这张卡里：")
                     : (en() ? "(No reply came back — try again)" : "（这次没收到回复，再试一次）");
         }
-        if (proposal != null && taskId != null) {
-            m.proposal = proposal;
-            m.propState = ChatStore.PROP_PENDING;
+        if (proposal != null) {
+            if ("schedule".equals(kind)) {
+                // 排程提案：校验后一个能落盘的块都没有、又没报排不下的，就不当提案收
+                if (!parseScheduleBlocks(proposal).isEmpty()
+                        || !scheduleUnscheduled(proposal).isEmpty()) {
+                    m.proposal = proposal;
+                    m.propKind = "schedule";
+                    m.propState = ChatStore.PROP_PENDING;
+                }
+            } else if (taskId != null) {
+                m.proposal = proposal;
+                m.propKind = "task";
+                m.propState = ChatStore.PROP_PENDING;
+            }
         }
         return m;
     }
@@ -536,6 +716,7 @@ public class ChatActivity extends Activity {
 
     private static final String FENCE_MARK = "`" + "`" + "`";
     private static final String FENCE = FENCE_MARK + "knowdo-proposal";
+    private static final String FENCE_SCHED = FENCE_MARK + "knowdo-schedule";
 
     // ---------------- 上下文注入 ----------------
 
@@ -555,7 +736,9 @@ public class ChatActivity extends Activity {
                 if (++n >= 20) break;
             }
             if (n == 0) sb.append("（今天还没有任务）\n");
-            sb.append("这一路对话不要输出 knowdo-proposal 代码块（没有目标任务，提了也应用不了）。");
+            sb.append("这一路对话没有目标任务，不要输出 knowdo-proposal 代码块（提了也应用不了）；")
+              .append("但下面说的 knowdo-schedule 排程代码块可以照常输出。");
+            sb.append(scheduleSection());
             return sb.toString();
         }
         TaskItem t = store.byId(taskId);
@@ -592,6 +775,79 @@ public class ChatActivity extends Activity {
             sb.append("今天日期：").append(TaskItem.today())
               .append("（涉及日期时间时以此为准）");
         }
+        sb.append(scheduleSection());
+        return sb.toString();
+    }
+
+    /**
+     * 排程上下文＋提案格式（v1.23.0，两种对话都拼）：今日已排的块（带 taskId）、
+     * 还没排进今天的必做、今日全部未完成任务、时间账三个数、现在时间，
+     * 以及排程提案的输出格式与硬规矩。每次发送现拼，数字不旧。
+     */
+    private String scheduleSection() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n你还能帮他排今天的日程。下面是今天当下的情况：\n");
+        String today = TaskItem.today();
+        Set<String> scheduledIds = new HashSet<>();
+        List<LocalAutoScheduler.Block> todayBlocks =
+                LocalAutoScheduler.blocksOf(SyncManager.latestSchedule(this), today);
+        if (todayBlocks.isEmpty()) {
+            sb.append("今天还没有排任何块。\n");
+        } else {
+            sb.append("今天已经排好的块（开始–结束 任务名〔taskId〕）：\n");
+            for (LocalAutoScheduler.Block b : todayBlocks) {
+                TaskItem bt = store.byId(b.taskId);
+                sb.append("- ").append(LocalAutoScheduler.hhmm(b.startMin)).append("–")
+                  .append(LocalAutoScheduler.hhmm(b.endMin)).append(" ")
+                  .append(bt != null ? bt.title : b.taskId)
+                  .append("〔").append(b.taskId).append("〕\n");
+                scheduledIds.add(b.taskId);
+            }
+        }
+        StringBuilder unscheduledMust = new StringBuilder();
+        StringBuilder allOpen = new StringBuilder();
+        int open = 0;
+        for (TaskItem t : store.visibleSorted()) {
+            if (t.isDoneToday()) continue;
+            boolean must = "must".equals(t.priority);
+            if (must && !scheduledIds.contains(t.id)) {
+                unscheduledMust.append("- 〔").append(t.id).append("〕").append(t.title)
+                        .append("（").append(t.durationMinutes).append(" 分钟）\n");
+            }
+            if (open < 25) {
+                allOpen.append("- 〔").append(t.id).append("〕").append(t.title)
+                        .append("（").append(t.durationMinutes).append(" 分钟，")
+                        .append(must ? "必做" : "次要").append("）\n");
+                open++;
+            }
+        }
+        sb.append("还没排进今天的必做任务：\n")
+          .append(unscheduledMust.length() > 0 ? unscheduledMust.toString() : "（没有）\n");
+        sb.append("今天全部未完成的任务（排程只能引用这里的 taskId）：\n")
+          .append(allOpen.length() > 0 ? allOpen.toString() : "（没有）\n");
+        DayAccount.Result a = DayAccount.compute(store);
+        sb.append("今日时间账：还剩约 ").append(DayAccount.fmtDur(a.remainMin))
+          .append("，必干占约 ").append(DayAccount.fmtDur(a.mustBufferedMin))
+          .append("，空余约 ").append(a.freeMin < 0
+                  ? "−" + DayAccount.fmtDur(-a.freeMin) + "（已经超了）"
+                  : DayAccount.fmtDur(a.freeMin))
+          .append("。现在时间约 ")
+          .append(LocalAutoScheduler.hhmm(DayAccount.nowMinutes())).append("。\n");
+        sb.append("\n如果用户让你排或重排今天的日程，在回复的最后另起一段，输出一个代码块，格式严格如下（正文里把思路讲清，不要再复述代码块内容）：\n")
+          .append(FENCE_SCHED).append("\n")
+          .append("{\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"09:00\",\"end\":\"10:30\"}],\"unscheduled\":[\"排不下的任务名\"]}\n")
+          .append(FENCE_MARK).append("\n")
+          .append("blocks 给出你建议的、尚未开始的块；unscheduled 放实在排不下的任务名，没有就给空数组。")
+          .append("排程硬规矩，必须遵守：")
+          .append("每件任务按它的计划时长×1.5 留缓冲来占时间；")
+          .append("必做任务优先排；")
+          .append("已经过去的块和已完成任务的块不许动，也不要把它们写进 blocks（应用时它们会被原样保留）；")
+          .append("块的开始时间不许早于现在；")
+          .append("不许排过 22:30；")
+          .append("排不下就放进 unscheduled 并在正文里明说，不许硬塞；")
+          .append("只能用上面列出的真实 taskId，不许编造任务或 id。")
+          .append("排程卡只是建议：用户点「应用」才生效，点「不用」就当没提过。")
+          .append("只是聊天、用户没让你排程时，不要输出这个代码块。一次回复最多给一个排程提案。");
         return sb.toString();
     }
 

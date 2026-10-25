@@ -13,7 +13,8 @@ import java.util.List;
  * AI 聊天记录（v1.22.0）：只存本机 SharedPreferences，永不上云（v1 口径）。
  * 按对话分键存：任务对话 key＝任务 id，通用对话 key＝"general"。
  * 每条消息：role（user/assistant）、text（展示正文，提案块已剥离）、
- * proposal（提案 JSON 原文，可空）、propState（0 无提案 / 1 待决定 / 2 已应用 / 3 已忽略）。
+ * proposal（提案 JSON 原文，可空）、propKind（提案类型：task / schedule，v1.23.0 加，
+ * 旧记录无此键一律按 task 读）、propState（0 无提案 / 1 待决定 / 2 已应用 / 3 已忽略）。
  * 提案状态随消息一起存，历史重开时卡片按存下时的状态渲染，应用过的不再重复应用。
  */
 public final class ChatStore {
@@ -31,6 +32,7 @@ public final class ChatStore {
         public String role = "user";   // user / assistant
         public String text = "";
         public String proposal;        // 提案 JSON 原文；null＝无提案
+        public String propKind = "task"; // 提案类型：task / schedule
         public int propState = PROP_NONE;
 
         public Msg() { }
@@ -41,6 +43,7 @@ public final class ChatStore {
             o.put("r", role);
             o.put("t", text);
             if (proposal != null) o.put("p", proposal);
+            if (!"task".equals(propKind)) o.put("k", propKind);
             o.put("s", propState);
             return o;
         }
@@ -51,6 +54,7 @@ public final class ChatStore {
             m.text = o.optString("t", "");
             m.proposal = o.isNull("p") ? null : o.optString("p", null);
             if (m.proposal != null && m.proposal.isEmpty()) m.proposal = null;
+            m.propKind = o.optString("k", "task");
             m.propState = o.optInt("s", m.proposal == null ? PROP_NONE : PROP_PENDING);
             return m;
         }

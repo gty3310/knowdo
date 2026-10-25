@@ -10,8 +10,10 @@ import org.json.JSONObject;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -348,6 +350,92 @@ public class SyncManager {
             return ok ? null : "已写回但回读没看到新块，请刷新页面确认";
         } catch (Exception e) {
             return "保存计划块失败：" + e.getMessage();
+        }
+    }
+
+    /**
+     * 【App 对 schedule 的写入口之三，v1.23.0】本地自动排程落盘：用户定案的口径是
+     * 「新增与滚入自动排」——今日必做（含滚入）没排上的，App 自己按 ×1.5 填空档。
+     * 纪律与既有写入口同一条：先回读远端最新 schedule 当底（外部刚写入的块都在里面，
+     * 一个不动）→ 只往空档里加新块 → 写回 → 更新本地缓存。远端日程不是今天的，
+     * 底按空表算（旧日程已过期）。没有新块可加时不写远端，直接返回计划。
+     * 桥文件未选/离线读不到远端时：只按本地缓存算计划、written=false，不落盘，
+     * 等下一次触发（回前台/任务变更）再试。必须在后台线程调用。
+     */
+    public static LocalAutoScheduler.Plan autoFillSchedule(
+            Context c, List<LocalAutoScheduler.Candidate> cands, String updatedBy) {
+        if (isSupabaseMode(c)) return SbSync.autoFillSchedule(c, cands, updatedBy);
+        String today = TaskItem.today();
+        int nowMin = DayAccount.nowMinutes();
+        Uri uri = getUri(c);
+        if (uri == null) {
+            return LocalAutoScheduler.plan(cands,
+                    LocalAutoScheduler.blocksOf(latestSchedule(c), today), nowMin);
+        }
+        try {
+            RemoteSnapshot remote = readRemote(c, uri);
+            List<LocalAutoScheduler.Block> base =
+                    LocalAutoScheduler.blocksOf(remote.schedule, today);
+            LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin);
+            if (plan.additions.isEmpty()) return plan;
+            List<LocalAutoScheduler.Block> merged = new ArrayList<>(base);
+            merged.addAll(plan.additions);
+            JSONObject sch = LocalAutoScheduler.scheduleJson(today, merged);
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", updatedBy);
+            prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+            TaskStore carrier = new TaskStore(c);
+            carrier.tasks.clear();
+            carrier.tasks.addAll(remote.tasks.values());
+            plan.written = writeRemote(c, uri, carrier, remote.guardEvents, sch);
+            if (!plan.written) {
+                // 写失败：本地缓存回滚到远端那份，别让界面显示没落盘的排程
+                if (remote.schedule != null) {
+                    prefs(c).edit().putString(KEY_SCHEDULE, remote.schedule.toString()).apply();
+                }
+            }
+            return plan;
+        } catch (Exception e) {
+            return LocalAutoScheduler.plan(cands,
+                    LocalAutoScheduler.blocksOf(latestSchedule(c), today), nowMin);
+        }
+    }
+
+    /**
+     * 【App 对 schedule 的写入口之四，v1.23.0】聊天排程提案卡点「应用」落盘：
+     * 用户在对话里亲口拍板的一版新排程。纪律：先回读远端最新版合并
+     * （LocalAutoScheduler.mergeProposal——已过去/已完成的块保留，其余按卡落盘）
+     * → 写回 → 回读校验块数。必须在后台线程调用。返回 null 表示成功，否则失败原因。
+     */
+    public static String applyScheduleProposal(Context c, TaskStore store,
+                                               List<LocalAutoScheduler.Block> cardBlocks,
+                                               String updatedBy) {
+        if (isSupabaseMode(c)) return SbSync.applyScheduleProposal(c, store, cardBlocks, updatedBy);
+        Uri uri = getUri(c);
+        if (uri == null) return "尚未选择桥文件，无法保存排程";
+        String today = TaskItem.today();
+        try {
+            RemoteSnapshot remote = readRemote(c, uri);
+            List<LocalAutoScheduler.Block> base =
+                    LocalAutoScheduler.blocksOf(remote.schedule, today);
+            List<LocalAutoScheduler.Block> merged = LocalAutoScheduler.mergeProposal(
+                    base, cardBlocks, store, DayAccount.nowMinutes());
+            JSONObject sch = LocalAutoScheduler.scheduleJson(today, merged);
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", updatedBy);
+            prefs(c).edit().putString(KEY_SCHEDULE, sch.toString()).apply();
+            TaskStore carrier = new TaskStore(c);
+            carrier.tasks.clear();
+            carrier.tasks.addAll(remote.tasks.values());
+            if (!writeRemote(c, uri, carrier, remote.guardEvents, sch)) {
+                return "回写桥文件失败（未能打开输出流）";
+            }
+            RemoteSnapshot check = readRemote(c, uri);
+            List<LocalAutoScheduler.Block> chk =
+                    LocalAutoScheduler.blocksOf(check.schedule, today);
+            return chk.size() == merged.size() ? null : "已写回但回读块数对不上，请刷新日历确认";
+        } catch (Exception e) {
+            return "保存排程失败：" + e.getMessage();
         }
     }
 

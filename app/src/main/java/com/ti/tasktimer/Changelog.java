@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1230 = new Entry("v1.23.0", "2026-10-25");
+        e1230.add(new Group(s("新功能", "New"),
+                s("三件。一，任务页最上方多了「今日时间账」：今天还剩多少小时、必干的活占多少小时、还空余多少小时，一眼看清今天装不装得下，数字随你完成任务实时变。二，昨天没干完的任务会自动滚到今天变成必干：昨天到期或排进昨天日程、没做完的，今天打开就升为必干、排进今天，名字旁有个小小的「昨」字（每天重复的任务除外，它自己会再生）。三，聊天能排程了：跟 AI 说「帮我把今天重新排一下」，它按你的规矩（每件按时长乘一点五留缓冲、不排过晚上十点半、排不下会明说）给出新日程，出一张排程卡，你点「应用」才生效；新加的和滚进来的必干任务，App 会自己填进今天的空档，不用你开口",
+                  "Three things. One, the task page now opens with a time account for today: how many hours are left today, how many the must-do work takes, and how much is still free — you see at a glance whether today can hold it all, and the numbers move as you finish tasks. Two, yesterday's unfinished tasks roll into today as must-dos: anything that was due yesterday or sat in yesterday's schedule and didn't get done opens today already promoted to must-do and placed into today's plan, with a small marker next to its name (daily repeating tasks are the exception — they regenerate on their own). Three, chat can schedule now: tell the AI \"replan my day\", and it lays out a new schedule by your rules (every task counts at one-and-a-half times its length for buffer, nothing past 22:30, and anything that doesn't fit is said out loud), presented as a plan card that only takes effect when you tap Apply; newly added and rolled-in must-dos are slotted into today's gaps by the app itself, no asking needed")));
+        e1230.why = s("先看见今天装不装得下，再决定接不接新活，心里有数就不慌；拖延最怕任务掉进黑洞没人管，滚到今天变必干，它就跑不掉；排程这种事说一句比拖十下快，但最终拍板还是你",
+                "See whether today can hold it before you take on anything new, and there is nothing to be anxious about; procrastination's worst trick is a task falling into a black hole where nobody watches it — rolled into today as a must-do, it can't get away; and saying one sentence is faster than dragging ten blocks around, while the final call stays yours");
+        e1230.tryIt = s("1）打开任务页看最上面的时间账，对一下和你心里的数合不合，再完成一个必干任务，看数字有没有跟着变；2）找一个昨天到期没做完的任务，看它今天是不是变成必干、名字旁有「昨」字、并且排进了今天的日历；3）新建一个今天要做的必干任务，什么都别点，去日历页看它是不是自己出现在空档里；4）等聊天代理部署后，在对话里说「帮我把今天重新排一下」，检查排程卡，再点「应用」确认日历真的变了",
+                "1) Open the task page and check the time account at the very top against the numbers in your head, then finish one must-do task and watch the numbers move. 2) Find a task that was due yesterday and never got done: today it should be a must-do, carry the small marker next to its name, and sit inside today's calendar. 3) Create a new must-do task for today and touch nothing else — open the calendar and see whether it placed itself into a gap. 4) Once the chat proxy is deployed, say \"replan my day\" in a chat, check the plan card, then tap Apply and confirm the calendar really changed");
+        out.add(e1230);
+
         Entry e1220 = new Entry("v1.22.0", "2026-10-25");
         e1220.add(new Group(s("新功能", "New"),
                 s("新增「和 AI 聊聊这个任务」。任务编辑里点进去就能跟 AI 聊这个任务——它知道这个任务的标题、备注、计划时长和今天已经做了多久。你觉得任务哪里别扭，跟它说，它会提出具体改法（改标题、改时长、拆成子任务、挪时间），变成一张提案卡摆在对话里，你点「应用」才真正改，点「不用」就当没提过。任务页也有一个不带任务的聊天入口，想到什么都能聊",

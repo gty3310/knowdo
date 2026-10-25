@@ -60,6 +60,9 @@ public class MainActivity extends Activity {
     private boolean appliedEn;
     private TextView nowTitleView;
     private TextView nowRemainView;
+    private TextView accountView;   // 今日时间账（v1.23.0，任务页最上方）
+    private TextView overflowView;  // 时间账下方的点名行（排不下的必干），无溢出时藏
+    private String accountShown = ""; // 时间账已显示文本，没变就不重设（每秒刷新防闪）
     private TextView liveLeftView; // 正在计时行的「剩余」格，状态条每秒顺手刷新它
     private LinearLayout headerInner;
     private LinearLayout bodyInner;
@@ -156,6 +159,15 @@ public class MainActivity extends Activity {
         super.onResume();
         if (Ui.dark(this) != appliedDark || Ui.en(this) != appliedEn) { recreate(); return; }
         store.load();
+        // 昨日未完成滚入今日必干（v1.23.0）：排在晨间门之前——跨过 04:00 日界后的
+        // 第一次回前台就滚，晨间页里看到的也是滚完的数。滚完走同一条云端同步路推上去，
+        // 并顺手触发本地自动排程把滚入的必干填进今日空档。
+        try {
+            if (Rollover.maybeRoll(this, store)) {
+                runSync(false);
+                LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
+            }
+        } catch (Exception ignored) { }
         // 晨间首填（v1.16.0；v1.17.0 起另有晨间门首触全屏拉起，本入口保留）：
         // 开关开着且当前 session 未完成 → 先进晨间页，填完才回来
         // （排在衔接守卫之前：晨间页回来后 onResume 会再走一遍正常流程）
@@ -187,6 +199,9 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(syncReceiver, f, RECEIVER_NOT_EXPORTED);
         else registerReceiver(syncReceiver, f);
         TaskStore.addChangeListener(storeListener);
+        // 回前台发现今日有未排的必做 → 本地自动排程填空档（v1.23.0；内部先本地短路，
+        // 没有未排必做时不发任何网络请求；落盘后回调刷新时间账的点名行）
+        LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
         // 任务衔接守卫（v1.10.0）：冷启动/回到主页时若处于空档，全屏问「下一个任务」
         IdleGuard.checkAndFire(this);
     }
@@ -211,6 +226,9 @@ public class MainActivity extends Activity {
         refreshOpenDialog();
         // 计时/暂停中任务的子任务被改 → 对账接管（v1.13.0；无变化时内部立刻返回）
         SubtaskResync.check(this);
+        // 新建/改期落到今天的必做 → 本地自动排程填空档（v1.23.0；内部短路＋并发合并，
+        // 同步合并带进来的变更也会走到这里，云端新值先回读再合并，不互相覆盖）
+        LocalAutoScheduler.runAsync(this, store, null);
     }
 
     /** 打开中的内容弹窗跟上数据源：输入框文字与打开时一致（用户没改过）才换成最新值；
@@ -354,6 +372,25 @@ public class MainActivity extends Activity {
         View stripLine = new View(this);
         stripLine.setBackgroundColor(Ui.line(this));
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+
+        // 今日时间账（v1.23.0，任务页最上方，学 Sunsama）：三个数——今日还剩、必干占、空余。
+        // 极简宁静口径：不套卡片、不加边框，一行大字直接落在页面上；refreshStatus 每秒顺手刷新。
+        LinearLayout accountBox = new LinearLayout(this);
+        accountBox.setOrientation(LinearLayout.VERTICAL);
+        accountBox.setPadding(dp(16), dp(10), dp(16), dp(8));
+        accountView = new TextView(this);
+        accountView.setTextSize(21); // 基准字号：数字按 1.0 显示，标签按 0.62 缩小
+        accountView.setTextColor(Ui.text(this));
+        accountBox.addView(accountView);
+        overflowView = new TextView(this);
+        overflowView.setTextSize(13);
+        overflowView.setTextColor(Ui.accent(this));
+        overflowView.setPadding(0, dp(4), 0, 0);
+        overflowView.setVisibility(View.GONE);
+        // 点名行点一下展开日历看究竟（日历已开着时不动）
+        overflowView.setOnClickListener(v -> { if (!calOpen) toggleCalendar(); });
+        accountBox.addView(overflowView);
+        content.addView(accountBox);
 
         // 内容区分屏行（v1.18.0）：左＝表格区（权重 1），右＝日历容器（默认藏）。
         // 日历不再盖在 root 上：它只占日程页内容区、永远在底部三 Tab 之上；
@@ -1009,6 +1046,63 @@ public class MainActivity extends Activity {
             liveLeftView.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
         }
         updateDrawerAccount();
+        refreshTimeAccount();
+    }
+
+    /**
+     * 今日时间账刷新（v1.23.0）：三个数拼成一行——标签小字、数字大字（宁静口径：不堆边框按钮）。
+     * 超了（空余为负）时空余数字走点缀色并加「超了」。文本没变就不重设，避免每秒闪烁；
+     * 溢出点名行每轮都重算（本地缓存口径，排程落盘后回调也会再触发一次本方法）。
+     */
+    private void refreshTimeAccount() {
+        if (accountView == null) return;
+        DayAccount.Result a = DayAccount.compute(store);
+        boolean en = Strings.en();
+        String remain = DayAccount.fmtDur(a.remainMin);
+        String must = DayAccount.fmtDur(a.mustBufferedMin);
+        String freeAbs = DayAccount.fmtDur(Math.abs(a.freeMin));
+        String sig = a.remainMin + "|" + a.mustBufferedMin + "|" + a.freeMin + "|" + en;
+        if (!sig.equals(accountShown)) {
+            accountShown = sig;
+            String l1 = en ? "Left today " : "今日还剩 ";
+            String l2 = en ? "　Must-do " : "　必干占 ";
+            String l3 = en ? "　Free " : "　空余 ";
+            SpannableStringBuilder sb = new SpannableStringBuilder();
+            appendAccountPart(sb, l1, remain);
+            appendAccountPart(sb, l2, must);
+            String freeText = (a.over() ? "−" : "") + freeAbs + (a.over() ? (en ? " over" : " 超了") : "");
+            int freeNumStart = appendAccountPart(sb, l3, freeText);
+            if (a.over()) {
+                sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), freeNumStart, sb.length(),
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            accountView.setText(sb);
+        }
+        if (overflowView != null) {
+            LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocal(this, store);
+            if (!p.overflow.isEmpty()) {
+                overflowView.setText(en
+                        ? p.overflow.size() + " must-do task(s) don't fit today — tap to see the calendar"
+                        : "还有 " + p.overflow.size() + " 件必干排不进今天，点开日历看看");
+                overflowView.setVisibility(View.VISIBLE);
+            } else {
+                overflowView.setVisibility(View.GONE);
+            }
+        }
+    }
+
+    /** 时间账一行的一段：标签小字次级色 ＋ 数字大字粗体。返回数字段的起始下标。 */
+    private int appendAccountPart(SpannableStringBuilder sb, String label, String num) {
+        int s0 = sb.length();
+        sb.append(label);
+        sb.setSpan(new ForegroundColorSpan(Ui.sub(this)), s0, sb.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sb.setSpan(new RelativeSizeSpan(0.62f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        int s1 = sb.length();
+        sb.append(num);
+        sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s1, sb.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return s1;
     }
 
     // ---------------- 任务行 ----------------
@@ -1397,13 +1491,23 @@ public class MainActivity extends Activity {
                 String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
                         + (isPausedThis ? Strings.pausedTag() : "");
                 Integer plannedMin = (calOpen && !done) ? splitScheduled.get(t.id) : null;
-                if (plannedMin != null) {
-                    // 分屏形态「已排 HH:mm」小标记（v1.18.0）：点缀色、小一号，接在标题后
+                boolean rolledMark = Rollover.isRolled(this, t.id);
+                if (plannedMin != null || rolledMark) {
                     SpannableStringBuilder sb = new SpannableStringBuilder(titleText);
-                    int s0 = sb.length();
-                    sb.append("  ·  ").append(Strings.calPlannedChip(hhmmOfMin(plannedMin)));
-                    sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    sb.setSpan(new RelativeSizeSpan(0.82f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    if (plannedMin != null) {
+                        // 分屏形态「已排 HH:mm」小标记（v1.18.0）：点缀色、小一号，接在标题后
+                        int s0 = sb.length();
+                        sb.append("  ·  ").append(Strings.calPlannedChip(hhmmOfMin(plannedMin)));
+                        sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        sb.setSpan(new RelativeSizeSpan(0.82f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    if (rolledMark) {
+                        // 昨日滚入标记（v1.23.0）：小小的「昨」字，次级色、低调，当天有效
+                        int s0 = sb.length();
+                        sb.append("  ").append(Strings.en() ? "yday" : "昨");
+                        sb.setSpan(new ForegroundColorSpan(Ui.sub(this)), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        sb.setSpan(new RelativeSizeSpan(0.78f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
                     v.setText(sb);
                 } else {
                     v.setText(done ? titleText + " ✓" : titleText);

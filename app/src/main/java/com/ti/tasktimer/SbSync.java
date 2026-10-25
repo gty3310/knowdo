@@ -7,8 +7,10 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -501,6 +503,78 @@ public final class SbSync {
             return "保存计划块失败（" + e.status + "）";
         } catch (Exception e) {
             return "保存计划块失败：" + e.getMessage();
+        }
+    }
+
+    /**
+     * 本地自动排程落盘（Supabase 模式，写入口之三的云端实现，纪律与桥模式一致）：
+     * 先读云端最新 user_state.schedule 当底 → 只往空档加新块 → upsert → 更新本地缓存。
+     * 未登录/网络失败时只按本地缓存算计划、written=false，不落盘，等下一次触发再试。
+     */
+    public static LocalAutoScheduler.Plan autoFillSchedule(
+            Context c, List<LocalAutoScheduler.Candidate> cands, String updatedBy) {
+        String today = TaskItem.today();
+        int nowMin = DayAccount.nowMinutes();
+        LocalAutoScheduler.Plan fallback = LocalAutoScheduler.plan(cands,
+                LocalAutoScheduler.blocksOf(SyncManager.latestSchedule(c), today), nowMin);
+        if (!Supa.isLoggedIn(c)) return fallback;
+        try {
+            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
+            List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
+            LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin);
+            if (plan.additions.isEmpty()) return plan;
+            List<LocalAutoScheduler.Block> merged = new ArrayList<>(base);
+            merged.addAll(plan.additions);
+            JSONObject nsch = LocalAutoScheduler.scheduleJson(today, merged);
+            nsch.put("updatedAtMs", System.currentTimeMillis());
+            nsch.put("updatedBy", updatedBy);
+            SyncManager.cacheSchedule(c, nsch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", nsch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            plan.written = true;
+            return plan;
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    /**
+     * 聊天排程提案卡点「应用」落盘（Supabase 模式，写入口之四的云端实现）：
+     * 读云端最新 schedule → mergeProposal 合并（已过去/已完成的块保留，其余按卡落盘）
+     * → upsert → 回读校验块数。返回 null 表示成功，否则是可读的失败原因。
+     */
+    public static String applyScheduleProposal(Context c, TaskStore store,
+                                               List<LocalAutoScheduler.Block> cardBlocks,
+                                               String updatedBy) {
+        if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法保存排程";
+        String today = TaskItem.today();
+        try {
+            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
+            List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
+            List<LocalAutoScheduler.Block> merged = LocalAutoScheduler.mergeProposal(
+                    base, cardBlocks, store, DayAccount.nowMinutes());
+            JSONObject nsch = LocalAutoScheduler.scheduleJson(today, merged);
+            nsch.put("updatedAtMs", System.currentTimeMillis());
+            nsch.put("updatedBy", updatedBy);
+            SyncManager.cacheSchedule(c, nsch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", nsch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            List<LocalAutoScheduler.Block> got = chk.length() > 0
+                    ? LocalAutoScheduler.blocksOf(chk.getJSONObject(0).optJSONObject("schedule"), today)
+                    : new ArrayList<>();
+            return got.size() == merged.size() ? null : "已写回但回读块数对不上，请刷新日历确认";
+        } catch (Supa.Err e) {
+            if (e.network) return "离线，暂时存不了排程，联网后再点一次应用";
+            return "保存排程失败（" + e.status + "）";
+        } catch (Exception e) {
+            return "保存排程失败：" + e.getMessage();
         }
     }
 
