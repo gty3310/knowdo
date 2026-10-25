@@ -136,6 +136,18 @@ public class GuardActivity extends Activity {
             finish();
         });
         root.addView(allow);
+
+        // 诊断行（v1.21.4）：只在 diag_mode 开启、且本次问询是语义判定在
+        // 降级状态下触发时，才在页底显示这一行；普通用户永不出现
+        if (contentMode && ScreenGuardPrefs.diagMode(this)
+                && VerdictEngine.lastInquirySemanticDegraded(this)) {
+            TextView diag = new TextView(this);
+            diag.setText("大模型无法连接，用本地小模型");
+            diag.setTextSize(13);
+            diag.setTextColor(Color.GRAY);
+            diag.setPadding(0, dp(20), 0, 0);
+            root.addView(diag);
+        }
     }
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------

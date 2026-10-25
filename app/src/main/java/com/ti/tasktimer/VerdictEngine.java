@@ -47,6 +47,11 @@ public final class VerdictEngine {
         TimerState.logEvent(c, "屏幕内容守卫：本次计时没有截图授权（自动开始的任务无法弹授权框），本次不采样");
     }
 
+    /** 最近一次问询是否由语义判定在降级状态下触发（GuardActivity 诊断行用）。 */
+    public static boolean lastInquirySemanticDegraded(Context c) {
+        return prefs(c).getBoolean("inquiry_semantic_degraded", false);
+    }
+
     public static void onResult(Context c, ContentAnalyzer.Result r, TaskItem task) {
         SharedPreferences p = prefs(c);
         if (r == null || r.category == null) {
@@ -90,7 +95,10 @@ public final class VerdictEngine {
         // 到点复查「是不是还停在当时那个分神应用」就靠它比对
         String fg = currentForeground(c);
         SharedPreferences.Editor e = prefs(c).edit().remove("last_cat").remove("streak")
-                .putLong("cooldown_until", now + COOLDOWN_MS);
+                .putLong("cooldown_until", now + COOLDOWN_MS)
+                // 本次问询是否「语义判定触发且当时在降级」（v1.21.4）：只供
+                // diag_mode 开启时问询页底部显示诊断行，普通用户永远看不到
+                .putBoolean("inquiry_semantic_degraded", "degraded".equals(r.semanticSource));
         if (fg != null) e.putString("inquiry_pkg", fg); else e.remove("inquiry_pkg");
         e.apply();
         GuardEvents.add(c, task, r.category, r.confidence, r.detail);

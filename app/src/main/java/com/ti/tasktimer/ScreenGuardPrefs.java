@@ -82,4 +82,65 @@ public final class ScreenGuardPrefs {
     public static void setGraceActionQuit(Context c, boolean quit) {
         prefs(c).edit().putBoolean("grace_action_quit", quit).apply();
     }
+
+    // ---- 语义判定（v1.21.4） ----
+    /**
+     * 「语义判定」独立开关（默认开）：守卫粗判拿不准时，本地向量预筛之后
+     * 还拿不准，才把打码后的屏幕文字发云端大模型终判。关掉则只跑本地
+     * 预筛，任何数据都不出手机（SemanticJudge 一行云端调用都不许发）。
+     */
+    public static boolean semanticEnabled(Context c) {
+        return prefs(c).getBoolean("semantic_enabled", true);
+    }
+
+    public static void setSemanticEnabled(Context c, boolean on) {
+        prefs(c).edit().putBoolean("semantic_enabled", on).apply();
+    }
+
+    /**
+     * 诊断显示开关（内部 key diag_mode，UI 文案暂用「测试模式」，最终名称
+     * 待用户定）：给愿意帮忙 debug、检查软件错误的用户用的模式，默认关。
+     * 开启后判定展示底部才会出现诊断行（如降级时的「大模型无法连接，
+     * 用本地小模型」）；与守卫测试模式（test_mode）是两回事，互不影响。
+     */
+    public static boolean diagMode(Context c) {
+        return prefs(c).getBoolean("diag_mode", false);
+    }
+
+    public static void setDiagMode(Context c, boolean on) {
+        prefs(c).edit().putBoolean("diag_mode", on).apply();
+    }
+
+    // ---- 语义云端退避（SemanticJudge 用）：连续失败后一段时间内不再试云端 ----
+    public static long semanticBackoffUntil(Context c) {
+        return prefs(c).getLong("semantic_backoff_until", 0);
+    }
+
+    public static int semanticFailStreak(Context c) {
+        return prefs(c).getInt("semantic_fail_streak", 0);
+    }
+
+    /** 记一次云端失败：streak+1，退避 10 分钟起、指数翻倍、上限 30 分钟。 */
+    public static void noteSemanticCloudFailure(Context c) {
+        int streak = semanticFailStreak(c) + 1;
+        long mins = Math.min(30L, 10L << Math.min(streak - 1, 2));
+        if (streak >= 3) mins = 30L;
+        prefs(c).edit()
+                .putInt("semantic_fail_streak", streak)
+                .putLong("semantic_backoff_until", System.currentTimeMillis() + mins * 60_000L)
+                .apply();
+    }
+
+    public static void noteSemanticCloudSuccess(Context c) {
+        prefs(c).edit().remove("semantic_fail_streak").remove("semantic_backoff_until").apply();
+    }
+
+    /** 降级放行备注的节流：同一退避窗口只记一条（GuardEvents 备注用）。 */
+    public static long semanticNoteForBackoff(Context c) {
+        return prefs(c).getLong("semantic_note_backoff", -1);
+    }
+
+    public static void setSemanticNoteForBackoff(Context c, long backoffUntil) {
+        prefs(c).edit().putLong("semantic_note_backoff", backoffUntil).apply();
+    }
 }

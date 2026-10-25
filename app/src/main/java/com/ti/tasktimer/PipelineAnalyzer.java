@@ -14,7 +14,9 @@ import android.provider.Settings;
  *    不许因为重排序漏掉浏览器/社交里的黄图；
  * 4) 文字规则兜底：节点文字够多（紧凑 ≥30 字）就用节点文字跑完整规则（含「无关」判定），
  *    不跑 OCR；节点文字过少才跑 ML Kit OCR 再判。
- * 三级 VlmAnalyzer 本版不实现（只留 ContentAnalyzer 接口），日后接入时插在这里第 5 步。
+ * 5) 语义判定层（v1.21.4，SemanticJudge）：只复核第 4 步的「拿不准」——
+ *    不表态、关键词放行、0.55 低置信「无关」；明确结论（包名类别/关键词
+ *    命中/NudeNet）在前面已经返回，不经过语义层。语义层无从判定时维持粗判。
  */
 public class PipelineAnalyzer implements ContentAnalyzer {
     private final NudeNetAnalyzer nudeNet = new NudeNetAnalyzer();
@@ -31,6 +33,7 @@ public class PipelineAnalyzer implements ContentAnalyzer {
     /** nodeText 为无障碍节点文字（录屏回退通道传 null，走原 OCR 路径）。 */
     public Result analyze(Context c, Bitmap bmp, TaskItem task, String fgPkg, String nodeText) {
         lastText = nodeText != null ? nodeText : "";
+        SemanticJudge.beginFrame();
         if (fgPkg != null && isExempt(c, fgPkg, task)) return Result.none();
 
         if (PkgCategories.isShopping(fgPkg)) {
@@ -53,13 +56,25 @@ public class PipelineAnalyzer implements ContentAnalyzer {
         Result nude = nudeNet.analyze(c, bmp, task, fgPkg);
         if (nude.category != null) return nude;
 
-        if (relevant) return Result.none();
-        if (haveNodeText && nodeText.replaceAll("\\s+", "").length() >= 30) {
-            return ocr.judgeText(nodeText, task, fgPkg);
+        if (relevant) {
+            // 关键词放行属于「置信不足的放行」：语义层复核，可能维持放行、也可能判不相关
+            Result s = SemanticJudge.refine(c, task, fgPkg, lastText, Result.none());
+            return s != null ? s : Result.none();
         }
-        Result r = ocr.analyze(c, bmp, task, fgPkg);
-        lastText = ocr.lastText;
-        return r;
+        Result coarse;
+        if (haveNodeText && nodeText.replaceAll("\\s+", "").length() >= 30) {
+            coarse = ocr.judgeText(nodeText, task, fgPkg);
+        } else {
+            coarse = ocr.analyze(c, bmp, task, fgPkg);
+            lastText = ocr.lastText;
+        }
+        // judgeText/OCR 的关键词命中是明确结论，原样返回；只有不表态与
+        // 低置信「无关」才升级语义层复核（语义层可能推翻「无关」为放行）
+        if (coarse.category == null || CAT_UNRELATED.equals(coarse.category)) {
+            Result s = SemanticJudge.refine(c, task, fgPkg, lastText, coarse);
+            if (s != null) return s;
+        }
+        return coarse;
     }
 
     /** 文字与当前任务是否强相关（测试模式在结论为「不判分神」时区分显示用）。 */

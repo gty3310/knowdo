@@ -397,11 +397,17 @@ public class SettingsActivity extends Activity {
                 arrowBtn("›"), v -> startActivity(new Intent(this, PermActivity.class)));
         Switch sg = mkSwitch(ScreenGuardPrefs.enabled(this));
         sg.setOnCheckedChangeListener((b, on) -> {
-            ScreenGuardPrefs.setEnabled(this, on);
-            if (on && TimerState.isRunning(this)) ScreenCaptureService.onTimerStarted(this);
-            if (!on) ScreenCaptureService.onTimerStopped(this);
-            toast(on ? (Strings.en() ? "Screen content guard on" : "屏幕内容守卫已打开：下次开始计时时会请你授权一次截屏")
-                    : (Strings.en() ? "Screen content guard off" : "屏幕内容守卫已关闭"));
+            if (on) {
+                // v1.21.4：模型按需下载后，开守卫先过闸门——模型没下好先弹下载引导，不直接开
+                GuardEnableGate.tryEnable(this, () -> toast(Strings.en()
+                        ? "Screen content guard on"
+                        : "屏幕内容守卫已打开：下次开始计时时会请你授权一次截屏"));
+            } else {
+                ScreenGuardPrefs.setEnabled(this, false);
+                ScreenCaptureService.onTimerStopped(this);
+                toast(Strings.en() ? "Screen content guard off" : "屏幕内容守卫已关闭");
+            }
+            buildUi();
         });
         row(Strings.rowScreenGuard(), Strings.en() ? "Details & capture grant live in Permissions"
                 : "细项与截屏授权在权限页", sg, null);
@@ -412,6 +418,39 @@ public class SettingsActivity extends Activity {
                     : (Strings.en() ? "NSFW back to two confirmations" : "黄色类恢复两次确认"));
         });
         row(Strings.rowNsfwOneShot(), null, ns, null);
+        // 语义判定（v1.21.4）：粗判拿不准时先本地预筛、再云端终判；关掉只本地判、数据不出手机
+        Switch sem = mkSwitch(ScreenGuardPrefs.semanticEnabled(this));
+        sem.setOnCheckedChangeListener((b, on) -> {
+            ScreenGuardPrefs.setSemanticEnabled(this, on);
+            toast(on ? (Strings.en() ? "Semantic verdicts on" : "语义判定已打开")
+                    : (Strings.en() ? "Semantic verdicts off: on-device judging only, nothing leaves the phone"
+                    : "语义判定已关闭：只用手机本地判定，任何数据都不出手机"));
+        });
+        row(Strings.en() ? "Semantic verdicts" : "语义判定",
+                Strings.en() ? "When the guard can't decide, it compares the screen text with your task — "
+                        + "on-device first, and only if still unsure, the masked text (never an image) goes "
+                        + "to a cloud model for the final call. Turn it off and judging stays fully on-device"
+                        : "守卫拿不准时把屏幕文字和任务比一比：先用手机本地的小模型比，还拿不准才把文字"
+                        + "（敏感信息已自动打码，绝不发图）发给云端大模型帮判。关掉则只用手机本地判定，任何数据都不出手机",
+                sem, null);
+        // 诊断显示（内部 key diag_mode，UI 暂名「测试模式」，最终名称待用户定）：
+        // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
+        Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));
+        dg.setOnCheckedChangeListener((b, on) -> {
+            ScreenGuardPrefs.setDiagMode(this, on);
+            toast(on ? (Strings.en() ? "Test mode on: verdicts will show diagnostic source info"
+                            : "测试模式已打开：判定结果会显示来源等诊断信息")
+                    : (Strings.en() ? "Test mode off" : "测试模式已关闭"));
+        });
+        row(Strings.en() ? "Test mode" : "测试模式",
+                Strings.en() ? "For people helping debug and check the app for errors: verdicts show "
+                        + "where each call came from and other diagnostic info"
+                        : "打开后，判定结果会显示来源等诊断信息，方便帮忙查错",
+                dg, null);
+        row(Strings.en() ? "Model downloads" : "模型下载",
+                Strings.en() ? "Guard models are downloaded on demand, not packed into the app"
+                        : "守卫用的模型按需下载，不再装进安装包",
+                arrowBtn("›"), v -> startActivity(new Intent(this, ModelActivity.class)));
         // 任务衔接守卫（v1.10.0）：只存本地（IdleGuard prefs），不进同步；关掉时看门狗整体停用
         Switch ng = mkSwitch(IdleGuard.enabled(this));
         ng.setOnCheckedChangeListener((b, on) -> {

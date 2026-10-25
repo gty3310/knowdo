@@ -63,6 +63,23 @@ public final class SupaSecrets {
 }
 EOF
 
+# Gitee 模型仓读令牌（v1.21.4）：从本地文件 resources_token.txt 生成 ResourcesSecrets.java
+# （与 SupaSecrets 同办法；令牌文件与生成类都在 .gitignore，永不入库）。
+# 文件缺失时生成空串占位，构建照常成功——App 里模型下载会给出「下载源未配置」的
+# 明确引导，真令牌到位后重构建即注入。
+_RT_FILE="$PWD/resources_token.txt"
+_RT=""
+[ -f "$_RT_FILE" ] && _RT=$(tr -d '[:space:]' < "$_RT_FILE")
+cat > app/src/main/java/com/ti/tasktimer/ResourcesSecrets.java <<EOF
+package com.ti.tasktimer;
+
+/** 构建时由 build-gradle.sh 从 resources_token.txt 生成，永不入库，请勿手改。 */
+public final class ResourcesSecrets {
+    public static final String GITEE_TOKEN = "$_RT";
+    private ResourcesSecrets() {}
+}
+EOF
+
 # 版本追溯（v1.13.0 起）：把构建时 HEAD 的 git 短 hash 注入 BuildInfo.java（生成类，永不入库），
 # App 内版本显示带上它，保证与实际构建的提交永远一致，不许手写。
 _GIT_SHORT=$(git -C "$PWD" rev-parse --short HEAD 2>/dev/null || echo "unknown")

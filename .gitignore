@@ -12,3 +12,7 @@ app/src/main/java/com/ti/tasktimer/BuildInfo.java
 
 # 桥文件母本含真实任务数据，永不进仓库（母本在仓库外 ~/workspace/knowdo-bridge/）
 sync/
+
+# Gitee 模型仓读令牌与构建时生成的令牌类（v1.21.4，与 supabase_public_key 同办法，永不入库）
+resources_token.txt
+app/src/main/java/com/ti/tasktimer/ResourcesSecrets.java

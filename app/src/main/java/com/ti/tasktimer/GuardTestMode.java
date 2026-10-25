@@ -207,6 +207,7 @@ public final class GuardTestMode {
             boolean relevant = task != null && ANALYZER.relevantToTask(
                     ANALYZER.lastText == null ? "" : ANALYZER.lastText, task);
             vb.append("判定：不判分神").append(relevant ? "（与任务相关）" : "");
+            appendSemanticLines(c, vb, r);
             lastVerdictBody = vb.toString();
             return sb.toString() + vb.toString();
         }
@@ -224,8 +225,25 @@ public final class GuardTestMode {
                 .append(confirmed ? "（已确认，正式模式会弹问询页）" : "（等下一张确认）");
         if (oneShot) vb.append("（黄色类一张即触发）");
         vb.append("\n测试模式只显示，不会真的弹窗");
+        appendSemanticLines(c, vb, r);
         lastVerdictBody = vb.toString();
         return sb.toString() + vb.toString();
+    }
+
+    /**
+     * 语义层读数（v1.21.4）：本帧过了语义层就在判定正文后补一行来源与
+     * 分数（本地预筛/云端/本地降级）；「大模型无法连接，用本地小模型」
+     * 这一行只在 diag_mode 开启、且本帧判定来自语义层降级时才出现。
+     */
+    private static void appendSemanticLines(Context c, StringBuilder vb, ContentAnalyzer.Result r) {
+        String note = SemanticJudge.lastNote;
+        if (note != null && !note.isEmpty()) {
+            vb.append("\n语义：").append(note);
+        }
+        if (r != null && ScreenGuardPrefs.diagMode(c)
+                && SemanticJudge.SRC_DEGRADED.equals(r.semanticSource)) {
+            vb.append("\n大模型无法连接，用本地小模型");
+        }
     }
 
     /** 判定对照的「尺子」任务：开测试前选定的（真实／临时）＞正在计时的＞无。 */

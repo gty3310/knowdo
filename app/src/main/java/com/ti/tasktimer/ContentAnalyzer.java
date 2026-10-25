@@ -27,6 +27,10 @@ public interface ContentAnalyzer {
         public final String category;   // null = 不判分神
         public final float confidence;  // 0~1
         public final String detail;     // 给人看的证据（命中词/检测标签/包名）
+        /** 语义层来源（v1.21.4，SemanticJudge 填写）：local=本地预筛 / cloud=云端终判 / degraded=本地降级；null=未过语义层。 */
+        public String semanticSource;
+        /** 语义层本地预筛的余弦分数（未跑预筛时 NaN），供测试窗读数与记录对账。 */
+        public float semanticScore = Float.NaN;
 
         public Result(String category, float confidence, String detail) {
             this.category = category;

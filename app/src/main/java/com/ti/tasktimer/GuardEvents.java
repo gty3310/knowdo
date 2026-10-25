@@ -30,6 +30,20 @@ public final class GuardEvents {
     private static File file(Context c) { return new File(c.getFilesDir(), FILE); }
 
     public static synchronized void add(Context c, TaskItem task, String category, float confidence, String detail) {
+        addInternal(c, task, category, confidence, detail, false);
+    }
+
+    /**
+     * 备注事件（v1.21.4）：不是一次触发，只是一条可审计的记录（如语义降级
+     * 放行），带 note=true 标记。知行指数的分神计数会跳过备注事件，
+     * 备注绝不当成一次分神扣分。
+     */
+    public static synchronized void addNote(Context c, TaskItem task, String category, float confidence, String detail) {
+        addInternal(c, task, category, confidence, detail, true);
+    }
+
+    private static synchronized void addInternal(Context c, TaskItem task, String category,
+                                                 float confidence, String detail, boolean note) {
         try {
             JSONArray arr = loadArray(c);
             JSONObject e = new JSONObject();
@@ -41,6 +55,7 @@ public final class GuardEvents {
             e.put("category", category);
             e.put("confidence", Math.round(confidence * 100.0) / 100.0);
             e.put("detail", detail == null ? "" : detail);
+            if (note) e.put("note", true);
             arr.put(e);
             saveArray(c, trim(arr));
         } catch (Exception ignored) { }

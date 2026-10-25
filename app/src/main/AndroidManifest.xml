@@ -294,5 +294,10 @@
         <activity
             android:name=".GuardTestPickActivity"
             android:exported="false" />
+
+        <!-- 模型下载页（v1.21.4）：守卫模型按需下载、校验、删除 -->
+        <activity
+            android:name=".ModelActivity"
+            android:exported="false" />
     </application>
 </manifest>

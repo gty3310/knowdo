@@ -172,9 +172,13 @@ public class PermActivity extends Activity {
         root.addView(intro);
 
         addToggleRow(root, "屏幕内容守卫总开关（默认关）", ScreenGuardPrefs.enabled(this), on -> {
-            ScreenGuardPrefs.setEnabled(this, on);
-            if (on && TimerState.isRunning(this)) ScreenCaptureService.onTimerStarted(this);
-            if (!on) ScreenCaptureService.onTimerStopped(this);
+            if (on) {
+                // v1.21.4：模型改为按需下载，开守卫先过闸门（没下好先弹下载引导）
+                GuardEnableGate.tryEnable(this, null);
+            } else {
+                ScreenGuardPrefs.setEnabled(this, false);
+                ScreenCaptureService.onTimerStopped(this);
+            }
             buildUi();
         });
 

@@ -210,6 +210,7 @@ public final class ZhixingCalc {
             for (int i = 0; i < ev.length(); i++) {
                 JSONObject e = ev.optJSONObject(i);
                 if (e == null) continue;
+                if (e.optBoolean("note", false)) continue; // 备注事件（如语义降级放行）不是分神，不计数（v1.21.4）
                 long ts = e.optLong("ts", 0);
                 if (ts >= lo && ts < hi) n++;
             }

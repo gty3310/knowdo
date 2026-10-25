@@ -5,8 +5,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,23 +45,29 @@ public final class NudeNetDetector {
     private static OrtSession session;
     private static String inputName;
     private static boolean failed;
+    private static boolean notDownloadedLogged;
 
     private NudeNetDetector() {}
 
     private static synchronized boolean ensureSession(Context c) {
         if (session != null) return true;
         if (failed) return false;
+        // v1.21.4：模型不再随包，从 ModelManager 的下载缓存加载；没下载时
+        // 明确在日志里给出去向（只记一次），不静默失效、也不崩溃
+        ModelManager.Model m = ModelManager.find(c, ModelManager.ID_NUDENET);
+        if (m == null || !ModelManager.isReady(c, m)) {
+            if (!notDownloadedLogged) {
+                notDownloadedLogged = true;
+                TimerState.logEvent(c, "屏幕守卫：黄色识别模型还没下载，去 设置 → 模型下载 里下载后这一项才会工作");
+            }
+            return false;
+        }
         try {
-            InputStream in = c.getAssets().open("nudenet320n.onnx");
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
-            in.close();
+            java.io.File f = ModelManager.mainFile(c, m);
             OrtEnvironment env = OrtEnvironment.getEnvironment();
             OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
             opts.setIntraOpNumThreads(2);
-            session = env.createSession(bos.toByteArray(), opts);
+            session = env.createSession(f.getAbsolutePath(), opts);
             inputName = session.getInputNames().iterator().next();
             return true;
         } catch (Exception e) {
