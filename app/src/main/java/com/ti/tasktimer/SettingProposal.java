@@ -48,7 +48,7 @@ public final class SettingProposal {
     /** 设置的人话名（卡面与概要用）。 */
     public static String nameOf(String key) {
         if (KEY_SEMANTIC.equals(key)) return en() ? "Semantic verdicts" : "语义判定";
-        if (KEY_DIAG.equals(key)) return en() ? "Test mode (diagnostics)" : "测试模式";
+        if (KEY_DIAG.equals(key)) return en() ? "Tester mode" : "测试者模式";
         if (KEY_GUARD.equals(key)) return en() ? "Screen-content guard" : "屏幕内容守卫";
         if (KEY_IDLE_TIER.equals(key)) return en() ? "Idle nudging" : "空档催促";
         return key;

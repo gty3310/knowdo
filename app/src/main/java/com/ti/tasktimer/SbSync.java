@@ -73,6 +73,13 @@ public final class SbSync {
         try {
             return doSync(c, store);
         } catch (Supa.Err e) {
+            // v1.24.1：失败口径不变，只在测试者模式下另经 ErrorReporter 亮出状态码/原因
+            String em = e.getMessage();
+            ErrorReporter.report(c, Strings.en() ? "Sync" : "同步", e.network ? 0 : e.status,
+                    e.network
+                            ? (Strings.en() ? "Network error" : "网络错误")
+                                    + (em == null || em.isEmpty() ? "" : "：" + em)
+                            : (em == null ? "" : em));
             if (e.network) return "离线：本地变更已保留，联网后自动同步（待同步 "
                     + pendingCount(c, store) + " 条）";
             if (e.status == 401 || e.status == 403) return "Supabase 登录已过期或无权限，"
@@ -80,6 +87,8 @@ public final class SbSync {
             String m = e.getMessage();
             return "Supabase 同步失败（" + e.status + "）：" + (m == null ? "" : m.substring(0, Math.min(120, m.length())));
         } catch (Exception e) {
+            ErrorReporter.report(c, Strings.en() ? "Sync" : "同步", 0,
+                    ErrorReporter.summarize(e));
             return "Supabase 同步失败：" + e.getMessage();
         } finally {
             SYNCING.set(false);
@@ -537,6 +546,10 @@ public final class SbSync {
             plan.written = true;
             return plan;
         } catch (Exception e) {
+            // 写回失败静默回落本地计划的口径不变；测试者模式下亮出原因（v1.24.1）
+            ErrorReporter.report(c, Strings.en() ? "Auto-schedule" : "自动排程",
+                    e instanceof Supa.Err ? ((Supa.Err) e).status : 0,
+                    ErrorReporter.summarize(e));
             return fallback;
         }
     }

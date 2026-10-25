@@ -235,6 +235,8 @@ public final class ModelManager {
     public static synchronized boolean download(Context c, Model m, Progress progress, String[] err) {
         if (!sourceConfigured()) {
             if (err != null) err[0] = "下载源未配置";
+            ErrorReporter.report(c, Strings.en() ? "Model download" : "模型下载", 0,
+                    Strings.en() ? "Download source not configured" : "下载源未配置");
             return false;
         }
         File dir = modelDir(c, m.id);
@@ -315,6 +317,10 @@ public final class ModelManager {
             return true;
         } catch (Exception e) {
             if (err != null) err[0] = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            // 失败口径不变（原因照旧走 err[0] 给调用方）；测试者模式下另弹悬浮窗，
+            // 下载类异常的消息里本就带 HTTP 状态码（如「下载 X 失败（HTTP 401）」）
+            ErrorReporter.report(c, Strings.en() ? "Model download" : "模型下载", 0,
+                    ErrorReporter.summarize(e));
             return false;
         }
     }

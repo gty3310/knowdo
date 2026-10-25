@@ -98,10 +98,12 @@ public final class ScreenGuardPrefs {
     }
 
     /**
-     * 诊断显示开关（内部 key diag_mode，UI 文案暂用「测试模式」，最终名称
-     * 待用户定）：给愿意帮忙 debug、检查软件错误的用户用的模式，默认关。
-     * 开启后判定展示底部才会出现诊断行（如降级时的「大模型无法连接，
-     * 用本地小模型」）；与守卫测试模式（test_mode）是两回事，互不影响。
+     * 诊断显示开关（内部 key diag_mode，UI 文案「测试者模式」——v1.24.1
+     * 用户钦定，原暂名「测试模式」）：给愿意帮忙 debug、检查软件错误
+     * 的用户用的模式，默认关。开启后判定展示底部才会出现诊断行（如降级
+     * 时的「大模型无法连接，用本地小模型」），且软件内部报错会经
+     * ErrorReporter 弹悬浮窗亮出状态码与原因；与守卫测试模式
+     * （test_mode）是两回事，互不影响。
      */
     public static boolean diagMode(Context c) {
         return prefs(c).getBoolean("diag_mode", false);

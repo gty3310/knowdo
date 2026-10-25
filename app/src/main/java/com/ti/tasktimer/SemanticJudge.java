@@ -216,19 +216,39 @@ public final class SemanticJudge {
             out.close();
             int status = con.getResponseCode();
             InputStream in = status >= 400 ? con.getErrorStream() : con.getInputStream();
-            if (in == null) return null;
+            if (in == null) {
+                return cloudFail(c, status, Strings.en() ? "Cloud judge returned no body"
+                        : "云端终判没有返回内容");
+            }
             JSONObject r = new JSONObject(Supa.readAll(in));
-            if (r.optBoolean("fallback", true)) return null;
+            if (r.optBoolean("fallback", true)) {
+                // 代理口径：失败/超时/额度问题一律 fallback:true 并带 error 字段
+                String err = r.optString("error", "");
+                if (err.isEmpty()) err = r.optString("message", "");
+                return cloudFail(c, status, err.isEmpty()
+                        ? (Strings.en() ? "Judge proxy returned fallback" : "判定代理返回 fallback（云端不可用）")
+                        : err);
+            }
             CloudVerdict v = new CloudVerdict();
             v.relevant = r.optBoolean("relevant", false);
             v.confidence = (float) r.optDouble("confidence", 0.6);
             v.reason = r.optString("reason", "");
             return v;
         } catch (Exception e) {
-            return null;
+            return cloudFail(c, 0, ErrorReporter.summarize(e));
         } finally {
             if (con != null) con.disconnect();
         }
+    }
+
+    /**
+     * 云端终判失败的统一出口（v1.24.1）：降级口径不变（照旧返回 null 走本地
+     * 降级），只多一步——测试者模式开启时把状态码/fallback 原因经
+     * ErrorReporter 亮出来。失败本身已被退避纪律节流，不会逐帧刷屏。
+     */
+    private static CloudVerdict cloudFail(Context c, int status, String detail) {
+        ErrorReporter.report(c, Strings.en() ? "Guard verdict" : "守卫判定", status, detail);
+        return null;
     }
 
     // ---------------- 上传前数据最小化（App 侧第一道，与代理侧同口径） ----------------

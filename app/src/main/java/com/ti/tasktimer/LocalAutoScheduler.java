@@ -246,7 +246,12 @@ public final class LocalAutoScheduler {
         new Thread(() -> {
             try {
                 SyncManager.autoFillSchedule(app, snap, "KnowDo App（本地自动排程）");
-            } catch (Exception ignored) { }
+            } catch (Exception e) {
+                // 两个实现内部都已吞异常回落，这里兜的是计划外的漏网；
+                // 口径不变，只在测试者模式下亮出（v1.24.1）
+                ErrorReporter.report(app, Strings.en() ? "Auto-schedule" : "自动排程", 0,
+                        ErrorReporter.summarize(e));
+            }
             RUNNING.set(false);
             MAIN.post(() -> {
                 if (onDone != null) onDone.run();

@@ -390,12 +390,17 @@ public class SyncManager {
             plan.written = writeRemote(c, uri, carrier, remote.guardEvents, sch);
             if (!plan.written) {
                 // 写失败：本地缓存回滚到远端那份，别让界面显示没落盘的排程
+                ErrorReporter.report(c, Strings.en() ? "Auto-schedule" : "自动排程", 0,
+                        Strings.en() ? "Writing the bridge file failed; local cache rolled back"
+                                : "回写桥文件失败，本地排程缓存已回滚");
                 if (remote.schedule != null) {
                     prefs(c).edit().putString(KEY_SCHEDULE, remote.schedule.toString()).apply();
                 }
             }
             return plan;
         } catch (Exception e) {
+            ErrorReporter.report(c, Strings.en() ? "Auto-schedule" : "自动排程", 0,
+                    ErrorReporter.summarize(e));
             return LocalAutoScheduler.plan(cands,
                     LocalAutoScheduler.blocksOf(latestSchedule(c), today), nowMin);
         }

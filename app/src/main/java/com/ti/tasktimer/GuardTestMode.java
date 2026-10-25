@@ -117,6 +117,7 @@ public final class GuardTestMode {
         final boolean[] abandoned = new boolean[1];
         final CountDownLatch latch = new CountDownLatch(1);
         GuardTestWindow.setCaptureHidden(true);
+        ErrorReporter.setCaptureHidden(true); // 测试者模式报错窗同理，别把报错文字拍进帧里
         boolean arrived;
         try {
             // 等合成器把窗口撤下再截（亚秒级），避免抢拍到半透明的残影
@@ -133,6 +134,7 @@ public final class GuardTestMode {
             catch (InterruptedException e) { abandoned[0] = true; arrived = false; }
         } finally {
             GuardTestWindow.setCaptureHidden(false);
+            ErrorReporter.setCaptureHidden(false);
         }
         if (abandoned[0]) return; // 被中断：与原口径一致，静默收尾（窗口已在 finally 恢复）
         if (!arrived) {

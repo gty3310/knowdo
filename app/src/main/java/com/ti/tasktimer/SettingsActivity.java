@@ -433,19 +433,21 @@ public class SettingsActivity extends Activity {
                         : "守卫拿不准时把屏幕文字和任务比一比：先用手机本地的小模型比，还拿不准才把文字"
                         + "（敏感信息已自动打码，绝不发图）发给云端大模型帮判。关掉则只用手机本地判定，任何数据都不出手机",
                 sem, null);
-        // 诊断显示（内部 key diag_mode，UI 暂名「测试模式」，最终名称待用户定）：
+        // 测试者模式（内部 key diag_mode，v1.24.1 由暂名「测试模式」正式改名，用户钦定）：
         // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
         Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));
         dg.setOnCheckedChangeListener((b, on) -> {
             ScreenGuardPrefs.setDiagMode(this, on);
-            toast(on ? (Strings.en() ? "Test mode on: verdicts will show diagnostic source info"
-                            : "测试模式已打开：判定结果会显示来源等诊断信息")
-                    : (Strings.en() ? "Test mode off" : "测试模式已关闭"));
+            toast(on ? (Strings.en() ? "Tester mode on: internal errors pop up with their status codes"
+                            : "测试者模式已打开：内部报错会弹悬浮窗亮出状态码")
+                    : (Strings.en() ? "Tester mode off" : "测试者模式已关闭"));
         });
-        row(Strings.en() ? "Test mode" : "测试模式",
+        row(Strings.en() ? "Tester mode" : "测试者模式",
                 Strings.en() ? "For people helping debug and check the app for errors: verdicts show "
-                        + "where each call came from and other diagnostic info"
-                        : "打开后，判定结果会显示来源等诊断信息，方便帮忙查错",
+                        + "where each call came from, and internal errors pop up in a small overlay "
+                        + "with their HTTP status and reason for about five seconds"
+                        : "打开后，判定结果会显示来源等诊断信息；软件内部报错还会额外弹一个"
+                        + "悬浮窗（约 5 秒），把状态码和原因亮出来，方便帮忙查错",
                 dg, null);
         row(Strings.en() ? "Model downloads" : "模型下载",
                 Strings.en() ? "Guard models are downloaded on demand, not packed into the app"
