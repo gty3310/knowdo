@@ -82,20 +82,25 @@ public class MainActivity extends Activity {
     private TextView fabView;
     private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
     private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
-    // ---- v1.16.0 底部三 Tab：日程（原主页内容）／习惯／知行 ----
+    // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」 ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
+    /** 守卫问询页「和 AI 聊聊」带过来的上下文任务 id（配合 EXTRA_OPEN_TAB=TAB_CHAT 用）。 */
+    public static final String EXTRA_CHAT_TASK = "chat_task_id";
     public static final int TAB_SCHEDULE = 0;
     public static final int TAB_HABITS = 1;
     public static final int TAB_ZHIXING = 2;
+    public static final int TAB_CHAT = 3;
     private int currentTab = TAB_SCHEDULE;
     private FrameLayout scheduleWrap;
     private FrameLayout habitContainer;
     private FrameLayout zhixingContainer;
-    private final LinearLayout[] tabCells = new LinearLayout[3];
-    private final TextView[] tabLabels = new TextView[3];
-    private final View[] tabMarks = new View[3];
+    private FrameLayout chatContainer;
+    private final LinearLayout[] tabCells = new LinearLayout[4];
+    private final TextView[] tabLabels = new TextView[4];
+    private final View[] tabMarks = new View[4];
     private HabitPage habitPage;
     private ZhixingPage zhixingPage;
+    private ChatPanel chatPanel;
     private String expandedTaskId; // 手风琴：当前展开的任务 id（一次一个）
     private final java.util.Set<String> expandedDays = new java.util.HashSet<>();
     private static final int REQ_CAL_CAPTURE = 44;
@@ -142,6 +147,7 @@ public class MainActivity extends Activity {
         // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+            applyChatTaskExtra(getIntent());
         }
     }
 
@@ -151,7 +157,22 @@ public class MainActivity extends Activity {
         setIntent(intent);
         if (intent != null && intent.hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(intent.getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+            applyChatTaskExtra(intent);
         }
+    }
+
+    /** 问询页「和 AI 聊聊」带来的上下文任务：切到聊聊页签后把它设成在聊的任务（只消费一次）。 */
+    private void applyChatTaskExtra(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_CHAT_TASK)) return;
+        String tid = intent.getStringExtra(EXTRA_CHAT_TASK);
+        intent.removeExtra(EXTRA_CHAT_TASK);
+        if (tid != null && chatPanel != null) chatPanel.setTaskContext(tid);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (chatPanel != null) chatPanel.detach();
+        super.onDestroy();
     }
 
     @Override
@@ -287,8 +308,8 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Ui.bg(this));
         setContentView(root);
 
-        // v1.16.0：根改为「页面区（权重 1）＋底部三 Tab」纵列；日程页＝原主页内容整套，
-        // 习惯/知行是同级的两个页面容器（懒构建、切过去时刷新），日历与抽屉仍盖在最上层。
+        // v1.16.0：根改为「页面区（权重 1）＋底部 Tab」纵列；日程页＝原主页内容整套，
+        // 习惯/知行/聊聊（v1.24.0 加）是同级的页面容器（懒构建、切过去时刷新），日历与抽屉仍盖在最上层。
         LinearLayout mainCol = new LinearLayout(this);
         mainCol.setOrientation(LinearLayout.VERTICAL);
         root.addView(mainCol, new FrameLayout.LayoutParams(
@@ -306,6 +327,10 @@ public class MainActivity extends Activity {
         zhixingContainer = new FrameLayout(this);
         zhixingContainer.setVisibility(View.GONE);
         pages.addView(zhixingContainer, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        chatContainer = new FrameLayout(this);
+        chatContainer.setVisibility(View.GONE);
+        pages.addView(chatContainer, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         buildTabBar(mainCol);
 
@@ -491,7 +516,7 @@ public class MainActivity extends Activity {
         refreshStatus();
     }
 
-    // ---------------- 底部三 Tab（v1.16.0） ----------------
+    // ---------------- 底部 Tab（v1.16.0 三签；v1.24.0 加第四签「聊聊」） ----------------
     // 日程＝原主页内容整套（顶栏/细条/任务表/FAB 都在 scheduleWrap 里），习惯与知行是
     // 懒构建的同级页面；切换只改可见性，不销毁任何页面，状态不丢。抽屉仍是 root 层
     // 覆盖物；日历自 v1.18.0 起在日程页内容区里与任务表分屏，不再盖住 Tab 栏，
@@ -507,9 +532,10 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Ui.surface(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
-        String[] icons = {"🗓️", "🌱", "◎"};
-        String[] labels = {Strings.tabSchedule(), Strings.tabHabits(), Strings.tabZhixing()};
-        for (int i = 0; i < 3; i++) {
+        String[] icons = {"🗓️", "🌱", "◎", "💬"};
+        String[] labels = {Strings.tabSchedule(), Strings.tabHabits(), Strings.tabZhixing(),
+                Strings.tabChat()};
+        for (int i = 0; i < 4; i++) {
             final int idx = i;
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
@@ -543,7 +569,7 @@ public class MainActivity extends Activity {
     }
 
     private void paintTabs() {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < tabLabels.length; i++) {
             if (tabLabels[i] == null) continue;
             boolean on = i == currentTab;
             tabLabels[i].setTextColor(on ? Ui.text(this) : Ui.sub(this));
@@ -554,11 +580,12 @@ public class MainActivity extends Activity {
     }
 
     public void switchTab(int tab) {
-        if (tab < TAB_SCHEDULE || tab > TAB_ZHIXING) tab = TAB_SCHEDULE;
+        if (tab < TAB_SCHEDULE || tab > TAB_CHAT) tab = TAB_SCHEDULE;
         currentTab = tab;
         if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
         if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
+        if (chatContainer != null) chatContainer.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
         paintTabs();
         // 日历保持离开前的展开状态（v1.18.0）：切走只停面板周期刷新，回来再续上
         if (calendarPanel != null && calOpen) {
@@ -571,6 +598,9 @@ public class MainActivity extends Activity {
         } else if (tab == TAB_ZHIXING) {
             if (zhixingPage == null) zhixingPage = new ZhixingPage(this, zhixingContainer);
             zhixingPage.refresh(store);
+        } else if (tab == TAB_CHAT) {
+            if (chatPanel == null) chatPanel = new ChatPanel(this, chatContainer, false);
+            else chatPanel.refresh();
         }
     }
 
@@ -642,7 +672,7 @@ public class MainActivity extends Activity {
 
         panel.addView(drawerRow(Strings.en() ? "Chat with AI" : "和 AI 聊聊", v -> {
             closeDrawer();
-            ChatActivity.openGeneral(this);
+            switchTab(TAB_CHAT); // v1.24.0：聊天已是底部页签，抽屉入口改向页签（同一条主线）
         }));
         panel.addView(drawerRow(Strings.help(), v -> {
             closeDrawer();

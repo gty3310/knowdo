@@ -102,6 +102,10 @@ public final class VerdictEngine {
         if (fg != null) e.putString("inquiry_pkg", fg); else e.remove("inquiry_pkg");
         e.apply();
         GuardEvents.add(c, task, r.category, r.confidence, r.detail);
+        // 主动陪聊（v1.24.0）：分神确认的落账点就在这里——确认一次分神，AI 就往
+        // 聊天主线发一条陪聊消息（同一计时会话最多一条，冷却在 ChatHooks 里把关）。
+        // 只加落账，不改任何判定/触发行为。
+        ChatHooks.onDistractionConfirmed(c, task);
         TimerState.logEvent(c, "屏幕内容守卫：判定分神「" + ContentAnalyzer.label(r.category)
                 + "」（置信 " + String.format(java.util.Locale.US, "%.2f", r.confidence) + "）" + r.detail);
         FloatingWindow.setSuppressed(true);

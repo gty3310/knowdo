@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1240 = new Entry("v1.24.0", "2026-10-25");
+        e1240.add(new Group(s("新功能", "New"),
+                s("聊天机器人正式成为底部的一个页签，叫「聊聊」。一，进页签就能跟 AI 聊天：它能帮你新建、修改、删除任务（老规矩，先出提案卡，你点应用才生效，删除也不例外），能教你这个软件怎么用，也能帮你改设置。二，你明显分神时，它会主动发来一条消息：「你已经很分神了啊，让我来帮帮你」，陪你聊这个任务怎么改才做得下去。三，任务超时到了结束页，页面里直接有聊天区，AI 先开口问你做得怎么样，你当场聊完再决定下一步。四，所有对话，包括它主动发的，都存在「聊聊」页签里，随时能翻",
+                  "The chat companion is now a bottom tab of its own, called Chat. One: open the tab and talk — it can suggest creating, changing or deleting tasks (same rule as always: a suggestion card first, nothing happens until you tap Apply, deletions included), it can teach you how to use this app, and it can change settings for you. Two: when you are clearly distracted, it speaks first — \"you've been pretty distracted, let me help you with that\" — and talks through how this task could be reshaped so you can actually do it. Three: when a task runs out of time, the end page now has a chat area right inside it; the AI opens by asking how it went, you talk it through on the spot, then decide what comes next. Four: every conversation, including the ones it starts, lives in the Chat tab, ready to scroll back through")));
+        e1240.why = s("聊天不该是藏在角落里的功能，它应该是你随时能说话的伙伴；分神和超时正是最需要有人拉一把的时刻，它在那时出现，比事后的统计有用",
+                "Chat shouldn't be a feature tucked in a corner — it should be the companion you can talk to any time. Distraction and time-up are exactly the moments a hand helps most; showing up then beats any after-the-fact statistic");
+        e1240.tryIt = s("1）点底部「聊聊」，说「帮我建个明天读书的任务」，看提案卡再点应用；2）问它「屏幕守卫在哪关」，看答得对不对；3）让一个任务超时，在结束页的聊天区跟它说话，回页签看对话在不在；4）开守卫故意分神一次，看聊天里有没有它主动发的消息（真正开口聊天要等聊天代理部署好，没部署时它会如实提示）",
+                "1) Open the Chat tab at the bottom, say \"create a reading task for tomorrow\", check the suggestion card, then tap Apply. 2) Ask it \"where do I turn off the screen guard\" and see whether the answer is right. 3) Let a task run out of time and talk to it in the chat area on the end page, then open the Chat tab and check the conversation is there. 4) Turn the guard on and get distracted once — see whether its message shows up in the chat (real replies need the chat proxy deployed; until then it will honestly say so)");
+        out.add(e1240);
+
         Entry e1230 = new Entry("v1.23.0", "2026-10-25");
         e1230.add(new Group(s("新功能", "New"),
                 s("三件。一，任务页最上方多了「今日时间账」：今天还剩多少小时、必干的活占多少小时、还空余多少小时，一眼看清今天装不装得下，数字随你完成任务实时变。二，昨天没干完的任务会自动滚到今天变成必干：昨天到期或排进昨天日程、没做完的，今天打开就升为必干、排进今天，名字旁有个小小的「昨」字（每天重复的任务除外，它自己会再生）。三，聊天能排程了：跟 AI 说「帮我把今天重新排一下」，它按你的规矩（每件按时长乘一点五留缓冲、不排过晚上十点半、排不下会明说）给出新日程，出一张排程卡，你点「应用」才生效；新加的和滚进来的必干任务，App 会自己填进今天的空档，不用你开口",

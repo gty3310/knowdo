@@ -16,6 +16,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
@@ -33,6 +34,7 @@ public class CheckActivity extends Activity {
     private LinearLayout root;
     private Runnable primaryAction; // 回车触发的主按钮动作（当前阶段的主按钮）
     private Runnable keyQ, keyW, keyE; // 结束页前三个加时选项
+    private ChatPanel endChatPanel; // 结束页内嵌聊天区（v1.24.0，只在 showEnd 里建）
 
     // 跨设备跟随（v1.7.0）：另一端已处理（结束/加时/换任务）时，本页若还在显就关掉，别停在过期状态上
     private final android.content.BroadcastReceiver timerRemoteReceiver =
@@ -67,7 +69,16 @@ public class CheckActivity extends Activity {
         root.setBackgroundColor(Ui.bg(this));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
-        setContentView(root);
+        // v1.24.0：整页套一层纵向滚动——结束页要内嵌聊天区，内容变长后
+        // 保证「做完了/加时」等原有按钮在小屏上也够得着（短内容时视觉不变）。
+        ScrollView sv = new ScrollView(this);
+        sv.setBackgroundColor(Ui.bg(this));
+        sv.setFillViewport(true);
+        root.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        sv.addView(root);
+        setContentView(sv);
 
         if (type == AlertHelper.TYPE_HALF) showHalfStage1();
         else if (type == AlertHelper.TYPE_SUB) showSub();
@@ -90,6 +101,7 @@ public class CheckActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (endChatPanel != null) endChatPanel.detach();
         try { unregisterReceiver(timerRemoteReceiver); } catch (Exception ignored) { }
         FloatingWindow.setSuppressed(false); // 检查页关闭，悬浮窗可以回来了（计时还在走时）
         super.onDestroy();
@@ -278,9 +290,13 @@ public class CheckActivity extends Activity {
         // 结束页催促（v1.21.1）：页面真展示出来了——经响铃页转入的结束在此武装
         // 升级链（锚点＝展示时刻）；直达路径在 fire 时已武装，这里只续排无-op
         EndNag.noteEndPageShown(this);
+        // 超时陪聊（v1.24.0）：真到点了才往聊天主线落一条 AI 开场消息
+        // （同一轮结束只落一条，手动提前打开本页不落），下方再内嵌聊天区当场聊
+        ChatHooks.onTaskEndPageShown(this);
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
         addAspiration();
+        addChatZone();
         Runnable doneAct = this::completeWholeTask;
         Button done = bigButton(Strings.chkDone(), true, "Enter");
         done.setOnClickListener(v -> doneAct.run());
@@ -323,6 +339,35 @@ public class CheckActivity extends Activity {
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
+    }
+
+    /**
+     * 结束页内嵌聊天区（v1.24.0）：跟「聊聊」页签同一个 ChatPanel（紧凑模式，
+     * 显示主线最近几条＋输入框），上下文就是刚结束的这个任务。在这里聊的每一句
+     * 都实时进同一条主线，回页签能接着看。原有按钮（做完了/加时）位置与行为不动，
+     * 聊天区只是夹在志与按钮之间的一段；代理没部署时发送走既有友好报错，不假装发出。
+     */
+    private void addChatZone() {
+        TextView cap = new TextView(this);
+        cap.setText(Strings.en() ? "Talk it over with AI first" : "先跟 AI 聊聊");
+        cap.setTextSize(14);
+        cap.setTextColor(Ui.sub(this));
+        cap.setGravity(Gravity.CENTER);
+        cap.setPadding(0, 0, 0, dp(6));
+        root.addView(cap);
+        LinearLayout holder = new LinearLayout(this);
+        holder.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(14));
+        g.setColor(Ui.surface(this));
+        g.setStroke(1, Ui.line(this));
+        holder.setBackground(g);
+        root.addView(holder, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        if (endChatPanel != null) endChatPanel.detach();
+        endChatPanel = new ChatPanel(this, holder, true);
+        endChatPanel.setTaskContext(TimerState.taskId(this));
+        spacer();
     }
 
     private Button extendButton(String text, final int addSec, String kbd) {

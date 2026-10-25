@@ -136,6 +136,23 @@ public class GuardActivity extends Activity {
             finish();
         });
         root.addView(allow);
+        spacer(root, 12);
+
+        // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
+        // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
+        // 聊天里 AI 已收到分神主动消息（内容守卫确认分神时落账），可以接着聊。
+        Button chat = bigButton(Strings.en() ? "Chat with AI about this" : "和 AI 聊聊", Color.rgb(90, 90, 90));
+        chat.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(this, MainActivity.class);
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            i.putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_CHAT);
+            String tid = TimerState.taskId(this);
+            if (tid != null && !tid.isEmpty()) i.putExtra(MainActivity.EXTRA_CHAT_TASK, tid);
+            try { startActivity(i); } catch (Exception ignored) { }
+            finish();
+        });
+        root.addView(chat);
 
         // 诊断行（v1.21.4）：只在 diag_mode 开启、且本次问询是语义判定在
         // 降级状态下触发时，才在页底显示这一行；普通用户永不出现

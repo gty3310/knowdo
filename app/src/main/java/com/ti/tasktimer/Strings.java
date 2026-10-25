@@ -338,6 +338,7 @@ public final class Strings {
     public static String tabSchedule() { return s("日程", "Schedule"); }
     public static String tabHabits() { return s("习惯", "Habits"); }
     public static String tabZhixing() { return s("知行", "Zhixing"); }
+    public static String tabChat() { return s("聊聊", "Chat"); }
     public static String grpMorning() { return s("晨间", "Morning"); }
     public static String rowMorning() { return s("晨间首填（每天先填习惯）", "Morning check-in (fill habits first)"); }
     public static String rowMorningSub() {
