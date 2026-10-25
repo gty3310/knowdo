@@ -218,16 +218,25 @@
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-        <!-- 晨间页（v1.16.0）：晨间首填开启后每天先到这里，填完才开启今天；不进最近任务 -->
+        <!-- 晨间页（v1.16.0；v1.17.0 起三种模式＋首触全屏）：晨间首填开启后每天先到
+             这里，填完才开启今天；不进最近任务。showWhenLocked/turnScreenOn 与其他
+             全屏页同款，供锁屏 FullScreenIntent 路径直接呈现 -->
         <activity
             android:name=".MorningActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- 习惯提醒接收器（v1.16.0）：每习惯独立提醒时间到点发通知 -->
         <receiver
             android:name=".HabitReceiver"
+            android:exported="false" />
+
+        <!-- 晨间页「暂停一会儿」到点接收器（v1.17.0）：推后时刻到，再次全屏拉起晨间页 -->
+        <receiver
+            android:name=".MorningReceiver"
             android:exported="false" />
     </application>
 </manifest>

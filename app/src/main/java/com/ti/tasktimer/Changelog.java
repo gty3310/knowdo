@@ -36,6 +36,30 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e117 = new Entry("v1.17.0", "2026-10-25");
+        e117.add(new Group(s("改进", "Improved"),
+                s("晨间页现在会在你早上第一次用手机时就全屏出现，不用先打开知行。",
+                  "The morning page now comes up full-screen the first time you use your phone in the morning — no need to open KnowDo first.")));
+        e117.add(new Group(s("新功能", "New"),
+                s("晨间页可以「暂停一会儿」：有急事先去处理，选个分钟数，它到点会自己回来。",
+                  "The morning page can \"pause for a bit\": handle the urgent thing first, pick how many minutes, and it comes back on its own when the time is up."),
+                s("设置「晨间」组里加了「测试晨间页」按钮，白天也能随时试一遍完整流程。",
+                  "A \"Test the morning page\" button in Settings → Morning lets you run the full flow any time of day."),
+                s("习惯页加了「晨间记录补记/修改」入口，可以切换日期，补改今天、昨天、前天的记录。",
+                  "The Habits page has a \"Morning records: backfill / edit\" entry — switch the date and fix up today's, yesterday's, or the day before's records.")));
+        e117.why = s("晨间首填的意义就是一天的第一件事——只有打开知行才出现，约束力不够；"
+                        + "但真有急事时也不能被一页纸堵住，所以给它一个能推后、能补记的完整闭环。",
+                "Morning check-in is meant to be the day's very first thing — appearing only when you opened "
+                        + "KnowDo wasn't binding enough; but a real emergency shouldn't be blocked by one page "
+                        + "either, so it now has the full loop: defer it, and backfill it later.");
+        e117.tryIt = s("设置 → 晨间 → 点「测试晨间页」；在页面上点「暂停一会儿」选 5 分钟，看它到点是不是自己回来；"
+                        + "再去习惯页点「晨间记录补记/修改」，切换到前天改一笔保存。",
+                "Settings → Morning → tap \"Test the morning page\"; on the page, tap \"Pause for a bit\" "
+                        + "and pick 5 minutes to watch it come back on its own; then go to Habits → "
+                        + "\"Morning records: backfill / edit\", switch to the day before yesterday, change "
+                        + "something and save.");
+        out.add(e117);
+
         Entry e1161 = new Entry("v1.16.1", "2026-10-24");
         e1161.add(new Group(s("修复", "Fixed"),
                 s("切换任务时不再被要求先填暂停卡：一个任务在计时中，直接点另一个任务的开始就会切换过去，"
@@ -150,35 +174,6 @@ public final class Changelog {
                         + "back to Strict. 4) Check a task done in the list, wait ten seconds, and see it stay done.");
         out.add(e114);
 
-        Entry e113 = new Entry("v1.13.0", "2026-10-24");
-        e113.add(new Group(s("修复", "Fixed"),
-                s("子任务立刻生效：正在计时的任务中途加子任务，马上开始计这个子任务的时间，不再等下次启动；"
-                        + "删掉正在计的子任务会立即推进到下一个，改时长按「新时长 − 已用」重算剩余，拖动排序不打断当前子任务。"
-                        + "两个悬浮窗第一行随之即刻换成子任务名和它的倒计时，「总时长」也恒等于子任务之和。",
-                  "Subtasks take over instantly: add a subtask to a task that is already timing and it starts counting "
-                        + "right away — no waiting for the next start. Deleting the running subtask advances to the next one, "
-                        + "changing a length recomputes the remainder as new length minus time used, and reordering never "
-                        + "interrupts the current subtask. Both floating windows switch their first line to the subtask and "
-                        + "its countdown at once, and the total always equals the sum of the subtasks.")));
-        e113.add(new Group(s("新功能", "New"),
-                s("更新日志弹框：每次升级后第一次打开知行会弹这个日志（就是你正在看的这个）；"
-                        + "设置页里也有入口，随时能翻看最近 5 个版本。",
-                  "What's-new popup: the first time you open KnowDo after an update, this changelog pops up "
-                        + "(the one you are reading). There is also an entry in Settings, so you can flip through "
-                        + "the latest 5 versions any time.")));
-        e113.add(new Group(s("改进", "Improved"),
-                s("日历页「问 AI」的提示词改了口径：Google 日历事件只供查看，排日程时不用避让、可以和它们重叠。",
-                  "The calendar's \"Ask AI\" prompt now matches the current rule: Google Calendar events are "
-                        + "view-only reference — scheduling does not work around them and may overlap them.")));
-        e113.why = s("子任务是你在实际使用中临时想到的拆分方式，之前要等任务重新开始才生效，不符合你「设了就开始」的预期。",
-                "Subtasks are how you split work on the fly while using the app; having to wait for the task to "
-                        + "start over broke your \"set it and it starts\" expectation.");
-        e113.tryIt = s("开始一个任务计时 → 打开大悬浮窗，点「＋加子任务」加一个 → "
-                        + "看中号和大号悬浮窗第一行是不是变成子任务名和它的倒计时。",
-                "Start timing a task → open the large floating window, tap \"+ Add subtask\" and add one → "
-                        + "check that the first line of both the medium and large floating windows now shows "
-                        + "the subtask name and its countdown.");
-        out.add(e113);
 
         return out;
     }

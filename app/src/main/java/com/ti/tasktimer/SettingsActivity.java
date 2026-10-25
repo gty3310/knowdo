@@ -102,12 +102,22 @@ public class SettingsActivity extends Activity {
         row(Strings.rowDayStart(), Strings.en() ? "The first open after this time counts as a new day"
                         : "这个时间之后第一次打开，算新的一天",
                 arrowBtn(dayStartText(ds) + " ›"), v -> pickDayStart(ds));
+        // 测试按钮（v1.17.0）：白天也能把正式晨间页完整试一遍（含暂停推后）
+        row(Strings.en() ? "Test the morning page" : "测试晨间页",
+                Strings.en() ? "Opens the real morning page — finishing it counts as today's check-in"
+                        : "打开的是正式晨间页，填完即算完成今天的晨间首填",
+                arrowBtn(Strings.en() ? "Open ›" : "打开 ›"),
+                v -> MorningGate.launchTest(this));
         TextView note = new TextView(this);
         note.setText(Strings.en()
-                ? "When on: after that time, the first open of KnowDo each day goes to the morning page — "
-                + "yesterday's habit check-in, yesterday's mini report, and a morning diary line — "
-                + "and the day only starts once all three are filled."
-                : "开启后，每天这个时间之后第一次打开知行，先进入晨间页：昨日习惯打卡＋昨日小报＋晨间日记，填完才开启今天。");
+                ? "When on: after that time, the first time you pick up your phone each day (unlock it) "
+                + "the morning page comes up full-screen on its own — yesterday's habit check-in, "
+                + "yesterday's mini report, and a morning diary line — and the day only starts once "
+                + "all three are filled. Opening KnowDo first works too. Something urgent? "
+                + "The page's \"Pause for a bit\" steps it aside and brings it back later."
+                : "开启后，每天这个时间之后，你早上第一次拿起手机（解锁）晨间页就会全屏出现，不必先打开知行；"
+                + "先打开知行也一样会进。内容＝昨日习惯打卡＋昨日小报＋晨间日记，填完才开启今天。"
+                + "有急事可以点页里的「暂停一会儿」先推后，到点它会自己回来。");
         note.setTextSize(12);
         note.setTextColor(Ui.sub(this));
         note.setPadding(0, dp(6), 0, dp(2));

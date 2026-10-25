@@ -31,6 +31,7 @@ public final class AlertHelper {
     public static final int NOTIF_TASK_ALARM = 203;
     public static final int NOTIF_NEXT_TASK = 204;
     public static final int NOTIF_RESUME_SILENT = 205;
+    public static final int NOTIF_MORNING = 206;
 
     private AlertHelper() {}
 
@@ -257,6 +258,52 @@ public final class AlertHelper {
     public static void cancelNextTask(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(NOTIF_NEXT_TASK);
+    }
+
+    /**
+     * 晨间页的统一出口（v1.17.0）：与衔接守卫页同一策略——
+     * 亮屏未锁 + 悬浮权限 -> 直接启动；否则 FullScreenIntent 通知拉起。
+     * 供晨间门首触（MorningGate）与「暂停一会儿」到点（MorningReceiver）共用；
+     * 拉起的是门模式晨间页（无 extra），页内再按 shouldShowMorning 自行把关。
+     */
+    public static void fireMorning(Context c) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, MorningActivity.class);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                TimerState.logEvent(c, "已直接弹出晨间页（亮屏路径，未经通知）");
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "晨间页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        Intent intent = new Intent(c, MorningActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_MORNING, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("先填晨间页，开启今天")
+                .setContentText("昨日习惯＋昨日小报＋晨间日记，填完才算开启今天")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_MORNING, b.build());
+        TimerState.logEvent(c, "已发出晨间页全屏提醒（通知路径）");
+    }
+
+    public static void cancelMorning(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_MORNING);
     }
 
     public static void cancelAlert(Context c) {

@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.16.1 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.17.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -623,14 +623,23 @@ public final class Strings {
          + "• 页面构成：大圆环指数（带较上周的涨跌）、本周构成三项（各带与上周的差）、逐习惯本周 vs 上周对照、"
          + "知行落差清单（没跟上节奏的习惯、超标的至多型、本周到期的未完成必做任务等），以及下周目标——"
          + "每个习惯一个步进器，改动即存、下周一自动生效，不改就沿用本周目标（WHOOP 的 Continue 口径）。"},
-        {"二十三、晨间首填（v1.16.0）",
+        {"二十三、晨间首填（v1.16.0；v1.17.0 升级）",
          "在设置页「晨间」组开启「晨间首填」后，每天「新一天从几点算起」（默认凌晨 4:00，可在 2:00–8:00 间每半小时一档调）"
-         + "之后第一次打开知行，会先进入全屏晨间页——没有返回键，填完才能开启今天：\n"
+         + "之后，你早上第一次拿起手机（解锁）时，晨间页就会全屏出现、盖住其他应用，不必先打开知行"
+         + "（先打开知行也一样会先进这一页；通话中不抢，挂断后或下次解锁补上）。页面没有返回键，填完才能开启今天：\n"
          + "• A 昨日习惯：逐项回想昨天——至少/至多型点「做到了/没做到」（至多型点「有/没有」），数值型填昨天的数，累积型记昨天的增量；"
          + "留空不算数，必须全答。\n"
          + "• B 昨日知行小报：只读——用和知行页同一套公式按单日口径算出的昨日指数、承诺与做到的件数、漏项、昨日分神次数与自检状态。\n"
          + "• C 晨间日记：必填，写一句即可，存到新一天名下。\n"
-         + "三节填完「开启今天」才点亮：习惯记到昨天、日记记到今天，当天不会再弹。\n"
+         + "三节填完「开启今天」才点亮：习惯记到昨天、日记记到今天，当天不会再弹。填的过程中每一步都即时存好，"
+         + "中途退出、页面被关，回来都是接着填。\n"
+         + "• 暂停一会儿：早上真有急事（关闹钟、回紧急消息、接电话），点页面下方的「暂停一会儿」，选 5/10/15/20/30/60 分钟"
+         + "或自定义分钟数——这一页会退下，到点全屏自己回来；可以反复暂停，不限次数。暂停期间你打开知行，也能提前进这一页。\n"
+         + "• 测试晨间页：设置「晨间」组里有「测试晨间页」按钮，白天点一下就以正式模式打开晨间页"
+         + "（不看时间、不看今天是否已完成），打开的就是真页面真数据——填完点「开启今天」即按正常完成，或者用「暂停一会儿」退出。\n"
+         + "• 补记/修改：习惯页有「晨间记录补记 / 修改」入口，打开的是晨间页的编辑版——可以返回退出、不必全填，"
+         + "顶部能切换记录日（今天/昨天/前天，或任选日期）：A 记的是记录日前一天的习惯、B 是那天的小报、C 是记录日的日记。"
+         + "在这里改过去的记录不会算作完成今天的晨间门；改的正是今天这一轮时，晨间门照常出现，且会预填你已存的内容。\n"
          + "• 另一个入口：你添加第一个习惯后，习惯页顶部会出现一次建议卡，问要不要顺手开启晨间首填，点「不用」后不再出现。"},
     };
 
@@ -899,15 +908,28 @@ public final class Strings {
          + "• The page: the big ring (with its change vs last week), the three components (each with its delta vs last week), a per-habit this-week-vs-last table, "
          + "a gap list (habits behind pace, at-most habits over their cap, unfinished must-do tasks due this week), and next week's goals — one stepper per habit, "
          + "saved as you tap, effective next Monday, carrying over unchanged when untouched (WHOOP's Continue rule)."},
-        {"23. Morning check-in (v1.16.0)",
-         "Turn on \"Morning check-in\" in Settings → Morning, and the first time you open KnowDo after \"The new day starts at\" (default 4:00 AM, adjustable in half-hour "
-         + "steps between 2:00 and 8:00) you land on a full-screen morning page — no back button; the day only starts when it's filled:\n"
+        {"23. Morning check-in (v1.16.0; upgraded in v1.17.0)",
+         "Turn on \"Morning check-in\" in Settings → Morning, and after \"The new day starts at\" (default 4:00 AM, adjustable in half-hour "
+         + "steps between 2:00 and 8:00) the first time you pick up your phone in the morning (unlock it) the morning page comes up full-screen "
+         + "over whatever app you're in — no need to open KnowDo first (opening KnowDo first lands here too; it never barges into a phone call — "
+         + "it catches up after the call or on the next unlock). The page has no back button; the day only starts when it's filled:\n"
          + "• A Yesterday's habits: go through them one by one — At-least/At-most take Done/Not done (At-most takes Yes/No), Number takes yesterday's value, "
          + "Accumulating takes yesterday's increment. Blanks don't count; every row must be answered.\n"
          + "• B Yesterday's report: read-only — yesterday's index computed with the same formula as the Zhixing page but on a single-day basis, what was promised vs done, "
          + "what was missed, yesterday's drift count and self-check states.\n"
          + "• C Morning diary: required, one line is enough, filed under the new day.\n"
-         + "When all three are done, \"Start the day\" lights up: habits are filed under yesterday, the diary under today, and the page won't appear again that day.\n"
+         + "When all three are done, \"Start the day\" lights up: habits are filed under yesterday, the diary under today, and the page won't appear again that day. "
+         + "Every answer is saved as you type, so stepping away or the page being closed never loses what's filled — you pick up where you left off.\n"
+         + "• Pause for a bit: if the morning brings something urgent (an alarm to silence, an urgent message, a call), tap \"Pause for a bit\" at the "
+         + "bottom of the page and pick 5/10/15/20/30/60 minutes or a custom length — the page steps aside and comes back full-screen on its own when "
+         + "the time is up, as many times as you need. Opening KnowDo during a pause brings the page up early.\n"
+         + "• Test the morning page: the \"Test the morning page\" button in Settings → Morning opens the real page in gate mode any time of day "
+         + "(ignoring the clock and whether today is already done) — it's the genuine page with genuine data: finishing it counts as today's "
+         + "check-in, or leave via \"Pause for a bit\".\n"
+         + "• Backfill / edit: the Habits page has a \"Morning records: backfill / edit\" entry — the morning page's edit mode: Back works, nothing "
+         + "is forced, and a switcher at the top picks the record day (today / yesterday / the day before, or any date): A files that record day's "
+         + "previous day's habits, B is that day's report, C is the record day's diary. Editing a past day doesn't finish today's morning gate; "
+         + "editing today's round leaves the gate armed, and the gate will prefill whatever you saved here.\n"
          + "• Another way in: after you add your first habit, a suggestion card appears once at the top of the Habits page asking whether to turn morning check-in on; "
          + "tapping \"No thanks\" dismisses it for good."},
     };

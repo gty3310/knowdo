@@ -101,6 +101,26 @@ public final class HabitPage {
         sub.setPadding(0, dp(4), 0, 0);
         col.addView(sub);
 
+        // 晨间记录补记/修改入口（v1.17.0）：打开晨间页的编辑版——可返回、不强制填完，
+        // 顶部切换记录日（今天/昨天/前天/选日期），补改那一轮的习惯记录与日记
+        TextView morningEdit = new TextView(act);
+        morningEdit.setText(s("晨间记录补记 / 修改", "Morning records: backfill / edit"));
+        morningEdit.setTextSize(14);
+        morningEdit.setTypeface(morningEdit.getTypeface(), Typeface.BOLD);
+        morningEdit.setTextColor(Ui.accent(act));
+        morningEdit.setGravity(Gravity.CENTER);
+        morningEdit.setPadding(0, dp(11), 0, dp(11));
+        morningEdit.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(14)));
+        LinearLayout.LayoutParams melp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        melp.topMargin = dp(12);
+        morningEdit.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(act, MorningActivity.class);
+            i.putExtra(MorningActivity.EXTRA_MODE, MorningActivity.MODE_EDIT);
+            act.startActivity(i);
+        });
+        col.addView(morningEdit, melp);
+
         List<HabitData.Habit> habits = HabitData.habits(root);
         maybeSuggestion(col, habits);
         if (!habits.isEmpty()) {

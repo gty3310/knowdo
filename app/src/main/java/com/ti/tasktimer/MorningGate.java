@@ -1,0 +1,157 @@
+package com.ti.tasktimer;
+
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.AudioManager;
+import android.os.Build;
+
+import org.json.JSONObject;
+
+/**
+ * 晨间门状态机（v1.17.0）：晨间首填开启后，晨间页不再只等用户打开知行——
+ * 每天 dayStart 之后、当前 session 未完成时，用户早上第一次实际使用手机
+ * （解锁 USER_PRESENT）就经 AlertHelper.fireMorning 全屏拉起；在晨间页点
+ * 「暂停一会儿」可以把这一页推后 N 分钟，到点由 MorningReceiver 再次全屏拉起。
+ *
+ * 本类只存「门行为」状态（本机 prefs morning_gate，不进同步——与 FloatSnooze 同类）：
+ * - snooze_until：暂停推后的截止时刻（ms）。持久化：杀进程/重启后以它为准续排闹钟；
+ * - pulled_session：首触自动路径已经拉起过的 session 日（同一 session 只自动拉一次，
+ *   之后靠推后闹钟或用户自己打开知行走 MainActivity.onResume 入口）。
+ * 「完成与否」的内容状态仍在 HabitData.morningDone（habit_data 同步），本类不碰内容。
+ */
+public final class MorningGate {
+    private static final String PREF = "morning_gate";
+    private static final String ACTION_DEFER = "com.ti.tasktimer.MORNING_DEFER";
+    private static final int REQ_DEFER = 779;
+
+    /** 晨间页点「暂停一会儿」退下后，紧接着的那次 MainActivity.onResume 不要立刻把页拉回来。 */
+    private static volatile boolean suppressResumePull = false;
+
+    private MorningGate() { }
+
+    private static SharedPreferences sp(Context c) {
+        return c.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+    }
+
+    // ---------------- 推后（暂停一会儿） ----------------
+
+    public static long snoozeUntil(Context c) { return sp(c).getLong("snooze_until", 0L); }
+
+    public static boolean snoozeActive(Context c) {
+        return snoozeUntil(c) > System.currentTimeMillis();
+    }
+
+    /** 点「暂停一会儿」选定分钟数：落盘截止时刻＋排精确闹钟＋标记下一次 onResume 不拉回。 */
+    public static void snooze(Context c, long delayMs) {
+        long until = System.currentTimeMillis() + Math.max(60_000L, delayMs);
+        sp(c).edit().putLong("snooze_until", until).apply();
+        suppressResumePull = true;
+        scheduleAlarm(c, until);
+        TimerState.logEvent(c, "晨间页暂停一会儿：" + (delayMs / 60000) + " 分钟后再次拉起");
+    }
+
+    /** 清掉推后状态并撤闹钟（晨间页被拉起展示、或晨间已完成时调用）。 */
+    public static void clearSnooze(Context c) {
+        sp(c).edit().remove("snooze_until").apply();
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am != null) am.cancel(alarmIntent(c));
+    }
+
+    private static PendingIntent alarmIntent(Context c) {
+        Intent i = new Intent(c, MorningReceiver.class);
+        i.setAction(ACTION_DEFER);
+        return PendingIntent.getBroadcast(c, REQ_DEFER, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static void scheduleAlarm(Context c, long at) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
+        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(c));
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(c));
+    }
+
+    /**
+     * 开机/服务启动时按持久化状态续排：闹钟不跨重启保留。
+     * 未到点 → 按原时刻重排；已过点（推后期间关机/被杀没响成）→ 1 秒后补响当前轮，
+     * 由 MorningReceiver 再核对晨间是否仍未完成。
+     */
+    public static void ensureScheduled(Context c) {
+        long until = snoozeUntil(c);
+        if (until == 0L) return;
+        long now = System.currentTimeMillis();
+        scheduleAlarm(c, until > now ? until : now + 1_000L);
+    }
+
+    // ---------------- 首触自动拉起 ----------------
+
+    private static String pulledSession(Context c) { return sp(c).getString("pulled_session", ""); }
+
+    /**
+     * 自动拉起检查（FloatService 的 USER_PRESENT 接收与约 30 秒巡检共用）：
+     * 晨间未完成、当前不在推后期、本 session 还没被自动拉起过、本应用没有页面在
+     * 前台、晨间页不在显、没有正在进行的通话 → 经统一出口全屏拉起，并记下本
+     * session 已拉过。巡检这条路主要兜两种情况：解锁那一刻本服务还没起来
+     *（进程被杀后 START_STICKY 重启稍晚）、以及通话结束之后（通话中不抢，
+     * 挂断后由下一次巡检补拉）。
+     */
+    public static void autoCheck(Context c) {
+        try {
+            JSONObject root = HabitData.load(c);
+            if (!HabitData.shouldShowMorning(root)) return;
+            if (snoozeActive(c)) { ensureScheduled(c); return; }
+            if (TopPages.morningShown) return;
+            if (KnowDoApp.ownActivityVisible()) return;
+            String session = HabitData.sessionDate(root);
+            if (session.equals(pulledSession(c))) return;
+            if (inCall(c)) return; // 通话/来电界面在上时不抢，不标记已拉，事后巡检补
+            sp(c).edit().putString("pulled_session", session).apply();
+            TimerState.logEvent(c, "晨间门：本 session 首次用机，全屏拉起晨间页");
+            AlertHelper.fireMorning(c);
+        } catch (Exception ignored) { }
+    }
+
+    /** 通话状态粗判（无需电话权限）：系统音频模式处于通话/通讯/响铃即视为通话中。 */
+    private static boolean inCall(Context c) {
+        try {
+            AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return false;
+            int mode = am.getMode();
+            return mode == AudioManager.MODE_IN_CALL
+                    || mode == AudioManager.MODE_IN_COMMUNICATION
+                    || mode == AudioManager.MODE_RINGTONE;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ---------------- 与页面/主页的衔接 ----------------
+
+    /** 晨间页（门/测试模式）展示出来：推后闹钟的使命已达，清掉推后状态与闹钟。 */
+    public static void onGateShown(Context c) { clearSnooze(c); }
+
+    /** 晨间完成：推后状态与全屏通知一并收尾。 */
+    public static void onCompleted(Context c) {
+        clearSnooze(c);
+        AlertHelper.cancelMorning(c);
+    }
+
+    /** 设置页「测试晨间页」：不看 dayStart、不看当日是否已完成，直接以门模式打开正式页。 */
+    public static void launchTest(Context c) {
+        Intent i = new Intent(c, MorningActivity.class);
+        i.putExtra(MorningActivity.EXTRA_MODE, MorningActivity.MODE_TEST);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+    }
+
+    /** MainActivity.onResume 消费「刚点过暂停退下」标记：消费一次即清。 */
+    public static boolean consumeSuppressResumePull() {
+        boolean v = suppressResumePull;
+        suppressResumePull = false;
+        return v;
+    }
+}

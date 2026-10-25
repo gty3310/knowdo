@@ -5,8 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
@@ -31,6 +33,12 @@ public class FloatService extends Service {
             handler.postDelayed(this, 1000);
         }
     };
+    /** 晨间门首触（v1.17.0）：用户早上第一次解锁用机就拉晨间页，不等他打开知行。 */
+    private final BroadcastReceiver userPresentReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            MorningGate.autoCheck(c);
+        }
+    };
 
     public static void start(Context c) {
         Intent i = new Intent(c, FloatService.class);
@@ -53,6 +61,11 @@ public class FloatService extends Service {
                     CHANNEL, "知行常驻悬浮窗", NotificationManager.IMPORTANCE_MIN));
         }
         showNotification("知行常驻中");
+        // 晨间门（v1.17.0）：监听解锁首触；服务（重）启动时按持久化状态续排推后闹钟
+        try {
+            registerReceiver(userPresentReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
+        } catch (Exception ignored) { }
+        try { MorningGate.ensureScheduled(this); } catch (Exception ignored) { }
         handler.post(loop);
     }
 
@@ -101,6 +114,9 @@ public class FloatService extends Service {
         if (pm == null || !pm.isInteractive()) return; // 屏幕没亮，不巡检
         if (KnowDoApp.ownActivityVisible()) return;
         IdleGuard.checkAndFire(this);
+        // 晨间门兜底（v1.17.0）：解锁那一刻本服务没赶上（进程重启稍晚）、或通话刚
+        // 结束时，由巡检补拉一次（autoCheck 内部有 session 去重，不会反复打扰）
+        MorningGate.autoCheck(this);
     }
 
     private void showNotification(String text) {
@@ -124,6 +140,7 @@ public class FloatService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(loop);
+        try { unregisterReceiver(userPresentReceiver); } catch (Exception ignored) { }
         super.onDestroy();
     }
 }

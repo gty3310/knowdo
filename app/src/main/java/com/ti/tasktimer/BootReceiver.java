@@ -23,6 +23,9 @@ public class BootReceiver extends BroadcastReceiver {
             try { IdleAlarm.ensureScheduled(context); } catch (Exception ignored) { }
             // 习惯提醒：开机后按当前习惯定义全量续排（v1.16.0，闹钟不跨重启保留）
             try { HabitReminder.rescheduleAll(context); } catch (Exception ignored) { }
+            // 晨间页「暂停一会儿」推后闹钟：开机后按持久化截止时刻续排（v1.17.0；
+            // 已过点则 1 秒后补响，由 MorningReceiver 再核对晨间是否仍未完成）
+            try { MorningGate.ensureScheduled(context); } catch (Exception ignored) { }
         }
     }
 }

@@ -11,10 +11,12 @@ public final class TopPages {
     public static volatile boolean startRemindShown;
     public static volatile boolean resumeRemindShown;
     public static volatile boolean nextShown;
+    public static volatile boolean morningShown;
 
     private TopPages() { }
 
     public static boolean anyBlockingShown() {
-        return checkShown || alarmShown || startRemindShown || resumeRemindShown || nextShown;
+        return checkShown || alarmShown || startRemindShown || resumeRemindShown || nextShown
+                || morningShown;
     }
 }

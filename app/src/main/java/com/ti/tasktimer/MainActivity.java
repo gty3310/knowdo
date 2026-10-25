@@ -141,11 +141,15 @@ public class MainActivity extends Activity {
         super.onResume();
         if (Ui.dark(this) != appliedDark || Ui.en(this) != appliedEn) { recreate(); return; }
         store.load();
-        // 晨间首填（v1.16.0）：开关开着且当前 session 未完成 → 先进晨间页，填完才回来
+        // 晨间首填（v1.16.0；v1.17.0 起另有晨间门首触全屏拉起，本入口保留）：
+        // 开关开着且当前 session 未完成 → 先进晨间页，填完才回来
         // （排在衔接守卫之前：晨间页回来后 onResume 会再走一遍正常流程）
+        // 例外：刚在晨间页点了「暂停一会儿」退下时，本页可能就在晨间页下层，
+        // 这次 onResume 不要立刻把页拉回来（推后期间他主动打开知行仍照常进，
+        // 那时标记早已被消费掉）。
         try {
             org.json.JSONObject hroot = HabitData.load(this);
-            if (HabitData.shouldShowMorning(hroot)) {
+            if (!MorningGate.consumeSuppressResumePull() && HabitData.shouldShowMorning(hroot)) {
                 startActivity(new Intent(this, MorningActivity.class));
                 return;
             }
