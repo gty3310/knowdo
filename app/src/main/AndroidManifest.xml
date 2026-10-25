@@ -238,5 +238,31 @@
         <receiver
             android:name=".MorningReceiver"
             android:exported="false" />
+
+        <!-- 空档催促全屏页（v1.19.0）：一轮 staging 一页（震→响）＋底部路人静音大按钮；
+             展示属性与守卫页同款（压锁屏、点亮屏幕、独立任务） -->
+        <activity
+            android:name=".IdleAlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- 致谢页（v1.19.0）：路人静音后机主下次解锁先见，展示属性同款 -->
+        <activity
+            android:name=".ThanksActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- 建议设置清单（v1.19.0）：五项系统开关逐项检测＋跳转，普通设置页 -->
+        <activity
+            android:name=".SuggestedSettingsActivity"
+            android:exported="false" />
     </application>
 </manifest>

@@ -33,10 +33,23 @@ public class FloatService extends Service {
             handler.postDelayed(this, 1000);
         }
     };
-    /** 晨间门首触（v1.17.0）：用户早上第一次解锁用机就拉晨间页，不等他打开知行。 */
+    /**
+     * 用机首触（v1.17.0 晨间门起；v1.19.0 起统一走 GuardDispatch）：
+     * 用户解锁开始用手机的那一刻，按 晨间门 ＞ 致谢页 ＞ 选任务页 的优先级拉一页，
+     * 不等他打开知行。
+     */
     private final BroadcastReceiver userPresentReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
-            MorningGate.autoCheck(c);
+            GuardDispatch.onUserPresent(c);
+        }
+    };
+
+    /** 路人静音的亮灭屏转移（v1.19.0）：压制在「灭→亮」一次之后解除，致谢待解锁呈现。 */
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (i == null) return;
+            if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) BystanderMute.onScreenOff(c);
+            else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) BystanderMute.onScreenOn(c);
         }
     };
 
@@ -61,9 +74,13 @@ public class FloatService extends Service {
                     CHANNEL, "知行常驻悬浮窗", NotificationManager.IMPORTANCE_MIN));
         }
         showNotification("知行常驻中");
-        // 晨间门（v1.17.0）：监听解锁首触；服务（重）启动时按持久化状态续排推后闹钟
+        // 用机守卫（v1.17.0/v1.19.0）：监听解锁首触与亮灭屏；服务（重）启动时按持久化状态续排推后闹钟
         try {
             registerReceiver(userPresentReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
+            IntentFilter sf = new IntentFilter();
+            sf.addAction(Intent.ACTION_SCREEN_ON);
+            sf.addAction(Intent.ACTION_SCREEN_OFF);
+            registerReceiver(screenReceiver, sf);
         } catch (Exception ignored) { }
         try { MorningGate.ensureScheduled(this); } catch (Exception ignored) { }
         handler.post(loop);
@@ -113,10 +130,10 @@ public class FloatService extends Service {
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm == null || !pm.isInteractive()) return; // 屏幕没亮，不巡检
         if (KnowDoApp.ownActivityVisible()) return;
-        IdleGuard.checkAndFire(this);
-        // 晨间门兜底（v1.17.0）：解锁那一刻本服务没赶上（进程重启稍晚）、或通话刚
-        // 结束时，由巡检补拉一次（autoCheck 内部有 session 去重，不会反复打扰）
-        MorningGate.autoCheck(this);
+        // 守卫调度兜底（v1.19.0）：解锁那一刻本服务没赶上（进程重启稍晚）、或通话刚
+        // 结束时，由巡检按 晨间门 ＞ 致谢页 ＞ 选任务页 的优先级补拉一次
+        // （晨间 autoCheck 内部有 session 去重，不会反复打扰）
+        GuardDispatch.patrol(this);
     }
 
     private void showNotification(String text) {
@@ -141,6 +158,7 @@ public class FloatService extends Service {
     public void onDestroy() {
         handler.removeCallbacks(loop);
         try { unregisterReceiver(userPresentReceiver); } catch (Exception ignored) { }
+        try { unregisterReceiver(screenReceiver); } catch (Exception ignored) { }
         super.onDestroy();
     }
 }

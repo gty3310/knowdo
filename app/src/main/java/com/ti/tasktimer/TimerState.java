@@ -16,6 +16,7 @@ public final class TimerState {
     public static void start(Context c, int totalSec, String taskId, String taskTitle) {
         long now = System.currentTimeMillis();
         sp(c).edit()
+            .remove("pause_expired").remove("pause_expired_at") // 新一轮计时：旧的到期标记作废（v1.19.0）
             .putBoolean("running", true)
             .putLong("startedAt", now)
             .putLong("halfAt", now + totalSec * 500L)
@@ -239,7 +240,8 @@ public final class TimerState {
     }
 
     public static void clearPaused(Context c) {
-        sp(c).edit().remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
+        sp(c).edit().remove("pause_expired").remove("pause_expired_at")
+            .remove("p_taskId").remove("p_title").remove("p_totalSec").remove("p_remainMs")
             .remove("p_reason").remove("p_emoji").remove("p_silent")
             .remove("p_subActive").remove("p_subIndex").remove("p_subCount")
             .remove("p_subId").remove("p_subTitle").remove("p_subRemainMs")
@@ -339,6 +341,7 @@ public final class TimerState {
         long elapsedSec = Math.max(0, totalSec - remainSec);
         boolean half = p.getBoolean("halfFired", false) || elapsedSec * 2 >= totalSec;
         p.edit()
+            .remove("pause_expired").remove("pause_expired_at") // 恢复计时：到期标记消费掉（v1.19.0）
             .putBoolean("running", true)
             .putLong("startedAt", now - elapsedSec * 1000L)
             .putLong("halfAt", now - elapsedSec * 1000L + totalSec * 500L)
@@ -398,6 +401,7 @@ public final class TimerState {
                                        int subIndex, String subTitle, int subCount, long subRemainMs,
                                        String reason, String emoji, boolean silent) {
         SharedPreferences.Editor e = sp(c).edit()
+            .remove("pause_expired").remove("pause_expired_at") // 远端新暂停镜像：旧到期标记作废（v1.19.0；镜像暂停口径本身不变）
             .putString("p_taskId", taskId == null ? "" : taskId)
             .putString("p_title", title == null ? "" : title)
             .putInt("p_totalSec", totalSec)
@@ -429,9 +433,32 @@ public final class TimerState {
     public static void markHalfFired(Context c) { sp(c).edit().putBoolean("halfFired", true).apply(); }
     public static void markEndFired(Context c) { sp(c).edit().putBoolean("endFired", true).apply(); }
 
+    // ---------- 暂停已到期标记（v1.19.0，根因修复） ----------
+    // 背景：旧实现里 ResumeReceiver 到点把 r_at 清零后，IdleGuard 把「暂停槽还在＋r_at==0」
+    // 恒判为无期限暂停生效中，空档永不成立、催促周期永不启动。现在普通（非静音）暂停
+    // 到点时置位本标记：暂停槽仍在（任务可继续），但状态机按「已到期＝空档」处理，
+    // 空档起算点＝到期时刻（pause_expired_at）。清零时机：开始计时（start）、恢复计时
+    // （startResumed）、清除暂停槽（clearPaused）、「再歇一会」写入新叫回时间（setRemind）。
+    // 静音暂停不走这里（仍走 SilentResume 亮屏链，不进出声催促）。
+    public static void setPauseExpired(Context c, long expiredAtMs) {
+        sp(c).edit().putBoolean("pause_expired", true)
+            .putLong("pause_expired_at", expiredAtMs).apply();
+    }
+
+    public static boolean pauseExpired(Context c) { return sp(c).getBoolean("pause_expired", false); }
+
+    /** 到期时刻（空档锚点）；未置位时为 0。 */
+    public static long pauseExpiredAt(Context c) { return sp(c).getLong("pause_expired_at", 0); }
+
+    public static void clearPauseExpired(Context c) {
+        sp(c).edit().remove("pause_expired").remove("pause_expired_at").apply();
+    }
+
     // ---------- 暂停提醒（暂停时约好多久后叫回来） ----------
     public static void setRemind(Context c, String taskId, long atMs) {
-        sp(c).edit().putString("r_taskId", taskId == null ? "" : taskId).putLong("r_at", atMs).apply();
+        // 「再歇一会」写入新的叫回时间＝重新进入定时暂停，到期标记清零（v1.19.0）
+        sp(c).edit().remove("pause_expired").remove("pause_expired_at")
+            .putString("r_taskId", taskId == null ? "" : taskId).putLong("r_at", atMs).apply();
     }
 
     public static void clearRemind(Context c) {

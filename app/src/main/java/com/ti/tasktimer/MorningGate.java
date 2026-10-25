@@ -99,20 +99,23 @@ public final class MorningGate {
      *（进程被杀后 START_STICKY 重启稍晚）、以及通话结束之后（通话中不抢，
      * 挂断后由下一次巡检补拉）。
      */
-    public static void autoCheck(Context c) {
+    /** @return 本次是否拉起了晨间页（v1.19.0 起供 GuardDispatch 按优先级调度：拉起晨间页后，致谢页/选任务页本轮不再拉）。 */
+    public static boolean autoCheck(Context c) {
         try {
             JSONObject root = HabitData.load(c);
-            if (!HabitData.shouldShowMorning(root)) return;
-            if (snoozeActive(c)) { ensureScheduled(c); return; }
-            if (TopPages.morningShown) return;
-            if (KnowDoApp.ownActivityVisible()) return;
+            if (!HabitData.shouldShowMorning(root)) return false;
+            if (snoozeActive(c)) { ensureScheduled(c); return false; }
+            if (TopPages.morningShown) return false;
+            if (KnowDoApp.ownActivityVisible()) return false;
             String session = HabitData.sessionDate(root);
-            if (session.equals(pulledSession(c))) return;
-            if (inCall(c)) return; // 通话/来电界面在上时不抢，不标记已拉，事后巡检补
+            if (session.equals(pulledSession(c))) return false;
+            if (inCall(c)) return false; // 通话/来电界面在上时不抢，不标记已拉，事后巡检补
             sp(c).edit().putString("pulled_session", session).apply();
             TimerState.logEvent(c, "晨间门：本 session 首次用机，全屏拉起晨间页");
             AlertHelper.fireMorning(c);
+            return true;
         } catch (Exception ignored) { }
+        return false;
     }
 
     /** 通话状态粗判（无需电话权限）：系统音频模式处于通话/通讯/响铃即视为通话中。 */

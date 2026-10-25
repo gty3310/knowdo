@@ -75,6 +75,9 @@ public final class AlarmRing {
 
     public static synchronized boolean isRinging() { return player != null; }
 
+    /** 静默停铃（v1.19.0，IdleStage 打断一轮 staging 时用）：不写日志，只停。 */
+    static synchronized void stopQuiet() { stopInternal(); }
+
     private static synchronized void stopInternal() {
         handler.removeCallbacks(rampTick);
         handler.removeCallbacks(autoStop);

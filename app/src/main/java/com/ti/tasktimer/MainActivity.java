@@ -130,8 +130,12 @@ public class MainActivity extends Activity {
             runSync(false); // 打开即自动同步一次
             if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         }
+        // 建议设置（v1.19.0）：新装/升级后首次打开呈现一次（不阻断功能）；
+        // 本轮呈现了清单页，就先不叠更新日志弹框（更新日志的已弹记录未写，下次打开再弹）
         // 更新日志（v1.13.0 起的长期规矩）：升级后首次打开弹一次，全新安装不弹
-        WhatsNew.maybeShow(this);
+        if (!SuggestedSettingsActivity.maybeShow(this)) {
+            WhatsNew.maybeShow(this);
+        }
         // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));

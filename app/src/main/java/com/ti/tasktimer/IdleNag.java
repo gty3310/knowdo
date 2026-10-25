@@ -47,6 +47,8 @@ public final class IdleNag {
     public static int firstRepeatMinutes(Context c) { return sp(c).getInt("first_repeat_minutes", 1); }
     public static int repeatMinutes(Context c) { return sp(c).getInt("repeat_minutes", 5); }
     public static int ringSeconds(Context c) { return sp(c).getInt("ring_seconds", 60); }
+    /** 每轮先震动多久（秒，v1.19.0 staging 新增）：先震不出声，无反应才进入声音段。设置页可调、随云端同步。 */
+    public static int vibrateSeconds(Context c) { return sp(c).getInt("vibrate_seconds", 30); }
     public static boolean sound(Context c) { return sp(c).getBoolean("sound", true); }
     /** 轮数上限：0=不催，-1=无限，>0=有限轮（standard 默认 3，custom 直接存策略值）。 */
     public static int maxRounds(Context c) { return sp(c).getInt("max_rounds", -1); }
@@ -54,6 +56,13 @@ public final class IdleNag {
     private static void putAll(Context c, boolean enabled, String profile, int idleMin,
                                int firstMin, int repeatMin, int ringSec, boolean sound,
                                int maxRounds) {
+        putAll(c, enabled, profile, idleMin, firstMin, repeatMin, ringSec, sound, maxRounds,
+                vibrateSeconds(c));
+    }
+
+    private static void putAll(Context c, boolean enabled, String profile, int idleMin,
+                               int firstMin, int repeatMin, int ringSec, boolean sound,
+                               int maxRounds, int vibrateSec) {
         sp(c).edit()
                 .putBoolean("has_local", true)
                 .putBoolean("enabled", enabled)
@@ -62,6 +71,7 @@ public final class IdleNag {
                 .putInt("first_repeat_minutes", firstMin)
                 .putInt("repeat_minutes", repeatMin)
                 .putInt("ring_seconds", ringSec)
+                .putInt("vibrate_seconds", vibrateSec)
                 .putBoolean("sound", sound)
                 .putInt("max_rounds", maxRounds)
                 .apply();
@@ -110,9 +120,9 @@ public final class IdleNag {
             putAll(c, en, GENTLE, idleMinutes(c), firstRepeatMinutes(c), repeatMinutes(c),
                     ringSeconds(c), sound(c), 0);
         } else if (STANDARD.equals(p)) {
-            putAll(c, en, STANDARD, 5, 5, 5, 30, sound(c), 3);
+            putAll(c, en, STANDARD, 5, 5, 5, 30, sound(c), 3, 30);
         } else if (STRICT.equals(p)) {
-            putAll(c, en, STRICT, 5, 1, 5, 60, true, -1);
+            putAll(c, en, STRICT, 5, 1, 5, 60, true, -1, 30);
         }
     }
 
@@ -157,14 +167,17 @@ public final class IdleNag {
         boolean snd = effectiveSound(c);
         if (mr == 0) return Strings.en() ? "A task ends, and that's it — no popup, no sound, no nagging."
                 : "任务结束就结束，不弹页、不出声，不催你。";
+        int vib = vibrateSeconds(c);
         if (Strings.en()) {
-            String s = "After " + idle + " min with no task, a full-screen reminder"
-                    + (snd ? " rings for " + ring + "s" : " (no sound)")
-                    + ", again after " + first + " min, then every " + rep + " min";
+            String s = "After " + idle + " min with no task, a full-screen reminder: each round vibrates "
+                    + vib + "s first"
+                    + (snd ? ", then the sound fades in over " + ring + "s" : " (no sound)")
+                    + ", then every " + rep + " min";
             return mr < 0 ? s + ", until you start a task." : s + ", at most " + mr + " rounds, then quiet.";
         }
-        String s = idle + " 分钟没任务就全屏提醒" + (snd ? "，每轮响 " + ring + " 秒" : "（不出声）")
-                + "，隔 " + first + " 分钟再来一轮，之后每 " + rep + " 分钟一次";
+        String s = idle + " 分钟没任务就全屏提醒，每轮先震动 " + vib + " 秒"
+                + (snd ? "，无反应再让声音在 " + ring + " 秒里渐强" : "（不出声）")
+                + "，之后每 " + rep + " 分钟一轮";
         return mr < 0 ? s + "，直到你开始任务为止。" : s + "，最多 " + mr + " 轮，之后安静。";
     }
 
@@ -185,6 +198,7 @@ public final class IdleNag {
             o.put("first_repeat_minutes", firstRepeatMinutes(c));
             o.put("repeat_minutes", repeatMinutes(c));
             o.put("ring_seconds", ringSeconds(c));
+            o.put("vibrate_seconds", vibrateSeconds(c));
             o.put("sound", sound(c));
             o.put("max_rounds", maxRounds(c));
             return o;
@@ -206,7 +220,9 @@ public final class IdleNag {
                 clamp(o.optInt("repeat_minutes", 5), 1, 240),
                 clamp(o.optInt("ring_seconds", 60), 5, 600),
                 o.optBoolean("sound", true),
-                o.optInt("max_rounds", -1));
+                o.optInt("max_rounds", -1),
+                // 旧端云端对象没有这个键：默认 30；未知键在回写时由 toCloudJson 补齐，不丢既有字段
+                clamp(o.optInt("vibrate_seconds", 30), 0, 300));
     }
 
     /** 本机现值与云端对象是否等价（逐字段比，避免字符串比对受键序影响）。 */
@@ -218,6 +234,7 @@ public final class IdleNag {
                 && o.optInt("first_repeat_minutes", -999) == firstRepeatMinutes(c)
                 && o.optInt("repeat_minutes", -999) == repeatMinutes(c)
                 && o.optInt("ring_seconds", -999) == ringSeconds(c)
+                && o.optInt("vibrate_seconds", 30) == vibrateSeconds(c)
                 && o.optBoolean("sound", true) == sound(c)
                 && o.optInt("max_rounds", -999) == maxRounds(c);
     }

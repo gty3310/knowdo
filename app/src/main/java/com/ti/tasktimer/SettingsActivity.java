@@ -453,11 +453,16 @@ public class SettingsActivity extends Activity {
                     v -> editNagNumber("ring_seconds", en ? "Seconds each round rings" : "每轮响多久（秒）",
                             IdleNag.ringSeconds(this), 5, 600, en ? " sec" : " 秒"));
         }
-        row(en ? "Gap after the first round" : "第一轮后隔几分钟再来",
-                null, arrowBtn(IdleNag.firstRepeatMinutes(this) + (en ? " min" : " 分钟")),
-                v -> editNagNumber("first_repeat_minutes", en ? "Gap after the first round" : "第一轮后隔几分钟",
-                        IdleNag.firstRepeatMinutes(this), 1, 120, en ? " min" : " 分钟"));
-        row(en ? "Gap between later rounds" : "之后每隔几分钟一轮",
+        // 每轮先震动多久（v1.19.0 staging）：标准/严格/自定义都有震动段，都可调（0＝不震动）
+        row(en ? "Seconds each round vibrates first" : "每轮先震动多久",
+                en ? "Vibration comes before any sound — a silent first step"
+                        : "每轮先震动不出声，无反应才进入声音段",
+                arrowBtn(IdleNag.vibrateSeconds(this) + (en ? " sec" : " 秒")),
+                v -> editNagNumber("vibrate_seconds", en ? "Seconds each round vibrates first" : "每轮先震动多久（秒）",
+                        IdleNag.vibrateSeconds(this), 0, 300, en ? " sec" : " 秒"));
+        // 注：first_repeat_minutes 字段仍在数据里保留兼容，但 v1.19.0 staging 起轮间隔
+        // 统一走 repeat_minutes，该参数不再单独生效，故设置页不再给它编辑行（免得改了没反应）。
+        row(en ? "Gap between rounds" : "每隔几分钟一轮",
                 null, arrowBtn(IdleNag.repeatMinutes(this) + (en ? " min" : " 分钟")),
                 v -> editNagNumber("repeat_minutes", en ? "Gap between later rounds" : "之后每隔几分钟",
                         IdleNag.repeatMinutes(this), 1, 120, en ? " min" : " 分钟"));
@@ -587,6 +592,12 @@ public class SettingsActivity extends Activity {
                 v -> startActivity(new Intent(this, HelpActivity.class)));
         row(Strings.whatsNewEntry(), null, arrowBtn("›"),
                 v -> WhatsNew.show(this));
+        // 建议设置（v1.19.0）：常设入口，随时复查五项系统开关（电池/悬浮窗/全屏通知/精确闹钟/通知）
+        row(Strings.en() ? "Suggested settings" : "建议设置",
+                Strings.en() ? "Five system switches the guards rely on — all optional, all checkable here"
+                        : "守卫们靠的五项系统开关：都是建议不是门槛，随时来这里复查",
+                arrowBtn("›"),
+                v -> startActivity(new Intent(this, SuggestedSettingsActivity.class)));
         row(Strings.rowAbout(), Strings.versionLine(), null, v ->
                 new AlertDialog.Builder(this)
                         .setTitle(Strings.appFull())

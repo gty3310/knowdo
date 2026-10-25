@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.18.0 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.19.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -233,9 +233,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.16.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.19.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.16.0\n知行合一。\n"
+                  : "知行 KnowDo v1.19.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -349,14 +349,14 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.16.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.16.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.19.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.19.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
-    /** [标题, 正文] × 23 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
+    /** [标题, 正文] × 24 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、
      *  第五/十四节仅更新入口说法），第十五节为 v1.8.0 界面说明，第十六节为 v1.10.0 新增、
      *  第十七节为 v1.11.0 子任务，第十八/十九节为 v1.12.0 新增，第二十节为 v1.13.0 新增，
-     *  第二十一至二十三节为 v1.16.0 习惯系统新增；英文为对应译文。 */
+     *  第二十一至二十三节为 v1.16.0 习惯系统新增、第二十四节为 v1.19.0 守卫可靠性新增；英文为对应译文。 */
     public static String[][] helpSections() { return en ? HELP_EN : HELP_ZH; }
 
     private static final String[][] HELP_ZH = {
@@ -644,6 +644,21 @@ public final class Strings {
          + "顶部能切换记录日（今天/昨天/前天，或任选日期）：A 记的是记录日前一天的习惯、B 是那天的小报、C 是记录日的日记。"
          + "在这里改过去的记录不会算作完成今天的晨间门；改的正是今天这一轮时，晨间门照常出现，且会预填你已存的内容。\n"
          + "• 另一个入口：你添加第一个习惯后，习惯页顶部会出现一次建议卡，问要不要顺手开启晨间首填，点「不用」后不再出现。"},
+        {"二十四、守卫可靠性：催促三段、路人静音、拿起手机先选任务、建议设置（v1.19.0）",
+         "• 暂停到期＝空档：以前普通暂停到点叫回一次之后，内部状态判错，之后就再也不催了；现在暂停时间一到就算空档，"
+         + "从到期那一刻起算，照常进入下面的催促循环。再歇一会、叫回后换了任务却没开始、任务自然做完没接下一个，都是同一条路。"
+         + "静音暂停是例外：仍只亮屏＋通知、每 5 分钟重复，不出声、不进这个循环。\n"
+         + "• 催促三段（严格/自定义档）：空档满设定分钟（默认 5 分钟）起一轮——全屏页先出现，震动 30 秒不出声（时长在设置里可调），"
+         + "没反应才让声音在 60 秒里由小变大，到顶停下；静默 5 分钟后下一轮，直到你开始任务。"
+         + "标准档只有页面＋震动、没有声音、轮数封顶；温和档不弹不响。节奏参数（几分钟算空档、先震多久、响多久、隔几分钟一轮、最多几轮、出不出声）"
+         + "全在设置页「空档催促」里可调，默认全开、默认严格档。\n"
+         + "• 路人静音：alarm 页最下方有个大按钮「如果您不是手机主人 请点击这里静音」——手机响个不停时旁边的人点一下就静音，"
+         + "一直静到下一次屏幕亮起，他碰不到你的任务；你下次解锁会先看到致谢页，可以直接继续刚才那个任务，或去任务页选新的。\n"
+         + "• 拿起手机先选任务：没有任务在计时、也没有带倒计时的暂停时，你一解锁手机就全屏问「接下来，做点什么」"
+         + "（晨间页、致谢页优先于它；通话中不抢，挂断后补上）。点今日任务一行就开始，也可以新建，或选「休息一会」——休息也是正式安排，选个时长占位计时，到点叫你回来。\n"
+         + "• 建议设置：电池优化豁免、悬浮窗、全屏通知、精确闹钟、通知权限五项，新装或升级后首次打开会呈现一次，"
+         + "设置页里有常设入口随时复查。都是建议不是门槛——不开也能用，只是系统可能在后台把知行停掉，晨间和提醒可能不准时；"
+         + "小米、华为等机型还需在系统里另开自启动与后台弹出（应用内检测不到，清单底部有一行说明）。"},
     };
 
     private static final String[][] HELP_EN = {
@@ -937,5 +952,25 @@ public final class Strings {
          + "editing today's round leaves the gate armed, and the gate will prefill whatever you saved here.\n"
          + "• Another way in: after you add your first habit, a suggestion card appears once at the top of the Habits page asking whether to turn morning check-in on; "
          + "tapping \"No thanks\" dismisses it for good."},
+        {"24. Guard reliability: three-stage nagging, passer-by mute, pick-on-unlock, suggested settings (v1.19.0)",
+         "• A pause that runs out now counts as idle: before, once the call-back had fired, an internal state was judged wrong and nothing ever nagged again. "
+         + "Now the moment a pause expires the gap starts counting from that moment and the nagging loop below applies — same for \"rest a bit more\", "
+         + "switching to a task you never start, and finishing a task without picking the next. Silent pauses are the exception: still screen-light + notification "
+         + "every 5 minutes, no sound, never in this loop.\n"
+         + "• Three stages (Strict/Custom): once the gap passes the threshold (default 5 min) a round starts — the full-screen page appears and vibrates "
+         + "for 30 seconds without sound (adjustable in Settings); only if nothing happens does the sound fade in over 60 seconds and stop at the top; "
+         + "5 quiet minutes, then the next round, until you start a task. Standard has the page + vibration only, no sound, capped rounds; Gentle does nothing. "
+         + "Every rhythm number (threshold, vibration length, ring length, gap between rounds, max rounds, sound on/off) is adjustable under Settings → Idle nagging; "
+         + "all on by default, Strict by default.\n"
+         + "• Passer-by mute: the alarm page has one big button at the bottom — a passer-by can silence the phone with one tap, and it stays silent until "
+         + "the screen lights again, without ever touching your tasks. On your next unlock you first get a thank-you page: continue the task you were on, "
+         + "or go pick a new one on the task page.\n"
+         + "• Pick on unlock: whenever nothing is timing and no counted-down pause is running, unlocking your phone asks full-screen \"What's next\" "
+         + "(the morning page and the thank-you page outrank it; it never barges into a call, and catches up after). Tap a task for today to start it, "
+         + "create a new one, or choose \"Rest a while\" — rest is a plan too: it times a placeholder and calls you back.\n"
+         + "• Suggested settings: battery-optimization exemption, overlay, full-screen notifications, exact alarms, and notifications — shown once on first "
+         + "open after install or upgrade, and always available in Settings. Suggestions, not requirements: everything works without them, but the system "
+         + "may stop KnowDo in the background and the morning page and reminders may run late. Xiaomi/Huawei-style phones also need Auto-start and "
+         + "background pop-ups enabled in system settings (not detectable from inside the app; there's a note at the bottom of the list)."},
     };
 }

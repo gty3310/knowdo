@@ -32,6 +32,7 @@ public final class AlertHelper {
     public static final int NOTIF_NEXT_TASK = 204;
     public static final int NOTIF_RESUME_SILENT = 205;
     public static final int NOTIF_MORNING = 206;
+    public static final int NOTIF_THANKS = 207;
 
     private AlertHelper() {}
 
@@ -299,6 +300,45 @@ public final class AlertHelper {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(NOTIF_MORNING, b.build());
         TimerState.logEvent(c, "已发出晨间页全屏提醒（通知路径）");
+    }
+
+    /**
+     * 致谢页的统一出口（v1.19.0）：与晨间页同一策略——亮屏未锁 + 悬浮权限 -> 直接启动；
+     * 否则 FullScreenIntent 通知拉起。供 GuardDispatch 在路人静音待致谢时调用。
+     */
+    public static void fireThanks(Context c) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, ThanksActivity.class);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                TimerState.logEvent(c, "已直接弹出致谢页（亮屏路径，未经通知）");
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "致谢页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        Intent intent = new Intent(c, ThanksActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_THANKS, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("之前有人帮助你关掉消息了")
+                .setContentText("点开继续你的任务")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_THANKS, b.build());
+        TimerState.logEvent(c, "已发出致谢页全屏提醒（通知路径）");
     }
 
     public static void cancelMorning(Context c) {

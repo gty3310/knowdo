@@ -52,6 +52,9 @@ public final class IdleGuard {
 
     /**
      * 生效中的定时暂停（暂停槽里有任务，且）：
+     * - 已到期标记在（v1.19.0）：普通暂停已经到点叫回过——叫回页正在显示时归叫回页管，
+     *   不在显就是空档（催促 staging 从到期时刻起算）。这一条必须排在 r_at==0 之前：
+     *   到点后 r_at 已被清零，旧判法会把它误判成下面的「无期限暂停」而永不空档（原 bug）；
      * - 没设叫回时间：旧版的无期限暂停，或远端镜像过来的暂停（远端没有「多久后叫回」的概念）
      *   ——视为「有当前任务（暂停中）」，不算空档；
      * - 叫回时间在未来：定时暂停生效中；
@@ -59,6 +62,7 @@ public final class IdleGuard {
      */
     private static boolean timedPauseActive(Context c) {
         if (!TimerState.isPaused(c)) return false;
+        if (TimerState.pauseExpired(c)) return TopPages.resumeRemindShown;
         long ra = TimerState.remindAt(c);
         if (ra == 0L) return true;
         if (ra > System.currentTimeMillis()) return true;
@@ -72,6 +76,7 @@ public final class IdleGuard {
         // 按返回的 3 分钟静默只压自动弹页，绝不动 alarm 排期。
         if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
         IdleAlarm.observeIdle(c);
+        if (BystanderMute.isMuted(c)) return; // 路人已静音：下一次亮屏前不拉页（排期不动，v1.19.0）
         if (!enabled(c) || TopPages.anyBlockingShown()) return;
         if (IdleNag.suppressIdlePage(c)) return; // 温和档：空档连页都不弹
         long now = System.currentTimeMillis();
@@ -83,8 +88,25 @@ public final class IdleGuard {
     /** 事件档：完成任务/叫回页转入等明确时刻调用，不受返回静默期约束。 */
     public static void fireNow(Context c) {
         if (!enabled(c) || !isIdle(c) || TopPages.anyBlockingShown()) return;
+        if (BystanderMute.isMuted(c)) return;
         if (IdleNag.suppressIdlePage(c)) return;
         if (System.currentTimeMillis() - lastFiredAt < EVENT_DEBOUNCE_MS) return;
+        fire(c);
+    }
+
+    /**
+     * 解锁档（v1.19.0 选任务页守卫）：用户解锁开始用手机（USER_PRESENT）时调用——
+     * 与自动档同门槛（开关/空档/页面互斥/温和档/路人静音），但不受「按返回退出后的
+     * 3 分钟静默」约束：重新拿起手机就是一个新的开始时刻，该直接见选任务页。
+     * 仍受最小重拉间隔约束，避免与巡检同刻叠拉。
+     */
+    public static void checkOnUserPresent(Context c) {
+        if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
+        IdleAlarm.observeIdle(c);
+        if (BystanderMute.isMuted(c)) return;
+        if (!enabled(c) || TopPages.anyBlockingShown()) return;
+        if (IdleNag.suppressIdlePage(c)) return;
+        if (System.currentTimeMillis() - lastFiredAt < REFIRE_MIN_MS) return;
         fire(c);
     }
 

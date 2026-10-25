@@ -36,6 +36,41 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e119 = new Entry("v1.19.0", "2026-10-25");
+        e119.add(new Group(s("修复", "Fixed"),
+                s("暂停结束后不再没人管：以前暂停时间一到、叫回一次之后就再也不催了——内部有个状态判错，"
+                        + "把到期的暂停一直当成「还在暂停中」。现在暂停到期就算空档，照常进入催促。",
+                  "A finished pause is no longer a dead end: before, once a pause ran out and called you back once, "
+                        + "it never nagged again — an internal state was misjudged and the expired pause counted as "
+                        + "\"still pausing\" forever. Now an expired pause counts as idle time and the nagging applies as usual.")));
+        e119.add(new Group(s("新功能", "New"),
+                s("空档催促变三段：先震动三十秒不出声，没反应再让声音在一分钟里由小变大，到顶停下，过五分钟再来一轮，直到你开始任务。",
+                  "Idle nagging now comes in three stages: vibrate for thirty seconds with no sound first; if nothing happens, "
+                        + "the sound fades in over a minute and stops at the top; five quiet minutes, then the next round — until you start a task."),
+                s("alarm 页底部多了个大按钮，路人点一下就静音：手机响个不停时，旁边的人能帮你关掉，又碰不到你的任务；"
+                        + "你下次亮屏会先看到谢谢页，可以直接继续刚才的任务。",
+                  "The alarm page has a big button at the bottom that anyone can tap to mute it: if your phone keeps ringing, "
+                        + "someone nearby can silence it without ever touching your tasks — and on your next unlock you get a "
+                        + "thank-you page first, where you can jump straight back into the task you were on."),
+                s("拿起手机时没有任务在进行，会直接全屏问你接下来做点什么，点一下就开始。",
+                  "Pick up your phone with nothing running and it asks you, full-screen, what to do next — one tap starts it."),
+                s("建议设置清单：电池优化、悬浮窗、全屏通知、精确闹钟、通知权限，逐项能查能开。",
+                  "A Suggested settings list — battery optimization, display over other apps, full-screen notifications, "
+                        + "exact alarms, and notifications — each one checkable and openable right from the list.")));
+        e119.why = s("你反馈暂停完把手机晾着永远没动静，根子在那个判错的状态；先留个不出声的台阶，真没听见才出声，也不一上来就吵；"
+                        + "不给空档留缝，拿起手机就得先定下一个任务；那五项设置不开，系统可能把知行在后台停掉，晨间和提醒就不准时——不开也能用，所以叫建议。",
+                "You reported that after a pause the phone just sat there in silence forever — the root was that misjudged state. "
+                        + "A silent first step before any sound; no gap left unasked — pick up the phone and you name the next task first. "
+                        + "And without those five settings the system may stop KnowDo in the background, so the morning page and reminders "
+                        + "run late — but everything still works without them, which is why they're suggestions.");
+        e119.tryIt = s("①开始一个任务，暂停一分钟，全程别碰手机，到期后看它会不会接着催；"
+                        + "②让它响起来，点底部大按钮，再灭屏、亮屏；"
+                        + "③停掉所有任务，灭屏再解锁；④设置里点「建议设置」。",
+                "1) Start a task, pause it for one minute, and don't touch the phone — after it expires, watch whether it keeps nagging. "
+                        + "2) Let it ring, tap the big button at the bottom, then turn the screen off and on again. "
+                        + "3) Stop everything, lock and unlock. 4) In Settings, open \"Suggested settings\".");
+        out.add(e119);
+
         Entry e118 = new Entry("v1.18.0", "2026-10-25");
         e118.add(new Group(s("改进", "Improved"),
                 s("日历改版：展开时不再盖住底部三个页签，随时可以切换；左边就是任务列表，右边是日历。",
@@ -143,51 +178,6 @@ public final class Changelog {
                         + "right; then tap any task block in the calendar and watch it expand on the left.");
         out.add(e115);
 
-        Entry e114 = new Entry("v1.14.0", "2026-10-24");
-        e114.add(new Group(s("新功能", "New"),
-                s("没任务时它会出声催你：超过 5 分钟没有任何任务在计时，全屏弹出「接下来干什么」并响起鸟鸣，"
-                        + "你不理它，隔 1 分钟再响、之后每 5 分钟响一次，直到你开始一个任务。",
-                  "It now nags you out loud when nothing is running: after 5 minutes with no task timing, "
-                        + "the full-screen \"What's next?\" pops up with birdsong. Ignore it and it rings again "
-                        + "after 1 minute, then every 5 minutes, until you start a task."),
-                s("空档催促成了你的个人设置：分温和／标准／严格三档，也可自定义——多久算空档、每轮响多久、"
-                        + "隔多久再催、最多催几轮、出不出声，都能自己调；存在云端，手机与电脑共用同一份。"
-                        + "（声音是严格档才有的：标准档只弹页面、不出声，温和档什么都不做。）",
-                  "Idle nagging is now your personal setting: Gentle / Standard / Strict levels, or fully "
-                        + "custom — how long counts as idle, how long each round rings, the gaps between "
-                        + "rounds, how many rounds at most, and whether it makes sound. It lives in the cloud, "
-                        + "shared between phone and computer. (Sound belongs to Strict only: Standard pops the "
-                        + "page silently, Gentle does nothing.)"),
-                s("悬浮窗可以定时关：点大悬浮窗的「关闭」，可以选 10／15／30／60 分钟后回来、"
-                        + "等当前任务结束回来、自己定时间，或者永不再出现（设置里能再打开）。",
-                  "The floating window can close on a timer: tap \"Close\" on the large floating window and "
-                        + "pick back in 10/15/30/60 minutes, back when the current task ends, a custom time, "
-                        + "or never again (re-enable it in Settings).")));
-        e114.add(new Group(s("修复", "Fixed"),
-                s("任务点完成后又自己弹回未完成：原因是同步对账拿着你点完成之前的旧快照整表落盘，"
-                        + "把完成状态盖了回去，你的完成也一直没写上云。现在对账先读最新状态再合并，"
-                        + "完成一点下去还会立刻单独写上云并回读确认。",
-                  "A task you checked done flipping back to not-done on its own: sync reconciliation was "
-                        + "writing a stale whole-table snapshot — taken before your tap — back over your "
-                        + "completion, which also never reached the cloud. Reconciliation now re-reads the "
-                        + "latest state before merging, and a completion is written to the cloud on its own "
-                        + "right away, with a read-back check.")));
-        e114.why = s("光弹页面没声音，你经常注意不到，空档就溜走了；悬浮窗以前只能在设置里开关，"
-                        + "想清静一会儿又怕找不回来。催促的轻重也该由你定，而不是写死的；"
-                        + "完成状态这种最基础的账，更不能被同步盖掉。",
-                "A silent popup is easy to miss, and gaps slipped away; the floating window could only be "
-                        + "toggled in Settings, so a quiet moment risked losing it. How hard it nags should "
-                        + "be your call, not hardcoded — and something as basic as a completion must never be "
-                        + "overwritten by sync.");
-        e114.tryIt = s("①什么任务都不开，干等 5 分钟（或结束当前任务后不开始下一个），听它响；"
-                        + "②展开大悬浮窗，点「关闭」，选「10 分钟后」；"
-                        + "③到设置页守卫组里的「空档催促」，把档位切到「标准」再切回「严格」；"
-                        + "④在列表里点完成一个任务，等十来秒，看它不再弹回。",
-                "1) Start nothing and wait 5 minutes (or end a task and don't start the next) and hear it "
-                        + "ring. 2) Open the large floating window, tap \"Close\", pick \"in 10 minutes\". "
-                        + "3) In Settings, under Guards → \"Idle nagging\", switch the level to Standard and "
-                        + "back to Strict. 4) Check a task done in the list, wait ten seconds, and see it stay done.");
-        out.add(e114);
 
 
         return out;
