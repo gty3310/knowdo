@@ -51,6 +51,15 @@ import java.util.Set;
 * SyncManager.addScheduleBlock 同一 sanction 纪律落盘）；点右侧任一计划块，左半屏
 * 定位并展开该任务（手风琴内容与主页展开区一致：笔记/元信息/操作 chips/子任务，
 * 数据与操作入口与主页同一套——TaskStore/TimerService/SubtaskPanel/SbSync.pushDoneAsync）。
+*
+* v1.18.0 改版（用户真机纠正后定案）：面板回到「日程」Tab 的内容区里（不再是盖住
+* 底部三 Tab 的 root 层覆盖物，宿主 MainActivity 负责层级）；v1.15.0 的面板内附属
+* 任务列表与「任务列表」开关删除——分屏的左半边就是主页任务列表本体（同一个列表
+* 组件、同一份数据），拖拽源也在那边：主页行拖动时经本类的 listDragOver/listDrop
+* 外部拖入 API 在本面板的计划栏画预览、落点经 addScheduleBlock 落盘。点计划块的
+* 展开去向改由宿主决定：宿主实现 BlockFocusHost 时（如主页）在宿主的列表里定位
+* 展开；独立托管（CalendarActivity）时回落到本面板下方清单区内展开（同一套
+* expansionView 与操作入口）。
 */
 public class CalendarPanel extends FrameLayout {
 private final Activity host;
@@ -67,13 +76,14 @@ private TextView hintView;
 private FrameLayout canvas;
 private LinearLayout laneHead;
 private LinearLayout listBox;
-// v1.15.0 分屏：左任务栏 + 右日历栏（各自独立滚动）
-private Button listToggle;
-private ScrollView splitScroll;
-private LinearLayout splitBox;
 private ScrollView calScroll;
-private boolean splitOn = false;
-private String focusTaskId = null; // 左栏当前展开的任务（点计划块定位到它）；null＝显示未排列表
+// 点计划块的展开去向（v1.18.0）：宿主实现此接口时在宿主列表里展开；未设置（独立
+// CalendarActivity 托管）时回落到本面板下方清单区内展开（focusTaskId 记展开对象）。
+public interface BlockFocusHost {
+void onCalendarBlockFocus(String taskId);
+}
+private BlockFocusHost focusHost;
+private String focusTaskId = null;
 private int lastAxisStart = DAY_START_MIN, lastAxisEnd = DAY_END_MIN;
 private int lastScale = 1, lastPlanX = 0, lastPlanW = 0;
 private TextView dropPreview; // 拖任务入日历时的落点预览块（canvas 的临时子视图）
@@ -83,9 +93,9 @@ private boolean syncing = false;
 private boolean dragging = false; // 有块正被拖动时，周期 render 不要打断它
 private TaskItem pendingGuardTask; // 等截图授权结果的待开始任务（与主页同语义）
 
-/** 任务数据一变（主页/悬浮窗/同步改的都算）就重画日历与左栏——与主页同一条 TaskStore 通知。 */
+/** 任务数据一变（主页/悬浮窗/同步改的都算）就重画日历——与主页同一条 TaskStore 通知。 */
 private final TaskStore.ChangeListener storeListener = () -> {
-if (foreground && !dragging) { render(); renderSplit(); }
+if (foreground && !dragging) { render(); }
 };
 
 private final Runnable refresher = new Runnable() {
@@ -182,31 +192,12 @@ hintView.setTextColor(Ui.danger(ctx));
 hintView.setPadding(0, dp(4), 0, dp(4));
 root.addView(hintView);
 
-// 工具行（v1.15.0）：「任务列表」开关——开了左半屏出任务列表，可拖进右侧日历
-LinearLayout tools = new LinearLayout(ctx);
-tools.setOrientation(LinearLayout.HORIZONTAL);
-tools.setGravity(Gravity.CENTER_VERTICAL);
-tools.setPadding(0, dp(2), 0, dp(6));
-listToggle = new Button(ctx);
-listToggle.setText(Strings.calTaskListBtn());
-listToggle.setOnClickListener(v -> setSplit(!splitOn));
-tools.addView(listToggle);
-root.addView(tools);
-
-// 主体：左任务栏（默认藏）＋右日历栏，各自独立滚动
+// 主体：日历栏（v1.18.0 起分屏的左半边是主页任务列表本体，在宿主那边；
+// 本面板只剩日历一栏。v1.15.0 的「任务列表」开关与面板内附属列表已删除。）
 LinearLayout bodyRow = new LinearLayout(ctx);
 bodyRow.setOrientation(LinearLayout.HORIZONTAL);
 root.addView(bodyRow, new LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-
-splitBox = new LinearLayout(ctx);
-splitBox.setOrientation(LinearLayout.VERTICAL);
-splitBox.setPadding(0, 0, dp(10), dp(28));
-splitScroll = new ScrollView(ctx);
-splitScroll.addView(splitBox);
-splitScroll.setVisibility(View.GONE);
-bodyRow.addView(splitScroll, new LinearLayout.LayoutParams(0,
-LinearLayout.LayoutParams.MATCH_PARENT, 46f));
 
 LinearLayout calBox = new LinearLayout(ctx);
 calBox.setOrientation(LinearLayout.VERTICAL);
@@ -228,30 +219,30 @@ calBox.addView(listBox);
 calScroll = new ScrollView(ctx);
 calScroll.addView(calBox);
 bodyRow.addView(calScroll, new LinearLayout.LayoutParams(0,
-LinearLayout.LayoutParams.MATCH_PARENT, 54f));
+LinearLayout.LayoutParams.MATCH_PARENT, 100f));
 
 render();
 }
 
-/** 分屏开/关：左栏显隐＋两栏权重，布局落定后按新宽度重画日历与左栏。 */
-private void setSplit(boolean on) {
-splitOn = on;
-if (!on) focusTaskId = null;
-splitScroll.setVisibility(on ? View.VISIBLE : View.GONE);
-LinearLayout.LayoutParams clp = (LinearLayout.LayoutParams) calScroll.getLayoutParams();
-clp.weight = on ? 54f : 100f;
-calScroll.setLayoutParams(clp);
-listToggle.setText(Strings.calTaskListBtn() + (on ? " ✓" : ""));
-renderSplit();
-calScroll.post(this::render);
+/** 设置点块展开的去向宿主（主页在嵌入时设置；独立托管不设）。 */
+public void setBlockFocusHost(BlockFocusHost h) {
+focusHost = h;
 }
 
-/** 点计划块 → 左栏定位并展开该任务（分屏没开先开分屏）。 */
+/**
+ * 点计划块 → 展开该任务：宿主（主页）接管时在宿主的任务列表里定位展开；
+ * 独立托管时回落到本面板下方清单区内展开（render() 里 focusTaskId 一节）。
+ */
 private void focusExpand(String taskId) {
-if (!splitOn) setSplit(true);
+if (focusHost != null) {
+focusHost.onCalendarBlockFocus(taskId);
+return;
+}
 focusTaskId = taskId;
-renderSplit();
-if (splitScroll != null) splitScroll.scrollTo(0, 0);
+render();
+if (calScroll != null) {
+calScroll.post(() -> calScroll.smoothScrollTo(0, Math.max(0, listBox.getTop() - dp(6))));
+}
 }
 
 @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
@@ -270,14 +261,12 @@ handler.removeCallbacks(refresher);
 handler.post(refresher);
 store.load();
 render();
-renderSplit();
 }
 
 /** 对外重画（宿主改变面板宽度后调用）。 */
 public void refreshNow() {
 store.load();
 render();
-renderSplit();
 }
 
 /** 面板关闭 / 宿主 onPause 时调用：停掉周期刷新。 */
@@ -299,7 +288,7 @@ SyncManager.setLastResult(ctx, r);
 handler.post(() -> {
 syncing = false;
 store.load();
-if (foreground) { render(); renderSplit(); }
+if (foreground) { render(); }
 });
 }).start();
 }
@@ -446,11 +435,11 @@ int nowMin = minOfDay(System.currentTimeMillis());
 axisStart = Math.min(axisStart, (nowMin / 60) * 60);
 axisEnd = Math.max(axisEnd, Math.min(24 * 60, (nowMin / 60 + 1) * 60));
 
-// 宽度按右日历栏的实际宽度算（v1.15.0 分屏后日历不再占满整宽）；未布局时先估算，布局后会重画
+// 宽度按日历栏的实际宽度算（嵌入主页分屏时不再占满整宽）；未布局时先估算，布局后会重画
 int pw = calScroll != null ? calScroll.getWidth() : 0;
 if (pw <= 0) {
 int panelW = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
-pw = panelW - dp(32) - (splitOn ? (int) (panelW * 0.44f) : 0);
+pw = panelW - dp(32);
 }
 int totalW = pw;
 int gutter = dp(46), gap = dp(6);
@@ -530,9 +519,25 @@ ntlp.topMargin = Math.max(0, y - dp(12));
 canvas.addView(nt, ntlp);
 }
 
-// 下方清单：未排入日程的任务 / 无日程时的今日任务
-// （分屏开着时这一段让给左栏——左栏同一批任务且可拖、可展开，此处不再重复列）
+// 下方清单：未排入日程的任务 / 无日程时的今日任务。
+// 独立托管且刚点了计划块时，先在清单区顶部内展开该任务（v1.18.0 回落路径；
+// 嵌入主页时展开发生在主页任务列表里，focusTaskId 在此恒为 null）。
 listBox.removeAllViews();
+if (focusHost == null && focusTaskId != null) {
+TaskItem ft = store.byId(focusTaskId);
+if (ft != null && !ft.deleted) {
+TextView back = new TextView(ctx);
+back.setText(Strings.calFocusBack());
+back.setTextSize(13);
+back.setTextColor(Ui.link(ctx));
+back.setPadding(0, dp(8), 0, dp(6));
+back.setOnClickListener(v -> { focusTaskId = null; render(); });
+listBox.addView(back);
+listBox.addView(expansionView(ft));
+} else {
+focusTaskId = null; // 任务已不在了，收起展开节
+}
+}
 Set<String> scheduledIds = new HashSet<>();
 if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
 List<TaskItem> unscheduled = new ArrayList<>();
@@ -543,13 +548,11 @@ hintView.setVisibility(View.VISIBLE);
 } else {
 hintView.setVisibility(View.GONE);
 }
-if (!splitOn) {
 addListTitle(plan == null? Strings.calTodayTasksTitle(): Strings.calUnscheduledTitle());
 if (unscheduled.isEmpty()) {
 addListLine(plan == null? Strings.calEmptyAllDone(): Strings.calEmptyAllScheduled(), Ui.sub(ctx));
 } else {
 for (TaskItem t: unscheduled) addTaskRow(t);
-}
 }
 boolean hasAllDay = false;
 for (GcalEvent e : gcal) if (e.allDay) { hasAllDay = true; break; }
@@ -608,7 +611,7 @@ box.addView(play, plp);
 play.setOnClickListener(v -> togglePlayTask(b.taskId));
 attachDrag(box, label, b, axisStart, scale);
 } else {
-// 已完成块没有拖拽：轻点整块 → 左栏展开该任务（v1.15.0）
+// 已完成块没有拖拽：轻点整块 → 展开该任务（去向由 focusExpand 按宿主决定，v1.18.0）
 box.setOnClickListener(v -> focusExpand(b.taskId));
 }
 int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
@@ -694,7 +697,7 @@ case MotionEvent.ACTION_UP:
 case MotionEvent.ACTION_CANCEL:
 handler.removeCallbacks(lift);
 if (!lifted) {
-// 没拾起就松手＝轻点整块 → 左栏展开该任务（v1.15.0）
+// 没拾起就松手＝轻点整块 → 展开该任务（focusExpand，v1.18.0）
 if (ev.getActionMasked() == MotionEvent.ACTION_UP) focusExpand(b.taskId);
 return true;
 }
@@ -754,207 +757,41 @@ row.addView(play);
 listBox.addView(row);
 }
 
-// ---------------- v1.15.0 左栏：未排列表（可拖进日历）＋点块展开 ----------------
-
-/** 与 render() 同一批「未排」任务：今日未完成、且不在今日计划块里。无计划时＝今日全部未完成。 */
-private List<TaskItem> unscheduledTasks() {
-store.load();
-List<Block> plan = planBlocks();
-Set<String> scheduledIds = new HashSet<>();
-if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
-List<TaskItem> out = new ArrayList<>();
-for (TaskItem t: store.tasks) {
-if (!isTodayTask(t) || t.isDoneToday()) continue;
-if (!scheduledIds.contains(t.id)) out.add(t);
-}
-return out;
-}
-
-private void renderSplit() {
-if (splitBox == null) return;
-splitBox.removeAllViews();
-if (!splitOn) return;
-store.load();
-// 展开模式：某个任务被点开（点计划块或点列表行都会来到这里）
-if (focusTaskId != null) {
-TaskItem t = store.byId(focusTaskId);
-if (t!= null && !t.deleted) {
-TextView back = new TextView(ctx);
-back.setText(Strings.calSplitBack());
-back.setTextSize(13);
-back.setTextColor(Ui.link(ctx));
-back.setPadding(0, dp(2), 0, dp(8));
-back.setOnClickListener(v -> { focusTaskId = null; renderSplit(); });
-splitBox.addView(back);
-TextView head = new TextView(ctx);
-head.setText((t.isDoneToday()? "✓ ": "") + t.title);
-head.setTextSize(16);
-head.setTextColor(Ui.text(ctx));
-head.setTypeface(head.getTypeface(), Typeface.BOLD);
-splitBox.addView(head);
-TextView sub = new TextView(ctx);
-sub.setText(Strings.calPlannedFmt(t.durationMinutes, "must".equals(t.priority)));
-sub.setTextSize(12);
-sub.setTextColor(Ui.sub(ctx));
-sub.setPadding(0, dp(2), 0, dp(4));
-splitBox.addView(sub);
-splitBox.addView(expansionView(t));
-return;
-}
-focusTaskId = null; // 任务已不在了，回列表
-}
-addSplitTitle(planBlocks() == null? Strings.calTodayTasksTitle(): Strings.calUnscheduledTitle());
-TextView hint = new TextView(ctx);
-hint.setText(Strings.calDragHint());
-hint.setTextSize(11);
-hint.setTextColor(Ui.sub(ctx));
-hint.setPadding(0, 0, 0, dp(6));
-splitBox.addView(hint);
-List<TaskItem> list = unscheduledTasks();
-if (list.isEmpty()) {
-addSplitLine(planBlocks() == null? Strings.calEmptyAllDone(): Strings.calEmptyAllScheduled());
-} else {
-for (TaskItem t: list) splitBox.addView(splitTaskRow(t));
-}
-}
-
-private void addSplitTitle(String s) {
-TextView t = new TextView(ctx);
-t.setText(s);
-t.setTextSize(14);
-t.setTextColor(Ui.text(ctx));
-t.setTypeface(t.getTypeface(), Typeface.BOLD);
-t.setPadding(0, dp(4), 0, dp(3));
-splitBox.addView(t);
-}
-
-private void addSplitLine(String s) {
-TextView t = new TextView(ctx);
-t.setText(s);
-t.setTextSize(13);
-t.setTextColor(Ui.sub(ctx));
-t.setPadding(0, dp(1), 0, dp(1));
-splitBox.addView(t);
-}
+// ---------------- 外部拖入（v1.18.0）：主页任务列表 → 本面板计划栏 ----------------
+// v1.15.0 的面板内附属列表已删：拖拽源是主页任务列表本体（宿主 MainActivity 的行），
+// 宿主在拖动中逐帧调 listDragOver 在本面板计划栏画落点预览，松手调 listDrop 落盘
+// 或 listDragCancel 取消。几何换算、预演块与落盘（addScheduleBlock）都留在本类，
+// 与 v1.15.0 左栏拖拽同一套口径：5 分钟吸附、块长＝时长 ×1.5、00:00–24:00 夹取。
 
 /**
- * 左栏任务行：标题＋时长＋▶（与下方清单行同一条开始路径）。
- * 整行可拖：横向拖过阈值即拾起（竖向拖动仍归左栏滚动，ScrollView 会拦截并给本行 CANCEL），
- * 拖进右侧日历时计划栏出现落点预览块，松手按 5 分钟吸附生成计划块；轻点则在左栏展开该任务。
+ * 拖动中逐帧调用：手指在日历画布上时画/更新计划栏落点预览块，并返回吸附＋夹取后的
+ * 开始分钟；不在画布上返回 -1（预览收起）。拖动全程置 dragging，挡住周期 render
+ * 与数据变更重画，免得几何（lastAxisStart/lastPlanX 等）与预览块被重建冲掉。
  */
-private View splitTaskRow(final TaskItem t) {
-LinearLayout row = new LinearLayout(ctx);
-row.setOrientation(LinearLayout.HORIZONTAL);
-row.setGravity(Gravity.CENTER_VERTICAL);
-row.setPadding(dp(4), dp(6), 0, dp(6));
-GradientDrawable rbg = new GradientDrawable();
-rbg.setCornerRadius(dp(6));
-rbg.setColor(Ui.surface(ctx));
-rbg.setStroke(dp(1), Ui.line(ctx));
-row.setBackground(rbg);
-LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-rlp.setMargins(0, 0, 0, dp(6));
-row.setLayoutParams(rlp);
-TextView lab = new TextView(ctx);
-lab.setText("≡ " + t.title + Strings.calPlannedFmt(t.durationMinutes, "must".equals(t.priority)));
-lab.setTextSize(13);
-lab.setTextColor(Ui.text(ctx));
-lab.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-row.addView(lab);
-TextView play = new TextView(ctx);
-boolean isRunningThis = TimerState.isRunning(ctx) && t.id.equals(TimerState.taskId(ctx));
-play.setText(isRunningThis? "⏸": "▶");
-play.setTextSize(16);
-play.setTextColor(Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161));
-play.setGravity(Gravity.CENTER);
-play.setPadding(dp(10), dp(2), dp(6), dp(2));
-play.setOnClickListener(v -> togglePlayTask(t.id));
-row.addView(play);
-row.setOnTouchListener(new View.OnTouchListener() {
-float downX, downY;
-boolean started = false;
-TextView ghost = null;
-@Override public boolean onTouch(View v, MotionEvent ev) {
-switch (ev.getActionMasked()) {
-case MotionEvent.ACTION_DOWN:
-downX = ev.getRawX();
-downY = ev.getRawY();
-started = false;
-return true;
-case MotionEvent.ACTION_MOVE: {
-float dx = ev.getRawX() - downX, dy = ev.getRawY() - downY;
-if (!started) {
-if (Math.abs(dx) < dp(12) || Math.abs(dx) < Math.abs(dy)) return true;
-started = true;
-dragging = true; // 挡住周期 render，免得预览块被重建冲掉
-v.getParent().requestDisallowInterceptTouchEvent(true);
-ghost = makeDragGhost(t);
-try { v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) {}
-}
-moveDragGhost(ghost, ev.getRawX(), ev.getRawY());
-updateDropPreview(t, ev.getRawX(), ev.getRawY());
-return true;
-}
-case MotionEvent.ACTION_UP: {
-boolean wasStarted = started;
-int dropMin = wasStarted? dropMinuteFor(ev.getRawY()) : -1;
-boolean inCanvas = wasStarted && pointInCanvas(ev.getRawX(), ev.getRawY());
-cleanupListDrag(ghost);
-ghost = null;
-started = false;
-dragging = false;
-v.getParent().requestDisallowInterceptTouchEvent(false);
-if (wasStarted) {
-if (inCanvas && dropMin >= 0) commitDrop(t, dropMin);
-else render(); // 拖回列表/日历外：取消，不写任何东西，重画复位
-} else {
-focusExpand(t.id); // 轻点＝在左栏展开
-}
-return true;
-}
-case MotionEvent.ACTION_CANCEL: {
-cleanupListDrag(ghost);
-ghost = null;
-started = false;
-dragging = false;
-render();
-return true;
-}
-}
-return false;
-}
-});
-return row;
+public int listDragOver(TaskItem t, float rawX, float rawY) {
+dragging = true;
+if (!pointInCanvas(rawX, rawY)) { hideDropPreview(); return -1; }
+int durMin = Math.max(5, Math.round(t.durationMinutes * 1.5f));
+int startMin = Math.max(DAY_START_MIN, Math.min(dropMinuteFor(rawY), 24 * 60 - durMin));
+updateDropPreview(t, rawX, rawY);
+return startMin;
 }
 
-/** 拖拽中的跟随影子块（挂在面板根上，尺寸照计划栏宽）。 */
-private TextView makeDragGhost(TaskItem t) {
-TextView g = new TextView(ctx);
-g.setText(t.title);
-g.setTextSize(11);
-g.setPadding(dp(6), dp(3), dp(6), dp(3));
-g.setSingleLine(true);
-g.setEllipsize(android.text.TextUtils.TruncateAt.END);
-GradientDrawable bg = new GradientDrawable();
-bg.setCornerRadius(dp(4));
-bg.setColor(Ui.dark(ctx) ? Color.rgb(38, 66, 99) : Color.rgb(187, 222, 251));
-bg.setStroke(dp(2), Ui.accent(ctx));
-g.setBackground(bg);
-g.setTextColor(Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161));
-g.setAlpha(0.92f);
-g.setElevation(dp(8));
-int w = lastPlanW > 0 ? lastPlanW : dp(120);
-addView(g, new FrameLayout.LayoutParams(w, dp(36)));
-return g;
+/** 拖动取消（拖回列表/日历外松手，或手势被取消）：收预览，不写任何东西。 */
+public void listDragCancel() {
+dragging = false;
+clearDropPreview();
 }
 
-private void moveDragGhost(View ghost, float rawX, float rawY) {
-if (ghost == null) return;
-int[] pl = new int[2];
-getLocationOnScreen(pl);
-ghost.setX(rawX - pl[0] - ghost.getWidth() / 4f);
-ghost.setY(rawY - pl[1] - ghost.getHeight() / 2f);
+/** 松手落定：经 sanction 入口 addScheduleBlock 落盘；完成后先重画本面板，再回调宿主。 */
+public void listDrop(final TaskItem t, int startMin, final Runnable onDone) {
+dragging = false;
+clearDropPreview();
+commitDrop(t, startMin, onDone);
+}
+
+private void clearDropPreview() {
+if (dropPreview != null) { canvas.removeView(dropPreview); dropPreview = null; }
 }
 
 /** 落点是否落在日历画布上（屏幕坐标）。 */
@@ -966,7 +803,7 @@ return rawX >= cl[0] && rawX <= cl[0] + canvas.getWidth()
 && rawY >= cl[1] && rawY <= cl[1] + canvas.getHeight();
 }
 
-/** 手指 Y → 落点开始分钟（按上次渲染的轴几何，5 分钟吸附，夹在一天之内）。 */
+/** 手指 Y → 落点开始分钟（按上次渲染的轴几何，5 分钟吸附，未夹取）。 */
 private int dropMinuteFor(float rawY) {
 if (canvas == null) return -1;
 int[] cl = new int[2];
@@ -1008,13 +845,8 @@ private void hideDropPreview() {
 if (dropPreview != null) dropPreview.setVisibility(View.GONE);
 }
 
-private void cleanupListDrag(View ghost) {
-if (ghost != null) removeView(ghost);
-if (dropPreview != null) { canvas.removeView(dropPreview); dropPreview = null; }
-}
-
 /** 松手落定：块长＝计划时长 ×1.5（用户一贯的占时口径），经 sanction 入口 addScheduleBlock 落盘。 */
-private void commitDrop(final TaskItem t, int startMinRaw) {
+private void commitDrop(final TaskItem t, int startMinRaw, final Runnable onDone) {
 int durMin = Math.max(5, Math.round(t.durationMinutes * 1.5f));
 final int startMin = Math.max(DAY_START_MIN, Math.min(startMinRaw, 24 * 60 - durMin));
 final String newStart = hhmm(startMin), newEnd = hhmm(startMin + durMin);
@@ -1027,17 +859,19 @@ toast("「" + t.title + "」已排到 " + newStart + "–" + newEnd);
 toast(err);
 }
 render();
-renderSplit();
+if (onDone != null) onDone.run();
 });
 }).start();
 }
 
+
 /**
- * 左栏展开区：内容与操作逐项对齐主页 expansionView（v1.15.0）——笔记、元信息（开始时间/已用分段/
+ * 展开区：内容与操作逐项对齐主页 expansionView——笔记、元信息（开始时间/已用分段/
  * 专注/闹钟）、操作 chips（开始暂停/编辑/闹钟/+15/完成）、子任务面板。数据走同一 TaskStore，
  * 开始/暂停走本页 togglePlayTask（与主页 onPlay 同一条路径），完成走 SbSync.pushDoneAsync，
  * 子任务走同一 SubtaskPanel 组件——不另起一套状态。保存一律 freshCopyOf（本页 render 会周期性
- * store.load() 换对象，捕获的渲染对象随时可能过期）。
+ * store.load() 换对象，捕获的渲染对象随时可能过期）。v1.18.0 起本展开区只在独立托管
+ * （CalendarActivity）的点块回落路径里出现；嵌入主页时展开的是主页列表里的行。
  */
 private View expansionView(final TaskItem t) {
 final boolean done = t.isDoneToday();
@@ -1152,7 +986,6 @@ return c != null ? c : t;
 
 private void afterTaskEdited() {
 render();
-renderSplit();
 }
 
 private String mmss(long ms) {
@@ -1189,7 +1022,7 @@ return t.allowedApps.isEmpty() ? "仅（未选）"
 return (t.focusRule == null || t.focusRule.isEmpty()) ? "＋专注" : "规则";
 }
 
-// ---------------- 左栏展开区用的编辑对话框（字段与保存路径逐项对齐主页） ----------------
+// ---------------- 展开区用的编辑对话框（字段与保存路径逐项对齐主页） ----------------
 
 private void dialogNote(final TaskItem t) {
 EditText input = new EditText(ctx);
@@ -1717,7 +1550,7 @@ afterTaskEdited();
 b.show();
 }
 
-/** 子任务面板宿主（左栏）：与主页 subtaskHost 同口径，落盘后重画日历与左栏。 */
+/** 子任务面板宿主（日历展开区）：与主页 subtaskHost 同口径，落盘后重画日历。 */
 private final SubtaskPanel.Host calSubHost = new SubtaskPanel.Host() {
 @Override public void onSubtasksEdited(TaskItem t) {
 store.save();

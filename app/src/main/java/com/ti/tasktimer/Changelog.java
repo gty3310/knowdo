@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e118 = new Entry("v1.18.0", "2026-10-25");
+        e118.add(new Group(s("改进", "Improved"),
+                s("日历改版：展开时不再盖住底部三个页签，随时可以切换；左边就是任务列表，右边是日历。",
+                  "Calendar reworked: opening it no longer covers the three bottom tabs — switch any time. The task list is on the left, the calendar on the right."),
+                s("排计划的方式变了：直接按住任务列表里的任务，拖进右侧日历松手就生成计划块，落点有预览并标起止时间；日历里原来单独的小列表去掉了。",
+                  "Planning works differently now: hold a task in the list and drag it into the calendar on the right — a preview with start–end times follows, and letting go creates the plan block. The calendar's separate little list is gone.")));
+        e118.add(new Group(s("新功能", "New"),
+                s("日历分屏里，列表中每个任务都带开始按钮，点一下就开始计时，不用展开、不用回主页。",
+                  "In the calendar split view, every task in the list has its own start button — one tap starts timing, no expanding and no going back to the home page.")));
+        e118.why = s("上一版把能拖的任务放在日历旁边的附属列表里，多了一层中转。你要的是：任务在哪、日历在哪，手一拖就过去。",
+                "The last version put the draggable tasks in a side list next to the calendar — one extra hop. What you asked for: the tasks where they are, the calendar where it is, one drag across.");
+        e118.tryIt = s("主页点开日历 → 按住一个没排的任务拖到右边某个时刻松手；再点列表里任务的开始按钮试一下。",
+                "Open the calendar on the home page → hold an unscheduled task, drag it to a time on the right and let go; then tap the start button on a task in the list.");
+        out.add(e118);
+
         Entry e117 = new Entry("v1.17.0", "2026-10-25");
         e117.add(new Group(s("改进", "Improved"),
                 s("晨间页现在会在你早上第一次用手机时就全屏出现，不用先打开知行。",

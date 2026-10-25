@@ -95,7 +95,7 @@ public final class Ui {
     }
 
     // ---------------- 日历面板展开幅度（占屏宽百分比） ----------------
-    public static int calPanelPct(Context c) { return sp(c).getInt("cal_panel_pct", 62); }
+    public static int calPanelPct(Context c) { return sp(c).getInt("cal_panel_pct", 55); }
 
     public static void setCalPanelPct(Context c, int pct) {
         sp(c).edit().putInt("cal_panel_pct", pct).apply();

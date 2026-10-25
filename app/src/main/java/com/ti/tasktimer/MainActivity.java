@@ -8,6 +8,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
@@ -68,6 +73,12 @@ public class MainActivity extends Activity {
     private FrameLayout calContainer;
     private CalendarPanel calendarPanel;
     private boolean calOpen;
+    // ---- v1.18.0 日历改版：日历进日程页内容区（与任务表左右分屏）、行拖拽 ----
+    private FrameLayout rootFrame;
+    private ScrollView bodyScrollV;
+    private TextView fabView;
+    private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
+    private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
     // ---- v1.16.0 底部三 Tab：日程（原主页内容）／习惯／知行 ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
     public static final int TAB_SCHEDULE = 0;
@@ -250,6 +261,7 @@ public class MainActivity extends Activity {
     private void buildUi() {
         adapter = new TaskAdapter();
         FrameLayout root = new FrameLayout(this);
+        rootFrame = root;
         root.setBackgroundColor(Ui.bg(this));
         setContentView(root);
 
@@ -339,10 +351,23 @@ public class MainActivity extends Activity {
         stripLine.setBackgroundColor(Ui.line(this));
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
+        // 内容区分屏行（v1.18.0）：左＝表格区（权重 1），右＝日历容器（默认藏）。
+        // 日历不再盖在 root 上：它只占日程页内容区、永远在底部三 Tab 之上；
+        // 展开时左边就是这张任务表本体，任务行可以直接拖进右侧日历。
+        LinearLayout splitRow = new LinearLayout(this);
+        splitRow.setOrientation(LinearLayout.HORIZONTAL);
+        content.addView(splitRow, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         // 表格区：表头滚动 + 主体（纵向滚动套横向滚动），两者横向镜像同步
         FrameLayout tableArea = new FrameLayout(this);
-        content.addView(tableArea, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        splitRow.addView(tableArea, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        // 日历容器（宽度由 toggleCalendar/拉手决定，展开/收起只动这一列）
+        calContainer = new FrameLayout(this);
+        calContainer.setBackgroundColor(Ui.surface(this));
+        calContainer.setVisibility(View.GONE);
+        splitRow.addView(calContainer, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT));
         LinearLayout tableCol = new LinearLayout(this);
         tableCol.setOrientation(LinearLayout.VERTICAL);
         tableArea.addView(tableCol, new FrameLayout.LayoutParams(
@@ -360,6 +385,7 @@ public class MainActivity extends Activity {
         headLine.setBackgroundColor(Ui.line(this));
         tableCol.addView(headLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
         ScrollView bodyScroll = new ScrollView(this);
+        bodyScrollV = bodyScroll;
         bodyScroll.setFillViewport(true);
         bodyHScroll = new HorizontalScrollView(this);
         bodyHScroll.setHorizontalScrollBarEnabled(false);
@@ -409,14 +435,7 @@ public class MainActivity extends Activity {
         flp.gravity = Gravity.BOTTOM | Gravity.END;
         flp.setMargins(0, 0, dp(18), dp(18));
         scheduleWrap.addView(fab, flp); // FAB 只属于日程页（v1.16.0 起随页面切换显隐）
-
-        // 日历面板容器（右侧滑出；宽度由 toggleCalendar/拉手决定）
-        calContainer = new FrameLayout(this);
-        calContainer.setBackgroundColor(Ui.surface(this));
-        calContainer.setVisibility(View.GONE);
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT);
-        clp.gravity = Gravity.END;
-        root.addView(calContainer, clp);
+        fabView = fab;
 
         buildDrawer(root);
         renderTable();
@@ -425,8 +444,9 @@ public class MainActivity extends Activity {
 
     // ---------------- 底部三 Tab（v1.16.0） ----------------
     // 日程＝原主页内容整套（顶栏/细条/任务表/FAB 都在 scheduleWrap 里），习惯与知行是
-    // 懒构建的同级页面；切换只改可见性，不销毁任何页面，状态不丢。日历面板与抽屉是
-    // root 层的覆盖物，盖在 Tab 栏之上（与 v1.15.0 以前的行为一致）。
+    // 懒构建的同级页面；切换只改可见性，不销毁任何页面，状态不丢。抽屉仍是 root 层
+    // 覆盖物；日历自 v1.18.0 起在日程页内容区里与任务表分屏，不再盖住 Tab 栏，
+    // 切走再回来保持展开状态（切走时只停掉面板的周期刷新，回来再续上）。
 
     private void buildTabBar(LinearLayout mainCol) {
         View line = new View(this);
@@ -491,7 +511,11 @@ public class MainActivity extends Activity {
         if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
         paintTabs();
-        if (tab != TAB_SCHEDULE && calOpen) closeCalendar();
+        // 日历保持离开前的展开状态（v1.18.0）：切走只停面板周期刷新，回来再续上
+        if (calendarPanel != null && calOpen) {
+            if (tab != TAB_SCHEDULE) calendarPanel.panelStop();
+            else calendarPanel.panelStart();
+        }
         if (tab == TAB_HABITS) {
             if (habitPage == null) habitPage = new HabitPage(this, habitContainer);
             habitPage.refresh();
@@ -694,6 +718,7 @@ public class MainActivity extends Activity {
         if (calOpen) { closeCalendar(); return; }
         if (calendarPanel == null) {
             calendarPanel = new CalendarPanel(this);
+            calendarPanel.setBlockFocusHost(taskId -> expandTaskFromCalendar(taskId));
             calContainer.addView(calendarPanel, 0, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
             calContainer.addView(buildCalGrip(), new FrameLayout.LayoutParams(
@@ -708,6 +733,8 @@ public class MainActivity extends Activity {
         calContainer.setLayoutParams(lp);
         calContainer.setVisibility(View.VISIBLE);
         calOpen = true;
+        if (fabView != null) fabView.setVisibility(View.GONE); // FAB 不压日历（v1.18.0）
+        renderTable(); // 行按分屏形态重画：play 按钮＋已排标记＋可拖
         calendarPanel.panelStart();
         calContainer.post(() -> { if (calendarPanel != null) calendarPanel.refreshNow(); });
     }
@@ -716,6 +743,163 @@ public class MainActivity extends Activity {
         calOpen = false;
         if (calendarPanel != null) calendarPanel.panelStop();
         if (calContainer != null) calContainer.setVisibility(View.GONE);
+        if (fabView != null) fabView.setVisibility(View.VISIBLE);
+        renderTable(); // 行恢复普通形态（去掉分屏专属的 play 按钮/已排标记/拖拽）
+    }
+
+    /** 点日历里的计划块 → 在主页任务列表里定位并展开该任务（v1.18.0，宿主回调）。 */
+    public void expandTaskFromCalendar(final String taskId) {
+        if (taskId == null) return;
+        expandedTaskId = taskId;
+        renderTable();
+        if (bodyScrollV != null) {
+            bodyScrollV.post(() -> {
+                for (int i = 0; i < bodyInner.getChildCount(); i++) {
+                    View ch = bodyInner.getChildAt(i);
+                    if (taskId.equals(ch.getTag())) {
+                        bodyScrollV.smoothScrollTo(0, Math.max(0, ch.getTop() - dp(4)));
+                        break;
+                    }
+                }
+            });
+        }
+    }
+
+    // ---------------- 分屏行拖拽（v1.18.0）：任务列表本体 → 右侧日历 ----------------
+    // 跨容器实现：行上的触摸由观察式监听旁观判定（不抢点击/勾选/长按），向右横拖过
+    // 阈值才「拾起」；拾起后影子块挂在 root 上跟随手指，落点预览与几何换算交给
+    // CalendarPanel.listDragOver（计划栏琥珀色预览块，5 分钟吸附），松手经
+    // CalendarPanel.listDrop → SyncManager.addScheduleBlock 落盘，拖回/拖出＝取消零写入。
+
+    private TextView dragGhost;
+
+    private void attachDragObserver(View v, View.OnTouchListener l, View exclude) {
+        if (v == null) return;
+        if (v != exclude) v.setOnTouchListener(l);
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) attachDragObserver(g.getChildAt(i), l, exclude);
+        }
+    }
+
+    private void showDragGhost(TaskItem t, float rawX, float rawY) {
+        hideDragGhost();
+        dragGhost = new TextView(this);
+        dragGhost.setText(t.title + " · " + Strings.fmtDur(t.durationMinutes));
+        dragGhost.setTextSize(13);
+        dragGhost.setSingleLine(true);
+        dragGhost.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        dragGhost.setTextColor(Ui.text(this));
+        dragGhost.setPadding(dp(10), 0, dp(10), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(6));
+        bg.setColor(Ui.surface(this));
+        bg.setStroke(dp(1), Ui.accent(this));
+        dragGhost.setBackground(bg);
+        dragGhost.setElevation(dp(6));
+        rootFrame.addView(dragGhost, new FrameLayout.LayoutParams(dp(150), dp(38)));
+        moveDragGhost(rawX, rawY);
+    }
+
+    private void moveDragGhost(float rawX, float rawY) {
+        if (dragGhost == null || rootFrame == null) return;
+        int[] rl = new int[2];
+        rootFrame.getLocationOnScreen(rl);
+        dragGhost.setX(rawX - rl[0] - dragGhost.getWidth() / 4f);
+        dragGhost.setY(rawY - rl[1] - dragGhost.getHeight() / 2f);
+    }
+
+    private void hideDragGhost() {
+        if (dragGhost != null && rootFrame != null) rootFrame.removeView(dragGhost);
+        dragGhost = null;
+    }
+
+    /**
+     * 行拖拽观察者：DOWN/MOVE 全程 return false，行内原有点击、勾选、长按、展开照常；
+     * 竖拖（滚动）与向左横拖（表格横滚）先于阈值被判死并放行拦截，滚动容器随后接管；
+     * 只有向右横拖过 dp(12) 才拾起（朝日历方向，与设计稿一致），拾起后 return true 独占手势。
+     */
+    private class RowDragObserver implements View.OnTouchListener {
+        private final TaskItem task;
+        private final View rowRoot;
+        private float downX, downY;
+        private boolean picked, dead;
+        private int dropMin = -1;
+
+        RowDragObserver(TaskItem task, View rowRoot) {
+            this.task = task;
+            this.rowRoot = rowRoot;
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent ev) {
+            if (calendarPanel == null || !calOpen) return false;
+            switch (ev.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = ev.getRawX();
+                    downY = ev.getRawY();
+                    picked = false;
+                    dead = false;
+                    dropMin = -1;
+                    if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                    return false;
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = ev.getRawX() - downX, dy = ev.getRawY() - downY;
+                    if (!picked) {
+                        if (dead) return false;
+                        if (Math.abs(dy) > dp(10) && Math.abs(dy) > Math.abs(dx)) {
+                            dead = true; // 竖拖＝列表滚动
+                            if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(false);
+                            return false;
+                        }
+                        if (dx > dp(12) && dx >= Math.abs(dy)) {
+                            picked = true;
+                            listDragging = true;
+                            try {
+                                android.os.Vibrator vb = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+                                if (vb != null) vb.vibrate(30);
+                            } catch (Exception ignored) { }
+                            rowRoot.setAlpha(0.35f);
+                            showDragGhost(task, ev.getRawX(), ev.getRawY());
+                            dropMin = calendarPanel.listDragOver(task, ev.getRawX(), ev.getRawY());
+                            return true;
+                        }
+                        if (Math.abs(dx) > dp(12)) {
+                            dead = true; // 向左横拖＝表格横滚
+                            if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(false);
+                        }
+                        return false;
+                    }
+                    moveDragGhost(ev.getRawX(), ev.getRawY());
+                    dropMin = calendarPanel.listDragOver(task, ev.getRawX(), ev.getRawY());
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                    if (!picked) return false;
+                    endDrag(dropMin >= 0);
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    if (!picked) return false;
+                    endDrag(false);
+                    return true;
+                default:
+                    return picked;
+            }
+        }
+
+        private void endDrag(boolean commit) {
+            picked = false;
+            hideDragGhost();
+            rowRoot.setAlpha(1f);
+            if (commit) {
+                final int dm = dropMin;
+                calendarPanel.listDrop(task, dm, () -> { listDragging = false; renderTable(); });
+            } else {
+                calendarPanel.listDragCancel();
+                listDragging = false;
+                renderTable();
+            }
+        }
     }
 
     /** 面板左缘拉手：拖它决定展开幅度；拖到 <16% 松手自动关，上限 94%。 */
@@ -859,9 +1043,45 @@ public class MainActivity extends Activity {
     private int colPx(ColDef c) { return dp(Ui.colWidthDp(this, c.id, c.defW)); }
 
     private int tableWidthPx() {
-        int w = dp(30);
+        int w = dp(30) + (calOpen ? dp(38) : 0); // 分屏时行首多一个 play 按钮列
         for (ColDef c : visibleCols()) w += colPx(c);
         return w + dp(36);
+    }
+
+    /** 分屏形态下今日已排映射：taskId → 当天最早一块的开始分钟（与日历 planBlocks 同一数据源）。 */
+    private void rebuildSplitScheduled() {
+        splitScheduled.clear();
+        if (!calOpen) return;
+        try {
+            org.json.JSONObject sch = SyncManager.latestSchedule(this);
+            if (sch == null || !TaskItem.today().equals(sch.optString("date", ""))) return;
+            org.json.JSONArray arr = sch.optJSONArray("blocks");
+            if (arr == null) return;
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String tid = o.optString("taskId", "");
+                int s = parseHhmm(o.optString("start", ""));
+                if (tid.isEmpty() || s < 0) continue;
+                Integer cur = splitScheduled.get(tid);
+                if (cur == null || s < cur) splitScheduled.put(tid, s);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private static int parseHhmm(String hhmm) {
+        try {
+            String[] p = hhmm.trim().split(":");
+            int h = Integer.parseInt(p[0]), m = Integer.parseInt(p[1]);
+            if (h < 0 || h > 24 || m < 0 || m > 59) return -1;
+            return h * 60 + m;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private static String hhmmOfMin(int min) {
+        return String.format(java.util.Locale.US, "%02d:%02d", min / 60, min % 60);
     }
 
     private String colTitle(String id) {
@@ -902,6 +1122,8 @@ public class MainActivity extends Activity {
 
     private void renderTable() {
         if (bodyInner == null) return;
+        if (listDragging) return; // 行正被拖向日历：整表重建会把手里的行销毁，拖完再画
+        rebuildSplitScheduled();
         colViews.clear();
         fullViews.clear();
         liveLeftView = null;
@@ -944,6 +1166,11 @@ public class MainActivity extends Activity {
 
     private void buildHeader() {
         headerInner.removeAllViews();
+        if (calOpen) { // 与行首 play 按钮列对齐的空位
+            View pb = new View(this);
+            pb.setLayoutParams(new LinearLayout.LayoutParams(dp(38), dp(38)));
+            headerInner.addView(pb);
+        }
         View cb = new View(this);
         cb.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(38)));
         headerInner.addView(cb);
@@ -1073,6 +1300,7 @@ public class MainActivity extends Activity {
         rowRoot.setOrientation(LinearLayout.HORIZONTAL);
         rowRoot.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
         rowRoot.setBackgroundColor(done ? Ui.doneBg(this) : isRunningThis ? Ui.runningBg(this) : Ui.bg(this));
+        rowRoot.setTag(t.id); // 日历点块时按 id 定位滚动（expandTaskFromCalendar）
         fullViews.add(rowRoot);
         View bar = new View(this);
         bar.setBackgroundColor(isRunningThis ? Ui.accent(this) : android.graphics.Color.TRANSPARENT);
@@ -1088,6 +1316,21 @@ public class MainActivity extends Activity {
         row.setPadding(0, dp(8), 0, dp(8));
         row.setOnLongClickListener(v -> { dialogRowMenu(t); return true; });
         colV.addView(row);
+
+        // 分屏形态专属（v1.18.0）：行首 play 按钮——点一下直接开始/暂停这个任务，
+        // 不必展开、不必回主页；走的还是 onPlay（与展开区主 chip 同一路径、同一切换语义）。
+        TextView playBtn = null;
+        if (calOpen) {
+            playBtn = new TextView(this);
+            playBtn.setText(isRunningThis ? "⏸" : "▶");
+            playBtn.setTextSize(17);
+            playBtn.setGravity(Gravity.CENTER);
+            playBtn.setTextColor(isRunningThis || isPausedThis ? Ui.accent(this) : Ui.sub(this));
+            playBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(38), dp(44)));
+            final TextView pb = playBtn;
+            pb.setOnClickListener(v -> onPlay(t));
+            row.addView(playBtn);
+        }
 
         CheckBox doneBox = new CheckBox(this);
         doneBox.setChecked(done);
@@ -1110,6 +1353,12 @@ public class MainActivity extends Activity {
         colV.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
         if (expanded) colV.addView(expansionView(t, done, isRunningThis, isPausedThis));
+        // 分屏拖拽（v1.18.0）：未完成、且未排进今日计划的行可横拖进右侧日历。
+        // 观察式监听只旁观手势、不接管行内点击/勾选/长按（见 RowDragObserver）。
+        if (calOpen && calendarPanel != null && !done && !splitScheduled.containsKey(t.id)) {
+            RowDragObserver obs = new RowDragObserver(t, rowRoot);
+            attachDragObserver(row, obs, playBtn);
+        }
         return rowRoot;
     }
 
@@ -1130,7 +1379,18 @@ public class MainActivity extends Activity {
                         FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
                 String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
                         + (isPausedThis ? Strings.pausedTag() : "");
-                v.setText(done ? titleText + " ✓" : titleText);
+                Integer plannedMin = (calOpen && !done) ? splitScheduled.get(t.id) : null;
+                if (plannedMin != null) {
+                    // 分屏形态「已排 HH:mm」小标记（v1.18.0）：点缀色、小一号，接在标题后
+                    SpannableStringBuilder sb = new SpannableStringBuilder(titleText);
+                    int s0 = sb.length();
+                    sb.append("  ·  ").append(Strings.calPlannedChip(hhmmOfMin(plannedMin)));
+                    sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.setSpan(new RelativeSizeSpan(0.82f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    v.setText(sb);
+                } else {
+                    v.setText(done ? titleText + " ✓" : titleText);
+                }
                 v.setTextSize(15);
                 v.setSingleLine(true);
                 v.setEllipsize(android.text.TextUtils.TruncateAt.END);
