@@ -15,7 +15,9 @@ import java.util.Locale;
 /**
  * UI 偏好与主题（v1.8.0）：语言（跟随系统/中文/English）、外观（跟随系统/亮/暗）、
  * 任务表列显隐与列宽、日历面板展开幅度——全部只存本地 SharedPreferences（ui_prefs），
- * 不进任何同步数据。配色按定稿设计稿：亮＝白底清新；暗＝深灰底＋琥珀强调。
+ * 不进任何同步数据。配色自 v1.24.5 起按品牌三基色（用户 2026-10-25 定案）：
+ * 亮＝米白 #F7F3EC 打底＋墨青黑 #1F2F2A 为主；暗＝墨青黑打底＋米白字；
+ * 唯一点缀色朱砂红 #D94B3A。link 蓝／danger 红／green 绿为语义色，不在三基色之列、保留。
  */
 public final class Ui {
     private static final String PREF = "ui_prefs";
@@ -60,22 +62,22 @@ public final class Ui {
     }
 
     // ---------------- 配色（设计稿色板） ----------------
-    public static int bg(Context c)      { return dark(c) ? Color.rgb(19, 23, 25)   : Color.WHITE; }
-    public static int surface(Context c) { return dark(c) ? Color.rgb(23, 28, 31)   : Color.WHITE; }
-    public static int muted(Context c)   { return dark(c) ? Color.rgb(31, 37, 41)   : Color.rgb(244, 246, 245); }
-    public static int text(Context c)    { return dark(c) ? Color.rgb(233, 237, 235) : Color.rgb(29, 37, 33); }
+    public static int bg(Context c)      { return dark(c) ? Color.rgb(31, 47, 42)   : Color.rgb(247, 243, 236); }
+    public static int surface(Context c) { return dark(c) ? Color.rgb(38, 56, 49)   : Color.rgb(247, 243, 236); }
+    public static int muted(Context c)   { return dark(c) ? Color.rgb(46, 66, 57)   : Color.rgb(238, 232, 217); }
+    public static int text(Context c)    { return dark(c) ? Color.rgb(243, 239, 232) : Color.rgb(31, 47, 42); }
     public static int sub(Context c)     { return dark(c) ? Color.rgb(141, 152, 145) : Color.rgb(124, 135, 127); }
-    public static int line(Context c)    { return dark(c) ? Color.rgb(43, 51, 56)   : Color.rgb(228, 233, 230); }
-    public static int accent(Context c)  { return dark(c) ? Color.rgb(226, 170, 61) : Color.rgb(179, 121, 29); }
-    public static int onAccent(Context c){ return dark(c) ? Color.rgb(25, 18, 4)    : Color.WHITE; }
+    public static int line(Context c)    { return dark(c) ? Color.rgb(58, 74, 66)   : Color.rgb(229, 223, 208); }
+    public static int accent(Context c)  { return dark(c) ? Color.rgb(217, 75, 58) : Color.rgb(217, 75, 58); }
+    public static int onAccent(Context c){ return dark(c) ? Color.WHITE    : Color.WHITE; }
     /** 可点文字（原蓝色链接位）：亮版沿用原蓝，暗版提亮保证可读。 */
     public static int link(Context c)    { return dark(c) ? Color.rgb(126, 178, 235) : Color.rgb(21, 101, 192); }
     public static int danger(Context c)  { return dark(c) ? Color.rgb(239, 154, 154) : Color.rgb(198, 40, 40); }
     public static int green(Context c)   { return dark(c) ? Color.rgb(129, 199, 132) : Color.rgb(46, 125, 50); }
-    /** 正在计时行的底色：强调色约 13% 混底色（设计稿口径，预先算好）。 */
-    public static int runningBg(Context c) { return dark(c) ? Color.rgb(49, 46, 35) : Color.rgb(245, 238, 226); }
+    /** 正在计时行的底色：朱砂红约 12% 混底色（品牌口径，预先算好）。 */
+    public static int runningBg(Context c) { return dark(c) ? Color.rgb(64, 52, 45) : Color.rgb(243, 223, 215); }
     /** 已完成行的底色。 */
-    public static int doneBg(Context c)  { return dark(c) ? Color.rgb(27, 32, 35) : Color.rgb(245, 245, 245); }
+    public static int doneBg(Context c)  { return dark(c) ? Color.rgb(35, 51, 45) : Color.rgb(241, 236, 224); }
 
     // ---------------- 任务表：列显隐 / 列宽 ----------------
     public static boolean colVisible(Context c, String colId, boolean def) {

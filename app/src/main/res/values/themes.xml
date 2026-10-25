@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 品牌主题（v1.24.5）：在原系统亮色主题上只定三件事——窗口底＝米白、
+         系统控件点缀＝朱砂红（对话框里的输入框/勾选框随此着色）、默认主文字＝墨青黑。
+         各页面的深浅外观仍由 Ui 按应用内偏好逐页绘制，与此前一致。 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F7F3EC</item>
+        <item name="android:colorAccent">#D94B3A</item>
+        <item name="android:textColorPrimary">#1F2F2A</item>
+    </style>
+</resources>

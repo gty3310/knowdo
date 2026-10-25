@@ -60,7 +60,7 @@ public final class Aspiration {
         t.setTypeface(Typeface.SERIF);
         t.setTextSize(19);
         t.setGravity(Gravity.CENTER);
-        t.setTextColor(onDarkBg ? Color.rgb(232, 201, 120) : Color.rgb(146, 106, 30));
+        t.setTextColor(onDarkBg ? Color.rgb(243, 156, 140) : Color.rgb(217, 75, 58));
         t.setLineSpacing(0, 1.25f);
         t.setClickable(false);
         t.setFocusable(false);

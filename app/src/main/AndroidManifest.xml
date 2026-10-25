@@ -32,8 +32,9 @@
     <application
         android:name=".KnowDoApp"
         android:label="知行 KnowDo"
-        android:icon="@android:drawable/ic_lock_idle_alarm"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/AppTheme">
 
         <activity
             android:name=".MainActivity"

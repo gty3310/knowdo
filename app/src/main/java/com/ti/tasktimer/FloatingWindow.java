@@ -183,9 +183,9 @@ public class FloatingWindow {
         miniBox.setVisibility(m == MODE_MINI ? View.VISIBLE : View.GONE);
         dockView.setVisibility(m == MODE_DOCK ? View.VISIBLE : View.GONE);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(m == MODE_EDIT ? Color.argb(240, 33, 33, 33)
-                : m == MODE_MINI ? Color.argb(148, 33, 33, 33)
-                : Color.argb(170, 33, 33, 33));
+        bg.setColor(m == MODE_EDIT ? Color.argb(240, 24, 36, 31)
+                : m == MODE_MINI ? Color.argb(148, 24, 36, 31)
+                : Color.argb(170, 24, 36, 31));
         bg.setCornerRadius((m == MODE_DOCK ? 14 : 16) * d);
         rootView.setBackground(bg);
         if (m == MODE_DOCK) rootView.setPadding((int) (4 * d), (int) (10 * d), (int) (4 * d), (int) (10 * d));
@@ -321,7 +321,7 @@ public class FloatingWindow {
                                 + fmt(Math.max(0, ra - System.currentTimeMillis()));
                     }
                     miniSub.setText(txt);
-                    miniSub.setTextColor(Color.rgb(255, 217, 122));
+                    miniSub.setTextColor(Color.rgb(247, 164, 148));
                     miniSub.setVisibility(View.VISIBLE);
                 } else {
                     miniSub.setVisibility(View.GONE);
@@ -584,9 +584,9 @@ public class FloatingWindow {
         pauseStrip.setOrientation(LinearLayout.HORIZONTAL);
         pauseStrip.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable stripBg = new GradientDrawable();
-        stripBg.setColor(Color.argb(33, 226, 170, 61));
+        stripBg.setColor(Color.argb(33, 217, 75, 58));
         stripBg.setCornerRadius(12 * d);
-        stripBg.setStroke((int) d, Color.argb(115, 226, 170, 61));
+        stripBg.setStroke((int) d, Color.argb(115, 217, 75, 58));
         pauseStrip.setBackground(stripBg);
         pauseStrip.setPadding(dp(c, 12), dp(c, 8), dp(c, 12), dp(c, 8));
         LinearLayout.LayoutParams stripLp = new LinearLayout.LayoutParams(
@@ -594,7 +594,7 @@ public class FloatingWindow {
         stripLp.setMargins(0, dp(c, 8), 0, dp(c, 2));
         pauseStrip.setLayoutParams(stripLp);
         pauseStripText = new TextView(c);
-        pauseStripText.setTextColor(Color.rgb(255, 217, 122));
+        pauseStripText.setTextColor(Color.rgb(247, 164, 148));
         pauseStripText.setTextSize(13.5f);
         pauseStrip.addView(pauseStripText);
         pauseStrip.setVisibility(View.GONE);

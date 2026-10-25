@@ -46,13 +46,13 @@ import java.util.Locale;
  * 开始计时前复刻主页的屏幕守卫截图授权流程（开了内容守卫且未授权时先申请，结果如何都开始）。
  */
 public class NextTaskActivity extends Activity {
-    private static final int BG = Color.parseColor("#171512");
-    private static final int CARD = Color.parseColor("#1D1A16");
-    private static final int INK = Color.parseColor("#ECE7DB");
+    private static final int BG = Color.parseColor("#1F2F2A");
+    private static final int CARD = Color.parseColor("#27382F");
+    private static final int INK = Color.parseColor("#F7F3EC");
     private static final int INK2 = Color.parseColor("#A49C8B");
-    private static final int INK3 = Color.parseColor("#6F695C");
-    private static final int LINE = Color.parseColor("#2E2A24");
-    private static final int AMBER = Color.parseColor("#C9A24D");
+    private static final int INK3 = Color.parseColor("#7E7769");
+    private static final int LINE = Color.parseColor("#3A4A41");
+    private static final int AMBER = Color.parseColor("#D94B3A");
     private static final int[] QUICK_MIN = {2, 3, 5, 10, 15, 20, 30};
     private static final int[] REST_MIN = {5, 10, 15, 20, 30, 60};
 
@@ -187,7 +187,7 @@ public class NextTaskActivity extends Activity {
         b.setAllCaps(false);
         GradientDrawable g = new GradientDrawable();
         g.setColor(Color.TRANSPARENT);
-        g.setStroke(dp(1), Color.parseColor("#45403A"));
+        g.setStroke(dp(1), Color.parseColor("#51635A"));
         g.setCornerRadius(dp(16));
         b.setBackground(g);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(60));
@@ -344,7 +344,7 @@ public class NextTaskActivity extends Activity {
         np.topMargin = dp(26);
         root.addView(nameBox, np);
         View uline = new View(this);
-        uline.setBackgroundColor(Color.parseColor("#45403A"));
+        uline.setBackgroundColor(Color.parseColor("#51635A"));
         root.addView(uline, new LinearLayout.LayoutParams(-1, 1));
         nameBox.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }

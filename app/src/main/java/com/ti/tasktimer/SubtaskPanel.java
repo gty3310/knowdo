@@ -108,8 +108,8 @@ public class SubtaskPanel extends LinearLayout {
         row.setPadding(dp(4), 0, dp(4), 0);
         if (running) {
             GradientDrawable g = new GradientDrawable();
-            g.setColor(dark ? Color.argb(46, 226, 170, 61)
-                    : Color.argb(30, 226, 170, 61));
+            g.setColor(dark ? Color.argb(46, 217, 75, 58)
+                    : Color.argb(30, 217, 75, 58));
             g.setCornerRadius(dp(8));
             row.setBackground(g);
         }
@@ -143,7 +143,7 @@ public class SubtaskPanel extends LinearLayout {
             mins.setText(s.minutes + (Strings.en() ? " min" : " 分钟"));
         }
         mins.setTextSize(compact ? 11.5f : 12.5f);
-        mins.setTextColor(running ? (dark ? Color.rgb(255, 217, 122) : Ui.accent(c)) : subCol());
+        mins.setTextColor(running ? (dark ? Color.rgb(247, 164, 148) : Ui.accent(c)) : subCol());
         row.addView(mins);
         return row;
     }

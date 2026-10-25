@@ -30,13 +30,13 @@ import java.util.List;
  * 样式按定稿清净风：深暖炭底、衬线大字、克制琥珀、文案不用句号。
  */
 public class IdleAlarmActivity extends Activity {
-    private static final int BG = Color.parseColor("#171512");
-    private static final int INK = Color.parseColor("#ECE7DB");
+    private static final int BG = Color.parseColor("#1F2F2A");
+    private static final int INK = Color.parseColor("#F7F3EC");
     private static final int INK2 = Color.parseColor("#A49C8B");
-    private static final int INK3 = Color.parseColor("#6F695C");
-    private static final int LINE = Color.parseColor("#2E2A24");
-    private static final int AMBER = Color.parseColor("#C9A24D");
-    private static final int PASSER_BG = Color.parseColor("#262019");
+    private static final int INK3 = Color.parseColor("#7E7769");
+    private static final int LINE = Color.parseColor("#3A4A41");
+    private static final int AMBER = Color.parseColor("#D94B3A");
+    private static final int PASSER_BG = Color.parseColor("#2C4036");
     private static final int REQ_CAPTURE = 48;
 
     private TaskStore store;
@@ -226,7 +226,7 @@ public class IdleAlarmActivity extends Activity {
         passer.setAllCaps(false);
         GradientDrawable g = new GradientDrawable();
         g.setColor(PASSER_BG);
-        g.setStroke(dp(1), Color.parseColor("#3A332A"));
+        g.setStroke(dp(1), Color.parseColor("#43564B"));
         g.setCornerRadius(dp(18));
         passer.setBackground(g);
         LinearLayout.LayoutParams pb = new LinearLayout.LayoutParams(-1, dp(84));
@@ -356,7 +356,7 @@ public class IdleAlarmActivity extends Activity {
         b.setAllCaps(false);
         GradientDrawable g = new GradientDrawable();
         g.setColor(Color.TRANSPARENT);
-        g.setStroke(dp(1), Color.parseColor("#45403A"));
+        g.setStroke(dp(1), Color.parseColor("#51635A"));
         g.setCornerRadius(dp(16));
         b.setBackground(g);
         b.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(60)));

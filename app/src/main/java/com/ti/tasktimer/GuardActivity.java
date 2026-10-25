@@ -77,7 +77,7 @@ public class GuardActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
         setContentView(root);
@@ -85,7 +85,7 @@ public class GuardActivity extends Activity {
         TextView title = new TextView(this);
         title.setText("你是在做正确的任务吗？");
         title.setTextSize(28);
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(Color.rgb(31, 47, 42));
         root.addView(title);
 
         TextView sub = new TextView(this);
@@ -100,7 +100,7 @@ public class GuardActivity extends Activity {
             sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n你打开了「" + appLabel + "」，它不在这个任务的专注规则里。");
         }
         sub.setTextSize(18);
-        sub.setTextColor(Color.DKGRAY);
+        sub.setTextColor(Color.rgb(31, 47, 42));
         sub.setPadding(0, dp(12), 0, dp(30));
         root.addView(sub);
 
@@ -220,7 +220,7 @@ public class GuardActivity extends Activity {
                         + "online verdicts will judge with it from now on (optional)"
                 : "已按误报处理，这次不算分神。想留一条纪律也行：往后联网判定会带着它一起判（可跳过）");
         label.setTextSize(17);
-        label.setTextColor(Color.BLACK);
+        label.setTextColor(Color.rgb(31, 47, 42));
         ruleBox.addView(label);
 
         ruleInput = new EditText(this);
@@ -310,10 +310,10 @@ public class GuardActivity extends Activity {
         b.setText(s);
         b.setTextSize(18);
         b.setAllCaps(false);
-        b.setTextColor(Color.DKGRAY);
+        b.setTextColor(Color.rgb(31, 47, 42));
         GradientDrawable g = new GradientDrawable();
-        g.setColor(Color.WHITE);
-        g.setStroke(dp(1), Color.rgb(190, 190, 190));
+        g.setColor(Color.rgb(247, 243, 236));
+        g.setStroke(dp(1), Color.rgb(211, 204, 188));
         g.setCornerRadius(dp(10));
         b.setBackground(g);
         b.setLayoutParams(new LinearLayout.LayoutParams(
@@ -332,7 +332,7 @@ public class GuardActivity extends Activity {
         TextView label = new TextView(this);
         label.setText("宽限到点后，这个软件：");
         label.setTextSize(17);
-        label.setTextColor(Color.BLACK);
+        label.setTextColor(Color.rgb(31, 47, 42));
         root.addView(label);
         LinearLayout row = scRow(root);
         Button quit = scButton("退掉这个软件");
@@ -371,7 +371,7 @@ public class GuardActivity extends Activity {
         TextView q1 = new TextView(this);
         q1.setText(Strings.scDidRightQ());
         q1.setTextSize(17);
-        q1.setTextColor(Color.BLACK);
+        q1.setTextColor(Color.rgb(31, 47, 42));
         root.addView(q1);
         LinearLayout r1 = scRow(root);
         Button did = scButton(Strings.scDid());
@@ -396,7 +396,7 @@ public class GuardActivity extends Activity {
         TextView q2 = new TextView(this);
         q2.setText(Strings.scStateQ());
         q2.setTextSize(17);
-        q2.setTextColor(Color.BLACK);
+        q2.setTextColor(Color.rgb(31, 47, 42));
         q2.setPadding(0, dp(14), 0, 0);
         root.addView(q2);
         String[] states = Strings.selfCheckStates();
@@ -450,12 +450,12 @@ public class GuardActivity extends Activity {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(dp(10));
         if (selected) {
-            g.setColor(Color.rgb(226, 170, 61));
-            b.setTextColor(Color.rgb(25, 18, 4));
+            g.setColor(Color.rgb(217, 75, 58));
+            b.setTextColor(Color.WHITE);
         } else {
-            g.setColor(Color.WHITE);
-            g.setStroke(dp(1), Color.rgb(190, 190, 190));
-            b.setTextColor(Color.DKGRAY);
+            g.setColor(Color.rgb(247, 243, 236));
+            g.setStroke(dp(1), Color.rgb(211, 204, 188));
+            b.setTextColor(Color.rgb(31, 47, 42));
         }
         b.setBackground(g);
     }

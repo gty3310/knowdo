@@ -21,11 +21,11 @@ import android.widget.TextView;
  * 要记回任务页记（用户定案）。呈现即消费路人静音状态。
  */
 public class ThanksActivity extends Activity {
-    private static final int BG = Color.parseColor("#171512");
-    private static final int INK = Color.parseColor("#ECE7DB");
+    private static final int BG = Color.parseColor("#1F2F2A");
+    private static final int INK = Color.parseColor("#F7F3EC");
     private static final int INK2 = Color.parseColor("#A49C8B");
-    private static final int INK3 = Color.parseColor("#6F695C");
-    private static final int AMBER = Color.parseColor("#C9A24D");
+    private static final int INK3 = Color.parseColor("#7E7769");
+    private static final int AMBER = Color.parseColor("#D94B3A");
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -144,7 +144,7 @@ public class ThanksActivity extends Activity {
         g.setCornerRadius(dp(16));
         if (primary) {
             g.setColor(Color.TRANSPARENT);
-            g.setStroke(dp(1), Color.parseColor("#45403A"));
+            g.setStroke(dp(1), Color.parseColor("#51635A"));
             b.setTextColor(INK);
         } else {
             g.setColor(Color.TRANSPARENT);

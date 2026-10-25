@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1245 = new Entry("v1.24.5", "2026-10-25");
+        e1245.add(new Group(s("改进", "Improved"),
+                s("换新颜：桌面图标换成定稿的「未闭合的圆」——墨青黑的圆环右上留缺口，一颗朱砂红点落在圆上；App 配色统一成三基色：米白打底、墨青黑为主、朱砂红点缀",
+                  "A new face: the launcher icon is now the finalized \"unclosed circle\" — an ink teal-black ring left open at the upper right, with a single vermillion dot resting on the ring; the app's palette is unified into the three brand colors: rice white as the base, ink teal-black as the primary, vermillion as the accent")));
+        e1245.why = s("图标和配色是知行的脸面，定下来就不飘了；三基色也正合「低饱和、只许一个点缀色」的规矩",
+                "The icon and the palette are KnowDo's face — once settled, they stop drifting; the three colors also fit the house rule of low saturation with a single accent");
+        e1245.tryIt = s("1）装完看桌面图标是不是新圆环；2）打开 App，看底色是不是米白、点缀是不是朱砂红；3）留意悬浮窗等深色场景，看有没有旧颜色残留不协调",
+                "1) After installing, check the home-screen icon is the new ring. 2) Open the app and check the base is rice white and the accent is vermillion. 3) Keep an eye on dark scenes like the floating window for any leftover old colors that clash");
+        out.add(e1245);
+
         Entry e1244 = new Entry("v1.24.4", "2026-10-25");
         e1244.add(new Group(s("修复", "Fixed"),
                 s("语义小模型下载总是卡在「分片大小不对」。原因是模型托管方的接口在传这类二进制文件时会把内容截断，改成文本编码中转下发后就能完整到达；同时每个分片下坏了会自动重试几次，不用你反复点",

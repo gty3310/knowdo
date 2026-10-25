@@ -22,7 +22,7 @@ public class ResumeRemindActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.rgb(24, 24, 24));
+        root.setBackgroundColor(Color.rgb(23, 34, 29));
         int pad = dp(28);
         root.setPadding(pad, pad, pad, pad);
         setContentView(root);

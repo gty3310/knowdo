@@ -31,7 +31,7 @@ public class GuardTestPickActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(24);
         root.setPadding(pad, dp(40), pad, pad);
         // 根视图先挂上窗口（v1.24.2 修复）：此前本页把整棵视图树建完却从未
@@ -51,7 +51,7 @@ public class GuardTestPickActivity extends Activity {
         TextView title = new TextView(this);
         title.setText("先选一个任务当尺子");
         title.setTextSize(24);
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(Color.rgb(31, 47, 42));
         root.addView(title);
 
         TextView sub = new TextView(this);
@@ -81,7 +81,7 @@ public class GuardTestPickActivity extends Activity {
         TextView tempLabel = new TextView(this);
         tempLabel.setText("临时任务（只在这次测试里用，不会进你的任务列表）");
         tempLabel.setTextSize(15);
-        tempLabel.setTextColor(Color.BLACK);
+        tempLabel.setTextColor(Color.rgb(31, 47, 42));
         tempLabel.setPadding(0, dp(10), 0, dp(6));
         list.addView(tempLabel);
 
@@ -125,7 +125,7 @@ public class GuardTestPickActivity extends Activity {
             t.setText("选尺子页没能打开（" + e.getClass().getSimpleName()
                     + "）。先返回再试；开着测试者模式时，错误详情会亮在报错窗里。");
             t.setTextSize(16);
-            t.setTextColor(Color.BLACK);
+            t.setTextColor(Color.rgb(31, 47, 42));
             t.setPadding(0, dp(16), 0, dp(12));
             root.addView(t);
             Button back = rowButton("返回");

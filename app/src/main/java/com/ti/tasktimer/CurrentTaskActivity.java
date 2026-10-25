@@ -45,7 +45,7 @@ public class CurrentTaskActivity extends Activity {
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(24);
         root.setPadding(pad, dp(48), pad, pad);
         setContentView(root);
@@ -55,12 +55,12 @@ public class CurrentTaskActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(running ? TimerState.taskTitle(this) : "当前没有进行中的任务");
         title.setTextSize(26);
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(Color.rgb(31, 47, 42));
         root.addView(title);
 
         timeView = new TextView(this);
         timeView.setTextSize(54);
-        timeView.setTextColor(Color.rgb(21, 101, 192));
+        timeView.setTextColor(Color.rgb(31, 47, 42));
         timeView.setPadding(0, dp(8), 0, dp(16));
         root.addView(timeView);
 

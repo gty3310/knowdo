@@ -40,7 +40,7 @@ public final class AccountUi {
             TextView who = new TextView(act);
             who.setText("已登录：" + Supa.userEmail(act));
             who.setTextSize(16);
-            who.setTextColor(Color.BLACK);
+            who.setTextColor(Color.rgb(31, 47, 42));
             box.addView(who);
             TextView st = new TextView(act);
             st.setText(SbSync.statusText(act, store)
@@ -95,7 +95,7 @@ public final class AccountUi {
                 + "垃圾箱。如果在收件箱里找不到，请去垃圾箱（垃圾邮件文件夹）里找一找。"
                 + "初期测试，多有不便，请多见谅。");
         spamTip.setTextSize(14);
-        spamTip.setTextColor(Color.BLACK);
+        spamTip.setTextColor(Color.rgb(31, 47, 42));
         spamTip.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         spamTip.setPadding(0, dp(act, 8), 0, 0);
         box.addView(spamTip);

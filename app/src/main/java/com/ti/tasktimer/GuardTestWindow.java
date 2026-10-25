@@ -89,7 +89,7 @@ public final class GuardTestWindow {
 
         rootView = new LinearLayout(c);
         rootView.setOrientation(LinearLayout.VERTICAL);
-        final int bgColor = Color.argb(228, 34, 32, 29); // 深暖炭半透明（attach 前校验要用）
+        final int bgColor = Color.argb(228, 27, 41, 35); // 墨青深底半透明（attach 前校验要用）
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(bgColor);
         bg.setCornerRadius(14 * d);
@@ -101,7 +101,7 @@ public final class GuardTestWindow {
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(c);
         title.setText("守卫测试");
-        title.setTextColor(Color.rgb(240, 234, 222));
+        title.setTextColor(Color.rgb(247, 243, 236));
         title.setTextSize(13);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
         title.setLayoutParams(new LinearLayout.LayoutParams(

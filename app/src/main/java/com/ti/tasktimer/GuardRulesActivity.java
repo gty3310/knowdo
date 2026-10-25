@@ -29,7 +29,7 @@ public class GuardRulesActivity extends Activity {
         Strings.init(this);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(24);
         root.setPadding(pad, dp(40), pad, pad);
         setContentView(root);
@@ -42,7 +42,7 @@ public class GuardRulesActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(Strings.en() ? "My guard rules" : "我的纪律");
         title.setTextSize(26);
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(Color.rgb(31, 47, 42));
         root.addView(title);
 
         TextView note = new TextView(this);
@@ -80,7 +80,7 @@ public class GuardRulesActivity extends Activity {
             TextView tv = new TextView(this);
             tv.setText(text);
             tv.setTextSize(19);
-            tv.setTextColor(Color.BLACK);
+            tv.setTextColor(Color.rgb(31, 47, 42));
             tv.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(tv);
 
@@ -90,7 +90,7 @@ public class GuardRulesActivity extends Activity {
             del.setAllCaps(false);
             del.setTextColor(Color.rgb(160, 60, 50));
             GradientDrawable g = new GradientDrawable();
-            g.setColor(Color.WHITE);
+            g.setColor(Color.rgb(247, 243, 236));
             g.setStroke(dp(1), Color.rgb(210, 170, 165));
             g.setCornerRadius(dp(8));
             del.setBackground(g);

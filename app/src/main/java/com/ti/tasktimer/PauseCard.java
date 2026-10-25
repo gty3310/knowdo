@@ -57,7 +57,7 @@ public final class PauseCard {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(248, 20, 23, 26));
+        bg.setColor(Color.argb(248, 24, 36, 31));
         bg.setCornerRadius(18 * d);
         bg.setStroke((int) d, Color.argb(40, 255, 255, 255));
         card.setBackground(bg);
@@ -236,10 +236,10 @@ public final class PauseCard {
         go.setTextSize(15);
         go.setAllCaps(false);
         GradientDrawable gbg = new GradientDrawable();
-        gbg.setColor(Color.rgb(226, 170, 61));
+        gbg.setColor(Color.rgb(217, 75, 58));
         gbg.setCornerRadius(11 * d);
         go.setBackground(gbg);
-        go.setTextColor(Color.rgb(25, 18, 4));
+        go.setTextColor(Color.WHITE);
         LinearLayout.LayoutParams golp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, (int) (48 * d));
         golp.topMargin = (int) (12 * d);
@@ -336,19 +336,19 @@ public final class PauseCard {
 
     private static void styleTile(LinearLayout tile, boolean on, float d) {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(on ? Color.argb(41, 226, 170, 61) : Color.argb(12, 255, 255, 255));
+        g.setColor(on ? Color.argb(41, 217, 75, 58) : Color.argb(12, 255, 255, 255));
         g.setCornerRadius(13 * d);
-        g.setStroke((int) d, on ? Color.rgb(226, 170, 61) : Color.argb(30, 255, 255, 255));
+        g.setStroke((int) d, on ? Color.rgb(217, 75, 58) : Color.argb(30, 255, 255, 255));
         tile.setBackground(g);
     }
 
     private static void styleChip(TextView chip, boolean on, float d) {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(on ? Color.argb(46, 226, 170, 61) : Color.argb(10, 255, 255, 255));
+        g.setColor(on ? Color.argb(46, 217, 75, 58) : Color.argb(10, 255, 255, 255));
         g.setCornerRadius(999);
-        g.setStroke((int) d, on ? Color.rgb(226, 170, 61) : Color.argb(46, 255, 255, 255));
+        g.setStroke((int) d, on ? Color.rgb(217, 75, 58) : Color.argb(46, 255, 255, 255));
         chip.setBackground(g);
-        chip.setTextColor(on ? Color.rgb(255, 217, 122) : Color.rgb(223, 232, 226));
+        chip.setTextColor(on ? Color.rgb(247, 164, 148) : Color.rgb(223, 232, 226));
     }
 
     private static EditText durInput(Context c, String hint) {

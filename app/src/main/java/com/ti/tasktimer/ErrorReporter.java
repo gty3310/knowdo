@@ -176,14 +176,14 @@ public final class ErrorReporter {
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(232, 34, 32, 29));
+        bg.setColor(Color.argb(232, 27, 41, 35));
         bg.setCornerRadius(12 * d);
         root.setBackground(bg);
         root.setPadding((int) (12 * d), (int) (9 * d), (int) (12 * d), (int) (10 * d));
         root.setOnClickListener(v -> dismiss());
 
         titleView = new TextView(c);
-        titleView.setTextColor(Color.rgb(240, 234, 222));
+        titleView.setTextColor(Color.rgb(247, 243, 236));
         titleView.setTextSize(13);
         titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
         titleView.setMaxLines(1);
