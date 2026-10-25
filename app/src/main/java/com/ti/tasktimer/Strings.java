@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.21.1 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.21.2 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -656,8 +656,8 @@ public final class Strings {
          + "一直静到下一次屏幕亮起，他碰不到你的任务；你下次解锁会先看到致谢页，可以直接继续刚才那个任务，或去任务页选新的。\n"
          + "• 拿起手机先选任务：没有任务在计时、也没有带倒计时的暂停时，你一解锁手机就全屏问「接下来，做点什么」"
          + "（晨间页、致谢页优先于它；通话中不抢，挂断后补上）。点今日任务一行就开始，也可以新建，或选「休息一会」——休息也是正式安排，选个时长占位计时，到点叫你回来。\n"
-         + "• 建议设置：电池优化豁免、悬浮窗、全屏通知、精确闹钟、通知权限五项，新装或升级后首次打开会呈现一次，"
-         + "设置页里有常设入口随时复查。都是建议不是门槛——不开也能用，只是系统可能在后台把知行停掉，晨间和提醒可能不准时；"
+         + "• 建议设置：电池优化豁免、悬浮窗、无障碍截图通道、全屏通知、精确闹钟、通知权限六项，新装或升级后首次打开会呈现一次，"
+         + "设置页里有常设入口随时复查。都是可选的——每一项管一个功能，用得上就开、用不上不开，不开不影响其他功能使用，只是系统可能在后台把知行停掉，晨间和提醒可能不准时；"
          + "小米、华为等机型还需在系统里另开自启动与后台弹出（应用内检测不到，清单底部有一行说明）。"},
     };
 
@@ -968,8 +968,8 @@ public final class Strings {
          + "• Pick on unlock: whenever nothing is timing and no counted-down pause is running, unlocking your phone asks full-screen \"What's next\" "
          + "(the morning page and the thank-you page outrank it; it never barges into a call, and catches up after). Tap a task for today to start it, "
          + "create a new one, or choose \"Rest a while\" — rest is a plan too: it times a placeholder and calls you back.\n"
-         + "• Suggested settings: battery-optimization exemption, overlay, full-screen notifications, exact alarms, and notifications — shown once on first "
-         + "open after install or upgrade, and always available in Settings. Suggestions, not requirements: everything works without them, but the system "
+         + "• Suggested settings: battery-optimization exemption, overlay, accessibility screenshot channel, full-screen notifications, exact alarms, and notifications — shown once on first "
+         + "open after install or upgrade, and always available in Settings. All optional — each one powers a feature: turn on the ones you use, skip the ones you don't; skipping one never affects the others, but the system "
          + "may stop KnowDo in the background and the morning page and reminders may run late. Xiaomi/Huawei-style phones also need Auto-start and "
          + "background pop-ups enabled in system settings (not detectable from inside the app; there's a note at the bottom of the list)."},
     };

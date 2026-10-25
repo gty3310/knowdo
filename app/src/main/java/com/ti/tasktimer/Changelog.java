@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1212 = new Entry("v1.21.2", "2026-10-25");
+        e1212.add(new Group(s("改进", "Improved"),
+                s("「建议设置」页多了一项「无障碍截图通道」：新装或升级后第一次打开时会呈现的那一页，现在把无障碍也列在里面（排在悬浮窗后面），点它就直接跳到系统的无障碍设置去开——以前这一项只藏在权限体检页里。这一项的说明也写明白了：它是给屏幕内容守卫用的，守卫开着计时时靠它定期截一眼屏幕、看你做的是不是任务相关的事；不用屏幕守卫就不用开它，不开只是守卫没法看屏幕、守卫测试模式也用不了。页面开头也改直白了：这些都是可选的，每一项说明下面都写清了是用来干什么的，按你用不用对应功能决定，不开不影响其他功能使用。",
+                  "The Suggested settings page gains an \"Accessibility screenshot channel\" item: the page shown once after install or upgrade now lists accessibility too (right after the overlay item), and tapping it jumps straight to the system accessibility settings — before, this switch only lived on the Permissions page. The item says plainly what it is for: it powers the screen-content guard — while a timer runs with the guard on, it screenshots the screen now and then to check you are on task. If you don't use the screen-content guard, don't turn it on; without it the guard simply can't see the screen, and guard test mode is unavailable too. The page intro now says it outright as well: all of these are optional, each item explains what it is for, you decide by whether you use that feature, and skipping one never affects the others.")));
+        e1212.why = s("无障碍是屏幕守卫和守卫测试模式的前提，却没出现在安装后第一页的清单里：新用户照着清单一页开完，守卫还是截不了图，因为最关键的那一项根本没在清单上。这版把它补进首启页，并把「可选、用不上就别开」说清楚，装完一次就能把自己要用的功能配齐。",
+                "Accessibility is a prerequisite for the screen-content guard and its test mode, yet it was missing from the first-run checklist: a new user could work through the whole list and the guard still couldn't screenshot, because the one switch it needs was never on the page. This release adds it to the first-run page and states plainly that it is optional — skip it if you don't use the feature — so a fresh install can be set up in one pass.");
+        e1212.tryIt = s("从设置页进「建议设置」：第六项「无障碍截图通道」排在悬浮窗后面。没开时点它，直接跳到系统无障碍设置，找到知行的服务开启，返回本页状态会自动变成「已开启」。全新安装或升级后第一次打开，呈现的也是这同一页，点「以后再说」就能关掉，不拦你用其他功能。",
+                "Open Settings → Suggested settings: the sixth item, \"Accessibility screenshot channel\", sits right after the overlay item. While it is off, tap it to jump to the system accessibility settings, enable KnowDo's service, and come back — the status refreshes to \"On\" by itself. A fresh install or the first open after an upgrade shows this same page, and \"Later\" dismisses it — nothing blocks the rest of the app.");
+        out.add(e1212);
+
         Entry e1211 = new Entry("v1.21.1", "2026-10-25");
         e1211.add(new Group(s("修复", "Fixed"),
                 s("结束页没人理时不再永远安静：任务到点、「时间到了」页面弹出后，如果你把手机放一边既不确认完成也不加时，60 秒后它会自己开始催——先震动，无反应再响渐强铃，之后每隔几分钟一轮，直到你回来点任意按钮处置为止（点完成或加时立刻停）。节奏和轮数跟随你的催促档位：严格档无限催、标准档催满轮数就停、温和档不催；每个任务自己的 alarm 模式照样说了算——设了静默就只震不响，设了关闭就完全不催。",

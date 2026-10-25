@@ -23,9 +23,11 @@ import android.widget.TextView;
 
 /**
  * 「建议设置」清单（v1.19.0）：新用户首次打开（以及现有用户升级到本版后首次打开）
- * 呈现一次，设置里留常设入口随时复查。定位是建议、不是门槛——每一项不开也能用，
- * 只是写明风险：系统可能在后台把知行停掉，晨间与提醒可能不准时。
- * 五项都可自动检测状态、并一键跳到对应的系统设置页；回到本页自动刷新。
+ * 呈现一次，设置里留常设入口随时复查。定位是建议、不是门槛——每一项都是可选的，
+ * 按用不用对应功能决定，不开不影响其他功能使用，只是写明不开的后果：系统可能在
+ * 后台把知行停掉，晨间与提醒可能不准时。
+ * 六项都可自动检测状态、并一键跳到对应的系统设置页；回到本页自动刷新。
+ * （v1.21.2 起含「无障碍截图通道」——屏幕内容守卫靠它截图，不用守卫可不开。）
  * 小米/华为的自启动与后台弹出系统没有可检测的接口，清单底部只留一行静态说明。
  */
 public class SuggestedSettingsActivity extends Activity {
@@ -82,10 +84,11 @@ public class SuggestedSettingsActivity extends Activity {
 
         TextView intro = new TextView(this);
         intro.setText(en
-                ? "These are suggestions, not requirements — KnowDo works without them. "
-                + "But without them the system may stop KnowDo in the background, "
-                + "and the morning page and reminders may not arrive on time."
-                : "这些都是建议，不是门槛——不设，知行也能用。只是不设的话，系统可能在后台把知行停掉，晨间和提醒就可能不准时");
+                ? "All of these are optional: each one powers a feature — turn on the ones you use, "
+                + "skip the ones you don't; skipping one never affects the others. Each item says "
+                + "what happens without it — without a few of them the system may stop KnowDo in "
+                + "the background, and the morning page and reminders may not arrive on time."
+                : "这些都是可选的：每一项管一个功能，用得上就开、用不上就不开，不开不影响其他功能使用。每一项下面都写了不开会怎样——有几项不开的话，系统可能在后台把知行停掉，晨间和提醒就可能不准时，照着自己的需要挑就行");
         intro.setTextSize(13);
         intro.setTextColor(Ui.sub(this));
         intro.setLineSpacing(0, 1.5f);
@@ -105,6 +108,13 @@ public class SuggestedSettingsActivity extends Activity {
                 en ? "Without it, full-screen pages on an unlocked screen and the floating window can't appear directly"
                         : "不设的话，亮屏时全屏页没法直接出现，常驻悬浮窗也出不来",
                 AlertHelper.canDrawOverlays(this), this::openOverlay);
+        addItem(root,
+                en ? "Accessibility screenshot channel" : "无障碍截图通道",
+                en ? "Powers the screen-content guard: while a timer runs with the guard on, it screenshots the screen "
+                        + "now and then to check you are on task. If you don't use the screen-content guard, you don't need it — "
+                        + "without it the guard can't see the screen and guard test mode is unavailable too"
+                        : "给「屏幕内容守卫」用的：守卫开着计时时，靠它定期截一眼屏幕，看你做的是不是任务相关的事。不用屏幕守卫就不用开它；不开的话守卫没法看屏幕，守卫测试模式也用不了",
+                KnowDoAccessibilityService.isEnabled(this), this::openAccessibility);
         addItem(root,
                 en ? "Full-screen notifications" : "全屏通知",
                 en ? "Without it, pages can't take over the lock screen — alerts drop to banners that are easy to miss"
@@ -236,6 +246,16 @@ public class SuggestedSettingsActivity extends Activity {
             i.setData(Uri.parse("package:" + getPackageName()));
             startActivity(i);
         } catch (Exception ignored) { }
+    }
+
+    private void openAccessibility() {
+        try {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+            } catch (Exception ignored) { }
+        }
     }
 
     private void openFullscreen() {

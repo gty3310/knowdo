@@ -593,10 +593,10 @@ public class SettingsActivity extends Activity {
                 v -> startActivity(new Intent(this, HelpActivity.class)));
         row(Strings.whatsNewEntry(), null, arrowBtn("›"),
                 v -> WhatsNew.show(this));
-        // 建议设置（v1.19.0）：常设入口，随时复查五项系统开关（电池/悬浮窗/全屏通知/精确闹钟/通知）
+        // 建议设置（v1.19.0）：常设入口，随时复查六项系统开关（电池/悬浮窗/无障碍/全屏通知/精确闹钟/通知）
         row(Strings.en() ? "Suggested settings" : "建议设置",
-                Strings.en() ? "Five system switches the guards rely on — all optional, all checkable here"
-                        : "守卫们靠的五项系统开关：都是建议不是门槛，随时来这里复查",
+                Strings.en() ? "Six system switches the guards rely on — all optional, all checkable here"
+                        : "守卫们靠的六项系统开关：都是建议不是门槛，随时来这里复查",
                 arrowBtn("›"),
                 v -> startActivity(new Intent(this, SuggestedSettingsActivity.class)));
         row(Strings.rowAbout(), Strings.versionLine(), null, v ->
