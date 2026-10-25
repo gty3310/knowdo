@@ -628,6 +628,21 @@ public class SettingsActivity extends Activity {
                 v -> startActivity(new Intent(this, PermActivity.class)));
         row(Strings.rowLog(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, LogActivity.class)));
+        // AI 对话记录清除（v1.22.0）：对话只存本机，设置里一键全清
+        row(Strings.en() ? "Clear AI chats" : "清除 AI 对话记录",
+                Strings.en() ? "Chats are stored only on this phone and never uploaded; clearing removes them for good"
+                        : "对话只存这台手机、从不上云；清除了就找不回来",
+                arrowBtn("›"),
+                v -> new AlertDialog.Builder(this)
+                        .setTitle(Strings.en() ? "Clear all AI chats?" : "清除全部 AI 对话记录？")
+                        .setMessage(Strings.en() ? "Every task chat and the general chat will be removed from this phone"
+                                : "每个任务的对话和通用对话都会从这台手机上删掉")
+                        .setPositiveButton(Strings.en() ? "Clear" : "清除", (d, w) -> {
+                            ChatStore.clearAll(this);
+                            toast(Strings.en() ? "AI chats cleared" : "AI 对话记录已清除");
+                        })
+                        .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                        .show());
         row(Strings.help(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, HelpActivity.class)));
         row(Strings.whatsNewEntry(), null, arrowBtn("›"),

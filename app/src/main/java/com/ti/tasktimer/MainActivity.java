@@ -603,6 +603,10 @@ public class MainActivity extends Activity {
         panel.addView(themeSeg);
         panel.addView(drawerLine());
 
+        panel.addView(drawerRow(Strings.en() ? "Chat with AI" : "和 AI 聊聊", v -> {
+            closeDrawer();
+            ChatActivity.openGeneral(this);
+        }));
         panel.addView(drawerRow(Strings.help(), v -> {
             closeDrawer();
             startActivity(new Intent(this, HelpActivity.class));
@@ -1030,7 +1034,7 @@ public class MainActivity extends Activity {
     }
 
     private static final ColDef[] ALL_COLS = {
-            new ColDef("task", 150), new ColDef("start", 80), new ColDef("used", 56),
+            new ColDef("task", 200), new ColDef("start", 80), new ColDef("used", 56),
             new ColDef("left", 56), new ColDef("dur", 56), new ColDef("dl", 92),
             new ColDef("pri", 52), new ColDef("sc", 76),
     };
@@ -1405,8 +1409,15 @@ public class MainActivity extends Activity {
                     v.setText(done ? titleText + " ✓" : titleText);
                 }
                 v.setTextSize(15);
-                v.setSingleLine(true);
-                v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                // 任务名行内至多两行（v1.22.0）：太长先换行到第二行，两行还放不下才省略号；
+                // 展开这一行时完整显示、不截断——认任务靠第一眼，展开就是要看全。
+                if (expanded) {
+                    v.setMaxLines(Integer.MAX_VALUE);
+                    v.setEllipsize(null);
+                } else {
+                    v.setMaxLines(2);
+                    v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                }
                 v.setPadding(dp(6), 0, dp(16), 0);
                 v.setTextColor(done ? Ui.sub(this) : Ui.text(this));
                 if (isRunningThis) v.setTypeface(v.getTypeface(), android.graphics.Typeface.BOLD);

@@ -299,5 +299,11 @@
         <activity
             android:name=".ModelActivity"
             android:exported="false" />
+
+        <!-- AI 对话页（v1.22.0）：带任务聊成型＋提案卡，或通用聊天；历史只存本机 -->
+        <activity
+            android:name=".ChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

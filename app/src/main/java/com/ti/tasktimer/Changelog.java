@@ -36,6 +36,19 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1220 = new Entry("v1.22.0", "2026-10-25");
+        e1220.add(new Group(s("新功能", "New"),
+                s("新增「和 AI 聊聊这个任务」。任务编辑里点进去就能跟 AI 聊这个任务——它知道这个任务的标题、备注、计划时长和今天已经做了多久。你觉得任务哪里别扭，跟它说，它会提出具体改法（改标题、改时长、拆成子任务、挪时间），变成一张提案卡摆在对话里，你点「应用」才真正改，点「不用」就当没提过。任务页也有一个不带任务的聊天入口，想到什么都能聊",
+                  "New: \"Chat with AI about this task\". Open it from a task's edit sheet and talk the task through with an AI that knows its title, note, planned length and how much you have already done on it today. Say what feels off about the task and it proposes a concrete fix — rename it, change its length, split it into subtasks, move its time — as a suggestion card inside the chat. Nothing changes until you tap Apply; tap \"No, thanks\" and it is as if it never suggested it. The task page also has a chat entry with no task attached, for anything on your mind")));
+        e1220.add(new Group(s("改进", "Improved"),
+                s("任务名列可以拉宽了：列表里拖动就能把任务名那一列拓宽，宽度会记住；名字太长时在行里最多换成两行显示；点开任务时名字完整显示、不再被截断",
+                  "The task-name column can be widened: drag in the list to make the name column broader and the width is remembered; a long name now wraps to at most two lines inside its row; and when you open a task, its name shows in full, never cut off")));
+        e1220.why = s("任务没做好，很多时候不是不想做，是任务本身没想清楚——太大、太糊、或者时机不对。先花两分钟聊清楚再动手，比硬撑、拖着、自责都管用。另外，任务名是认任务的第一眼，列太窄、名字被截断时找任务要多点好几下",
+                "A task undone is often not about willpower — the task itself was never thought through: too big, too vague, or at the wrong time. Two minutes of talking it clear first beats gritting your teeth, dragging it along, or blaming yourself. Also, the task name is the first thing you recognise a task by — when the column is too narrow and names are cut off, finding the right task takes several extra taps.");
+        e1220.tryIt = s("1）随便打开一个任务的编辑页，点「和 AI 聊聊这个任务」，说一句「这个任务我一直拖着，不知道从哪下手」，看它怎么接话；2）等它给出提案卡，点一次「应用」，回任务列表确认改动真的生效；再聊一次、点「不用」，确认任务没被动过；3）看对话页顶部小字，那是现在实际在用的模型，系统会自动挑当时最强的免费模型，它失败了会自动换下一个",
+                "1) Open any task's edit sheet, tap \"Chat with AI about this task\", and say \"I keep putting this off and don't know where to start\" — see how it picks the conversation up. 2) When it offers a suggestion card, tap Apply once and check the task list to confirm the change really landed; chat once more, tap \"No, thanks\" this time, and confirm the task is untouched. 3) Look at the small line at the top of the chat page: that is the model actually answering right now — the system picks the strongest free model of the moment automatically, and if it fails, moves on to the next one by itself.");
+        out.add(e1220);
+
         Entry e1214 = new Entry("v1.21.4", "2026-10-25");
         e1214.add(new Group(s("新功能", "New"),
                 s("模型改为按需下载：黄色识别模型和语义小模型不再装进安装包，安装包瘦了约 10 MB；谁开哪个功能，就在设置「模型下载」里把对应模型下到手机上，下完自动校验、坏了会自己报错让你重下",

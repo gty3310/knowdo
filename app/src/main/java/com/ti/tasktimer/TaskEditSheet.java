@@ -129,7 +129,9 @@ public final class TaskEditSheet {
         nameIn.setHint(en ? "What is it?" : "要做什么");
         if (!creating) nameIn.setText(src.title);
         nameIn.setTextSize(16);
-        nameIn.setSingleLine(true);
+        // 打开任务时名字完整显示（v1.22.0）：不单行横滚截断，长名字自动换行全摆出来
+        nameIn.setSingleLine(false);
+        nameIn.setHorizontallyScrolling(false);
         col.addView(nameIn);
 
         // 日期与开始时间
@@ -317,10 +319,23 @@ public final class TaskEditSheet {
             });
             moreRow.addView(resetBtn);
             col.addView(moreRow);
+            // AI 聊天入口（v1.22.0）：陪用户把这个任务聊成型，改法走提案卡、点应用才落盘
+            TextView chatBtn = chip(ctx, en ? "Chat with AI about this task" : "和 AI 聊聊这个任务", false);
+            LinearLayout chatRow = new LinearLayout(ctx);
+            chatRow.setOrientation(LinearLayout.HORIZONTAL);
+            chatRow.setPadding(0, dp(ctx, 10), 0, 0);
+            chatBtn.setOnClickListener(v -> {
+                Dialog dlg = (Dialog) chatBtn.getTag();
+                if (dlg != null) dlg.dismiss();
+                ChatActivity.openForTask(act, src.id);
+            });
+            chatRow.addView(chatBtn);
+            col.addView(chatRow);
             // tag 在 dialog 建好后回填（见下方）
             focusBtn.setTag(null);
             resetBtn.setTag(null);
-            col.setTag(new TextView[]{focusBtn, resetBtn});
+            chatBtn.setTag(null);
+            col.setTag(new TextView[]{focusBtn, resetBtn, chatBtn});
         }
 
         // 底部按钮
