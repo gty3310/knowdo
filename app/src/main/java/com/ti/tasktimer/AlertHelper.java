@@ -152,13 +152,19 @@ public final class AlertHelper {
         if (nm != null) nm.cancel(NOTIF_RESUME_SILENT);
     }
 
-    /** 当前计时任务是否要求结束响铃：是则先拉起响铃页（thenCheck），检查页随后。 */
+    /**
+     * 当前计时任务是否要求结束响铃：是则先拉起响铃页（thenCheck），检查页随后。
+     * 任务级 alarm 模式（v1.20.0）在此裁决：silent/off → 结束不出声（即使开了结束响铃）；
+     * sound → 结束必响（即使没开结束响铃开关）；follow → 按 alarmOnTimerEnd 旧口径。
+     */
     private static boolean fireTaskAlarmIfNeeded(Context c) {
         try {
             String tid = TimerState.taskId(c);
             if (tid == null) return false;
             TaskItem t = new TaskStore(c).byId(tid);
-            if (t == null || t.deleted || !t.alarmOnTimerEnd) return false;
+            if (t == null || t.deleted) return false;
+            if (t.alarmMuted()) return false;
+            if (!t.alarmOnTimerEnd && !TaskItem.ALARM_SOUND.equals(t.alarmMode)) return false;
             fireTaskAlarm(c, t.id, t.title, true);
             return true;
         } catch (Exception e) {

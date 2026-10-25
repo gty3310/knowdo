@@ -60,19 +60,27 @@ import java.util.Set;
 * 展开去向改由宿主决定：宿主实现 BlockFocusHost 时（如主页）在宿主的列表里定位
 * 展开；独立托管（CalendarActivity）时回落到本面板下方清单区内展开（同一套
 * expansionView 与操作入口）。
+*
+* v1.20.0 简化（用户对着截图亲手圈定）：顶部「今日日程」标题＋完成汇总＋已完成
+* 清单、下方「未排入日程的任务」列表区删除，日历只剩三栏时间轴、现在线与计划块；
+* 「问 AI 重排」保留为日历区右上角的小文字按钮，管道从 Drive 桥换成 Supabase
+* 数据库桥（user_state.reschedule_request，见 SbSync.requestReschedule）；
+* 点计划栏空白处经 TaskEditSheet 新建任务（预填所点时间、保存顺手排块）；
+* 计划块（含已完成块）拖过现在线自动完成/取消完成（flipDoneByNowLine）。
 */
 public class CalendarPanel extends FrameLayout {
 private final Activity host;
 private final android.content.Context ctx;
 private static final int DAY_START_MIN = 5 * 60; // 轴默认 05:00
 private static final int DAY_END_MIN = 23 * 60; // 轴默认 23:00
-private static final int SLEEP_MIN = 22 * 60 + 30; // 22:30 睡觉，自由时间算到这里
 private static final int REQ_CAPTURE = 44; // 与主页同款：开始计时前的截图授权请求
 
 private TaskStore store;
-private TextView overviewView;
-private TextView doneView;
 private TextView hintView;
+private TextView askAiBtn;
+// 重排状态跃迁观察（防重复提示）：记住上次 render 看到的 status 与 requested_at
+private String lastReschedStatus = "";
+private String lastReschedAt = "";
 private FrameLayout canvas;
 private LinearLayout laneHead;
 private LinearLayout listBox;
@@ -156,35 +164,10 @@ root.setPadding(dp(16), dp(18), dp(16), dp(10));
 addView(root, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
 FrameLayout.LayoutParams.MATCH_PARENT));
 
-TextView title = new TextView(ctx);
-title.setText(Strings.calTitle(TaskItem.today()));
-title.setTextSize(21);
-title.setTextColor(Ui.text(ctx));
-root.addView(title);
-
-overviewView = new TextView(ctx);
-overviewView.setTextSize(14);
-overviewView.setTextColor(Ui.text(ctx));
-overviewView.setPadding(0, dp(6), 0, 0);
-root.addView(overviewView);
-
-doneView = new TextView(ctx);
-doneView.setTextSize(12);
-doneView.setTextColor(Ui.sub(ctx));
-doneView.setPadding(0, dp(2), 0, 0);
-root.addView(doneView);
-
-Button askAi = new Button(ctx);
-askAi.setText(Strings.calAskAi());
-askAi.setOnClickListener(v -> {
-Intent i = new Intent(ctx, AiLaunchActivity.class);
-i.putExtra(AiLaunchActivity.EXTRA_TEXT, buildAskAiText());
-getContext().startActivity(i);
-});
-LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-alp.setMargins(0, dp(10), 0, dp(4));
-root.addView(askAi, alp);
+// v1.20.0 简化（用户对着截图亲手圈定）：顶部「今日日程」标题＋完成汇总＋
+// 「已完成：……」清单整块删除——日历只剩时间轴本身。「问 AI 重排」按钮保留，
+// 从头部挪到下方日历区右上角（小文字、低调），管道改走 Supabase 数据库桥，
+// Drive 桥时代的整段文案拼装（buildAskAiText）随旧通道一并清除。
 
 hintView = new TextView(ctx);
 hintView.setTextSize(13);
@@ -202,6 +185,18 @@ LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 LinearLayout calBox = new LinearLayout(ctx);
 calBox.setOrientation(LinearLayout.VERTICAL);
 calBox.setPadding(0, 0, 0, dp(28));
+// 「问 AI 重排」小文字按钮（v1.20.0 保留并改走数据库桥）：低调地挂在日历区
+// 右上角一行，不抢眼；功能走 Supabase user_state.reschedule_request——点它写
+// pending，Muse 侧重排后回写 status，日历页经同步观察到 done/failed 给提示。
+LinearLayout askRow = new LinearLayout(ctx);
+askRow.setOrientation(LinearLayout.HORIZONTAL);
+askRow.setGravity(Gravity.END);
+askAiBtn = new TextView(ctx);
+askAiBtn.setTextSize(12);
+askAiBtn.setPadding(dp(10), dp(3), dp(2), dp(3));
+askAiBtn.setOnClickListener(v -> onAskReschedule());
+askRow.addView(askAiBtn);
+calBox.addView(askRow);
 // 三栏标题（日历／计划／实际）：宽度与时间轴三栏逐像素对齐，在 render() 里按当次几何重建
 laneHead = new LinearLayout(ctx);
 laneHead.setOrientation(LinearLayout.HORIZONTAL);
@@ -210,6 +205,32 @@ calBox.addView(laneHead);
 
 canvas = new FrameLayout(ctx);
 calBox.addView(canvas);
+// v1.20.0：点计划栏空白处新建任务（学 Google 日历）。只识别「轻点」：
+// 下落点与抬起点位移小、耗时短、手指未滚动——滚动手势由 ScrollView 正常接管。
+// 计划块自身带 touch/click 监听会先消费，落不到这里；实际栏/日历栏按 x 栏位过滤掉。
+canvas.setOnTouchListener(new View.OnTouchListener() {
+float dx, dy;
+long dt;
+boolean maybeTap;
+@Override public boolean onTouch(View v, MotionEvent ev) {
+switch (ev.getActionMasked()) {
+case MotionEvent.ACTION_DOWN:
+dx = ev.getX(); dy = ev.getY(); dt = System.currentTimeMillis();
+maybeTap = !dragging;
+return false;
+case MotionEvent.ACTION_MOVE:
+if (Math.abs(ev.getX() - dx) > dp(12) || Math.abs(ev.getY() - dy) > dp(12)) maybeTap = false;
+return false;
+case MotionEvent.ACTION_CANCEL:
+maybeTap = false;
+return false;
+case MotionEvent.ACTION_UP:
+if (maybeTap && System.currentTimeMillis() - dt < 500) onCanvasTap(ev.getX(), ev.getY());
+return false;
+}
+return false;
+}
+});
 
 listBox = new LinearLayout(ctx);
 listBox.setOrientation(LinearLayout.VERTICAL);
@@ -366,26 +387,58 @@ out.sort((a, b) -> a.startMin!= b.startMin? a.startMin - b.startMin: a.endMin - 
 return out;
 }
 
-/** 从现在到 22:30 之间、没被计划块占用的分钟数。 */
-private int freeMinutes(List<Block> plan) {
-int nowMin = minOfDay(System.currentTimeMillis());
-int from = Math.max(nowMin, 0);
-int to = SLEEP_MIN;
-if (plan == null || from >= to) return Math.max(0, to - from);
-List<int[]> spans = new ArrayList<>();
-for (Block b: plan) {
-int s = Math.max(b.startMin, from), e = Math.min(b.endMin, to);
-if (e > s) spans.add(new int[]{s, e});
+// ---------------- 问 AI 重排（v1.20.0，数据库桥） ----------------
+
+/** 按钮态：pending 时显示「重排中…」并禁用，否则是可点的「问 AI 重排」。 */
+private void refreshAskBtn() {
+if (askAiBtn == null) return;
+JSONObject rr = SyncManager.latestReschedule(ctx);
+boolean pending = rr != null && "pending".equals(rr.optString("status", ""));
+askAiBtn.setText(pending
+? (Strings.en() ? "Re-planning…" : "重排中…")
+: (Strings.en() ? "Ask AI to re-plan" : "问 AI 重排"));
+askAiBtn.setTextColor(pending ? Ui.sub(ctx) : Ui.link(ctx));
+askAiBtn.setEnabled(!pending);
 }
-spans.sort((a, b) -> a[0] - b[0]);
-int used = 0, curS = -1, curE = -1;
-for (int[] sp: spans) {
-if (curS < 0) { curS = sp[0]; curE = sp[1];}
-else if (sp[0] <= curE) { curE = Math.max(curE, sp[1]);}
-else { used += curE - curS; curS = sp[0]; curE = sp[1];}
+
+/**
+ * 每次 render 顺带观察重排状态跃迁：同一条请求（requested_at 相同）从 pending
+ * 变 done → 轻提示「日程已重排」；变 failed → 提示原因（字段 message 有就带上）。
+ * 只在跃迁时提示一次；新 schedule 本身走既有 user_state.schedule 同步刷新，不另处理。
+ */
+private void observeReschedule() {
+refreshAskBtn();
+JSONObject rr = SyncManager.latestReschedule(ctx);
+String st = rr == null ? "" : rr.optString("status", "");
+String at = rr == null ? "" : rr.optString("requested_at", "");
+if (!at.isEmpty() && at.equals(lastReschedAt) && "pending".equals(lastReschedStatus)) {
+if ("done".equals(st)) {
+toast(Strings.en() ? "Your day has been re-planned" : "日程已重排");
+} else if ("failed".equals(st)) {
+String m = rr.optString("message", "");
+toast((Strings.en() ? "Re-plan failed" : "重排没成功") + (m.isEmpty() ? "" : "：" + m));
 }
-if (curS >= 0) used += curE - curS;
-return Math.max(0, (to - from) - used);
+}
+lastReschedStatus = st;
+lastReschedAt = at;
+}
+
+private void onAskReschedule() {
+JSONObject rr = SyncManager.latestReschedule(ctx);
+if (rr != null && "pending".equals(rr.optString("status", ""))) return;
+// 先给即时反馈，写入结果回来再按云端状态校正按钮
+if (askAiBtn != null) {
+askAiBtn.setText(Strings.en() ? "Re-planning…" : "重排中…");
+askAiBtn.setEnabled(false);
+}
+SbSync.requestReschedule(ctx, (ok, err) -> {
+if (ok) {
+toast(Strings.en() ? "Asked AI to re-plan the rest of today" : "已请 AI 重排今天剩下的日程");
+} else {
+toast(err != null ? err : (Strings.en() ? "Request failed, try again later" : "重排请求没发出去，稍后再试"));
+}
+refreshAskBtn();
+});
 }
 
 // ---------------- 渲染 ----------------
@@ -393,30 +446,13 @@ return Math.max(0, (to - from) - used);
 private void render() {
 if (canvas == null) return;
 if (dragging) return; // 拖拽进行中不重画，免得把手里那块销毁
+observeReschedule();
 store.load();
 List<Block> plan = planBlocks();
 List<Block> actual = actualBlocks();
 List<GcalEvent> gcal = gcalEvents();
 List<GcalEvent> gcalTimed = new ArrayList<>();
 for (GcalEvent e : gcal) if (!e.allDay) gcalTimed.add(e);
-List<TaskItem> done = new ArrayList<>();
-List<TaskItem> todo = new ArrayList<>();
-for (TaskItem t: store.tasks) {
-if (!isTodayTask(t)) continue;
-if (t.isDoneToday()) done.add(t); else todo.add(t);
-}
-int free = freeMinutes(plan);
-overviewView.setText(Strings.calOverview(done.size(), todo.size(), free));
-if (done.isEmpty()) {
-doneView.setText("");
-} else {
-StringBuilder sb = new StringBuilder(Strings.calDonePrefix());
-for (int i = 0; i < done.size(); i++) {
-if (i > 0) sb.append("、");
-sb.append(done.get(i).title);
-}
-doneView.setText(sb.toString());
-}
 
 // 时间轴范围：默认 05:00–23:00，内容超出就扩
 int axisStart = DAY_START_MIN, axisEnd = DAY_END_MIN;
@@ -519,9 +555,9 @@ ntlp.topMargin = Math.max(0, y - dp(12));
 canvas.addView(nt, ntlp);
 }
 
-// 下方清单：未排入日程的任务 / 无日程时的今日任务。
-// 独立托管且刚点了计划块时，先在清单区顶部内展开该任务（v1.18.0 回落路径；
-// 嵌入主页时展开发生在主页任务列表里，focusTaskId 在此恒为 null）。
+// 下方区域（v1.20.0 简化后）：「未排入日程的任务」列表区整段删除，日历下方
+// 只留独立托管时点计划块的展开回落（v1.18.0；嵌入主页时展开发生在主页任务
+// 列表里，focusTaskId 在此恒为 null）、全天 Google 事件与今日实际计时两段清单。
 listBox.removeAllViews();
 if (focusHost == null && focusTaskId != null) {
 TaskItem ft = store.byId(focusTaskId);
@@ -538,21 +574,11 @@ listBox.addView(expansionView(ft));
 focusTaskId = null; // 任务已不在了，收起展开节
 }
 }
-Set<String> scheduledIds = new HashSet<>();
-if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
-List<TaskItem> unscheduled = new ArrayList<>();
-for (TaskItem t: todo) if (!scheduledIds.contains(t.id)) unscheduled.add(t);
 if (plan == null) {
 hintView.setText(Strings.calNoPlanHint());
 hintView.setVisibility(View.VISIBLE);
 } else {
 hintView.setVisibility(View.GONE);
-}
-addListTitle(plan == null? Strings.calTodayTasksTitle(): Strings.calUnscheduledTitle());
-if (unscheduled.isEmpty()) {
-addListLine(plan == null? Strings.calEmptyAllDone(): Strings.calEmptyAllScheduled(), Ui.sub(ctx));
-} else {
-for (TaskItem t: unscheduled) addTaskRow(t);
 }
 boolean hasAllDay = false;
 for (GcalEvent e : gcal) if (e.allDay) { hasAllDay = true; break; }
@@ -609,11 +635,10 @@ play.setPadding(dp(4), dp(1), dp(4), dp(1));
 FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(24), dp(22), Gravity.TOP | Gravity.END);
 box.addView(play, plp);
 play.setOnClickListener(v -> togglePlayTask(b.taskId));
-attachDrag(box, label, b, axisStart, scale);
-} else {
-// 已完成块没有拖拽：轻点整块 → 展开该任务（去向由 focusExpand 按宿主决定，v1.18.0）
-box.setOnClickListener(v -> focusExpand(b.taskId));
 }
+// v1.20.0：已完成块也可拖（拖回现在线之下要能取消完成）；轻点（未拾起）仍是
+// 展开该任务——attachDrag 内部的 tap 路径就是 focusExpand，与旧点击行为一致。
+attachDrag(box, label, b, axisStart, scale);
 int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
 lp.leftMargin = x;
@@ -647,11 +672,36 @@ canvas.addView(v, lp);
 }
 
 /**
+ * 拖过现在线＝完成/取消完成（v1.20.0）：计划块拖放落定、时间写回成功后按新位置裁决——
+ * 整块位于现在线之上（块结束 ≤ 当前时刻）且任务未完成 → 走与勾选完成完全相同的
+ * 写路径标记完成（markDone＋落盘＋pushDoneAsync 定向写云端，每日任务走 doneDates）；
+ * 整块位于现在线之下（块开始 ≥ 当前时刻）且任务是完成态 → 同路径取消完成；
+ * 块跨现在线则状态不变。只作用于知行计划块；Google 事件块不挂拖拽、不受影响。
+ */
+private void flipDoneByNowLine(String taskId, int newStartMin, int newEndMin, String title) {
+int nowMin = minOfDay(System.currentTimeMillis());
+store.load();
+TaskItem cur = store.byId(taskId);
+if (cur == null || cur.deleted) return;
+if (!cur.isDoneToday() && newEndMin <= nowMin) {
+cur.markDone();
+store.save();
+SbSync.pushDoneAsync(ctx, taskId);
+toast("「" + title + "」已拖到现在之前，自动标记完成 ✓");
+} else if (cur.isDoneToday() && newStartMin >= nowMin) {
+cur.markUndone();
+store.save();
+SbSync.pushDoneAsync(ctx, taskId);
+toast("「" + title + "」已拖回现在之后，恢复未完成");
+}
+}
+
+/**
  * 长按拖拽改计划块时间（v1.6.2）：
  * 长按 400ms 拾起——拾起瞬间 lift 动画（放大到 1.04＋加深阴影＋微微透出，学 iOS/Google 日历）；
  * 拖动中按 5 分钟吸附实时预览新起止，拖动态全程保持放大；松手后短促回落动画恢复原大小，
- * 再经 SyncManager.updateScheduleBlock 写回桥（App 对 schedule 的唯一写入口）。
- * 已完成的块不挂拖拽（addPlanBlock 只给未完成块调用本方法）。
+ * 再经 SyncManager.updateScheduleBlock 写回（App 对 schedule 的 sanction 写入口）。
+ * v1.20.0 起已完成块也挂拖拽（拖回现在线之下取消完成，见 flipDoneByNowLine）。
  */
 private void attachDrag(final FrameLayout box, final TextView label, final Block b,
                         final int axisStart, final int scale) {
@@ -719,6 +769,7 @@ ctx, taskId, oldStart, newStart, newEnd);
 handler.post(() -> {
 if (err == null) {
 toast("「" + b.title + "」已改到 " + newStart + "–" + newEnd);
+flipDoneByNowLine(taskId, ns, ns + dur2, b.title);
 } else {
 toast(err);
 }
@@ -733,28 +784,28 @@ return false;
 });
 }
 
-/** 未排入日程的任务行：标题＋时长，右侧一个 ▶/⏸，点法与计划块完全一致。 */
-private void addTaskRow(final TaskItem t) {
-LinearLayout row = new LinearLayout(ctx);
-row.setOrientation(LinearLayout.HORIZONTAL);
-row.setGravity(Gravity.CENTER_VERTICAL);
-row.setPadding(0, dp(2), 0, dp(2));
-TextView lab = new TextView(ctx);
-lab.setText("• " + t.title + Strings.calPlannedFmt(t.durationMinutes, "must".equals(t.priority)));
-lab.setTextSize(13);
-lab.setTextColor(Ui.text(ctx));
-lab.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-row.addView(lab);
-TextView play = new TextView(ctx);
-boolean isRunningThis = TimerState.isRunning(ctx) && t.id.equals(TimerState.taskId(ctx));
-play.setText(isRunningThis? "⏸": "▶");
-play.setTextSize(16);
-play.setTextColor(Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161));
-play.setGravity(Gravity.CENTER);
-play.setPadding(dp(10), dp(2), dp(6), dp(2));
-play.setOnClickListener(v -> togglePlayTask(t.id));
-row.addView(play);
-listBox.addView(row);
+/**
+ * 点计划栏空白处（v1.20.0）：打开统一编辑弹层新建任务，开始时间预填所点时段
+ * （5 分钟吸附），保存后由弹层顺手在所点时间生成计划块。只认计划栏 x 范围；
+ * 所点分钟按上次渲染的轴几何换算。点在已有计划块上走块自己的触摸/点击，不到这里。
+ */
+private void onCanvasTap(float x, float y) {
+if (dragging || lastPlanW <= 0) return;
+if (x < lastPlanX || x > lastPlanX + lastPlanW) return;
+int raw = lastAxisStart + Math.round(y / (float) Math.max(1, lastScale));
+int startMin = Math.round(raw / 5f) * 5;
+startMin = Math.max(DAY_START_MIN, Math.min(startMin, 24 * 60 - 30));
+Calendar cal = Calendar.getInstance();
+cal.set(Calendar.HOUR_OF_DAY, startMin / 60);
+cal.set(Calendar.MINUTE, startMin % 60);
+cal.set(Calendar.SECOND, 0);
+cal.set(Calendar.MILLISECOND, 0);
+TaskEditSheet.showCreate(host, store, cal.getTimeInMillis(), true,
+new TaskEditSheet.Host() {
+@Override public void onSaved(TaskItem t, boolean created) { render(); }
+@Override public void onFocusRule(TaskItem t) { }
+@Override public void onResetTimer(TaskItem t) { }
+});
 }
 
 // ---------------- 外部拖入（v1.18.0）：主页任务列表 → 本面板计划栏 ----------------
@@ -917,7 +968,12 @@ chips.setPadding(0, dp(10), 0, 0);
 String primary = isRunningThis ? Strings.chipPause()
 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
 chips.addView(chipCal(primary, true, v -> togglePlayTask(t.id)));
-chips.addView(chipCal(Strings.chipEdit(), false, v -> dialogEditMenu(t)));
+chips.addView(chipCal(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(host, store, t,
+new TaskEditSheet.Host() {
+@Override public void onSaved(TaskItem saved, boolean created) { afterTaskEdited(); }
+@Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
+@Override public void onResetTimer(TaskItem task) { resetTaskFromCal(task); }
+})));
 chips.addView(chipCal(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
 if (isRunningThis) {
 chips.addView(chipCal(Strings.chipPlus15(), false, v -> {
@@ -1039,264 +1095,6 @@ cur.note = input.getText().toString().trim();
 cur.touch();
 store.save();
 afterTaskEdited();
-})
-.setNegativeButton("取消", null)
-.show();
-}
-
-private void dialogEditMenu(final TaskItem t) {
-boolean en = Strings.en();
-String[] items = {
-en ? "Name & priority" : "名称与优先级",
-en ? "Contexts" : "情景",
-en ? "Deadline & start time" : "截止与开始时间",
-en ? "Length" : "时长",
-en ? "Focus rule" : "专注规则",
-en ? "Note" : "笔记",
-Strings.alarmTitle(),
-en ? "Reset timer" : "重置计时",
-};
-new AlertDialog.Builder(host)
-.setTitle(Strings.editMenuTitle())
-.setItems(items, (d, which) -> {
-switch (which) {
-case 0: dialogTitle(t); break;
-case 1: dialogScenarios(t); break;
-case 2: dialogDeadline(t); break;
-case 3: dialogDuration(t); break;
-case 4: dialogFocus(t); break;
-case 5: dialogNote(t); break;
-case 6: dialogAlarm(t); break;
-case 7: resetTaskFromCal(t); break;
-default: break;
-}
-})
-.show();
-}
-
-private void dialogTitle(final TaskItem t) {
-final EditText input = new EditText(ctx);
-input.setText(t.title);
-input.setSelectAllOnFocus(true);
-new AlertDialog.Builder(host)
-.setTitle("任务名称")
-.setView(input)
-.setPositiveButton("保存", (d, w) -> {
-String name = input.getText().toString().trim();
-if (!name.isEmpty()) {
-TaskItem cur = freshCopyOf(t);
-cur.title = name; cur.touch(); store.save(); afterTaskEdited();
-}
-})
-.setNeutralButton("设为必要/取消必要", (d, w) -> {
-TaskItem cur = freshCopyOf(t);
-cur.priority = "must".equals(cur.priority) ? null : "must";
-cur.touch(); store.save(); afterTaskEdited();
-})
-.setNegativeButton("取消", null)
-.show();
-}
-
-private void dialogScenarios(final TaskItem t) {
-LinkedHashSet<String> knownSet = new LinkedHashSet<>();
-knownSet.add("有网");
-knownSet.add("无网");
-knownSet.add("跟 AI 聊天");
-knownSet.addAll(store.allScenarios());
-knownSet.addAll(t.scenarios);
-final List<String> known = new ArrayList<>(knownSet);
-final Set<String> sel = new LinkedHashSet<>(t.scenarios);
-boolean[] checked = new boolean[known.size()];
-for (int i = 0; i < known.size(); i++) checked[i] = sel.contains(known.get(i));
-new AlertDialog.Builder(host)
-.setTitle("情景（可多选）")
-.setMultiChoiceItems(known.toArray(new String[0]), checked,
-(d, which, isChecked) -> {
-if (isChecked) sel.add(known.get(which));
-else sel.remove(known.get(which));
-})
-.setPositiveButton("保存", (d, w) -> {
-TaskItem cur = freshCopyOf(t);
-cur.scenarios = new ArrayList<>(sel);
-cur.touch(); store.save(); afterTaskEdited();
-})
-.setNeutralButton("＋新增情景", (d, w) -> {
-final EditText input = new EditText(ctx);
-input.setHint("如：在书院、早上、跟 AI 聊天");
-new AlertDialog.Builder(host)
-.setTitle("新增情景")
-.setView(input)
-.setPositiveButton("添加", (d2, w2) -> {
-String s = input.getText().toString().trim();
-TaskItem cur = freshCopyOf(t);
-if (!s.isEmpty() && !cur.scenarios.contains(s)) {
-cur.scenarios.add(s);
-cur.touch(); store.save(); afterTaskEdited();
-}
-})
-.setNegativeButton("取消", null)
-.show();
-})
-.setNegativeButton("取消", null)
-.show();
-}
-
-private void dialogDeadline(final TaskItem t) {
-LinearLayout box = new LinearLayout(ctx);
-box.setOrientation(LinearLayout.VERTICAL);
-box.setPadding(dp(16), dp(8), dp(16), 0);
-final CheckBox repeatBox = new CheckBox(ctx);
-repeatBox.setText("每日重复任务");
-repeatBox.setChecked("daily".equals(t.repeat));
-box.addView(repeatBox);
-final DatePicker picker = new DatePicker(ctx);
-Calendar cal = Calendar.getInstance();
-if (t.deadline != null) {
-try {
-String[] p = t.deadline.split("-");
-cal.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]));
-} catch (Exception ignored) {}
-}
-picker.init(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH), null);
-box.addView(picker);
-repeatBox.setOnCheckedChangeListener((b, isChecked) -> picker.setEnabled(!isChecked));
-picker.setEnabled(!repeatBox.isChecked());
-final String[] timeHolder = {t.deadlineTime};
-final Button timeBtn = new Button(ctx);
-final Runnable refreshTimeBtn = () -> timeBtn.setText(
-timeHolder[0] == null ? "完成时间（可选）：未设置" : "完成时间：" + timeHolder[0] + " 前");
-refreshTimeBtn.run();
-timeBtn.setOnClickListener(v -> {
-int hh = 18, mm = 0;
-if (timeHolder[0] != null) {
-try {
-String[] p = timeHolder[0].split(":");
-hh = Integer.parseInt(p[0]);
-mm = Integer.parseInt(p[1]);
-} catch (Exception ignored) {}
-}
-android.app.TimePickerDialog tp = new android.app.TimePickerDialog(host,
-(view, h2, m2) -> {
-timeHolder[0] = String.format(Locale.US, "%02d:%02d", h2, m2);
-refreshTimeBtn.run();
-}, hh, mm, true);
-tp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
-(d2, w2) -> { timeHolder[0] = null; refreshTimeBtn.run(); });
-tp.show();
-});
-box.addView(timeBtn);
-final String[] startHolder = {t.nextStartAt};
-final Button startBtn = new Button(ctx);
-final Runnable refreshStartBtn = () -> startBtn.setText(
-startHolder[0] == null ? "下次开始时间（可选）：未设置"
-: "下次开始时间：" + startHolder[0].replace('T', ' '));
-refreshStartBtn.run();
-startBtn.setOnClickListener(v -> {
-Calendar sc = Calendar.getInstance();
-if (startHolder[0] != null && startHolder[0].length() >= 10) {
-try {
-String[] dp2 = startHolder[0].substring(0, 10).split("-");
-sc.set(Integer.parseInt(dp2[0]), Integer.parseInt(dp2[1]) - 1, Integer.parseInt(dp2[2]));
-} catch (Exception ignored) {}
-}
-new android.app.DatePickerDialog(host, (dv, y, mo, da) -> {
-int sh = 9, sm = 0;
-if (startHolder[0] != null && startHolder[0].length() >= 16) {
-try {
-String[] tp2 = startHolder[0].substring(11, 16).split(":");
-sh = Integer.parseInt(tp2[0]);
-sm = Integer.parseInt(tp2[1]);
-} catch (Exception ignored) {}
-}
-android.app.TimePickerDialog stp = new android.app.TimePickerDialog(host,
-(tv, h3, m3) -> {
-startHolder[0] = String.format(Locale.US, "%04d-%02d-%02dT%02d:%02d", y, mo + 1, da, h3, m3);
-refreshStartBtn.run();
-}, sh, sm, true);
-stp.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "清除时间",
-(d3, w3) -> { startHolder[0] = null; refreshStartBtn.run(); });
-stp.show();
-}, sc.get(Calendar.YEAR), sc.get(Calendar.MONTH), sc.get(Calendar.DAY_OF_MONTH)).show();
-});
-box.addView(startBtn);
-new AlertDialog.Builder(host)
-.setTitle("截止日期")
-.setView(box)
-.setPositiveButton("保存", (d, w) -> {
-TaskItem cur = freshCopyOf(t);
-if (repeatBox.isChecked()) {
-cur.repeat = "daily";
-cur.deadline = null;
-cur.deadlineTime = null;
-} else {
-cur.repeat = "none";
-cur.deadline = String.format(Locale.US, "%04d-%02d-%02d",
-picker.getYear(), picker.getMonth() + 1, picker.getDayOfMonth());
-cur.deadlineTime = timeHolder[0];
-}
-cur.nextStartAt = startHolder[0];
-cur.touch(); store.save(); afterTaskEdited();
-StartReminder.reschedule(ctx, store);
-})
-.setNeutralButton("清除日期", (d, w) -> {
-TaskItem cur = freshCopyOf(t);
-cur.repeat = "none";
-cur.deadline = null;
-cur.deadlineTime = null;
-cur.nextStartAt = null;
-cur.touch(); store.save(); afterTaskEdited();
-StartReminder.reschedule(ctx, store);
-})
-.setNegativeButton("取消", null)
-.show();
-}
-
-private void dialogDuration(final TaskItem t) {
-LinearLayout box = new LinearLayout(ctx);
-box.setOrientation(LinearLayout.VERTICAL);
-box.setPadding(dp(16), dp(8), dp(16), 0);
-TextView planLabel = new TextView(ctx);
-planLabel.setText("计划时长（分钟）");
-box.addView(planLabel);
-final EditText planInput = new EditText(ctx);
-planInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-planInput.setText(String.valueOf(t.durationMinutes));
-planInput.setSelectAllOnFocus(true);
-box.addView(planInput);
-if (t.hasSubtasks()) {
-planInput.setEnabled(false);
-TextView lockNote = new TextView(ctx);
-lockNote.setText(Strings.subDurationLocked());
-lockNote.setTextSize(12);
-box.addView(lockNote);
-}
-TextView actualLabel = new TextView(ctx);
-actualLabel.setText("实际用时（分钟，可空）");
-box.addView(actualLabel);
-final EditText actualInput = new EditText(ctx);
-actualInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-if (t.actualMinutes > 0) actualInput.setText(String.valueOf(t.actualMinutes));
-actualInput.setHint("做完后填实际花了多少分钟");
-box.addView(actualInput);
-new AlertDialog.Builder(host)
-.setTitle("时长")
-.setView(box)
-.setPositiveButton("保存", (d, w) -> {
-TaskItem cur = freshCopyOf(t);
-try {
-int m = Integer.parseInt(planInput.getText().toString().trim());
-if (m > 0) cur.durationMinutes = m;
-} catch (NumberFormatException ignored) {}
-String a = actualInput.getText().toString().trim();
-if (a.isEmpty()) {
-cur.actualMinutes = 0;
-} else {
-try {
-int am = Integer.parseInt(a);
-if (am >= 0) cur.actualMinutes = am;
-} catch (NumberFormatException ignored) {}
-}
-cur.touch(); store.save(); afterTaskEdited();
 })
 .setNegativeButton("取消", null)
 .show();
@@ -1751,89 +1549,6 @@ t.setTextSize(13);
 t.setTextColor(color);
 t.setPadding(0, dp(1), 0, dp(1));
 listBox.addView(t);
-}
-
-// ---------------- 问 AI 文案 ----------------
-
-private String buildAskAiText() {
-store.load();
-String today = today();
-List<Block> plan = planBlocks();
-List<Block> actual = actualBlocks();
-List<TaskItem> done = new ArrayList<>();
-List<TaskItem> todo = new ArrayList<>();
-for (TaskItem t: store.tasks) {
-if (!isTodayTask(t)) continue;
-if (t.isDoneToday()) done.add(t); else todo.add(t);
-}
-StringBuilder sb = new StringBuilder();
-sb.append("").append(today)
-.append("，现在 ").append(new SimpleDateFormat("HH:mm", Locale.US).format(new Date())).append('\n');
-sb.append("已完成（").append(done.size()).append("）：")
-.append(done.isEmpty()? "无": joinTitles(done)).append('\n');
-sb.append("未完成（").append(todo.size()).append("）：")
-.append(todo.isEmpty()? "无": joinTitles(todo)).append('\n');
-if (plan!= null) {
-sb.append("当前计划安排（桥文件 schedule）：\n");
-for (Block b: plan) {
-TaskItem t = store.byId(b.taskId);
-sb.append(hhmm(b.startMin)).append('–').append(hhmm(b.endMin)).append(' ')
-.append(b.title)
-.append(b.done? "（已完成）": b.running? "（正在计时）": "（未完成）");
-if (t!= null) sb.append("［id:").append(t.id).append('］');
-sb.append('\n');
-}
-} else {
-sb.append("当前计划安排：今天还没有排日程。\n");
-}
-Set<String> scheduledIds = new HashSet<>();
-if (plan!= null) for (Block b: plan) scheduledIds.add(b.taskId);
-StringBuilder un = new StringBuilder();
-for (TaskItem t: todo) {
-if (scheduledIds.contains(t.id)) continue;
-if (un.length() > 0) un.append('、');
-un.append(t.title).append("（计划 ").append(t.durationMinutes).append(" 分钟")
-.append("must".equals(t.priority)? "，必做": "").append("）［id:").append(t.id).append('］');
-}
-sb.append("未排入日程的任务：").append(un.length() == 0? "无": un.toString()).append('\n');
-List<GcalEvent> gcal = gcalEvents();
-if (!gcal.isEmpty()) {
-sb.append("已有日程（Google 日历，仅供我查看参考，排日程时不用管、不用避让）：\n");
-for (GcalEvent e : gcal) {
-if (e.allDay) sb.append("全天 · ").append(e.title).append('\n');
-else sb.append(hhmm(e.startMin)).append('–').append(hhmm(e.endMin)).append(' ').append(e.title).append('\n');
-}
-}
-if (!actual.isEmpty()) {
-sb.append("今天实际计时记录：");
-for (int i = 0; i < actual.size(); i++) {
-Block b = actual.get(i);
-if (i > 0) sb.append("；");
-sb.append(hhmm(b.startMin)).append('–').append(hhmm(b.endMin)).append(' ').append(b.title)
-.append(b.running? Strings.calRunningTag(): "");
-}
-sb.append('\n');
-}
-sb.append("我 22:30 睡觉；从现在到 22:30 还可自由安排 ")
-.append(freeMinutes(plan)).append(" 分钟。\n");
-sb.append("请按这个规则帮我更新今天剩下的安排，并写回桥文件 tasks.json 的顶层 schedule 字段：\n")
-.append("1）必做任务（priority=must 或截止在今天）必须排入；次要任务按重要程度穿插进空档；\n")
-.append("2）每件任务按计划时长 ×1.5 占时段（留 50% 缓冲）；\n")
-.append("3）已经过去的时段和已完成任务的时段不要动，未完成的从现在往后排，不要排到 22:30 之后；排不下请直接告诉我。\n")
-.append("4）上面「已有日程（Google 日历）」只是给我看的参考，排日程时不用管它们、不用避让，任务该怎么排就怎么排，可以和它们重叠；我在日历页手动拖动改过的块也当作固定块，不要再挪回去。\n")
-.append("schedule 格式：{\"date\":\"").append(today)
-.append("\",\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"HH:mm\",\"end\":\"HH:mm\"}],\"updatedAtMs\":毫秒时间戳,\"updatedBy\":\"Muse\"}。\n")
-.append("写好后我这边日历页会自动刷新显示新版。");
-return sb.toString();
-}
-
-private String joinTitles(List<TaskItem> ts) {
-StringBuilder sb = new StringBuilder();
-for (int i = 0; i < ts.size(); i++) {
-if (i > 0) sb.append("、");
-sb.append(ts.get(i).title);
-}
-return sb.toString();
 }
 
 // ---------------- 小工具 ----------------

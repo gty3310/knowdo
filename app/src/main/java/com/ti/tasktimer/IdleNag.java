@@ -17,7 +17,11 @@ import org.json.JSONObject;
  * - strict 严格：不停催，直到开始任务为止；只有这一档（与 custom）有声音开关。
  * - custom 自定义：重复策略（不催/有限轮/无限）＋全部数字自调；由任一预设档
  *   手动改任一数值即转入本档（原档语义先折算进 max_rounds 再转，保证行为不变）。
- * 新装/无本地值时默认 strict（用户本人今晚定的就是严格这套，默认开声音）。
+ * v1.20.0 起出厂默认变温和：本机从未存过值（has_local=false）且云端无值时，
+ * 回退默认＝standard 档、最多 1 轮、无声、不震动——只弹页提醒一轮就安静，
+ * 任务结束也不默认出声（结束响铃是 per-task 开关、默认关，口径不变）。
+ * 已存过偏好或云端有值的用户一律按存值走，升级不重置任何人的现行设置；
+ * 想要严格全开，去设置页选严格档即可。
  *
  * 同步合并口径（与 aspiration 同一套纪律，见 SbSync.syncUserState）：
  * 本机从未存过值（has_local=false）且云端有值 → 采用云端；本机有值且与云端
@@ -42,16 +46,19 @@ public final class IdleNag {
     public static boolean hasLocal(Context c) { return sp(c).getBoolean("has_local", false); }
 
     public static boolean enabled(Context c) { return sp(c).getBoolean("enabled", true); }
-    public static String profile(Context c) { return sp(c).getString("profile", STRICT); }
+    /** 无存值时的回退档位（v1.20.0 温和默认）：standard。 */
+    public static String profile(Context c) { return sp(c).getString("profile", STANDARD); }
     public static int idleMinutes(Context c) { return sp(c).getInt("idle_minutes", 5); }
     public static int firstRepeatMinutes(Context c) { return sp(c).getInt("first_repeat_minutes", 1); }
     public static int repeatMinutes(Context c) { return sp(c).getInt("repeat_minutes", 5); }
     public static int ringSeconds(Context c) { return sp(c).getInt("ring_seconds", 60); }
-    /** 每轮先震动多久（秒，v1.19.0 staging 新增）：先震不出声，无反应才进入声音段。设置页可调、随云端同步。 */
-    public static int vibrateSeconds(Context c) { return sp(c).getInt("vibrate_seconds", 30); }
-    public static boolean sound(Context c) { return sp(c).getBoolean("sound", true); }
-    /** 轮数上限：0=不催，-1=无限，>0=有限轮（standard 默认 3，custom 直接存策略值）。 */
-    public static int maxRounds(Context c) { return sp(c).getInt("max_rounds", -1); }
+    /** 每轮先震动多久（秒，v1.19.0 staging 新增）：先震不出声，无反应才进入声音段。设置页可调、随云端同步。
+     *  无存值时默认 0（v1.20.0 温和默认：不震）。 */
+    public static int vibrateSeconds(Context c) { return sp(c).getInt("vibrate_seconds", 0); }
+    /** 无存值时默认关（v1.20.0 温和默认）。 */
+    public static boolean sound(Context c) { return sp(c).getBoolean("sound", false); }
+    /** 轮数上限：0=不催，-1=无限，>0=有限轮（无存值时默认 1，v1.20.0 温和默认；设置页选 standard 预设写 3，custom 直接存策略值）。 */
+    public static int maxRounds(Context c) { return sp(c).getInt("max_rounds", 1); }
 
     private static void putAll(Context c, boolean enabled, String profile, int idleMin,
                                int firstMin, int repeatMin, int ringSec, boolean sound,
@@ -207,11 +214,13 @@ public final class IdleNag {
         }
     }
 
-    /** 采用云端值（整套替换本地，并标记本机已有值，之后以本机为准参与合并）。 */
+    /** 采用云端值（整套替换本地，并标记本机已有值，之后以本机为准参与合并）。
+     *  云端对象缺键时的回退与全新状态的温和默认对齐（v1.20.0）；未知键在回写时
+     *  由 toCloudJson 补齐，不丢既有字段。 */
     public static void adoptCloud(Context c, JSONObject o) {
         if (o == null) return;
-        String p = o.optString("profile", STRICT);
-        if (!GENTLE.equals(p) && !STANDARD.equals(p) && !STRICT.equals(p) && !CUSTOM.equals(p)) p = STRICT;
+        String p = o.optString("profile", STANDARD);
+        if (!GENTLE.equals(p) && !STANDARD.equals(p) && !STRICT.equals(p) && !CUSTOM.equals(p)) p = STANDARD;
         putAll(c,
                 o.optBoolean("enabled", true),
                 p,
@@ -219,10 +228,9 @@ public final class IdleNag {
                 clamp(o.optInt("first_repeat_minutes", 1), 1, 240),
                 clamp(o.optInt("repeat_minutes", 5), 1, 240),
                 clamp(o.optInt("ring_seconds", 60), 5, 600),
-                o.optBoolean("sound", true),
-                o.optInt("max_rounds", -1),
-                // 旧端云端对象没有这个键：默认 30；未知键在回写时由 toCloudJson 补齐，不丢既有字段
-                clamp(o.optInt("vibrate_seconds", 30), 0, 300));
+                o.optBoolean("sound", false),
+                o.optInt("max_rounds", 1),
+                clamp(o.optInt("vibrate_seconds", 0), 0, 300));
     }
 
     /** 本机现值与云端对象是否等价（逐字段比，避免字符串比对受键序影响）。 */
@@ -234,8 +242,8 @@ public final class IdleNag {
                 && o.optInt("first_repeat_minutes", -999) == firstRepeatMinutes(c)
                 && o.optInt("repeat_minutes", -999) == repeatMinutes(c)
                 && o.optInt("ring_seconds", -999) == ringSeconds(c)
-                && o.optInt("vibrate_seconds", 30) == vibrateSeconds(c)
-                && o.optBoolean("sound", true) == sound(c)
+                && o.optInt("vibrate_seconds", 0) == vibrateSeconds(c)
+                && o.optBoolean("sound", false) == sound(c)
                 && o.optInt("max_rounds", -999) == maxRounds(c);
     }
 

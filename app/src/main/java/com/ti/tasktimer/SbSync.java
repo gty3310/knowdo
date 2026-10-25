@@ -89,6 +89,7 @@ public final class SbSync {
         boolean hasExtra = probeExtraCols(c);
         boolean hasAlarm = probeAlarmCols(c);
         boolean hasSub = probeSubtaskCols(c);
+        boolean hasAlarmMode = probeAlarmModeCol(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -99,7 +100,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 synchronized (STORE_LOCK) {
                     store.load(); // 先拿磁盘最新状态再对齐时间戳，别用旧快照整表盖盘（v1.14.0 修复）
@@ -136,7 +137,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             synchronized (STORE_LOCK) {
                 store.load(); // 同上：对齐前先重读，且仅当条目未被更新的本地改动动过时才对齐
@@ -220,10 +221,19 @@ public final class SbSync {
         boolean hasSc = probeUserStateCol(c, "self_checks");
         boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
         boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
+        boolean hasResched = probeUserStateCol(c, "reschedule_request"); // v1.20.0：问 AI 重排，列未就绪绝不碰
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
             if (sch != null) SyncManager.cacheSchedule(c, sch);
+            if (hasResched) {
+                // 重排请求状态只读镜像进本地缓存（日历页按钮态读它）：本键的写只走
+                // requestReschedule 的显式请求与 Muse 侧回写 status，合并绝不回写它，
+                // 免得把 pending/done 冲掉。
+                JSONObject rr = urow.isNull("reschedule_request")
+                        ? null : urow.optJSONObject("reschedule_request");
+                SyncManager.cacheReschedule(c, rr);
+            }
             JSONObject g = urow.isNull("gcal") ? null : urow.optJSONObject("gcal");
             if (g != null) SyncManager.cacheGcal(c, g);
             JSONArray remoteEv = urow.isNull("guard_events") ? null : urow.optJSONArray("guard_events");
@@ -551,6 +561,7 @@ public final class SbSync {
         boolean hasExtra = prefs(c).getBoolean("has_extra", false);
         boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
         boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
+        boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
         for (TaskItem t : store.tasks) {
             if (t.deleted || !t.autoStart) continue;
             if (SyncManager.autoStartHandled(c, t.id)) {
@@ -591,6 +602,7 @@ public final class SbSync {
         boolean hasExtra = prefs(c).getBoolean("has_extra", false);
         boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
         boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
+        boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
         try {
             for (int attempt = 0; attempt < 2; attempt++) {
                 TaskItem local;
@@ -610,7 +622,7 @@ public final class SbSync {
                     }
                 }
                 JSONArray payload = new JSONArray();
-                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub));
+                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode));
                 Supa.restUpsert(c, "tasks", "id", payload);
                 // 回读校验
                 JSONArray chk = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
@@ -654,6 +666,52 @@ public final class SbSync {
         if (!Supa.isLoggedIn(c) || taskId == null) return;
         final Context app = c.getApplicationContext();
         new Thread(() -> pushOneVerified(app, new TaskStore(app), taskId)).start();
+    }
+
+    // ---------------- 问 AI 重排（v1.20.0） ----------------
+    public interface RescheduleCallback {
+        /** 主线程回调：ok=true 请求已写入云端；err 非空为给用户看的失败原因。 */
+        void onResult(boolean ok, String err);
+    }
+
+    /**
+     * 点「问 AI 重排」：把 user_state.reschedule_request 写成 pending
+     * （{date: 今天, requested_at: 现在 ISO, status:"pending"}），Muse 侧监视到后
+     * 重排并把新 schedule 写回 user_state.schedule、status 改 done/failed。
+     * 列（reschedule_request）未就绪时按既有纪律不碰它，直接报「还没就绪」。
+     * 本方法自开后台线程，回调回主线程。
+     */
+    public static void requestReschedule(final Context c, final RescheduleCallback cb) {
+        final Context app = c.getApplicationContext();
+        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        new Thread(() -> {
+            boolean ok = false;
+            String err;
+            try {
+                if (!Supa.isLoggedIn(app)) {
+                    err = "还没登录：先登录，再用「问 AI 重排」";
+                } else if (!probeUserStateCol(app, "reschedule_request")) {
+                    err = "重排通道还没就绪（数据库缺 reschedule_request 列）";
+                } else {
+                    JSONObject req = new JSONObject();
+                    req.put("date", TaskItem.today());
+                    req.put("requested_at", TaskItem.nowIso());
+                    req.put("status", "pending");
+                    JSONObject write = new JSONObject();
+                    write.put("user_id", Supa.userId(app));
+                    write.put("reschedule_request", req);
+                    Supa.restUpsertOne(app, "user_state", "user_id", write);
+                    SyncManager.cacheReschedule(app, req); // 本地先行镜像，按钮立刻转「重排中…」
+                    ok = true;
+                    err = null;
+                }
+            } catch (Exception e) {
+                err = "重排请求没发出去：" + e.getMessage();
+            }
+            final boolean fok = ok;
+            final String ferr = err;
+            main.post(() -> { if (cb != null) cb.onResult(fok, ferr); });
+        }).start();
     }
 
     // ---------------- 签名与探测 ----------------
@@ -709,6 +767,17 @@ public final class SbSync {
             Supa.restGet(c, "user_state?select=" + col + "&limit=0");
             return true;
         } catch (Exception ignored) { return false; }
+    }
+
+    /** 服务端有没有任务级 alarm 模式列 alarm_mode（v1.20.0，与附加列同法探测）。 */
+    private static boolean probeAlarmModeCol(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=alarm_mode&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_alarm_mode", has).apply();
+        return has;
     }
 
     /** 服务端有没有子任务列 subtasks（jsonb，v1.11.0，与附加列同法探测）。 */

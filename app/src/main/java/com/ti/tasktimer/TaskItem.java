@@ -21,6 +21,25 @@ public class TaskItem {
     public String nextStartAt;         // "YYYY-MM-DDTHH:mm" 下一个开始时间（本地时间），到点全屏提醒开始，可空
     public String alarmAt;             // "yyyy-MM-dd'T'HH:mm" 闹钟时间（本地时间）：到点响铃，与计时状态无关，可空（v1.9.0）
     public boolean alarmOnTimerEnd = false; // 计时结束时响铃（响完再进结束检查页），默认关（v1.9.0）
+    // 任务级 alarm 模式（v1.20.0）：只管「这个任务」的结束提醒与暂停叫回出不出声，
+    // 空档催促仍走全局 idle_nag、不受它影响。follow 跟随全局（默认）/ sound 有声 /
+    // silent 静默（只震动与亮屏、不出声）/ off 关闭（不出声提醒）。
+    public String alarmMode = "follow";
+    public static final String ALARM_FOLLOW = "follow";
+    public static final String ALARM_SOUND = "sound";
+    public static final String ALARM_SILENT = "silent";
+    public static final String ALARM_OFF = "off";
+
+    /** alarmMode 归一化：未知值一律按 follow。 */
+    public static String normAlarmMode(String m) {
+        if (ALARM_SOUND.equals(m) || ALARM_SILENT.equals(m) || ALARM_OFF.equals(m)) return m;
+        return ALARM_FOLLOW;
+    }
+
+    /** 这个任务的提醒是否禁止出声（结束响铃/叫回升级铃）：silent、off 都不出声。 */
+    public boolean alarmMuted() {
+        return ALARM_SILENT.equals(alarmMode) || ALARM_OFF.equals(alarmMode);
+    }
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
@@ -106,6 +125,7 @@ public class TaskItem {
         o.put("nextStartAt", nextStartAt == null ? JSONObject.NULL : nextStartAt);
         o.put("alarmAt", alarmAt == null ? JSONObject.NULL : alarmAt);
         o.put("alarmOnTimerEnd", alarmOnTimerEnd);
+        o.put("alarmMode", alarmMode == null ? ALARM_FOLLOW : alarmMode);
         o.put("repeat", repeat);
         o.put("durationMinutes", durationMinutes);
         o.put("actualMinutes", actualMinutes);
@@ -151,6 +171,7 @@ public class TaskItem {
         t.alarmAt = o.isNull("alarmAt") ? null : o.optString("alarmAt", null);
         if (t.alarmAt != null && t.alarmAt.isEmpty()) t.alarmAt = null;
         t.alarmOnTimerEnd = o.optBoolean("alarmOnTimerEnd", false);
+        t.alarmMode = normAlarmMode(o.optString("alarmMode", ALARM_FOLLOW));
         t.repeat = o.optString("repeat", "none");
         t.durationMinutes = o.optInt("durationMinutes", 30);
         t.actualMinutes = o.optInt("actualMinutes", 0);

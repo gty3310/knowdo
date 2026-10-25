@@ -90,7 +90,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.19.0 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v1.20.0 · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -233,9 +233,9 @@ public final class Strings {
     public static String rowLog() { return s("记录", "Log"); }
     public static String rowAbout() { return s("关于", "About"); }
     public static String aboutBody() {
-        return en ? "KnowDo v1.19.0\nThe Unity of Knowledge and Action.\n"
+        return en ? "KnowDo v1.20.0\nThe Unity of Knowledge and Action.\n"
                 + "Open source: github.com/gty3310/knowdo (CC BY-NC-SA 4.0)"
-                  : "知行 KnowDo v1.19.0\n知行合一。\n"
+                  : "知行 KnowDo v1.20.0\n知行合一。\n"
                 + "开源：github.com/gty3310/knowdo（CC BY-NC-SA 4.0）";
     }
     public static String focusReady() { return s("使用情况访问：已开通", "Usage access: granted"); }
@@ -349,8 +349,8 @@ public final class Strings {
     // ---------------- 帮助页 ----------------
     public static String helpTitle() { return s("知行 KnowDo · 帮助", "KnowDo · Help"); }
     public static String helpIntro() {
-        return en ? "Version 1.19.0. This page is updated with each release; when a feature slips your mind, look here first."
-                  : "版本 v1.19.0。本页内容随版本更新；功能记不清时先翻这里。";
+        return en ? "Version 1.20.0. This page is updated with each release; when a feature slips your mind, look here first."
+                  : "版本 v1.20.0。本页内容随版本更新；功能记不清时先翻这里。";
     }
 
     /** [标题, 正文] × 24 节：正文逐字沿用原帮助页各节（第二节按 v1.8.0 新交互改写、

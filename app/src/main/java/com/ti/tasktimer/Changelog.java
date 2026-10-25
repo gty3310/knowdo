@@ -36,6 +36,35 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e120 = new Entry("v1.20.0", "2026-10-25");
+        e120.add(new Group(s("改进", "Improved"),
+                s("日历变简单了：顶部的今日汇总和下面的未排程任务列表都去掉了，日历只剩时间轴本身；「问 AI 重排」保留，改走数据库直接同步，不再绕 Drive。",
+                  "The calendar is simple now: the today summary at the top and the unscheduled-task list below are gone — the calendar is just the timeline itself. \"Ask AI to re-plan\" stays, now syncing straight through the database instead of via Drive."),
+                s("新建和编辑任务统一成一个弹层：在哪儿建都长一样，时间、重要性、重复和这个任务自己的 alarm 模式（有声、静默、关闭，或跟随全局）一次设好。",
+                  "Creating and editing a task now share one sheet that looks the same everywhere: date and start time, importance, repeat, and this task's own alarm mode (sound, silent, off, or follow the global setting) all in one place.")));
+        e120.add(new Group(s("新功能", "New"),
+                s("点日历空白处就能加任务：开始时间自动填你点的那个点，建好顺手排进日程。",
+                  "Tap an empty spot on the calendar to add a task: the start time is filled in with the point you tapped, and the task is planned into the day right away."),
+                s("把计划块拖到现在线上面，任务自动变完成；再拖回来，又变回未完成。",
+                  "Drag a plan block above the now-line and the task completes itself; drag it back below and it is unfinished again.")));
+        e120.add(new Group(s("改进", "Improved"),
+                s("新用户默认变温和：不再默认每几分钟催一轮，任务结束也不默认出声；想要严格的，去设置里自己开。已在用的设置原样保留，不受影响。",
+                  "New users get gentler defaults: no nagging round every few minutes and no sound when a timer ends, unless you turn them on in Settings. Existing setups are kept exactly as they are."),
+                s("注册时要输两遍密码防输错；注册页也会提醒，验证邮件是从 Supabase 发来的，记得去垃圾邮件里找。",
+                  "Sign-up now asks for the password twice so a typo can't lock you out, and the sign-up page explains that the verification email comes from Supabase — check your spam folder for it.")));
+        e120.why = s("你对着日历截图把三块地方圈了出来，说它们让日历显得乱；点空白建任务是学 Google 日历，少绕一步；"
+                        + "默认太猛会吓到第一次用的人，所以狠的只留给自己在设置里开。",
+                "You circled three areas on a calendar screenshot and said they make it feel cluttered. Tapping an empty spot "
+                        + "to create is borrowed from Google Calendar — one step less. Defaults that hit hard scare first-time users, "
+                        + "so the strict behaviour is now something you switch on yourself in Settings.");
+        e120.tryIt = s("①打开日程页展开日历，看它是不是只剩时间轴（右上角留了个小小的「问 AI 重排」，点它就走数据库请 AI 重排）；②在日历下午的空白处点一下建个任务；"
+                        + "③把一个计划块拖到上午去，再拖回来；④分别从日历和任务列表各建一个任务，对比弹层是不是长一样。",
+                "1) Open the day page and expand the calendar — is it just the timeline now? "
+                        + "2) Tap an empty afternoon spot on the calendar to create a task. "
+                        + "3) Drag a plan block into the morning, then drag it back. "
+                        + "4) Create a task from the calendar and one from the task list, and compare the sheets.");
+        out.add(e120);
+
         Entry e119 = new Entry("v1.19.0", "2026-10-25");
         e119.add(new Group(s("修复", "Fixed"),
                 s("暂停结束后不再没人管：以前暂停时间一到、叫回一次之后就再也不催了——内部有个状态判错，"

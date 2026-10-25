@@ -434,7 +434,15 @@ public class MainActivity extends Activity {
         fabBg.setColor(Ui.accent(this));
         fab.setBackground(fabBg);
         fab.setElevation(dp(4));
-        fab.setOnClickListener(v -> dialogNewTask());
+        fab.setOnClickListener(v -> TaskEditSheet.showCreate(this, store, null, false,
+                new TaskEditSheet.Host() {
+                    @Override public void onSaved(TaskItem t, boolean created) {
+                        adapter.notifyDataSetChanged();
+                        refreshStatus();
+                    }
+                    @Override public void onFocusRule(TaskItem t) { }
+                    @Override public void onResetTimer(TaskItem t) { }
+                }));
         FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(dp(56), dp(56));
         flp.gravity = Gravity.BOTTOM | Gravity.END;
         flp.setMargins(0, 0, dp(18), dp(18));
@@ -1522,7 +1530,15 @@ public class MainActivity extends Activity {
         String primary = isRunningThis ? Strings.chipPause()
                 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
         chips.addView(chip(primary, true, v -> onPlay(t)));
-        chips.addView(chip(Strings.chipEdit(), false, v -> dialogEditMenu(t)));
+        chips.addView(chip(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(this, store, t,
+                new TaskEditSheet.Host() {
+                    @Override public void onSaved(TaskItem saved, boolean created) {
+                        adapter.notifyDataSetChanged();
+                        refreshStatus();
+                    }
+                    @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
+                    @Override public void onResetTimer(TaskItem task) { resetTask(task); }
+                })));
         chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
         if (isRunningThis) {
             chips.addView(chip(Strings.chipPlus15(), false, v -> {
@@ -1679,37 +1695,6 @@ public class MainActivity extends Activity {
         c.setLayoutParams(lp);
         c.setOnClickListener(cl);
         return c;
-    }
-
-    /** 「编辑」菜单：全部字段编辑入口集中在此（与设置页说明一致）。 */
-    private void dialogEditMenu(final TaskItem t) {
-        boolean en = Strings.en();
-        String[] items = {
-                en ? "Name & priority" : "名称与优先级",
-                en ? "Contexts" : "情景",
-                en ? "Deadline & start time" : "截止与开始时间",
-                en ? "Length" : "时长",
-                en ? "Focus rule" : "专注规则",
-                en ? "Note" : "笔记",
-                Strings.alarmTitle(),
-                en ? "Reset timer" : "重置计时",
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(Strings.editMenuTitle())
-                .setItems(items, (d, which) -> {
-                    switch (which) {
-                        case 0: dialogTitle(t); break;
-                        case 1: dialogScenarios(t); break;
-                        case 2: dialogDeadline(t); break;
-                        case 3: dialogDuration(t); break;
-                        case 4: dialogFocus(t); break;
-                        case 5: dialogNote(t); break;
-                        case 6: dialogAlarm(t); break;
-                        case 7: resetTask(t); break;
-                        default: break;
-                    }
-                })
-                .show();
     }
 
     /** 闹钟设置（v1.9.0）：闹钟时间（到点响铃、与计时无关）＋计时结束时响铃开关。 */
@@ -1909,23 +1894,6 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- 编辑对话框 ----------------
-    private void dialogNewTask() {
-        final EditText input = new EditText(this);
-        input.setHint("任务名称");
-        new AlertDialog.Builder(this)
-                .setTitle("新增任务")
-                .setView(input)
-                .setPositiveButton("添加", (d, w) -> {
-                    String name = input.getText().toString().trim();
-                    if (name.isEmpty()) return;
-                    store.add(TaskItem.create(name));
-                    adapter.notifyDataSetChanged();
-                    toast("已添加，点各列补全情景、截止和时长");
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
     private void dialogTitle(final TaskItem t) {
         final EditText input = new EditText(this);
         input.setText(t.title);

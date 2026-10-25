@@ -68,21 +68,53 @@ public final class AccountUi {
         password.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         box.addView(password);
+        // 确认密码（v1.20.0）：只在点「注册」时校验，两次不一致就拦下防输错；登录不用它
+        final EditText password2 = new EditText(act);
+        password2.setHint("确认密码（注册时再输一遍）");
+        password2.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(password2);
         TextView tip = new TextView(act);
         tip.setText("登录后进入云端同步：本机现有任务会全量成为你的云端数据，不会丢失。"
                 + "没登录也能照常用本机与 Drive 桥。");
         tip.setTextSize(13);
         tip.setTextColor(Color.DKGRAY);
         box.addView(tip);
-        new AlertDialog.Builder(act)
+        // 验证邮件说明（v1.20.0）：邮件是数据库服务 Supabase 发的，发件人不眼熟，必须说清
+        TextView verifyTip = new TextView(act);
+        verifyTip.setText("注册提醒：提交注册后，数据库服务 Supabase 会给你发一封验证邮件，"
+                + "发件人可能不眼熟。请留意邮箱的收件箱与垃圾邮件文件夹，找到这封邮件、"
+                + "点里面的链接完成验证，再回来登录。");
+        verifyTip.setTextSize(13);
+        verifyTip.setTextColor(Color.DKGRAY);
+        verifyTip.setPadding(0, dp(act, 8), 0, 0);
+        box.addView(verifyTip);
+        AlertDialog dlg = new AlertDialog.Builder(act)
                 .setTitle("账号与同步（Supabase）")
                 .setView(box)
                 .setPositiveButton("登录", (d, w) -> doAuth(act, true,
                         email.getText().toString().trim(), password.getText().toString(), store, onChanged))
-                .setNeutralButton("注册", (d, w) -> doAuth(act, false,
-                        email.getText().toString().trim(), password.getText().toString(), store, onChanged))
+                .setNeutralButton("注册", null)
                 .setNegativeButton("取消", null)
-                .show();
+                .create();
+        dlg.show();
+        // 注册按钮接管点击：先校验两次密码，一致才关窗提交（默认行为会直接关窗，来不及拦）
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            String em = email.getText().toString().trim();
+            String pw = password.getText().toString();
+            String pw2 = password2.getText().toString();
+            if (em.isEmpty() || pw.isEmpty()) {
+                toast(act, "邮箱和密码都要填");
+                return;
+            }
+            if (!pw.equals(pw2)) {
+                password2.setError("两次输入的密码不一致，请再输一遍");
+                password2.requestFocus();
+                return;
+            }
+            dlg.dismiss();
+            doAuth(act, false, em, pw, store, onChanged);
+        });
     }
 
     private static void doAuth(final Activity act, final boolean signIn, final String email,

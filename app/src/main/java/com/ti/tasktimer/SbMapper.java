@@ -17,6 +17,8 @@ import java.util.TimeZone;
  * 闹钟两列（alarm_at / alarm_on_timer_end，v1.9.0）同法处理：hasAlarmCols 单独探测，
  * 服务端没列时不进云端、合并时本地保全，补列后自动纳入同步。
  * 子任务列 subtasks（jsonb，v1.11.0）同法：hasSubtaskCols 单独探测，没列时本地保全。
+ * 任务级 alarm 模式列 alarm_mode（v1.20.0）同法：hasAlarmModeCol 单独探测，
+ * 服务端没列时不进云端、合并时从本地同 id 任务保全；补列后自动纳入同步。
  */
 public final class SbMapper {
     private SbMapper() {}
@@ -101,6 +103,12 @@ public final class SbMapper {
 
     public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
                                    boolean hasAlarmCols, boolean hasSubtaskCols) throws Exception {
+        return toRow(t, userId, hasExtraCols, hasAlarmCols, hasSubtaskCols, false);
+    }
+
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols, boolean hasSubtaskCols,
+                                   boolean hasAlarmModeCol) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -137,6 +145,9 @@ public final class SbMapper {
             JSONArray subs = new JSONArray();
             if (t.subtasks != null) for (Subtask s : t.subtasks) subs.put(s.toJson());
             o.put("subtasks", subs);
+        }
+        if (hasAlarmModeCol) {
+            o.put("alarm_mode", TaskItem.normAlarmMode(t.alarmMode));
         }
         return o;
     }
@@ -190,6 +201,13 @@ public final class SbMapper {
             t.syncDurationFromSubtasks(); // 总时长口径：有子任务即等于子任务之和
         } else if (preserveFrom != null && preserveFrom.subtasks != null) {
             for (Subtask s : preserveFrom.subtasks) t.subtasks.add(s.copy());
+        }
+        if (o.has("alarm_mode")) {
+            t.alarmMode = TaskItem.normAlarmMode(o.isNull("alarm_mode") ? null
+                    : o.optString("alarm_mode", null));
+        } else if (preserveFrom != null) {
+            // 服务端没这列（或本行没带）：从本地同 id 任务保全，同步合并不得冲掉
+            t.alarmMode = TaskItem.normAlarmMode(preserveFrom.alarmMode);
         }
         return t;
     }

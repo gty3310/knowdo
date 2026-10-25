@@ -25,6 +25,7 @@ public class SyncManager {
     private static final String KEY_URI = "tasks_json_uri";
     private static final String KEY_SCHEDULE = "schedule_json";
     private static final String KEY_GCAL = "gcal_json";
+    private static final String KEY_RESCHEDULE = "reschedule_json";
 
     public static void setUri(Context c, Uri uri) {
         prefs(c).edit().putString(KEY_URI, uri.toString()).apply();
@@ -92,6 +93,27 @@ public class SyncManager {
     /** Supabase 同步把云端 gcal 写进与桥时代相同的本地缓存（只读渲染，App 不改）。 */
     public static void cacheGcal(Context c, JSONObject gcal) {
         if (gcal != null) prefs(c).edit().putString(KEY_GCAL, gcal.toString()).apply();
+    }
+
+    /**
+     * 「问 AI 重排」请求状态缓存（v1.20.0）：云端 user_state.reschedule_request 的
+     * 本地镜像，同步时由 SbSync 写入、日历页读它渲染按钮态。null＝云端为空，清缓存。
+     * 结构：{"date":"YYYY-MM-DD","requested_at":ISO,"status":"pending|done|failed","message"?}
+     */
+    public static void cacheReschedule(Context c, JSONObject req) {
+        if (req != null) prefs(c).edit().putString(KEY_RESCHEDULE, req.toString()).apply();
+        else prefs(c).edit().remove(KEY_RESCHEDULE).apply();
+    }
+
+    /** 最近一次同步到的重排请求状态；从没请求过返回 null。 */
+    public static JSONObject latestReschedule(Context c) {
+        String s = prefs(c).getString(KEY_RESCHEDULE, null);
+        if (s == null) return null;
+        try {
+            return new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 执行一次同步；返回结果说明。必须在后台线程调用。 */
