@@ -27,6 +27,10 @@ import java.util.List;
  * 缓存清单显示与判状态）。每条含 id/file/version/size/md5/purpose；
  * 主文件被切成 2MiB 分片时带 parts 数组（逐片下完按序拼接，再校验
  * 整文件 md5）；附属文件在 extra_files 里逐个登记 size/md5、各自校验。
+ * 条目带 part_encoding="base64" 时（v1.24.4 起，bge 用），分片文件本身是
+ * 二进制分片的 Base64 文本（文件名带 .b64）：contents API 解码后得到
+ * 的是文本，还须再解一次才得到二进制分片；parts 里的 size 始终是
+ * 二进制分片的字节数，校验口径不变。不带该标记的条目行为完全不变。
  *
  * 下载通道：Gitee contents API（access_token 查询参数），与时习书库
  * 同一条已验证的形态；令牌构建期从工程根目录 resources_token.txt 注入
@@ -71,8 +75,13 @@ public final class ModelManager {
         public long size;
         public String md5;
         public String purpose;
+        /** 清单 part_encoding 原值；"base64" 表示分片是 Base64 文本中转（见类头注）。 */
+        public String partEncoding = "";
         public final List<Extra> extras = new ArrayList<>();
         public final List<Part> parts = new ArrayList<>();
+
+        /** 分片是否为 Base64 文本中转下发（须双层解码）。 */
+        public boolean partsAreBase64Text() { return "base64".equals(partEncoding); }
 
         /** 下载总字节（分片按分片计、附属文件另计），给进度条与大小显示用。 */
         public long totalBytes() {
@@ -161,6 +170,7 @@ public final class ModelManager {
             m.size = o.optLong("size", 0);
             m.md5 = o.optString("md5", "");
             m.purpose = o.optString("purpose", "");
+            m.partEncoding = o.optString("part_encoding", "");
             JSONArray ex = o.optJSONArray("extra_files");
             if (ex != null) {
                 for (int j = 0; j < ex.length(); j++) {
@@ -246,17 +256,34 @@ public final class ModelManager {
         long[] done = new long[1];
         try {
             if (!m.parts.isEmpty()) {
-                // 分片：逐片下（大小必须与清单一致），再按序拼成主文件校验整文件 md5
+                // 分片：逐片下（大小必须与清单一致；下坏的单片自动重试，最多 3 次
+                // 尝试含首次），再按序拼成主文件校验整文件 md5。整件 md5 不对时分
+                // 不清是哪片坏（分片只有大小、没有逐片 md5），照旧整件报错、不无限重试
+                boolean b64 = m.partsAreBase64Text();
                 File assembled = new File(dir, m.file + ".assembling");
                 FileOutputStream out = new FileOutputStream(assembled);
                 MessageDigest md = MessageDigest.getInstance("MD5");
                 byte[] buf = new byte[64 * 1024];
                 for (Part p : m.parts) {
                     File pf = new File(dir, p.file);
-                    if (!pf.exists() || pf.length() != p.size) {
-                        downloadOne(c, p.file, pf, null);
+                    if (pf.length() != p.size) {
+                        Exception last = null;
+                        boolean got = false;
+                        for (int attempt = 0; attempt < 3 && !got; attempt++) {
+                            try {
+                                //noinspection ResultOfMethodCallIgnored
+                                if (pf.exists()) pf.delete();
+                                downloadOne(c, p.file, pf, b64);
+                                got = pf.length() == p.size;
+                                if (!got) last = new Exception("分片大小不对：" + p.file);
+                            } catch (Exception e) {
+                                last = e;
+                            }
+                        }
+                        if (!got) {
+                            throw last != null ? last : new Exception("分片大小不对：" + p.file);
+                        }
                     }
-                    if (pf.length() != p.size) throw new Exception("分片大小不对：" + p.file);
                     FileInputStream in = new FileInputStream(pf);
                     int n;
                     while ((n = in.read(buf)) > 0) {
@@ -286,7 +313,7 @@ public final class ModelManager {
                 File main = new File(dir, m.file);
                 if (!main.exists() || main.length() != m.size
                         || !md5OfFile(main).equalsIgnoreCase(m.md5)) {
-                    downloadOne(c, m.file, main, null);
+                    downloadOne(c, m.file, main, false);
                     done[0] = m.size;
                     if (progress != null) progress.onProgress(m.id, done[0], total);
                     if (main.length() != m.size || !md5OfFile(main).equalsIgnoreCase(m.md5)) {
@@ -301,7 +328,7 @@ public final class ModelManager {
             for (Extra e : m.extras) {
                 File f = new File(dir, e.file);
                 if (!f.exists() || f.length() != e.size || !md5OfFile(f).equalsIgnoreCase(e.md5)) {
-                    downloadOne(c, e.file, f, null);
+                    downloadOne(c, e.file, f, false);
                     if (f.length() != e.size || !md5OfFile(f).equalsIgnoreCase(e.md5)) {
                         //noinspection ResultOfMethodCallIgnored
                         f.delete();
@@ -347,7 +374,7 @@ public final class ModelManager {
     private static String fetchText(Context c, String path) throws Exception {
         File tmp = new File(c.getCacheDir(), "mm_fetch_" + System.nanoTime());
         try {
-            downloadOne(c, path, tmp, null);
+            downloadOne(c, path, tmp, false);
             return TaskStore.readAll(new FileInputStream(tmp));
         } finally {
             //noinspection ResultOfMethodCallIgnored
@@ -356,11 +383,15 @@ public final class ModelManager {
     }
 
     /**
-     * 经 contents API 下一个文件到 dest（一次重试）。响应 JSON 整表读入后
+     * 经 contents API 下一个文件到 dest（传输层一次重试）。响应 JSON 整表读入后
      * 取 content 做 base64 解码——本仓单文件最大就是 2MiB 分片，JSON 约
      * 2.8MB，整表读入在移动端可接受（时习 13MB 级走流式，本仓用不上）。
+     * contentIsBase64Text=true 时（清单 part_encoding="base64" 的分片）：文件
+     * 内容本身是二进制分片的 Base64 文本，第一次解码得到文本、须再解一次
+     * 才得到二进制——contents 接口下发二进制会定点截断、下发 ASCII 完全
+     * 可靠，这层文本中转就是为绕开截断（v1.24.4）。
      */
-    private static void downloadOne(Context c, String path, File dest, Object ignored) throws Exception {
+    private static void downloadOne(Context c, String path, File dest, boolean contentIsBase64Text) throws Exception {
         Exception last = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
@@ -381,6 +412,10 @@ public final class ModelManager {
                 String b64 = o.optString("content", "");
                 if (b64.isEmpty()) throw new Exception("响应里没有 content：" + path);
                 byte[] data = Base64.decode(b64, Base64.DEFAULT);
+                if (contentIsBase64Text) {
+                    // 解出来的是 Base64 文本（可能带换行），再解一次才是二进制分片
+                    data = Base64.decode(data, Base64.DEFAULT);
+                }
                 FileOutputStream out = new FileOutputStream(dest);
                 out.write(data);
                 out.close();

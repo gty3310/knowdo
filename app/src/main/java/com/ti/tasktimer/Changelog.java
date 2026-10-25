@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1244 = new Entry("v1.24.4", "2026-10-25");
+        e1244.add(new Group(s("修复", "Fixed"),
+                s("语义小模型下载总是卡在「分片大小不对」。原因是模型托管方的接口在传这类二进制文件时会把内容截断，改成文本编码中转下发后就能完整到达；同时每个分片下坏了会自动重试几次，不用你反复点",
+                  "Fixes the semantic mini-model download always stalling on \"part size mismatch\". The model host's interface truncates this kind of binary content in transit, so the parts are now delivered via a text encoding that arrives intact; and if a part does come down damaged, it retries a few times on its own — no need to keep tapping")));
+        e1244.why = s("这个模型是守卫语义判定的本地主力，下不下来，判定就只能靠更粗的规则顶着",
+                "This model is the local workhorse of the guard's semantic verdicts — while it can't be downloaded, verdicts have to make do with the cruder rules");
+        e1244.tryIt = s("去设置 → 模型下载，重新下载语义小模型，看它这次能不能装完、状态变成「已就绪」",
+                "Go to Settings → Model downloads, download the semantic mini-model again, and see whether it finishes installing this time and its status turns to Ready");
+        out.add(e1244);
+
         Entry e1243 = new Entry("v1.24.3", "2026-10-25");
         e1243.add(new Group(s("新功能", "New"),
                 s("守卫判错时，问询页多了「分析错误」按钮——点它，这次分神不算数，还能顺手留一条 20 字以内的纪律，比如「查资料用浏览器算正事」；往后联网判定会带着你的纪律一起判，同类误报会变少；纪律在设置里随时能看、能删",
