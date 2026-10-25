@@ -37,7 +37,11 @@ public final class GuardTestWindow {
 
     public static void show(final Context c) {
         if (rootView != null) return;
-        if (!AlertHelper.canDrawOverlays(c)) return;
+        if (!AlertHelper.canDrawOverlays(c)) {
+            // 不再静默放弃（v1.24.2）：没悬浮窗权限时把原因报出来（测试者模式下可见）
+            ErrorReporter.report(c, "守卫测试窗", 0, "没有悬浮窗权限，测试窗无法显示");
+            return;
+        }
         ui.post(() -> build(c.getApplicationContext()));
     }
 
@@ -85,8 +89,9 @@ public final class GuardTestWindow {
 
         rootView = new LinearLayout(c);
         rootView.setOrientation(LinearLayout.VERTICAL);
+        final int bgColor = Color.argb(228, 34, 32, 29); // 深暖炭半透明（attach 前校验要用）
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(228, 34, 32, 29));
+        bg.setColor(bgColor);
         bg.setCornerRadius(14 * d);
         rootView.setBackground(bg);
         rootView.setPadding((int) (12 * d), (int) (9 * d), (int) (12 * d), (int) (11 * d));
@@ -135,11 +140,26 @@ public final class GuardTestWindow {
         lp.y = (int) (190 * d); // 让开计时悬浮窗（约 110dp 起），两窗同屏不打架
 
         rootView.setOnTouchListener(new Dragger());
+        // attach 前校验（v1.24.2 加固）：宽必须是小于屏宽的固定值、高必须是
+        // WRAP_CONTENT、背景不得为不透明白——参数真被改坏时中止显示并上报，
+        // 不许拿一面满屏白墙把用户晾在那
+        int screenW = c.getResources().getDisplayMetrics().widthPixels;
+        if (lp.width <= 0 || lp.width >= screenW
+                || lp.height != WindowManager.LayoutParams.WRAP_CONTENT
+                || (Color.alpha(bgColor) == 255 && bgColor == Color.WHITE)) {
+            ErrorReporter.report(c, "守卫测试窗", 0,
+                    "窗口参数异常（" + lp.width + "x" + lp.height + "），已中止显示");
+            rootView = null;
+            bodyView = null;
+            lp = null;
+            return;
+        }
         try {
             wm.addView(rootView, lp);
         } catch (Exception e) {
             rootView = null;
             bodyView = null;
+            ErrorReporter.report(c, "守卫测试窗", 0, ErrorReporter.summarize(e));
         }
     }
 

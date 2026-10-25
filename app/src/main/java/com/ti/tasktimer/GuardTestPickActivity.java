@@ -34,7 +34,20 @@ public class GuardTestPickActivity extends Activity {
         root.setBackgroundColor(Color.WHITE);
         int pad = dp(24);
         root.setPadding(pad, dp(40), pad, pad);
+        // 根视图先挂上窗口（v1.24.2 修复）：此前本页把整棵视图树建完却从未
+        // setContentView，窗口只剩主题的白色背景——用户点开就是整屏白屏、
+        // 选不了尺子，测试模式永远开不起来。先挂根视图，后面任何一步失败，
+        // 屏幕也不会空白。
+        setContentView(root);
+        try {
+            buildPicker(root);
+        } catch (Exception e) {
+            ErrorReporter.report(this, "守卫测试", 0, ErrorReporter.summarize(e));
+            showBuildFailure(root, e);
+        }
+    }
 
+    private void buildPicker(LinearLayout root) {
         TextView title = new TextView(this);
         title.setText("先选一个任务当尺子");
         title.setTextSize(24);
@@ -105,9 +118,33 @@ public class GuardTestPickActivity extends Activity {
         list.addView(none);
     }
 
+    /** 构建失败时的兜底界面（v1.24.2）：一句说明＋返回按钮，绝不静默白屏。 */
+    private void showBuildFailure(LinearLayout root, Exception e) {
+        try {
+            TextView t = new TextView(this);
+            t.setText("选尺子页没能打开（" + e.getClass().getSimpleName()
+                    + "）。先返回再试；开着测试者模式时，错误详情会亮在报错窗里。");
+            t.setTextSize(16);
+            t.setTextColor(Color.BLACK);
+            t.setPadding(0, dp(16), 0, dp(12));
+            root.addView(t);
+            Button back = rowButton("返回");
+            back.setOnClickListener(v -> finish());
+            root.addView(back);
+        } catch (Exception ignored) { }
+    }
+
     private void beginTest() {
-        ScreenGuardPrefs.setTestMode(this, true);
-        GuardTestMode.start(this);
+        try {
+            ScreenGuardPrefs.setTestMode(this, true);
+            GuardTestMode.start(this);
+        } catch (Exception e) {
+            // 启动失败不许假装成功关页（v1.24.2）：上报＋提示，人留在本页可重试或返回
+            ErrorReporter.report(this, "守卫测试", 0, ErrorReporter.summarize(e));
+            Toast.makeText(this, "测试模式没能启动：" + e.getClass().getSimpleName(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         finish();
     }
 

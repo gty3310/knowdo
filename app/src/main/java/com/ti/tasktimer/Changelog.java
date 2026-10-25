@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1242 = new Entry("v1.24.2", "2026-10-25");
+        e1242.add(new Group(s("修复", "Fixed"),
+                s("修复在设置里点「守卫测试模式」时整个屏幕变白、测试窗不出来的问题。现在点它会正常先出选尺子页、再出测试窗，判定读数照常刷新；万一哪一步出问题，也会直接把错误亮出来，不再白屏把你晾在那",
+                  "Fixes the whole screen turning white — with no test window appearing — when you tap Guard test mode in Settings. Now it properly shows the ruler picker first, then the test window, and the verdict readings refresh as usual; and if any step does go wrong, the error is shown to you directly instead of a white screen leaving you stranded")));
+        e1242.why = s("守卫测试模式是你当场验收守卫判定最直接的工具，它一坏，守卫到底判得对不对就没法亲眼验",
+                "Guard test mode is the most direct tool you have for verifying the guard's verdicts on the spot — while it is broken, there is no way to see with your own eyes whether the guard judges rightly");
+        e1242.tryIt = s("1）设置里点「守卫测试模式」，看选尺子页是否正常出现；2）选一个任务当尺子，看测试窗是否出来、判定读数有没有在刷新；3）退出测试模式，看界面是否完好恢复、没有白色残留",
+                "1) Tap Guard test mode in Settings and check that the ruler picker appears. 2) Pick a task as the ruler, and check that the test window comes up and its verdict readings keep refreshing. 3) Leave test mode and check the interface is fully restored, with no white residue");
+        out.add(e1242);
+
         Entry e1241 = new Entry("v1.24.1", "2026-10-25");
         e1241.add(new Group(s("新功能", "New"),
                 s("设置里的「测试模式」正式改名叫「测试者模式」，还是原来那个开关。打开它之后，软件内部任何报错都会额外用一个悬浮窗显示五秒：哪个功能出的错、服务器回了几零几、错误是什么，一眼就能看见。尤其是聊天，代理或者模型那边回了 401、429、500 哪一种，都会原样亮出来，不再只有一句「过一会儿再聊」",
