@@ -183,6 +183,71 @@ public class PermActivity extends Activity {
             buildUi();
         });
 
+        // 无障碍截图通道（v1.21.0 首选通道）：开了之后守卫改走无障碍一次性截图，
+        // 不再需要每次计时授权录屏，进程被杀也能由系统重绑续跑
+        LinearLayout a11yRow = new LinearLayout(this);
+        a11yRow.setOrientation(LinearLayout.HORIZONTAL);
+        a11yRow.setPadding(0, dp(10), 0, dp(6));
+        TextView a11yText = new TextView(this);
+        boolean a11yOn = KnowDoAccessibilityService.isEnabled(this);
+        a11yText.setText("无障碍截图通道：" + (a11yOn ? "已开启" : "未开启"));
+        a11yText.setTextSize(15);
+        a11yText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        a11yRow.addView(a11yText);
+        if (!a11yOn) {
+            Button a11yBtn = new Button(this);
+            a11yBtn.setText("去开启");
+            a11yBtn.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                } catch (Exception e) {
+                    startActivity(new Intent(Settings.ACTION_SETTINGS));
+                }
+            });
+            a11yRow.addView(a11yBtn);
+        }
+        root.addView(a11yRow);
+        TextView a11yNote = new TextView(this);
+        a11yNote.setText("开启后守卫优先用它截图：不用每次授权、采样更密；不开则回退到下面的录屏授权");
+        a11yNote.setTextSize(13);
+        a11yNote.setTextColor(Color.DKGRAY);
+        root.addView(a11yNote);
+
+        addToggleRow(root, "守卫测试模式（每 10 秒把判定读数放进悬浮窗）", ScreenGuardPrefs.testMode(this), on -> {
+            if (on) {
+                if (!KnowDoAccessibilityService.isEnabled(this)) {
+                    android.widget.Toast.makeText(this,
+                            "先开启上面的无障碍截图通道，再开测试模式",
+                            android.widget.Toast.LENGTH_LONG).show();
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Exception e) {
+                        startActivity(new Intent(Settings.ACTION_SETTINGS));
+                    }
+                    buildUi();
+                    return;
+                }
+                if (!AlertHelper.canDrawOverlays(this)) {
+                    android.widget.Toast.makeText(this,
+                            "测试悬浮窗需要先把上面的「上层显示」开成 ✓",
+                            android.widget.Toast.LENGTH_LONG).show();
+                    buildUi();
+                    return;
+                }
+                ScreenGuardPrefs.setTestMode(this, true);
+                GuardTestMode.start(this);
+            } else {
+                ScreenGuardPrefs.setTestMode(this, false);
+                GuardTestMode.stop();
+            }
+            buildUi();
+        });
+        // 测试模式开着时（比如重启后回到本页），把采样与悬浮窗续上
+        if (ScreenGuardPrefs.testMode(this) && KnowDoAccessibilityService.isEnabled(this)
+                && AlertHelper.canDrawOverlays(this)) {
+            GuardTestMode.start(this);
+        }
+
         LinearLayout authRow = new LinearLayout(this);
         authRow.setOrientation(LinearLayout.HORIZONTAL);
         authRow.setPadding(0, dp(10), 0, dp(6));
@@ -202,8 +267,8 @@ public class PermActivity extends Activity {
         root.addView(authRow);
 
         TextView note = new TextView(this);
-        note.setText("说明：安卓 14 起每次截图会话都要授权一次——正式流程是开始计时时顺手点一次“允许”，"
-                + "整个计时期间持续采样，计时结束授权即失效。这里的按钮是提前授权/换授权用："
+        note.setText("说明：这份录屏授权只在无障碍通道没开时作回退用。安卓 14 起每次截图会话都要授权一次——"
+                + "回退流程是开始计时时顺手点一次“允许”，整个计时期间持续采样，计时结束授权即失效。这里的按钮是提前授权/换授权用："
                 + "授权在被用掉（开始一次带守卫的计时）之前一直有效；自动开始（autoStart）的任务没有授权时不会采样，会在记录里留一行说明。");
         note.setTextSize(13);
         note.setTextColor(Color.DKGRAY);

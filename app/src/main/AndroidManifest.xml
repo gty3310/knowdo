@@ -64,11 +64,26 @@
             android:name=".CalendarActivity"
             android:exported="false" />
 
-        <!-- 屏幕内容守卫采集服务：计时期间随机采样屏幕（MediaProjection，仅本机分析） -->
+        <!-- 屏幕内容守卫采集服务（回退通道）：无障碍未开启时计时期间随机采样屏幕（MediaProjection，仅本机分析） -->
         <service
             android:name=".ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!-- 屏幕内容守卫无障碍通道（v1.21.0 首选）：一次性截图 + 节点文字预筛，
+             采样宿主也在这里；由用户在系统无障碍设置里手动开启，本应用无权代开 -->
+        <service
+            android:name=".KnowDoAccessibilityService"
+            android:exported="false"
+            android:label="知行屏幕守卫"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/knowdo_accessibility_service" />
+        </service>
 
         <!-- 实时同步服务：桥模式每 30 秒轮询 Drive 桥文件；Supabase 模式走 Realtime 推送 + 30 秒对账；
              有新任务自动合并、带立即开始标记的自动开始计时，计时状态跨设备镜像 -->

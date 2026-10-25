@@ -80,11 +80,11 @@ public final class AccountUi {
         tip.setTextSize(13);
         tip.setTextColor(Color.DKGRAY);
         box.addView(tip);
-        // 验证邮件说明（v1.20.0）：邮件是数据库服务 Supabase 发的，发件人不眼熟，必须说清
+        // 验证邮件说明（v1.20.0 首加，v1.21.0 改定）：发信已走自有域名，发件人要写明
         TextView verifyTip = new TextView(act);
-        verifyTip.setText("注册提醒：提交注册后，数据库服务 Supabase 会给你发一封验证邮件，"
-                + "发件人可能不眼熟。请留意邮箱的收件箱与垃圾邮件文件夹，找到这封邮件、"
-                + "点里面的链接完成验证，再回来登录。");
+        verifyTip.setText("注册提醒：提交注册后，你会收到一封从 tiguo.net 邮箱发来的确认邮件"
+                + "（发件人 noreply@tiguo.net）。请留意邮箱的收件箱与垃圾邮件文件夹，"
+                + "点邮件里的链接完成验证，再回来登录。");
         verifyTip.setTextSize(13);
         verifyTip.setTextColor(Color.DKGRAY);
         verifyTip.setPadding(0, dp(act, 8), 0, 0);

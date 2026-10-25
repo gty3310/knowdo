@@ -29,9 +29,12 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 
 /**
- * 屏幕内容守卫的采集层（前台服务，类型 mediaProjection）：
- * 仅在任务计时中 + 屏幕亮着 + 已解锁时工作；每次截完后随机隔 45–170 秒再截，
- * 保证任意 3 分钟窗口至少 1 张、时刻不可预测。
+ * 屏幕内容守卫的采集层（前台服务，类型 mediaProjection）——v1.21.0 起是回退通道：
+ * 首选通道是无障碍一次性截图（KnowDoAccessibilityService，采样宿主也在那边）；
+ * 无障碍未开启时才回退到本服务的录屏通道，两条通道共用 PipelineAnalyzer 与
+ * VerdictEngine，分析与判定只有一套，不许复制。
+ * 仅在任务计时中 + 屏幕亮着 + 已解锁时工作；每次截完后随机隔 15–45 秒再截
+ * （平均 30 秒，v1.21.0 采样加密）；连续帧画面未变（感知哈希相同）跳过分析省电。
  * 隐私红线：截图只在内存里分析（位图用完立刻 recycle），从不落盘、从不上传；
  * 判分神只留文字事件（GuardEvents）。带 FLAG_SECURE 的界面截出来是纯黑帧，
  * 只记“不可见”日志、不判分神（无痕/银行类界面是天然盲区）。
@@ -55,6 +58,8 @@ public class ScreenCaptureService extends Service {
     private final Random random = new Random();
     private final ContentAnalyzer analyzer = new PipelineAnalyzer();
     private long lastInvisibleLogAt;
+    private long lastHash;
+    private boolean hasLastHash;
 
     // ---------- 对外入口（TimerService / PermActivity 调用） ----------
     /** 是否已有可用授权（投影活着，或有一份没用掉的授权）。 */
@@ -62,9 +67,16 @@ public class ScreenCaptureService extends Service {
         return projection != null || ProjectionAuth.has();
     }
 
-    /** 计时开始时调：守卫开 + 有授权才启动采集；没授权只记一次日志（autoStart 场景）。 */
+    /**
+     * 计时开始时调：通道分流——无障碍已就绪走无障碍通道（采样宿主在无障碍服务里）；
+     * 否则回退录屏通道（守卫开 + 有授权才启动）；两边都没有只记一次日志（autoStart 场景）。
+     */
     public static void onTimerStarted(Context c) {
         if (!ScreenGuardPrefs.enabled(c)) return;
+        if (KnowDoAccessibilityService.isReady()) {
+            KnowDoAccessibilityService.startGuardSampling();
+            return;
+        }
         if (!isAuthorized(c)) {
             VerdictEngine.noteNoAuthOnce(c);
             return;
@@ -75,10 +87,16 @@ public class ScreenCaptureService extends Service {
         else c.startService(i);
     }
 
-    /** 计时结束时调：停服务并释放投影（下次计时重新授权）。 */
+    /** 计时结束时调：两条通道都停（无障碍采样循环 + 本服务），并释放投影（下次计时重新授权）。 */
     public static void onTimerStopped(Context c) {
+        KnowDoAccessibilityService.stopGuardSampling();
         c.stopService(new Intent(c, ScreenCaptureService.class));
         releaseProjection();
+    }
+
+    /** 无障碍通道中途接管时调：只停本服务（onDestroy 会释放投影），避免两通道同采。 */
+    public static void stopServiceOnly(Context c) {
+        c.stopService(new Intent(c, ScreenCaptureService.class));
     }
 
     private static void releaseProjection() {
@@ -133,8 +151,9 @@ public class ScreenCaptureService extends Service {
         }
         if (!running) {
             running = true;
+            hasLastHash = false;
             handler.postDelayed(loop, 6_000L); // 首张稍等几秒，让用户先切到要用的应用
-            TimerState.logEvent(this, "屏幕内容守卫：开始随机采样（45–170 秒一张）");
+            TimerState.logEvent(this, "屏幕内容守卫：开始随机采样（录屏回退通道，15–45 秒一张）");
         }
         return START_STICKY;
     }
@@ -165,7 +184,7 @@ public class ScreenCaptureService extends Service {
         @Override public void run() {
             if (!running) return;
             try { sampleOnce(); } catch (Exception ignored) { }
-            if (running) handler.postDelayed(this, 45_000L + random.nextInt(125_001));
+            if (running) handler.postDelayed(this, 15_000L + random.nextInt(30_001));
         }
     };
 
@@ -179,7 +198,7 @@ public class ScreenCaptureService extends Service {
         Bitmap bmp = captureOnce();
         if (bmp == null) return;                               // 没有新帧（画面静止）就跳过
         try {
-            if (isBlackFrame(bmp)) {
+            if (FrameUtil.isBlackFrame(bmp)) {
                 long now = System.currentTimeMillis();
                 if (now - lastInvisibleLogAt > 5 * 60_000L) {
                     lastInvisibleLogAt = now;
@@ -187,6 +206,10 @@ public class ScreenCaptureService extends Service {
                 }
                 return;
             }
+            long h = FrameUtil.aHash(bmp);
+            if (hasLastHash && h == lastHash) return;          // 画面未变，跳过分析省电
+            lastHash = h;
+            hasLastHash = true;
             TaskItem task = currentTask();
             String fg = new UsageStatsDetector().foregroundPackage(this);
             ContentAnalyzer.Result r = analyzer.analyze(this, bmp, task, fg);
@@ -222,22 +245,6 @@ public class ScreenCaptureService extends Service {
         } finally {
             img.close();
         }
-    }
-
-    /** 近全黑判定（FLAG_SECURE 界面）：采样像素里 ≥99.5% 几乎全黑。 */
-    private boolean isBlackFrame(Bitmap bmp) {
-        int w = bmp.getWidth(), h = bmp.getHeight();
-        int stepX = Math.max(1, w / 40), stepY = Math.max(1, h / 40);
-        int total = 0, black = 0;
-        for (int y = 0; y < h; y += stepY) {
-            for (int x = 0; x < w; x += stepX) {
-                int p = bmp.getPixel(x, y);
-                int r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
-                total++;
-                if (r < 10 && g < 10 && b < 10) black++;
-            }
-        }
-        return total > 0 && black >= total * 0.995;
     }
 
     private TaskItem currentTask() {

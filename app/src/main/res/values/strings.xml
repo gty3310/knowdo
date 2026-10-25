@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">任务计时·验证版</string>
+    <string name="a11y_service_description">知行屏幕内容守卫的截图通道：任务计时中一次性截取屏幕，只在本机分析是否分神，截图不保存、不上传</string>
 </resources>

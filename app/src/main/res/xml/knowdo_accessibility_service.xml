@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 知行屏幕守卫的无障碍截图通道（v1.21.0）：
+     canTakeScreenshot 让服务能用 takeScreenshot() 一次性截图（不再需要录屏授权）；
+     canRetrieveWindowContent 让服务能读当前窗口的节点文字做零成本预筛。
+     服务只在守卫开启、任务计时中采样；截图只在内存里分析、从不落盘、从不上传。 -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/a11y_service_description"
+    android:notificationTimeout="100" />

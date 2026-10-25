@@ -15,7 +15,9 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 一级分析：ML Kit OCR（中文识别器兼拉丁字母 + 日文识别器）→ 关键词规则。
+ * 一级分析：文字 → 关键词规则。文字来源有两路（v1.21.0 起）：
+ * 无障碍节点文字（零成本，管线预筛与「无关」判定优先用它）与
+ * ML Kit OCR（中文识别器兼拉丁字母 + 日文识别器，节点文字太少时才兜底跑）。
  * 判定顺序：命中华购/短视频词 → 分神；与任务上下文有词面重合 → 相关；
  * 文字很多、零重合、且前台是浏览器/社交/视频类 → “无关”（低置信，靠两次确认兜底）；
  * 其余不表态。OCR 读不到的（花字、手写、纯画面）由二级 NudeNet 补位。
@@ -32,10 +34,19 @@ public class OcrRuleAnalyzer implements ContentAnalyzer {
     private TextRecognizer zhRecognizer;
     private TextRecognizer jaRecognizer;
 
+    /** 最近一次 OCR 读到的文字（测试模式显示用；节点文字路径不写它）。 */
+    public volatile String lastText = "";
+
     @Override
     public Result analyze(Context c, Bitmap bmp, TaskItem task, String fgPkg) {
         String text = ocr(c, bmp);
-        if (text == null) text = "";
+        lastText = text;
+        return judgeText(text, task, fgPkg);
+    }
+
+    /** 只用关键词表扫一遍文字：命中购物/短视频词就出结论，否则不表态（管线预筛用）。 */
+    public Result judgeKeywords(String text) {
+        if (text == null) return Result.none();
         for (String kw : SHOPPING_KW) {
             if (text.contains(kw)) {
                 return new Result(CAT_SHOPPING, 0.70f, "屏幕文字命中购物词「" + kw + "」");
@@ -46,12 +57,24 @@ public class OcrRuleAnalyzer implements ContentAnalyzer {
                 return new Result(CAT_SHORT_VIDEO, 0.65f, "屏幕文字命中短视频词「" + kw + "」");
             }
         }
+        return Result.none();
+    }
+
+    /** 文字是否与任务上下文强相关（管线预筛的「直接放行」与测试模式显示用）。 */
+    public boolean relevantToTask(String text, TaskItem task) {
+        return task != null && text != null && !text.isEmpty() && isRelevant(text, task);
+    }
+
+    /** 完整文字规则：关键词 → 相关放行 → 文字多且零重合的风险场景判「无关」→ 不表态。 */
+    public Result judgeText(String text, TaskItem task, String fgPkg) {
+        if (text == null) text = "";
+        Result kw = judgeKeywords(text);
+        if (kw.category != null) return kw;
         if (task != null && isRelevant(text, task)) return Result.none();
         String compact = text.replaceAll("\\s+", "");
         if (compact.length() >= 30 && PkgCategories.isReadingRisk(fgPkg)) {
             return new Result(CAT_UNRELATED, 0.55f,
-                    "屏幕文字较多且与任务「" + (task == null ? "" : task.title) + "」无关键词重合（前台："
-                            + AppLister.labelOf(c, fgPkg) + "）");
+                    "屏幕文字较多且与任务「" + (task == null ? "" : task.title) + "」无关键词重合（前台应用类别属阅读/社交/浏览器）");
         }
         return Result.none();
     }

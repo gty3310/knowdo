@@ -30,4 +30,17 @@ public final class ScreenGuardPrefs {
     public static void setNsfwOneShot(Context c, boolean on) {
         prefs(c).edit().putBoolean("nsfw_one_shot", on).apply();
     }
+
+    /**
+     * 守卫测试模式（v1.21.0，默认关）：每 10 秒借无障碍通道截一帧跑完整管线，
+     * 把读到的文字与判定结果显示在一个专用悬浮窗里，供用户亲眼验收判定质量。
+     * 测试采样只显示、绝不触发任何处置（问询页/跳回/宽限）。
+     */
+    public static boolean testMode(Context c) {
+        return prefs(c).getBoolean("test_mode", false);
+    }
+
+    public static void setTestMode(Context c, boolean on) {
+        prefs(c).edit().putBoolean("test_mode", on).apply();
+    }
 }

@@ -36,6 +36,23 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e121 = new Entry("v1.21.0", "2026-10-25");
+        e121.add(new Group(s("新功能", "New"),
+                s("守卫测试模式：打开后每 10 秒截一帧跑一遍完整判定，把读到的文字、判定结论和连续命中张数都写在一个小悬浮窗里——你自己操控屏幕，就能亲眼看它判得对不对。测试模式只显示，永远不会真的弹窗或跳回。",
+                  "Guard test mode: when on, it captures a frame every 10 seconds, runs the full verdict pipeline, and shows what it read, what it concluded, and the running hit streak in a small floating window — drive the screen yourself and watch whether it judges right. Test mode only displays; it never pops the inquiry page or jumps you back."),
+                s("无障碍截图通道：守卫改用无障碍服务一次性截图，不用再每次计时点一次录屏授权；服务被系统杀掉后会自己回来续上。没开无障碍时自动回退原来的录屏通道。",
+                  "An accessibility capture channel: the guard now screenshots through the accessibility service, so there is no per-timer screen-capture grant to tap; if the system kills the service it comes back and resumes on its own. With accessibility off, it falls back to the old capture channel automatically.")));
+        e121.add(new Group(s("改进", "Improved"),
+                s("采样变密了：从平均一百多秒一张改成随机 15–45 秒、平均 30 秒一张，短暂刷一下也会被逮住；画面没变的那一帧直接跳过不分析，省电。分析顺序改成先便宜后贵——先看是哪个应用、屏幕上现成的文字，判不了才跑看图模型和 OCR。",
+                  "Sampling is denser: from one frame every hundred-odd seconds to a random 15–45 seconds, about 30 on average, so a brief drift gets caught; a frame identical to the last is skipped outright to save battery. Analysis is ordered cheap-first — which app it is and the text already on screen first; the image model and OCR only run when those can't decide."),
+                s("注册页的验证邮件说明改了：现在会明确告诉你，确认邮件是从 tiguo.net 邮箱发来的（发件人 noreply@tiguo.net）。",
+                  "The sign-up note about the verification email now says plainly that it arrives from a tiguo.net address (sender noreply@tiguo.net).")));
+        e121.why = s("你问采样能不能像 Truple 那样密，又担心耗电；更要紧的是判定质量一直没法亲眼核——提示从没出现过，到底是没分神还是没逮住，你无从知道。所以先把「看得见」做出来：测试模式就是给你验收判定用的。",
+                "You asked whether sampling could be as dense as Truple's, and worried about battery; more importantly, verdict quality could never be checked with your own eyes — when no prompt ever appeared, there was no way to tell \"no drift\" from \"never caught\". So visibility comes first: test mode exists so you can verify the judging yourself.");
+        e121.tryIt = s("设置 → 权限体检 → 屏幕内容守卫 → 先点「去开启」把无障碍截图通道打开（在系统无障碍设置里找到「知行屏幕守卫」开启），回来打开「守卫测试模式」；然后随便切换几个应用、刷一会儿手机，看悬浮窗每 10 秒的读数：应用名对不对、读到的文字对不对、判定合不合理。看完点悬浮窗右上角 ✕ 关闭。",
+                "Settings → Permissions → Screen-content guard → tap \"Enable\" to turn on the accessibility capture channel (find \"KnowDo screen guard\" in the system accessibility settings), come back and switch on \"Guard test mode\"; then switch between a few apps and browse for a while, watching the floating window update every 10 seconds — is the app name right, is the text it read right, does the verdict make sense? Tap the ✕ at the window's top-right corner to stop.");
+        out.add(e121);
+
         Entry e120 = new Entry("v1.20.0", "2026-10-25");
         e120.add(new Group(s("改进", "Improved"),
                 s("日历变简单了：顶部的今日汇总和下面的未排程任务列表都去掉了，日历只剩时间轴本身；「问 AI 重排」保留，改走数据库直接同步，不再绕 Drive。",
