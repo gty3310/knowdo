@@ -2,6 +2,59 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.19.0] - 2026-10-25（versionCode 43）
+
+为什么：用户真机反馈——暂停一个任务、时间到了把手机晾着，预期中的「每 5 分钟全屏 alarm 直到开始任务」从来不来。代码审计查实根因：暂停到期时 ResumeReceiver 把叫回时间 r_at 清零，而 IdleGuard 的 timedPauseActive() 把「暂停槽还在＋r_at==0」恒判为"无期限暂停生效中"，isIdle 恒为假——空档时钟永不启动、巡检反手清掉锚点、已排的 alarm 到点自我取消；暂停流程越正常、堵得越死，到期后只有 PauseEscalation 的一轮 60 秒升级铃，之后永久安静。「再歇一会」「换下一个任务后不开始」都递归进同一条死路。这一版修根因，并把整套「用机守卫」按定稿补齐：alarm 三段式、路人静音、解锁先选任务、建议设置清单。
+
+发布提交：`5b82886`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.18.0...v1.19.0 比较](https://github.com/gty3310/knowdo/compare/v1.18.0...v1.19.0)
+
+### 修复
+
+**暂停到期后空档永不成立（根因修复）**
+
+1. **到期标记**：TimerState 新增 pauseExpired（暂停已到期）＋pauseExpiredAt（到期时刻），落盘在 timer_state 本地 prefs。ResumeReceiver 在普通（非静音）暂停到点、清掉 r_at 之前先记下到期时刻，清完置位标记。清零时机四处：开始计时（TimerState.start）、恢复计时（startResumed）、清除暂停槽（clearPaused）、「再歇一会」写入新的叫回时间（setRemind 内部一并清，ResumeReminder.schedule 与叫回页再歇都经此路）；远端暂停镜像落盘（setPausedRemote）也清旧标记防残留。
+2. **改判**：IdleGuard.timedPauseActive() 在 r_at==0 判读之前先查到期标记——pauseExpired 为真时，仅当叫回页（ResumeRemindActivity）正在前台显示才算"暂停生效中"，否则就是空档。镜像暂停（远端没有叫回概念、r_at 恒为 0 且无到期标记）判读与旧版完全一致，不受影响。
+3. **锚点钉在到期时刻**：IdleAlarm 新增 preferredAnchor——存在到期标记时，空档锚点直接取 pauseExpiredAt，而不是巡检首次发现的时刻；observeIdle 与 notePageShown 共用。于是「到期＋threshold（默认 5 分钟）」就是第一轮 staging 的准点，与用户感知一致。巡检在标记未消费时不会再反手清锚点：onNotIdle 只在真正进入计时/新暂停时清周期，而到期后的状态机已把这种情况判为 idle，observeIdle 只维护不清。
+4. **静音暂停例外（定案）**：静音暂停到期仍走既有 SilentResume 链（只亮屏＋通知、每 5 分钟重复），ResumeReceiver 的静音分支在置位标记之前就已分流返回——不置 pauseExpired、不进出声 staging，本版实测代码路径与旧版逐行一致。
+
+### 新增
+
+**空档 alarm 三段 staging（取代旧轮结构于严格/自定义/标准档）**
+
+1. **一轮的构成**：自空档锚点起过 threshold（idle_nag.idle_minutes，默认 5）进入循环，直到开始任务为止。每轮＝全屏页＋先震动不出声＋无反应才出声：新执行器 IdleStage 串联两段——震动段 vibrate_seconds（新增参数，默认 30 秒）用 Vibrator 一次性震满；到点仍无人理才经 AlarmRing 起声音段（既有 60 秒内音量 0→最大渐强，ring_seconds）；到顶即停；静默 repeat_minutes（默认 5）后下一轮。轮间隔统一 repeat_minutes——first_repeat_minutes 字段保留在数据与云端对象里兼容新旧端，staging 下不再单独生效，设置页也撤下了它的编辑行（免得改了没反应）。
+2. **不叠页**：轮到点时若已有全屏页在显（叫回页/检查页/选任务页/alarm 页自身，经 TopPages 登记判断），不另拉一页，震/响直接作用于当前页；用户在任一页有操作（onUserInteraction）即停本轮震/响，下轮改为从停声时刻＋repeat 起算（沿用 next_includes_ring/next_gap_ms 机制，语义扩到整轮时长）。
+3. **档位映射**：strict/custom＝完整 staging（max_rounds 沿用，−1 无限）；standard＝全屏页＋震动段、无声（effectiveSound 恒假，ringMs＝0）、max_rounds 封顶；gentle＝nagActive 为假，IdleAlarm 根本不进，维持现状（不弹不响）。IdleNag.effectiveSound 的旧口径（声音只属严格/自定义）未动。
+4. **新参数 vibrate_seconds 的全链路**：本地 prefs、设置页编辑行（标准/严格/自定义都有，0–300 秒，改任一数值转自定义的既有口径不变）、云端 user_state.idle_nag 对象（toCloudJson/adoptCloud/cloudEquals 三处同步增减；adoptCloud 对缺键的旧对象默认 30，旧端忽略未知键，合并时既有字段不丢）。云端既有 idle_nag 为 null，无迁移。节奏说明行（rhythmText）同步改述三段节奏。
+
+**alarm 页改版＋路人静音＋致谢页（UI 稿 mockup-idle-alarm-v3 画面 1–5）**
+
+1. **新页 IdleAlarmActivity** 取代旧轮次里直接拉 NextTaskActivity 的做法：深暖炭底＋衬线大字「没有任务在计时」、阶段小字（第 N 次 · 震动中/出声中，出声时另有一行「声音渐强」）、空档时长行（暂停到期时显示「暂停 X 分钟」）；机主操作区＝继续按钮（暂停槽任务优先、带剩余 mm:ss，其次最近计时任务）、「选其他任务」展开今日未完成最要紧的 3 个（点行即开始，含截图授权流程）、「＋ 新建任务」（转选任务页新建态）。
+2. **路人大按钮**：页面最下方大号按钮，文案为用户定稿原文「如果您不是手机主人 请点击这里静音」（无句号）。按下：IdleStage 立即停震停声；新类 BystanderMute 落盘 muted＋thanks_pending＋muted_at；页面切换为安静页（「谢谢你／已静音 下一次亮屏时提醒机主」）约 1.5 秒后退出。此后直到下一次屏幕亮起之前，巡检（IdleGuard.checkAndFire/checkOnUserPresent/fireNow）与 alarm 轮次（IdleAlarm.onAlarmFired）一律不拉页、不震、不响——轮次照常消耗与排期（静默跳过并记日志），压制解除后恢复正常轮次，不会一亮屏把欠的轮次补响。
+3. **静音解除的精确口径**：FloatService 新增 SCREEN_ON/OFF 动态接收维护 BystanderMute 的状态转移——按下时屏幕本就亮着，必须经历一次「灭（off_seen 置位）→亮」才清 muted；thanks_pending 独立保留，等解锁呈现致谢页时才消费。机主若在此期间从别处开始了任务，IdleAlarm.onNotIdle 一并清掉静音/致谢状态。
+4. **致谢页 ThanksActivity**（画面 5 按用户后续文字定案，v5 稿取消后按规格直写）：大字「之前有人帮助你关掉消息了」；主按钮＝继续「{上一个任务名}」——上一个任务取暂停槽优先、其次 TimerState 最近计时任务（即既有 lastTask 状态来源），暂停中的直接 resumeTimer 恢复、已结束的按计划时长重新开始；次按钮＝到任务页选择新任务（回主页任务列表）；没有上一个任务可续时只显示次按钮并升为主按钮样式；本页不设 log 入口，按钮下方不留小字。呈现即 consumeThanks 清状态。
+
+**选任务页守卫（UI 稿 mockup-next-task-v1）**
+
+1. **触发与优先级**：新调度类 GuardDispatch 统一两个入口——FloatService 的 USER_PRESENT 接收（解锁档）与约 30 秒巡检（巡检档，解锁那刻服务没赶上、或通话刚结束时补拉）。固定优先级：晨间门（MorningGate.autoCheck 改为返回是否已拉起）＞ 致谢页（待致谢且无全屏页在显、本应用不在前台时经 AlertHelper.fireThanks 拉起，新增 NOTIF_THANKS=207）＞ 选任务页。通话中（音频模式粗判，与晨间门同口径）一律不抢、也不消费任何状态，挂断后巡检补拉。
+2. **解锁档与自动档分工**：IdleGuard 新增 checkOnUserPresent——与自动档同门槛（总开关/空档/页面互斥/温和档抑制/路人静音/最小重拉间隔），但不受「按返回退出后 3 分钟静默」约束（重新拿起手机是新的开始时刻）；知行自身页面在前台时不直拉，交给主页 onResume 的既有路径。alarm 循环进行中不拉选任务页：alarm 页在显时 TopPages 互斥天然挡住，震/响进行中拉页也会被 alarm 页的 CLEAR_TOP 语义覆盖——alarm 页本身即是这一页的事。选任务页按返回的 3 分钟静默与「不取消 alarm 排期」口径沿用旧版（snoozeOnDismiss 只写 idle_guard 的 snooze_until，IdleAlarm 排期独立）。
+3. **页面三态改版**：NextTaskActivity 按稿重写——默认态：大字「接下来，做点什么」＋今日未完成最多五行（visibleSorted 顺序，必做带 ★ 在前，点行即开始）＋底部三入口（其他任务＝回主页列表／新建任务／休息一会）；新建态：返回行＋衬线名输入行＋时长 chips（休息 chip＋2/3/5/10/15/20/30 分）＋天/时/分三转轴＋合计行＋「开始」（输完即建并开始，原有逻辑保留）；休息态：大字「休息一会」＋说明＋时长 chips（5/10/15/20/30/60 分＋自定义填分钟），点「开始休息」＝建一个「休息」任务按所选时长占位计时（与既有"休息也要建任务"口径一致），到点走结束检查页叫回。原页面「打开即聚焦输入框」的旧默认态被三态取代；文案不用句号。
+
+**「建议设置」清单（首次呈现＋常设入口）**
+
+1. **新页 SuggestedSettingsActivity**：五项逐项检测＋状态（已开启/未开启）＋未开启时一句风险，整行可点跳系统设置：①电池优化豁免（PowerManager.isIgnoringBatteryOptimizations；跳 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS，失败退回电池优化设置列表）②悬浮窗（Settings.canDrawOverlays；跳 ACTION_MANAGE_OVERLAY_PERMISSION）③全屏通知（API 34+ NotificationManager.canUseFullScreenIntent，低版本视为已开；跳 MANAGE_APP_USE_FULL_SCREEN_INTENT，失败退回应用通知设置）④精确闹钟（API 31+ AlarmManager.canScheduleExactAlarms；跳 ACTION_REQUEST_SCHEDULE_EXACT_ALARM）⑤通知权限（API 33+ 查 POST_NOTIFICATIONS 权限，低版本查 areNotificationsEnabled；跳 ACTION_APP_NOTIFICATION_SETTINGS）。onResume 整页重画，返回即刷新。风险口径统一：不开也能用，只是系统可能在后台把知行停掉、提醒可能不准时（电池项写明最要紧）。清单底部一行静态说明：小米、华为等机型还需在系统里开自启动与后台弹出界面，这类开关无法从应用内检测。
+2. **呈现时机**：MainActivity.onCreate 调 maybeShow——本机记「已呈现过的最高 versionCode」，新装首启与升级到 v1.19.0 后首次打开各呈现一次（先记后拉，只呈现一次）；本轮呈现了清单页就不叠更新日志弹框（WhatsNew 的已弹记录未写，下次打开照常弹）。底部「以后再说」（仅首启模式出现）直接 finish 回主页，不阻断任何功能；设置页「通用」组新增常设入口行「建议设置」，随时复查。
+
+### 改进
+
+- 帮助新增第二十四节（中英）：守卫可靠性——暂停到期＝空档、三段催促与参数位置、路人静音与致谢页、解锁先选任务、建议设置；Strings 版本行/aboutBody/helpIntro 更新为 v1.19.0（aboutBody/helpIntro 的版本字样自 v1.16.0 后漏更，本版一并订正）。
+- App 内更新日志（Changelog）新增 v1.19.0 一块（修复＋四项新功能＋为什么＋怎么试，文案与本节同源），保留最近 6 版。
+- MorningGate.autoCheck 改为返回 boolean（是否拉起了晨间页），既有调用方（FloatService 两处）已改走 GuardDispatch，无行为回退：晨间 session 去重、通话不抢、推后期间 ensureScheduled 等口径逐行未动。
+
+### 红线与未真机验证
+
+- 红线守恒：timer_state/schedule 同步语义未动（pauseExpired 只存本地 timer_state prefs，不进 Supabase 镜像——跨设备口径按定案「镜像暂停维持现口径」）；idle_nag 合并纪律未回退（probe 列→本机无值采用云端/本机有值不同才回写，vibrate_seconds 只是对象里多一个键）；新状态（BystanderMute、建议设置已呈现记录）只存本机 prefs 不进同步；密钥零入库（提交前敏感扫描通过、只按文件名提交，models/ 未入库）。
+- 未真机验证（本版全部为代码级核查，逐条对应验收口径）：①暂停 1 分钟到期全程不碰的完整时间线（叫回→60 秒升级铃→到期＋5 分钟 staging 第一轮震 30 秒→响 60 秒渐强→停→＋5 分钟第二轮→开始任务即止，含锚点钉到期时刻的准点程度）；②再歇一会后再次到期进同一循环、setRemind 清标记的实际效果；③任务自然结束、④切换不开始两个锚点的起算精度（巡检最迟 30 秒发现，锚点取发现时刻而非事件时刻，与①的钉死口径不同）；⑤选任务页按返回后 3 分钟静默与 alarm 排期互不干扰；⑥路人按钮全链路（立即静默、灭屏 10 分钟无声无震无拉页含一轮 alarm 到点被静默消耗、亮屏解锁先致谢页、继续「X」恢复计时、次按钮回主页、无上一个任务时单按钮形态）；⑦静音暂停到期只亮屏＋通知、5 分钟重复、不进 staging；⑧无任务解锁全屏选任务页、通话中不抢挂断补拉、晨间门/致谢页/alarm 页与选任务页的优先级实景；⑨建议设置五项状态与系统实际逐项对照、五个跳转落点、返回刷新、以后再说、设置入口复开；⑩三档位实景（温和全程不弹不响、标准有页有震无声且封顶、严格无限轮）与 vibrate_seconds 改值即转自定义并实际改变震动时长；⑪回归项（晨间门首触优先、v1.16.1 切换、v1.17.0 晨间四件、v1.18.0 日历拖拽）；⑫来电/系统闹钟场景不误拉。另：IdleStage 的两段衔接靠进程内 Handler——进程在震动段被系统杀掉时声音段不会触发（下轮巡检/alarm 仍会续上循环），此边界未做跨进程持久化。
+
 ## [1.18.0] - 2026-10-25（versionCode 42）
 
 为什么：v1.15.0 的分屏有两个毛病（用户真机纠正）：日历是盖住全屏的面板，打开就把底部三个页签盖住、切不了页；能拖的任务放在日历旁边的附属小列表里，多了一层中转——任务明明就在主页列表里，为什么不能从那儿直接拖过去。这一版把日历搬回日程页内容区，左半边直接就是主页任务列表本体，手一拖就过去。
