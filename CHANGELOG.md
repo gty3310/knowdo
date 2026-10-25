@@ -2,6 +2,35 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.24.5] - 2026-10-25（versionCode 57）
+
+为什么：图标和配色是知行的脸面，定下来就不飘了；三基色也正合「低饱和、只许一个点缀色」的规矩。
+
+发布提交：`5d7d7e1`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.24.4...v1.24.5 比较](https://github.com/gty3310/knowdo/compare/v1.24.4...v1.24.5)
+
+### 改进
+
+**品牌落地：新桌面图标＋三基色全量换色**
+
+用户 2026-10-25 定案：定稿 Logo（未闭合的墨笔圆环、右上缺口、朱砂红点落在圆周上）与三大基色——米白（约 #F7F3EC）打底、墨青黑 #1F2F2A 为主、朱砂红 #D94B3A 为唯一点缀色。
+
+1. **桌面图标**：素材只用用户亲自选定的品牌板 01 主图标裁图（`~/workspace/your_files/knowdo-logo-from-board.png`，505×505，底色米白已烘焙在图内），**只缩放对齐、不重绘不改色**。自适应图标：前景为 108dp 画布（mdpi 108px 至 xxxhdpi 432px 五档），先以素材实测底色 (247,246,242)（与 #F7F3EC 视觉无差）铺满，再把素材按圆环中心对齐、居中放至画布 85%——圆环直径 ≈67dp，落在 72dp 安全区内，圆形／方形遮罩下圆环与红点均不被裁；背景色资源 `ic_launcher_background` = #F7F3EC 与前景底色衔接。另备五档旧式方形图标（素材满幅）与圆形图标（圆裁＋透明角）。manifest 的 icon 由系统闹钟图 `@android:drawable/ic_lock_idle_alarm` 改为 `@mipmap/ic_launcher` 并加 `roundIcon`；旧图标本是系统 drawable、无自有资源，不存在两套残留。
+2. **平台主题**：新增 `AppTheme`（父主题仍是原 `Theme.Material.Light.NoActionBar`），只定三项：`windowBackground` 米白 #F7F3EC（未自设底色的窗口与对话框底色随之）、`colorAccent` 朱砂红（对话框里输入框／勾选框等系统控件的着色）、`textColorPrimary` 墨青黑。各页深浅外观仍由 Ui 按应用内偏好逐页绘制，口径不变。
+3. **中央色板（Ui.java）**：亮版 bg／surface 纯白 → 米白 (247,243,236)，text (29,37,33) → 墨青黑 (31,47,42)，accent 琥珀金 (179,121,29) → 朱砂红 (217,75,58)，muted／line／doneBg 换米白家族暖调，runningBg 按「朱砂红约 12% 混米白」重算为 (243,223,215)；暗版 bg 改墨青黑本体 (31,47,42)，surface／muted／line／doneBg 换墨青家族深调，text 改米白字 (243,239,232)，accent 同为朱砂红、onAccent 由深字改白字（朱砂底上白字可读）。sub 两版保留原灰绿（中性次级文字色）。
+4. **逐页硬编码旧色清理**：
+   - 整页暖纸深色调三件套（IdleAlarmActivity／NextTaskActivity／ThanksActivity）：BG #171512 → 墨青黑 #1F2F2A、CARD #1D1A16 → #27382F、INK #ECE7DB → 米白 #F7F3EC、AMBER #C9A24D → 朱砂红 #D94B3A、LINE／描边换墨青家族、INK3 提亮一档 #7E7769 保对比；IdleAlarm 的路人区底 PASSER_BG 同步换深墨青 #2C4036。INK2 暖灰保留。
+   - 深色悬浮物（FloatingWindow／PauseCard／GuardTestWindow／ErrorReporter／SubtaskPanel）：炭灰底 (33,33,33) 系 → 墨青深底 (24,36,31) 系，暂停卡底 (20,23,26) → (24,36,31)，测试窗／报错窗底 (34,32,29) → (27,41,35)；一切琥珀金点缀（实心 (226,170,61)、浅金字 (255,217,122)、各档 alpha 混色）→ 朱砂红及浅调 (247,164,148)；PauseCard 主按钮金底深字 → 朱砂底白字。白字与中性灰阶保留。
+   - 亮色整页（GuardActivity／GuardTestPickActivity／GuardRulesActivity／CurrentTaskActivity／AccountUi 对话框）：纯白底 → 米白、纯黑字 → 墨青黑；GuardActivity 未选中小按钮的白底＋灰描边 → 米白＋暖描边 (211,204,188)，选中态金底深字 → 朱砂底白字；CurrentTaskActivity 计时大字原操作蓝 → 墨青黑（主显示元素归主色）。
+   - 立志字（Aspiration）：原金字即点缀位——亮版 (146,106,30) → 朱砂红、暗版 (232,201,120) → 浅朱砂 (243,156,140)。
+   - CalendarPanel：「现在线」及时间标 (229,57,53) 与朱砂红同族、直接并入朱砂红；拖拽预览原琥珀高亮（(255,193,7) 填＋(255,143,0) 描边）→ 朱砂红同位替换。
+   - 提醒页（StartRemindActivity／ResumeRemindActivity）：底 (24,24,24) → 深墨青 (23,34,29)。
+5. **语义色保留（点名，不动）**：Ui.link 蓝／danger 红／green 绿；GuardActivity 动作按钮语义色（绿＝立即回到任务、蓝＝给收尾秒数、灰＝放行与聊聊）与 GuardTestPickActivity 整页蓝色行按钮（与 Ui.link 同值的「可点蓝」，若全换朱砂红等于满页新增点缀，违「只替换原点缀位」口径）；CalendarPanel／MainActivity 的来源与状态分类色——Google 日历蓝系、全天事件紫系、实际计时块绿系、应用监测模式选中绿、任务标题「▶ 开始时刻」绿标；ChatPanel 删除提案卡 DANGER #B3261E；PermActivity 权限状态绿／红；GuardRulesActivity 删除位暗红 (160,60,50) 与其粉调描边；HabitPage 习惯类型分类色（紫＝累积型等）与各热力／年历数据色（插值生成，非主题色）；NudeNetDetector 在位图上画的黑属模型输入处理、非 UI，未动。
+6. **App 内品牌图**：全仓无 ImageView／既有品牌图位置，按极简定案不新造页面元素，本版只换桌面图标与配色。
+
+功能逻辑、守卫判定与计时行为一律未改；无新权限；无 Supabase 结构变更。
+
+未真机验证（本版为代码实现＋构建通过＋APK 回读核验：versionCode 57／versionName 1.24.5／badging 的 application icon 已指向自适应图标资源／dex 内构建短号 5d7d7e1 与发布提交一致、本版更新日志文案在 dex 中）：真机桌面（圆形与方形遮罩启动器各一）图标圆环与红点是否完整不被裁、米白底在不同桌面壁纸上是否协调；亮／暗两版逐页换色观感（尤其悬浮窗、暂停卡、守卫测试窗与报错窗的深色场景有无旧金色残留或对比不足）；系统对话框在新主题下（米白底＋朱砂控件）的实际呈现；墨青黑字在米白底上的长时间阅读舒适度。
+
 ## [1.24.4] - 2026-10-25（versionCode 56）
 
 为什么：这个模型是守卫语义判定的本地主力，下不下来，判定就只能靠更粗的规则顶着。
