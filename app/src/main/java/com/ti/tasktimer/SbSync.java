@@ -269,6 +269,7 @@ public final class SbSync {
                 if (!IdleNag.hasLocal(c) && remoteNag != null) {
                     IdleNag.adoptCloud(c, remoteNag);
                     IdleAlarm.reevaluate(c);
+                    EndNag.reevaluate(c);
                 } else if (IdleNag.hasLocal(c) && !IdleNag.cloudEquals(c, remoteNag)) {
                     write.put("idle_nag", IdleNag.toCloudJson(c));
                     needWrite = true;
@@ -366,6 +367,7 @@ public final class SbSync {
                 if (rn != null) {
                     IdleNag.adoptCloud(c, rn);
                     IdleAlarm.reevaluate(c);
+                    EndNag.reevaluate(c);
                 }
             }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写

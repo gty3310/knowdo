@@ -623,6 +623,12 @@ public class NextTaskActivity extends Activity {
     }
 
     private void doStart(TaskItem t) {
+        // 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart）
+        if (TimerService.startTimerSmart(this, t)) {
+            TimerState.logEvent(this, "从衔接守卫页继续任务（今日已用抵扣）：" + t.title);
+            finish();
+            return;
+        }
         Toast.makeText(this, "开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）", Toast.LENGTH_SHORT).show();
         TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
         TimerState.logEvent(this, "从衔接守卫页开始任务：" + t.title + "（" + t.durationMinutes + " 分钟）");

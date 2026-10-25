@@ -161,7 +161,7 @@ public class CheckActivity extends Activity {
         TaskStore store = new TaskStore(this);
         TaskItem t = store.byId(TimerState.taskId(this));
         if (t != null) {
-            t.markDone(); store.save();
+            t.markDone(); StartBaseline.markCompleted(this, t.id); store.save(); // 完成戳：此后再开始从完整时长（v1.21.1）
             SbSync.pushDoneAsync(this, t.id); // 完成状态立刻定向写上云并回读确认（v1.14.0）
         }
         TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
@@ -275,6 +275,9 @@ public class CheckActivity extends Activity {
     private void showEnd() {
         clear();
         keyQ = keyW = keyE = null;
+        // 结束页催促（v1.21.1）：页面真展示出来了——经响铃页转入的结束在此武装
+        // 升级链（锚点＝展示时刻）；直达路径在 fire 时已武装，这里只续排无-op
+        EndNag.noteEndPageShown(this);
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
         addAspiration();

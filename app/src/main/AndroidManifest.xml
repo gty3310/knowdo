@@ -226,6 +226,11 @@
             android:name=".IdleAlarmReceiver"
             android:exported="false" />
 
+        <!-- 结束页催促闹钟接收器（v1.21.1）：结束页无回应时 staging 循环的轮次推进 -->
+        <receiver
+            android:name=".EndNagReceiver"
+            android:exported="false" />
+
         <!-- 悬浮窗「关闭」选择页（v1.14.0）：半透明中转页 -->
         <activity
             android:name=".FloatCloseActivity"

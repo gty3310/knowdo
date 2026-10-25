@@ -32,6 +32,34 @@ public final class TimerState {
             .apply();
     }
 
+    /**
+     * 按今日已用抵扣开始（v1.21.1）：虚拟起点＝now−已用秒，endAt＝now＋剩余；
+     * halfFired 预标沿用 startResumed 的口径（已用过半则过半页不再弹）。
+     * 与 start() 的区别仅在时间锚点与 halfFired；暂停槽不在这里动——同任务的暂停槽
+     * 由 TimerService.ACTION_START 既有逻辑在调用前清掉，别的任务的槽原样不动。
+     * 子任务任务不走这里（调用方已拦截），故同样清子任务运行态。
+     */
+    public static void startWithElapsed(Context c, int totalSec, int remainSec,
+                                        String taskId, String taskTitle) {
+        long now = System.currentTimeMillis();
+        int elapsedSec = Math.max(0, totalSec - remainSec);
+        sp(c).edit()
+            .remove("pause_expired").remove("pause_expired_at")
+            .putBoolean("running", true)
+            .putLong("startedAt", now - elapsedSec * 1000L)
+            .putLong("halfAt", now - elapsedSec * 1000L + totalSec * 500L)
+            .putLong("endAt", now + remainSec * 1000L)
+            .putInt("totalSec", totalSec)
+            .putString("taskId", taskId == null ? "" : taskId)
+            .putString("taskTitle", taskTitle == null ? "" : taskTitle)
+            .putBoolean("halfFired", elapsedSec * 2 >= totalSec)
+            .putBoolean("endFired", false)
+            .remove("sub_active").remove("sub_index").remove("sub_count")
+            .remove("sub_id").remove("sub_title").remove("sub_end").remove("sub_fired")
+            .remove("sub_snap")
+            .apply();
+    }
+
     public static String taskId(Context c) { return sp(c).getString("taskId", ""); }
     public static String taskTitle(Context c) {
         String t = sp(c).getString("taskTitle", "");

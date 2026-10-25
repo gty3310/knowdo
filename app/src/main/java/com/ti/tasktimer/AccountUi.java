@@ -82,13 +82,23 @@ public final class AccountUi {
         box.addView(tip);
         // 验证邮件说明（v1.20.0 首加，v1.21.0 改定）：发信已走自有域名，发件人要写明
         TextView verifyTip = new TextView(act);
-        verifyTip.setText("注册提醒：提交注册后，你会收到一封从 tiguo.net 邮箱发来的确认邮件"
-                + "（发件人 noreply@tiguo.net）。请留意邮箱的收件箱与垃圾邮件文件夹，"
-                + "点邮件里的链接完成验证，再回来登录。");
+        verifyTip.setText("注册提醒：提交注册后，你会收到一封「知行」发来的确认邮件"
+                + "（发件人 noreply@tiguo.net），点邮件里的链接完成验证，再回来登录。");
         verifyTip.setTextSize(13);
         verifyTip.setTextColor(Color.DKGRAY);
         verifyTip.setPadding(0, dp(act, 8), 0, 0);
         box.addView(verifyTip);
+        // 垃圾箱提醒（v1.21.1，用户定「非常重要」）：初期测试阶段确认邮件实测会被 163 等
+        // 邮箱放进垃圾箱，必须在点注册之前就显著说清，独立成段、加粗强调
+        TextView spamTip = new TextView(act);
+        spamTip.setText("重要提醒：知行目前处于初期测试阶段，这封确认邮件很有可能被邮箱放进"
+                + "垃圾箱。如果在收件箱里找不到，请去垃圾箱（垃圾邮件文件夹）里找一找。"
+                + "初期测试，多有不便，请多见谅。");
+        spamTip.setTextSize(14);
+        spamTip.setTextColor(Color.BLACK);
+        spamTip.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        spamTip.setPadding(0, dp(act, 8), 0, 0);
+        box.addView(spamTip);
         AlertDialog dlg = new AlertDialog.Builder(act)
                 .setTitle("账号与同步（Supabase）")
                 .setView(box)

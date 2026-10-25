@@ -502,6 +502,7 @@ public class SettingsActivity extends Activity {
     /** 设置改完：行为层按新参数重排当前周期，页面重画，并后台同步一次回写云端。 */
     private void afterNagChanged() {
         IdleAlarm.reevaluate(this);
+        EndNag.reevaluate(this); // 结束页催促同吃这套档位（v1.21.1）：关掉/转温和立即停链
         buildUi();
         AccountUi.runSync(this, store, this::buildUi, false);
     }

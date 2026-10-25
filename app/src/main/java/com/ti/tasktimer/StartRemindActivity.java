@@ -60,7 +60,10 @@ public class StartRemindActivity extends Activity {
             task.touch();
             store.save();
             StartReminder.reschedule(this, store);
-            TimerService.startTimer(this, Math.max(1, task.durationMinutes) * 60, task.id, task.title);
+            // 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart）
+            if (!TimerService.startTimerSmart(this, task)) {
+                TimerService.startTimer(this, Math.max(1, task.durationMinutes) * 60, task.id, task.title);
+            }
             finish();
         });
         root.addView(go);

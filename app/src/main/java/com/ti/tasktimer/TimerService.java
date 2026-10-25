@@ -36,6 +36,8 @@ public class TimerService extends Service {
     public static final String EXTRA_DELAY_MS = "delay_ms";
     public static final String EXTRA_TOTAL_SEC = "total_sec";
     public static final String EXTRA_REMAIN_SEC = "remain_sec";
+    /** 开始时按今日已用抵扣的剩余秒数（v1.21.1，仅 startTimerSmart 发出；>0 且 <total 才生效）。 */
+    public static final String EXTRA_DEDUCT_REMAIN_SEC = "deduct_remain_sec";
     public static final String EXTRA_ADD_SEC = "add_sec";
     public static final String EXTRA_TASK_ID = "task_id";
     public static final String EXTRA_TASK_TITLE = "task_title";
@@ -65,6 +67,37 @@ public class TimerService extends Service {
         i.putExtra(EXTRA_TASK_ID, taskId);
         i.putExtra(EXTRA_TASK_TITLE, taskTitle);
         c.startForegroundService(i);
+    }
+
+    /**
+     * 本地开始入口的统一抵扣收口（v1.21.1）：所有「用户亲手点开始」的入口（主页、悬浮窗、
+     * 日历、选任务页、空档页、致谢页、开始提醒页）开始前先过这里——该任务今天已有累计
+     * 已用、且未被完成/重置基线截断（StartBaseline）、且 0＜已用＜总时长时，按剩余时间
+     * 接着倒数（EXTRA_DEDUCT_REMAIN_SEC → TimerState.startWithElapsed），并弹出与暂停恢复
+     * 同款的「继续计时：X（剩余约 …）」提示。返回 true＝已按抵扣起表，调用方不要再走
+     * 普通 startTimer、也不要再弹「开始计时」提示；返回 false＝照常全新开始（无已用、
+     * 已用≥总时长、或带子任务的任务——子任务队列位置无法由总已用还原，不做抵扣）。
+     * 不许走这里的路径：ACTION_MIRROR 跨设备镜像、同步 autoStart 远程开始（仍直调
+     * startTimer），暂停槽恢复（有精确 remain，走 resumeTimer，不叠加抵扣）。
+     */
+    public static boolean startTimerSmart(Context c, TaskItem t) {
+        if (c == null || t == null || t.id == null || t.id.isEmpty()) return false;
+        if (t.hasSubtasks()) return false;
+        int totalSec = Math.max(1, t.durationMinutes) * 60;
+        long elapsedSec = SessionLog.todayMsForTaskSince(c, t.id, StartBaseline.sinceMs(c, t.id)) / 1000;
+        if (elapsedSec <= 0 || elapsedSec >= totalSec) return false;
+        int remain = totalSec - (int) elapsedSec;
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_START);
+        i.putExtra(EXTRA_TOTAL_SEC, totalSec);
+        i.putExtra(EXTRA_TASK_ID, t.id);
+        i.putExtra(EXTRA_TASK_TITLE, t.title);
+        i.putExtra(EXTRA_DEDUCT_REMAIN_SEC, remain);
+        c.startForegroundService(i);
+        android.widget.Toast.makeText(c, "继续计时：" + t.title + "（剩余约 "
+                + (remain / 60) + " 分 " + (remain % 60) + " 秒）",
+                android.widget.Toast.LENGTH_SHORT).show();
+        return true;
     }
 
     public static void extendTimer(Context c, int addSec) {
@@ -163,6 +196,15 @@ public class TimerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         AlertHelper.createChannels(this);
         String action = intent == null ? null : intent.getAction();
+        // 结束页催促（v1.21.1）：计时被停止/暂停（用户处置）、加时（endFired 清除、
+        // 新 endAt 产生，本链重置待命）、新计时开始、远端镜像覆盖——都意味着旧的
+        // 「结束待确认」已作废或被接管，升级链一并停掉并清状态（无状态时为无-op）
+        if (ACTION_STOP.equals(action) || ACTION_PAUSE.equals(action)
+                || ACTION_PAUSE_REMIND.equals(action) || ACTION_EXTEND.equals(action)
+                || ACTION_START.equals(action) || ACTION_RESUME.equals(action)
+                || ACTION_MIRROR.equals(action)) {
+            EndNag.cancel(this);
+        }
         if (ACTION_PAUSE.equals(action) || ACTION_PAUSE_REMIND.equals(action)) {
             long remain = TimerState.endAt(this) - System.currentTimeMillis();
             boolean saved = false;
@@ -270,12 +312,22 @@ public class TimerService extends Service {
             ResumeReminder.cancel(this);
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
             String sid = intent.getStringExtra(EXTRA_TASK_ID);
-            if (sid != null && sid.equals(TimerState.pausedTaskId(this))) TimerState.clearPaused(this);
-            TimerState.start(this, total,
-                    sid, intent.getStringExtra(EXTRA_TASK_TITLE));
-            // 子任务（v1.11.0）：任务带子任务时按队列逐个跑，检查点在子任务边界
             TaskItem st = sid == null ? null : new TaskStore(this).byId(sid);
-            if (st != null && st.hasSubtasks()) {
+            // 按今日已用抵扣开始（v1.21.1）：只有 startTimerSmart 会带这个 extra；
+            // 带子任务的任务双保险拦截（队列位置无法由总已用还原，仍走普通开始/暂停槽）
+            int deductRemain = intent.getIntExtra(EXTRA_DEDUCT_REMAIN_SEC, 0);
+            boolean deducted = deductRemain > 0 && deductRemain < total
+                    && (st == null || !st.hasSubtasks());
+            if (sid != null && sid.equals(TimerState.pausedTaskId(this))) TimerState.clearPaused(this);
+            if (deducted) {
+                TimerState.startWithElapsed(this, total, deductRemain,
+                        sid, intent.getStringExtra(EXTRA_TASK_TITLE));
+            } else {
+                TimerState.start(this, total,
+                        sid, intent.getStringExtra(EXTRA_TASK_TITLE));
+            }
+            // 子任务（v1.11.0）：任务带子任务时按队列逐个跑，检查点在子任务边界
+            if (!deducted && st != null && st.hasSubtasks()) {
                 TimerState.beginSubtasks(this, st);
                 TimerState.logEvent(this, "子任务模式：「" + st.title + "」共 "
                         + st.subtasks.size() + " 个子任务，先跑「" + st.subtasks.get(0).title + "」");
@@ -286,7 +338,12 @@ public class TimerService extends Service {
             VerdictEngine.reset(this);
             ScreenCaptureService.onTimerStarted(this);
             SessionLog.open(this, sid, intent.getStringExtra(EXTRA_TASK_TITLE));
-            TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
+            if (deducted) {
+                TimerState.logEvent(this, "继续计时（今日已用抵扣）：" + TimerState.taskTitle(this)
+                        + "（总 " + total + " 秒，剩余 " + deductRemain + " 秒）");
+            } else {
+                TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
+            }
             SbTimerSync.onLocalTimerChanged(this);
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);

@@ -74,6 +74,10 @@ public final class AlertHelper {
     public static void fire(Context c, int type) {
         // 计时结束且该任务开了「结束时响铃」：先响铃，点「知道了」后响铃页再拉起检查页
         if (type == TYPE_END && fireTaskAlarmIfNeeded(c)) return;
+        // 结束页催促（v1.21.1）：结束页去向已定（直达检查页），顺手给它武装
+        // 「60 秒无回应→先震后响循环催」的升级链；走响铃页的那条在上面已 return，
+        // 改由检查页实际展示时 EndNag.noteEndPageShown 武装（锚点取展示时刻）
+        if (type == TYPE_END) EndNag.arm(c);
         createChannels(c);
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);

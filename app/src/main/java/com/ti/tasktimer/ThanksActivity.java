@@ -89,7 +89,8 @@ public class ThanksActivity extends Activity {
                     if (total <= 0) total = Math.max(1, last.durationMinutes) * 60;
                     int rem = (int) Math.max(1, TimerState.pausedRemainMs(this) / 1000);
                     TimerService.resumeTimer(this, total, rem, last.id, last.title);
-                } else {
+                } else if (!TimerService.startTimerSmart(this, last)) {
+                    // 今天已计过时按剩余接着倒数（v1.21.1）；暂停槽恢复走上面一支、不经这里
                     TimerService.startTimer(this,
                             Math.max(1, last.durationMinutes) * 60, last.id, last.title);
                 }

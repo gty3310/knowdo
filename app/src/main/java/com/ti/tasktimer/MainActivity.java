@@ -1349,7 +1349,8 @@ public class MainActivity extends Activity {
         doneBox.setLayoutParams(new LinearLayout.LayoutParams(dp(30), dp(44)));
         doneBox.setOnClickListener(v -> {
             boolean nowDone = doneBox.isChecked();
-            if (nowDone) t.markDone(); else t.markUndone();
+            if (nowDone) { t.markDone(); StartBaseline.markCompleted(this, t.id); }
+            else { t.markUndone(); StartBaseline.clearCompleted(this, t.id); }
             store.save();
             SbSync.pushDoneAsync(this, t.id); // 完成状态立刻定向写上云并回读确认（v1.14.0 防弹回）
             adapter.notifyDataSetChanged();
@@ -1548,7 +1549,8 @@ public class MainActivity extends Activity {
             }));
         }
         chips.addView(chip(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
-            if (done) t.markUndone(); else t.markDone();
+            if (done) { t.markUndone(); StartBaseline.clearCompleted(MainActivity.this, t.id); }
+            else { t.markDone(); StartBaseline.markCompleted(MainActivity.this, t.id); }
             store.save();
             SbSync.pushDoneAsync(this, t.id);
             expandedTaskId = null;
@@ -1824,6 +1826,7 @@ public class MainActivity extends Activity {
      *  若别的任务正在计时，这就是一次直接切换＋重置（v1.16.1 定案，同 onPlay）：
      *  原任务直接停表落盘，不经暂停卡。 */
     private void resetTask(final TaskItem t) {
+        StartBaseline.markReset(this, t.id); // 重置＝抵扣基数清零（v1.21.1），必须在起表前打戳
         startTaskTimer(t);
         toast("已重置，从 0 重新开始：" + t.title);
     }
@@ -1845,8 +1848,12 @@ public class MainActivity extends Activity {
     }
 
     private void doStartTaskTimer(TaskItem t) {
-        TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
-        toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
+        // 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart，
+        // 它自己弹「继续计时」提示）；没抵扣才走全新开始
+        if (!TimerService.startTimerSmart(this, t)) {
+            TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
+            toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
+        }
         adapter.notifyDataSetChanged();
     }
 
@@ -2293,7 +2300,8 @@ public class MainActivity extends Activity {
                     TaskItem cur = freshCopyOf(t);
                     if (which == 0) {
                         boolean toDone = !cur.isDoneToday();
-                        if (toDone) cur.markDone(); else cur.markUndone();
+                        if (toDone) { cur.markDone(); StartBaseline.markCompleted(this, cur.id); }
+                        else { cur.markUndone(); StartBaseline.clearCompleted(this, cur.id); }
                         store.save();
                         SbSync.pushDoneAsync(this, cur.id);
                         adapter.notifyDataSetChanged();

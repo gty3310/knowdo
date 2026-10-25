@@ -400,6 +400,11 @@ public class IdleAlarmActivity extends Activity {
     }
 
     private void doStart(TaskItem t) {
+        // 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart）
+        if (TimerService.startTimerSmart(this, t)) {
+            finish();
+            return;
+        }
         Toast.makeText(this, (Strings.en() ? "Started: " : "开始计时：") + t.title
                 + "（" + t.durationMinutes + (Strings.en() ? " min)" : " 分钟）"),
                 Toast.LENGTH_SHORT).show();

@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1211 = new Entry("v1.21.1", "2026-10-25");
+        e1211.add(new Group(s("修复", "Fixed"),
+                s("结束页没人理时不再永远安静：任务到点、「时间到了」页面弹出后，如果你把手机放一边既不确认完成也不加时，60 秒后它会自己开始催——先震动，无反应再响渐强铃，之后每隔几分钟一轮，直到你回来点任意按钮处置为止（点完成或加时立刻停）。节奏和轮数跟随你的催促档位：严格档无限催、标准档催满轮数就停、温和档不催；每个任务自己的 alarm 模式照样说了算——设了静默就只震不响，设了关闭就完全不催。",
+                  "The end page no longer stays silent forever when ignored: after a timer ends and the \"time's up\" page appears, if the phone sits untouched — neither confirmed done nor extended — after 60 seconds it starts nagging on its own: vibrate first, then the fade-in ring if there's still no response, repeating every few minutes until you come back and tap anything (done or extend stops it at once). Pace and rounds follow your nagging profile — strict nags forever, standard stops at its round cap, gentle never nags — and each task's own alarm mode still rules: silent means vibrate-only, off means never."),
+                s("切走再回来的任务不再从头倒数：以前暂停一个任务、去做别的、再回来点它的开始，它会从完整时长重新倒计时，之前做过的时间全作废。现在所有开始入口都按今天已经计过的时间抵扣——回来时从剩余时间接着倒数，并提示你还剩多久。已经做满总时长的、标记完成后再开始的、以及你明确「重置」过的，都仍然从完整时长开始；带子任务的任务暂不抵扣（它的进度不只看总时长）。",
+                  "A task you return to no longer restarts from zero: before, if you paused a task, went off to do something else, then came back and tapped its start, it counted down from the full length again and the time already spent was thrown away. Now every start entry deducts what you have already timed today — you pick up from the remaining time, with a hint of how much is left. A task already done in full, one started again after being marked done, or one you explicitly reset still starts from the full length; tasks with subtasks are not deducted for now (their progress is more than a total).")));
+        e1211.add(new Group(s("改进", "Improved"),
+                s("注册时把「确认邮件可能进垃圾箱」说在前面了：注册页上单独一段加粗提醒——知行处于初期测试阶段，确认邮件很有可能被邮箱放进垃圾箱，收件箱里找不到就先去垃圾箱里找；注册提交后的提示里也再带一句短提醒。",
+                  "Sign-up now warns up front that the confirmation email may land in spam: a separate bold note on the sign-up form explains that KnowDo is in early testing and the confirmation email is quite likely to be filtered into the spam folder — if it is not in the inbox, look there first. The message shown after submitting sign-up carries a short reminder too.")));
+        e1211.why = s("到点后的结束页是个没人管的状态：计时在系统眼里还没结束，空档催促看不见它，页面自己又不会升级提醒——所以你把手机放一边，它就三五分钟、乃至永远安安静静。这一版给结束页补上和空档催促同节奏的升级链，把这个盲区堵上。",
+                "The post-deadline end page was a state nobody owned: the timer still counts as running, so the idle nagging can't see it, and the page itself had no escalation — put the phone down and it stayed quiet for three minutes, five minutes, forever. This release gives the end page the same escalation rhythm as the idle nagging and closes that blind spot.");
+        e1211.tryIt = s("三处都可以试：1）随便建一个 1 分钟任务开始计时，到点后把手机放一边、不碰它：约 60 秒后应先震动，接着铃声渐强，之后循环催；回到页面点「做完了」或任意加时，催促立刻停。2）开始一个长任务，做几分钟后暂停，去开始另一个任务，再回来开始前一个——应弹出「继续计时（剩余约 …）」，从剩余时间接着倒数。3）退出登录打开注册页，能看到加粗的垃圾箱提醒；注册一个新账号，提交后的提示里也有「还没收到？多半在垃圾箱里」。",
+                "Three things to try: 1) Create any 1-minute task and start it; when it ends, put the phone down and don't touch it: after about 60 seconds it should vibrate, then the ring should fade in, and the rounds should keep coming; back on the page, tap \"Done\" or any extension and the nagging stops at once. 2) Start a long task, pause it after a few minutes, start another task, then come back and start the first one — you should see a \"resuming (about … left)\" hint and it counts down from the remaining time. 3) Log out and open the sign-up form to see the bold spam-folder note; sign up a new account and the post-submit message reminds you to check spam too.");
+        out.add(e1211);
+
         Entry e121 = new Entry("v1.21.0", "2026-10-25");
         e121.add(new Group(s("新功能", "New"),
                 s("守卫测试模式：打开后每 10 秒截一帧跑一遍完整判定，把读到的文字、判定结论和连续命中张数都写在一个小悬浮窗里——你自己操控屏幕，就能亲眼看它判得对不对。测试模式只显示，永远不会真的弹窗或跳回。",

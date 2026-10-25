@@ -99,8 +99,11 @@ public final class Supa {
             saveSession(c, root, email);
             return null;
         }
-        // 邮箱确认开启时 signup 只返回 user、没有会话
-        return "注册已提交。若没能直接登录，请先去邮箱点确认链接，再回来用「登录」。";
+        // 邮箱确认开启时 signup 只返回 user、没有会话。
+        // 垃圾箱短提醒（v1.21.1）：注册后的等待确认状态目前就由这句提示承担，
+        // 没收到多半是被邮箱放进了垃圾箱，先去那里看看
+        return "注册已提交。若没能直接登录，请先去邮箱点确认链接，再回来用「登录」。"
+                + "还没收到？多半在垃圾箱里，先去那里看看。";
     }
 
     public static void signIn(Context c, String email, String password) throws Exception {

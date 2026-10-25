@@ -464,7 +464,10 @@ public class FloatingWindow {
             int remain = (int) Math.max(1, TimerState.pausedRemainMs(c) / 1000);
             TimerService.resumeTimer(c, total, remain, d.task.id, d.task.title);
         } else if (d.state == ST_IDLE && d.task != null) {
-            TimerService.startTimer(c, Math.max(1, d.task.durationMinutes) * 60, d.task.id, d.task.title);
+            // 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart）
+            if (!TimerService.startTimerSmart(c, d.task)) {
+                TimerService.startTimer(c, Math.max(1, d.task.durationMinutes) * 60, d.task.id, d.task.title);
+            }
         }
     }
 

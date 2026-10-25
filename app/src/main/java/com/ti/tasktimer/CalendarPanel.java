@@ -685,11 +685,13 @@ TaskItem cur = store.byId(taskId);
 if (cur == null || cur.deleted) return;
 if (!cur.isDoneToday() && newEndMin <= nowMin) {
 cur.markDone();
+StartBaseline.markCompleted(ctx, cur.id); // 完成戳：此后再开始从完整时长（v1.21.1）
 store.save();
 SbSync.pushDoneAsync(ctx, taskId);
 toast("「" + title + "」已拖到现在之前，自动标记完成 ✓");
 } else if (cur.isDoneToday() && newStartMin >= nowMin) {
 cur.markUndone();
+StartBaseline.clearCompleted(ctx, cur.id);
 store.save();
 SbSync.pushDoneAsync(ctx, taskId);
 toast("「" + title + "」已拖回现在之后，恢复未完成");
@@ -984,7 +986,8 @@ handler.postDelayed(this::afterTaskEdited, 650);
 }
 chips.addView(chipCal(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
 TaskItem c = freshCopyOf(t);
-if (done) c.markUndone(); else c.markDone();
+if (done) { c.markUndone(); StartBaseline.clearCompleted(ctx, c.id); }
+else { c.markDone(); StartBaseline.markCompleted(ctx, c.id); }
 store.save();
 SbSync.pushDoneAsync(ctx, c.id);
 if (!done) focusTaskId = null;
@@ -1278,6 +1281,7 @@ AlarmScheduler.rescheduleAll(ctx, store);
 
 /** 重置计时：与主页 resetTask 同处理（别的任务在跑→直接切换＋重置，v1.16.1 定案，不经暂停卡）。 */
 private void resetTaskFromCal(final TaskItem t) {
+StartBaseline.markReset(ctx, t.id); // 重置＝抵扣基数清零（v1.21.1），必须在起表前打戳
 startTaskTimer(t);
 toast("已重置，从 0 重新开始：" + t.title);
 }
@@ -1473,8 +1477,11 @@ doStartTaskTimer(t);
 }
 
 private void doStartTaskTimer(TaskItem t) {
+// 今天已计过时按剩余接着倒数（v1.21.1，抵扣收口在 TimerService.startTimerSmart）
+if (!TimerService.startTimerSmart(ctx, t)) {
 TimerService.startTimer(ctx, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
 toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
+}
 handler.postDelayed(this::render, 350);
 }
 

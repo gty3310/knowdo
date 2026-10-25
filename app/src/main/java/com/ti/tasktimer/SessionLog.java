@@ -119,6 +119,31 @@ public final class SessionLog {
         return sum;
     }
 
+    /**
+     * 某任务今天、且只算 sinceMs 之后那部分的已用毫秒（v1.21.1 开始抵扣的基数）：
+     * 已关闭段先按今天裁剪，再只计与 [sinceMs, 段尾] 重叠的部分；打开段若正是它，
+     * 同口径计到此刻。完成/重置的时间戳由 StartBaseline 提供——基线时刻之前做过的
+     * 分段不抵扣（完成后再开始、或重置后，都从完整时长开始）。
+     */
+    public static synchronized long todayMsForTaskSince(Context c, String taskId, long sinceMs) {
+        if (taskId == null || taskId.isEmpty()) return 0;
+        long sum = 0;
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+        for (Seg s : segmentsForDay(c, today)) {
+            if (!taskId.equals(s.taskId)) continue;
+            long from = Math.max(s.startMs, sinceMs);
+            if (s.endMs > from) sum += s.endMs - from;
+        }
+        long os = openStart(c);
+        if (os > 0 && taskId.equals(openTaskId(c))) {
+            long from = Math.max(Math.max(os, sinceMs), dayStartMs(today));
+            long now = System.currentTimeMillis();
+            if (now > from) sum += now - from;
+        }
+        return sum;
+    }
+
     /** 取与某一天（yyyy-MM-dd，本地时区）有重叠的已关闭段，起止已裁剪到当天范围内，按开始时间排序。 */
     public static List<Seg> segmentsForDay(Context c, String date) {
         long dayStart = dayStartMs(date);
