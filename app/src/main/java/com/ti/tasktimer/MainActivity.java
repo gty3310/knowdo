@@ -98,6 +98,8 @@ public class MainActivity extends Activity {
     private HabitPage habitPage;
     private ZhixingPage zhixingPage;
     private ChatPanel chatPanel;
+    /** onCreate 本轮是否刚呈现了建议设置页：onResume 第一轮给它让行，之后再补弹更新日志（v1.26.3）。 */
+    private boolean suggestedJustShown;
     private String expandedTaskId; // 手风琴：当前展开的任务 id（一次一个）
     private final java.util.Set<String> expandedDays = new java.util.HashSet<>();
     private android.content.BroadcastReceiver syncReceiver;
@@ -130,12 +132,11 @@ public class MainActivity extends Activity {
         SyncManager.purgeLegacyBridge(this);
         runSync(false);
         if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-        // 建议设置（v1.19.0）：新装/升级后首次打开呈现一次（不阻断功能）；
-        // 本轮呈现了清单页，就先不叠更新日志弹框（更新日志的已弹记录未写，下次打开再弹）
-        // 更新日志（v1.13.0 起的长期规矩）：升级后首次打开弹一次，全新安装不弹
-        if (!SuggestedSettingsActivity.maybeShow(this)) {
-            WhatsNew.maybeShow(this);
-        }
+        // 建议设置（v1.19.0）：新装/升级后首次打开呈现一次（不阻断功能）。
+        // 更新日志改到 onResume 补弹（v1.26.3）：旧实现在这里跟在建议设置后面试一次，
+        // 升级时建议设置每次抢先全屏、弹框被跳过，返回走 onResume 又没人补，经常不弹。
+        // 本轮若呈现了建议设置页，onResume 第一轮先让行，用户返回主界面后再补弹。
+        suggestedJustShown = SuggestedSettingsActivity.maybeShow(this);
         // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
@@ -215,6 +216,14 @@ public class MainActivity extends Activity {
         // 回前台发现今日有未排的必做 → 本地自动排程填空档（v1.23.0；内部先本地短路，
         // 没有未排必做时不发任何网络请求；落盘后回调刷新时间账的点名行）
         LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
+        // 更新日志补弹（v1.26.3）：排在建议设置（onCreate 已呈现则本轮让行）与
+        // 晨间门（上方已 startActivity 并 return）之后——主界面真正回到前台、且
+        // 没有更高优先级的全屏页在场时才试；弹框实际显示后才落已弹记录（WhatsNew 内）。
+        if (suggestedJustShown) {
+            suggestedJustShown = false;
+        } else {
+            WhatsNew.maybeShow(this);
+        }
         // 任务衔接守卫（v1.10.0）：冷启动/回到主页时若处于空档，全屏问「下一个任务」
         IdleGuard.checkAndFire(this);
     }

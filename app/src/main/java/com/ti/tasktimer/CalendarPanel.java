@@ -586,15 +586,57 @@ bg.setColor(dk ? Color.rgb(28, 47, 66) : Color.rgb(227, 242, 253));
 bg.setStroke(dp(1), dk ? Color.rgb(100, 165, 230) : Color.rgb(25, 118, 210));
 }
 box.setBackground(bg);
-TextView label = new TextView(ctx);
-label.setText(hhmm(b.startMin) + "–" + hhmm(b.endMin) + "\n" + b.title);
-label.setTextSize(11);
-label.setTextColor(b.done? Ui.sub(ctx): (Ui.dark(ctx) ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161)));
-label.setPadding(dp(5), dp(2), dp(26), dp(2));
-label.setMaxLines(3);
-label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-box.addView(label, new FrameLayout.LayoutParams(
+int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
+// 信息层级（v1.26.3 补齐，与实际块 addBlock 同一层级——此前计划块漏改，
+// 仍是单 TextView「时间\n标题」时间在前、且无优先级标记）：任务名第一
+// （11sp 粗体、最多 2 行、标题取原文不拼时间）＞ 优先级标记（v1.26.2 无字版，
+// 复用 priorityTag）＞ 起止时间 9sp 小字最后一行。矮块让位分级与 addBlock
+// 一致：先保名字、再标记、最后时间。蓝色配色体系（上方三态背景与标题蓝）保留。
+LinearLayout col = new LinearLayout(ctx);
+col.setOrientation(LinearLayout.VERTICAL);
+col.setPadding(dp(5), dp(2), dp(26), dp(2)); // 右侧 26dp 给 ▶/⏸ 按钮让位（与旧 label 同）
+box.addView(col, new FrameLayout.LayoutParams(
 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+// 变量名仍叫 label：attachDrag 拖拽中往它写预览文案（格式不变），松手后 render 重画
+TextView label = new TextView(ctx);
+label.setText(b.title);
+label.setTextSize(11);
+label.setTypeface(label.getTypeface(), Typeface.BOLD);
+label.setTextColor(b.done? Ui.sub(ctx): (dk ? Color.rgb(147, 197, 253) : Color.rgb(13, 71, 161)));
+label.setMaxLines(hPx >= dp(64)? 2: 1);
+label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+col.addView(label);
+TaskItem bt = store.byId(b.taskId);
+View tag = bt == null ? null : priorityTag(bt.priority, dk);
+// 起止时间小字：宽栏给全程起止，窄栏只给开始时刻（与 addBlock 同口径）
+TextView timeV = new TextView(ctx);
+timeV.setText(w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin));
+timeV.setTextSize(9);
+timeV.setMaxLines(1);
+timeV.setTextColor(dk ? Color.rgb(178, 184, 178) : Color.rgb(105, 112, 105));
+if (hPx >= dp(48)) {
+// 常规与中块：名（高块 ≤2 行、余者 1 行）／标记／时间小字，三段竖排
+if (tag != null) col.addView(tag);
+col.addView(timeV);
+} else if (hPx >= dp(34)) {
+// 矮块：名 1 行／标记与时间同行（时间贴在标记右边）
+LinearLayout row = new LinearLayout(ctx);
+row.setOrientation(LinearLayout.HORIZONTAL);
+if (tag != null) {
+LinearLayout.LayoutParams tlp = (LinearLayout.LayoutParams) tag.getLayoutParams();
+tlp.rightMargin = dp(4);
+row.addView(tag);
+}
+LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-2, -2);
+vlp.topMargin = dp(2);
+timeV.setLayoutParams(vlp);
+row.addView(timeV);
+col.addView(row);
+} else if (hPx >= dp(26)) {
+// 更矮：名 1 行／只留标记，时间省略
+if (tag != null) col.addView(tag);
+}
+// 极矮（<26dp）：只保名字 1 行
 if (!b.done) {
 TextView play = new TextView(ctx);
 boolean isRunningThis = TimerState.isRunning(ctx) && b.taskId.equals(TimerState.taskId(ctx));
@@ -610,7 +652,6 @@ play.setOnClickListener(v -> togglePlayTask(b.taskId));
 // v1.20.0：已完成块也可拖（拖回现在线之下要能取消完成）；轻点（未拾起）仍是
 // 展开该任务——attachDrag 内部的 tap 路径就是 focusExpand，与旧点击行为一致。
 attachDrag(box, label, b, axisStart, scale);
-int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
 lp.leftMargin = x;
 lp.topMargin = (b.startMin - axisStart) * scale;

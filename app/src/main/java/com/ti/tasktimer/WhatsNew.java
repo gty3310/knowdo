@@ -25,16 +25,29 @@ import java.util.List;
  * - 当前 versionCode 不大于记录 → 不弹。
  * - 没有记录（记录键从未写过）时分两种：本功能上线前装的旧版升上来（安装时间与更新时间
  *   不一致，是升级安装）→ 照常弹；真正的全新安装 → 只记下当前版本、不弹。
- * 弹出前先落记录，保证只弹一次（弹框被其他全屏页盖住、进程被回收也不会重复弹）。
+ *
+ * 触发与落记录时机（v1.26.3 修「经常不弹」）：旧实现只在 MainActivity.onCreate 试一次，
+ * 且排在建议设置之后——升级时建议设置页每次都会抢先全屏呈现，WhatsNew 被跳过；
+ * 从建议设置页返回走的是 onResume、不会补弹，要等下一次冷启动，若期间又装了新版
+ * 就再被抢一次，弹框于是看似随机出现。另外旧实现是「先写 shown 记录再 show()」，
+ * 弹框被晨间门等全屏页盖住时，该版本的机会被静默吃掉。现改为：
+ * - 触发点在 MainActivity.onResume（主界面回到前台时检查），顺序排在建议设置、
+ *   晨间门之后：它们在场时本轮不弹，用户回到主界面后由下一次 onResume 补弹；
+ * - shown 记录改为弹框实际显示后才落（OnShowListener），被盖住/显示失败
+ *   不消耗该版本的机会，下次回前台再试；本进程已实际弹过一次则不再重试
+ *   （shownThisSession 守卫），保证每版只弹一次。
  */
 public final class WhatsNew {
     private static final String PREF = "whats_new";
     private static final String KEY_SHOWN = "shown_version_code";
+    /** 本进程是否已实际弹出过一次（防 onResume 反复触发重复弹）。 */
+    private static boolean shownThisSession = false;
 
     private WhatsNew() {}
 
     public static void maybeShow(Activity a) {
         try {
+            if (shownThisSession) return;
             PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
             int cur = (int) pi.getLongVersionCode();
             SharedPreferences p = a.getSharedPreferences(PREF, Context.MODE_PRIVATE);
@@ -49,15 +62,20 @@ public final class WhatsNew {
                     return;
                 }
             }
-            p.edit().putInt(KEY_SHOWN, cur).apply(); // 先记下：只弹一次
-            show(a);
+            // 不再先落记录：记录在弹框实际显示后由 OnShowListener 写（见 showInternal）
+            showInternal(a, cur);
         } catch (Exception ignored) {
-            // 弹框失败绝不挡主界面启动
+            // 弹框失败绝不挡主界面
         }
     }
 
     /** 更新日志页（弹框版）：最近 5 个版本纵向排列、可滚动；设置入口与首弹共用。 */
     public static void show(Activity a) {
+        showInternal(a, -1);
+    }
+
+    /** @param recordVc >0 时为首弹路径：弹框实际显示后才把该版本记为已弹；-1＝手动翻看，不落记录。 */
+    private static void showInternal(Activity a, int recordVc) {
         TextView tv = new TextView(a);
         float d = a.getResources().getDisplayMetrics().density;
         int padX = (int) (22 * d), padY = (int) (14 * d);
@@ -66,11 +84,23 @@ public final class WhatsNew {
         tv.setText(buildText(), TextView.BufferType.SPANNABLE);
         ScrollView sv = new ScrollView(a);
         sv.addView(tv);
-        new AlertDialog.Builder(a)
+        AlertDialog dialog = new AlertDialog.Builder(a)
                 .setTitle(Strings.whatsNewEntry())
                 .setView(sv)
                 .setPositiveButton(Strings.alarmGotIt(), null)
-                .show();
+                .create();
+        if (recordVc > 0) {
+            // 记录只在弹框真正显示出来之后落：show() 本身抛错、或弹框没显示成，
+            // 都不消耗这个版本的机会，下次主界面回前台时再试
+            dialog.setOnShowListener(dlg -> {
+                shownThisSession = true;
+                try {
+                    a.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                            .edit().putInt(KEY_SHOWN, recordVc).apply();
+                } catch (Exception ignored) { }
+            });
+        }
+        dialog.show();
     }
 
     private static CharSequence buildText() {

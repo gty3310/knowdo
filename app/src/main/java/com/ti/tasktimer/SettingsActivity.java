@@ -418,6 +418,16 @@ public class SettingsActivity extends Activity {
                         : "开始任务时，常用软件会被按这个任务分成白、灰、黑三档（在后台生成）。计时中打开"
                         + "黑名单软件立刻弹问询，白名单软件不再触发专注规则问询。在任务详情里点「软件名单」查看和改档",
                 al, null);
+        // 提示页重弹间隔（v1.26.3）：全屏提示页被划走、还没处理完时隔多久弹回来；
+        // 一个数值四处共用（晨间门重弹／守卫问询重拉／空档选任务页重拉／静音叫回），
+        // 存本地＋云端 user_state.prompt_repop 同步（PromptRepop）
+        row(Strings.en() ? "Prompt re-pop interval" : "提示页重弹间隔",
+                Strings.en() ? "When you swipe a full-screen prompt away without finishing it "
+                        + "(morning check-in, guard inquiry, next-task page, silent pause call-back), "
+                        + "how long before it pops back. Your pick, synced via cloud"
+                        : "全屏提示页（晨间页、守卫问询、选下一个任务、静音叫回）被划走、还没处理完时，"
+                        + "隔多久再弹回来。你的个人设置，存云端同步",
+                arrowBtn(PromptRepop.label(PromptRepop.seconds(this)) + " ›"), v -> pickRepop());
         // 测试者模式（内部 key diag_mode，v1.24.1 由暂名「测试模式」正式改名，用户钦定）：
         // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
         Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));
@@ -554,6 +564,24 @@ public class SettingsActivity extends Activity {
                         default: IdleNag.enterCustom(this); break;
                     }
                     afterNagChanged();
+                })
+                .setNegativeButton(en ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    /** 提示页重弹间隔四档选一（v1.26.3）：写本地＋回写云端在 PromptRepop.setSeconds 里。 */
+    private void pickRepop() {
+        boolean en = Strings.en();
+        final int[] secs = {15, 30, 60, 300};
+        String[] items = new String[secs.length];
+        for (int i = 0; i < secs.length; i++) items[i] = PromptRepop.label(secs[i]);
+        new AlertDialog.Builder(this)
+                .setTitle(en ? "Prompt re-pop interval" : "提示页重弹间隔")
+                .setItems(items, (d, which) -> {
+                    PromptRepop.setSeconds(this, secs[which]);
+                    toast(en ? "Prompts will pop back after " + PromptRepop.label(secs[which])
+                            : "提示页划走后 " + PromptRepop.label(secs[which]) + "再弹回来");
+                    buildUi();
                 })
                 .setNegativeButton(en ? "Cancel" : "取消", null)
                 .show();

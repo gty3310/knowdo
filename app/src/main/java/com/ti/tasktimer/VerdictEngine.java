@@ -10,7 +10,7 @@ import java.util.Set;
  * 屏幕内容守卫的判定层：
  * 单张命中只记“嫌疑”；同一类连续命中 2 张才触发问询页（nsfw 可在设置里改成一张即触发）。
  * 触发后：记 GuardEvents（同步进桥）、复用 GuardActivity（content 模式）、
- * 冷却 60 秒不再重复触发。用户在问询页的选择：
+ * 冷却一轮「提示页重弹间隔」（PromptRepop，v1.26.3；原固定 60 秒）不再重复触发。用户在问询页的选择：
  * 立即回到任务 → GuardActions 跳回；给我 30/60 秒 → 该类宽限，并同时选定
  * 到点处理方式（退掉该软件／只放到后台，ScreenGuardPrefs 记选择）；到点由
  * GraceEnforcer 的精确闹钟主动复查前台执行（不等再次命中），若到期前采样
@@ -18,7 +18,8 @@ import java.util.Set;
  */
 public final class VerdictEngine {
     private static final String PREF = "screenguard_state";
-    private static final long COOLDOWN_MS = 60_000L;
+    /** 问询触发/解除后的冷却（重拉间隔）：v1.26.3 起读 PromptRepop 统一设置，原固定 60 秒。 */
+    private static long cooldownMs(Context c) { return PromptRepop.millis(c); }
 
     private VerdictEngine() {}
 
@@ -72,7 +73,7 @@ public final class VerdictEngine {
         if (cat.equals(graceCat)) {
             if (now < p.getLong("grace_until", 0)) return; // 宽限内，不打扰
             // 宽限到期仍命中同类：不再弹窗，按所选方式直接处理（与闹钟到点同一份实现）
-            p.edit().putLong("cooldown_until", now + COOLDOWN_MS).apply();
+            p.edit().putLong("cooldown_until", now + cooldownMs(c)).apply();
             TimerState.logEvent(c, "屏幕内容守卫：宽限到期后再次命中「" + ContentAnalyzer.label(cat) + "」");
             applyEnforcement(c);
             return;
@@ -101,7 +102,7 @@ public final class VerdictEngine {
         // 事件先落账拿 ts：用户在问询页点「分析错误」时按这个 ts 精确标中本条（v1.24.3）
         long evTs = GuardEvents.addEvent(c, task, r.category, r.confidence, r.detail);
         SharedPreferences.Editor e = prefs(c).edit().remove("last_cat").remove("streak")
-                .putLong("cooldown_until", now + COOLDOWN_MS)
+                .putLong("cooldown_until", now + cooldownMs(c))
                 .putLong("inquiry_event_ts", evTs)
                 // 本次问询是否「语义判定触发且当时在降级」（v1.21.4）：只供
                 // diag_mode 开启时问询页底部显示诊断行，普通用户永远看不到
@@ -165,7 +166,7 @@ public final class VerdictEngine {
         if (!marked) marked = GuardEvents.markLatestOverturned(c); // ts 丢了的兜底
         p.edit().remove("inquiry_pkg").remove("inquiry_event_ts")
                 .remove("last_cat").remove("streak")
-                .putLong("cooldown_until", System.currentTimeMillis() + COOLDOWN_MS)
+                .putLong("cooldown_until", System.currentTimeMillis() + cooldownMs(c))
                 .apply();
         TimerState.logEvent(c, "屏幕内容守卫：用户点「分析错误」，本次判定按误报处理"
                 + (marked ? "（事件已标 overturned，不计入分神）" : "（未找到对应事件，仅解除问询）"));

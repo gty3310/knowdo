@@ -64,13 +64,14 @@ public final class FocusGuard {
 
     /**
      * 「分析错误」（v1.24.3）：用户认定这次问询是误判——问询就此解除：
-     * 作废未决宽限、进入 60 秒冷却不立刻再弹，不跳回、不放行该应用。
+     * 作废未决宽限、进入一轮重弹间隔冷却不立刻再弹，不跳回、不放行该应用。
      * 专注守卫（应用名单式）本身不写 GuardEvents、不计知行指数分神，
      * 这里没有事件可标，只留任务日志；用户顺手留的纪律照样生效于内容守卫的云端终判。
      */
     public static void chooseOverturn(Context c, String pkg) {
         clearGrace(c);
-        prefs(c).edit().putLong("cooldown_until", System.currentTimeMillis() + 60_000L).apply();
+        // 冷却＝问询解除后的重拉间隔（v1.26.3 起读 PromptRepop，与内容守卫同口径，原固定 60 秒）
+        prefs(c).edit().putLong("cooldown_until", System.currentTimeMillis() + PromptRepop.millis(c)).apply();
         TimerState.logEvent(c, "专注守卫：用户点「分析错误」，本次问询按误报解除（「"
                 + AppLister.labelOf(c, pkg) + "」）");
     }
@@ -163,7 +164,7 @@ public final class FocusGuard {
         if (now < p.getLong("cooldown_until", 0)) return;
         String lastPkg = p.getString("last_popup_pkg", null);
         long lastAt = p.getLong("last_popup_at", 0);
-        if (fg.equals(lastPkg) && now - lastAt < 12_000L) return; // 问询页正在打开/刚打开
+        if (fg.equals(lastPkg) && now - lastAt < PromptRepop.millis(c)) return; // 问询页正在打开/刚打开；划走未解决的重拉间隔（v1.26.3，原固定 12 秒）
 
         p.edit().putString("last_popup_pkg", fg).putLong("last_popup_at", now).apply();
         TimerState.logEvent(c, "专注守卫：检测到分神应用「" + AppLister.labelOf(c, fg) + "」，弹出问询页");

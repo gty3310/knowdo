@@ -12,7 +12,7 @@ import org.json.JSONObject;
  *   再核对晨间是否仍未完成（他在推后期里已经从别的入口填完，就不再打扰），
  *   仍未完成则经 AlertHelper.fireMorning 双路径全屏再次拉起。一次性：响过即止；
  *   拉起的页面展示时重新 engage 重弹循环（见 MorningGate）。
- * - 5 分钟重弹到点（v1.26.0，ACTION_NAG）：转发 MorningGate.onNagTick 复核后决定拉不拉。
+ * - 重弹到点（v1.26.0，ACTION_NAG）：转发 MorningGate.onNagTick 复核后决定拉不拉。
  */
 public class MorningReceiver extends BroadcastReceiver {
     @Override

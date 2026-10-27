@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1263 = new Entry("v1.26.3", "2026-10-27");
+        e1263.add(new Group(s("新增", "New"),
+                s("设置里多了一项「提示页重弹间隔」：全屏提示页被你划走、还没处理完时，隔多久再弹回来——15 秒、30 秒、1 分钟、5 分钟四档可选，你的账号已经设为 15 秒。晨间页、守卫问询、选下一个任务的页面、静音暂停的叫回，四处统一按这个间隔回来，不再各弹各的",
+                  "Settings gains a \u201cPrompt re-pop interval\u201d: when you swipe a full-screen prompt away without finishing it, how long before it pops back — 15 seconds, 30 seconds, 1 minute or 5 minutes. Your account is already set to 15 seconds. The morning check-in, guard inquiries, the next-task page and the silent pause call-back now all come back on this one interval instead of each having its own")));
+        e1263.add(new Group(s("修复", "Fixed"),
+                s("日历页的计划块（蓝色那些）排版跟上了：以前只有实际块改成了「任务名在前」，计划块还是时间在第一行、名字跟在后面，还没有优先级标记。现在计划块也是任务名第一（粗体、最多两行）、下面是无字优先级标记、最后才是小字时间，矮块同样先保名字",
+                  "Plan blocks on the calendar page (the blue ones) caught up: only the actual blocks had been reordered to lead with the task name, while plan blocks still led with the time, put the name after it, and had no priority marker. Plan blocks now also lead with the task name (bold, up to two lines), then the textless priority marker, then the time in small print — and short blocks still protect the name first"),
+                s("更新日志弹框经常不弹，修好了：以前它排在建议设置后面、每次升级都被抢先，还没等补上就被下一次升级盖过去；而且记录是「还没显示就先记成弹过」，被别的全屏页盖住一次就永远不再弹。现在改成回到主界面时补弹，且真正显示出来之后才记账，被盖住不算数",
+                  "The What's New popup often never appeared — fixed. It used to queue behind the suggested-settings page on every upgrade and get skipped, then be superseded by the next upgrade before it ever showed; and it recorded itself as shown before it was actually displayed, so one interruption by another full-screen page consumed it forever. It now pops when you are back on the main screen, and only counts as shown once it has really been displayed")));
+        e1263.why = s("你说提示页划走后等 5 分钟太久、应该 15 秒就回来，顺手报了计划块和更新日志弹框两个毛病。重弹间隔做成一个你能自己改的设置（存云端、手机电脑共用一份），四处提示统一听它的，免得以后各改各的又乱掉",
+                "You said five minutes is far too long for a swiped-away prompt to come back — it should be 15 seconds — and reported the plan-block layout and the missing What's New popup along the way. The re-pop interval is now one setting you control (synced via the cloud, shared by phone and computer), and all four prompt kinds obey it, so they can't drift apart again");
+        e1263.tryIt = s("三处可以试：1）早上晨间页出来时按返回划走它，数 15 秒——应该自己全屏回来（在「设置 → 守卫 → 提示页重弹间隔」里能改这个数字）。2）打开日历页看蓝色计划块：先读任务名、再认标记、最后才是小字时间。3）这一版的更新日志弹框本身就是验收：升级后回到主界面，它应该稳稳地弹出来",
+                "Try three things: 1) When the morning page appears, swipe it away with Back and count 15 seconds — it should come back full-screen on its own (the number lives in Settings \u2192 Guards \u2192 Prompt re-pop interval). 2) Open the calendar and read a blue plan block: task name first, then the marker, then the time in small print. 3) This very popup is the third check — after upgrading and returning to the main screen, it should reliably appear");
+        out.add(e1263);
+
         Entry e1262 = new Entry("v1.26.2", "2026-10-27");
         e1262.add(new Group(s("改进", "Improved"),
                 s("任务的优先级层级从此永不自动变：以前没做完的次要任务滚到第二天会被自动升成必做，现在滚入只把截止日挪到今天、挂个「昨」字，层级一格不动——重要、次要都一样，升不升必做只能你自己改",

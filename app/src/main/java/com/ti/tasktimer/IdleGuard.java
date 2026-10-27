@@ -23,7 +23,8 @@ public final class IdleGuard {
     private static final String PREF = "idle_guard";
     private static final long REFIRE_MIN_MS = 10_000L;          // 两次自动拉起的最小间隔
     private static final long EVENT_DEBOUNCE_MS = 3_000L;       // 事件档防抖（与自动档叠加触发时）
-    private static final long DISMISS_SNOOZE_MS = 3 * 60_000L;  // 守卫页按返回退出后，自动档静默 3 分钟
+    // 守卫页按返回退出后自动档静默多久再重拉：v1.26.3 起读 PromptRepop（原固定 3 分钟）
+    private static long dismissSnoozeMs(Context c) { return PromptRepop.millis(c); }
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile long lastFiredAt = 0L;
 
@@ -73,7 +74,7 @@ public final class IdleGuard {
     public static void checkAndFire(Context c) {
         // 空档催促周期先与空档状态同步（v1.14.0）：非空档即取消整个周期；
         // 空档中维护锚点与 alarm 排期。这一步在总开关/静默判断之前——
-        // 按返回的 3 分钟静默只压自动弹页，绝不动 alarm 排期。
+        // 按返回的重弹间隔静默只压自动弹页，绝不动 alarm 排期。
         if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
         IdleAlarm.observeIdle(c);
         if (BystanderMute.isMuted(c)) return; // 路人已静音：下一次亮屏前不拉页（排期不动，v1.19.0）
@@ -97,7 +98,7 @@ public final class IdleGuard {
     /**
      * 解锁档（v1.19.0 选任务页守卫）：用户解锁开始用手机（USER_PRESENT）时调用——
      * 与自动档同门槛（开关/空档/页面互斥/温和档/路人静音），但不受「按返回退出后的
-     * 3 分钟静默」约束：重新拿起手机就是一个新的开始时刻，该直接见选任务页。
+     * 重弹间隔静默」约束：重新拿起手机就是一个新的开始时刻，该直接见选任务页。
      * 仍受最小重拉间隔约束，避免与巡检同刻叠拉。
      */
     public static void checkOnUserPresent(Context c) {
@@ -116,10 +117,10 @@ public final class IdleGuard {
         MAIN.postDelayed(() -> fireNow(app), 600);
     }
 
-    /** 守卫页被用户按返回退出时调用：自动档静默一段时间，让用户能临时翻列表/改设置。 */
+    /** 守卫页被用户按返回退出时调用：自动档静默一轮重弹间隔（PromptRepop），过后照常重拉。 */
     public static void snoozeOnDismiss(Context c) {
         sp(c).edit().putLong("snooze_until",
-                System.currentTimeMillis() + DISMISS_SNOOZE_MS).apply();
+                System.currentTimeMillis() + dismissSnoozeMs(c)).apply();
     }
 
     private static void fire(Context c) {

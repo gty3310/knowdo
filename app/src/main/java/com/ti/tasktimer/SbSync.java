@@ -234,6 +234,7 @@ public final class SbSync {
         boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
         boolean hasRules = probeUserStateCol(c, "guard_rules"); // v1.24.3：用户纪律，列未就绪只用本地、绝不碰此键
         boolean hasAppLists = probeUserStateCol(c, "app_lists"); // v1.26.0：任务软件名单，列未就绪只用本地、绝不碰此键
+        boolean hasRepop = probeUserStateCol(c, "prompt_repop"); // v1.26.3：提示页重弹间隔，列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -301,6 +302,17 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasRepop) {
+                // 提示页重弹间隔合并（v1.26.3，与 idle_nag 同口径，只动 prompt_repop 一个键）：
+                // 本机从未存过且云端有值→采用云端；本机有值且与云端不同→回写本机值。
+                JSONObject remoteRepop = urow.isNull("prompt_repop") ? null : urow.optJSONObject("prompt_repop");
+                if (!PromptRepop.hasLocal(c) && remoteRepop != null) {
+                    PromptRepop.adoptCloud(c, remoteRepop);
+                } else if (PromptRepop.hasLocal(c) && !PromptRepop.cloudEquals(c, remoteRepop)) {
+                    write.put("prompt_repop", PromptRepop.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (hasHabit) {
                 // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
@@ -363,6 +375,10 @@ public final class SbSync {
                 write.put("idle_nag", IdleNag.toCloudJson(c));
                 needWrite = true;
             }
+            if (hasRepop && PromptRepop.hasLocal(c)) {
+                write.put("prompt_repop", PromptRepop.toCloudJson(c));
+                needWrite = true;
+            }
             if (hasHabit && HabitData.hasLocal(c)) {
                 write.put("habit_data", HabitData.load(c));
                 needWrite = true;
@@ -420,6 +436,12 @@ public final class SbSync {
                     IdleAlarm.reevaluate(c);
                     EndNag.reevaluate(c);
                 }
+            }
+            // 提示页重弹间隔（v1.26.3）：本机从未存过时才采用云端推来的值（与 idle_nag 同口径），不在这里回写；
+            // 各重弹链排下一拍时现读本值，故采用后下一拍起即按新间隔走
+            if (!row.isNull("prompt_repop") && !PromptRepop.hasLocal(c)) {
+                JSONObject rp = row.optJSONObject("prompt_repop");
+                if (rp != null) PromptRepop.adoptCloud(c, rp);
             }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
             if (!row.isNull("habit_data")) {
