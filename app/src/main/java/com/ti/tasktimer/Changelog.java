@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1262 = new Entry("v1.26.2", "2026-10-27");
+        e1262.add(new Group(s("改进", "Improved"),
+                s("任务的优先级层级从此永不自动变：以前没做完的次要任务滚到第二天会被自动升成必做，现在滚入只把截止日挪到今天、挂个「昨」字，层级一格不动——重要、次要都一样，升不升必做只能你自己改",
+                  "A task's priority level never changes on its own anymore: an unfinished Secondary task used to be promoted to Must when it rolled into the next day; rolling now only moves the deadline to today and adds the \u201cyesterday\u201d mark, for Important and Secondary alike. Only you can raise or lower a level"),
+                s("自动排日程的顺序变了：必做无条件先排，然后是今天到期的重要、今天到期的次要，最后才轮到还没到期的重要和次要——到期日就是该今天做的信号，排在没到期的前面",
+                  "Auto-scheduling order changed: Must first, unconditionally; then Important tasks due today, Secondary tasks due today, and only then not-yet-due Important and Secondary — a deadline falling today is the signal it belongs to today, ahead of anything not yet due"),
+                s("顶部时间账下面多了一行小字：今天到期（非必做）共几件、大约要占多少时间（按 ×1.5 算）。主账还是只算必做的；到期的排不进今天，也会在点名行里被点出来",
+                  "The time account at the top gains a small line under it: how many non-must tasks are due today and roughly how much time they take (at \u00d71.5). The main account still counts Must only, and due tasks that don't fit are now named in the overflow line too"),
+                s("日历块上的优先级标签去掉了文字，只剩下颜色和形状：朱砂红实心小块是必做，描边空心是重要，浅灰实心小点是次要，虚线空心是休息。颜色和形状本身就说明了轻重，不用再读字",
+                  "Priority tags on calendar blocks lost their text — only colour and shape remain: a solid vermilion chip is Must, a hollow outline is Important, a small solid grey chip is Secondary, and a dashed hollow outline is Leisure. Colour and shape say the level on their own, no reading needed")));
+        e1262.why = s("你定的原则是层级只能人来改；我去查了 Todoist、Motion、Sunsama 这些主流任务软件，它们全都是优先级和截止日各管各的一条轴、谁也不自动改谁，逾期只动日期。我们就照这个行业共识靠拢，顺手把「截止日就是今天、但不是必做」的任务待遇一次定清：进今天的日程（排在必做后面）、进时间账的小字、排不下被点名、做不完只滚日期",
+                "Your principle was that only you may change a level. I checked the mainstream task apps — Todoist, Motion, Sunsama — and all of them keep priority and due date as two independent axes that never rewrite each other; being overdue only moves the date. We aligned with that consensus and settled how a \u201cdue today but not must-do\u201d task is treated: it joins today's schedule after the must-dos, shows in the account's small print, gets named when it doesn't fit, and only its date rolls when unfinished");
+        e1262.tryIt = s("找一件昨天没做完的次要任务：看它今天还在不在、层级是不是还是次要（名字旁有「昨」字）；打开日历页认一认新标记——红实心必做、描边重要、灰点次要、虚线休息；再看任务页最上方时间账主数字下面那行到期小字对不对得上",
+                "Find a Secondary task you didn't finish yesterday: check it is still here today and still Secondary (with the \u201cyesterday\u201d mark by its name). On the calendar page, read the new markers — solid red Must, outline Important, grey chip Secondary, dashed Leisure. Then check the small due-today line under the time account at the top of the task page");
+        out.add(e1262);
+
         Entry e1261 = new Entry("v1.26.1", "2026-10-27");
         e1261.add(new Group(s("改进", "Improved"),
                 s("日历块的排版顺序换了：第一行就是任务名（字大、最多显示 2 行，尽量让你先读到是哪件任务），名字下面是必做/重要/次要/休息的小标签，起止时间挪到最后一行、只作小灰字。块太矮时按这个顺序让位——先保任务名，再保标签，时间缩成只写开始时刻、或者干脆不显示，不会再出现只看得见时间、看不见任务名的块",

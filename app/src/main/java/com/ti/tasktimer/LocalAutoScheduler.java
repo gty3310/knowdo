@@ -20,8 +20,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 今日任务（含滚入）且还没排进今日 schedule 的，由 App 自己按 duration×1.5
  * 填进今天剩下的空档——只填空档：已有块、已过去的时段一律不动、不重叠、
  * 不排过 22:30；排不下的不硬塞，留给时间账下方的点名行。
- * v1.26.0 优先级扩为四档后的填充口径：按 必做 → 重要 → 次要 的顺序填
- * （同档内 deadline 近的先）；休息（leisure）是娱乐类，永不自动排。
+ * 填充顺序（v1.26.2，用户拍板，与 Todoist/Motion 的双轴口径对齐）：
+ * 必做（无条件）→ 今天到期的重要 → 今天到期的次要 → 未到期的重要 →
+ * 未到期的次要（「今天到期」＝deadline ≤ 逻辑今天，含刚被 Rollover
+ * 滚入的）；休息（leisure）是娱乐类，永不自动排。
  *
  * 分工：本类只有纯算法（plan）＋快照/触发脚手架；真正落盘走 SyncManager 的
  * sanction 写入口（autoFillSchedule），写前在那边回读云端最新 schedule 合并，
@@ -134,13 +136,24 @@ public final class LocalAutoScheduler {
         return sch;
     }
 
+    /** 排程组序（v1.26.2）：0 必做／1 到期重要／2 到期次要／3 未到期重要／4 未到期次要。 */
+    private static int schedTier(Candidate cd, String logicToday) {
+        if (cd.rank == 0) return 0;
+        boolean due = cd.deadline != null && logicToday != null
+                && cd.deadline.compareTo(logicToday) <= 0;
+        if (due) return cd.rank == 1 ? 1 : 2;
+        return cd.rank == 1 ? 3 : 4;
+    }
+
     /**
      * 纯算法：把未排候选按 ×1.5 填进 [nowMin, 22:30] 扣掉已有块后的空档。
-     * 候选顺序（v1.26.0）：先按档位——必做、重要、次要；同档内 deadline 近的先
-     * （无 deadline 最后）、同 deadline 按创建先后。休息档（rank 3）永不填。
+     * 候选顺序（v1.26.2）：必做 → 到期重要 → 到期次要 → 未到期重要 →
+     * 未到期次要（到期＝deadline ≤ 逻辑今天 logicToday）；同一组内 deadline
+     * 近的先（无 deadline 最后）、同 deadline 按创建先后。休息档永不填。
      * 已有块原样视为占用，本方法从不产出与已有块重叠、或开始时间早于 nowMin 的块。
      */
-    public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin) {
+    public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin,
+                            String logicToday) {
         Plan plan = new Plan();
         Set<String> scheduledIds = new HashSet<>();
         List<int[]> busy = new ArrayList<>();
@@ -155,7 +168,8 @@ public final class LocalAutoScheduler {
             todo.add(cd);
         }
         todo.sort((a, b) -> {
-            if (a.rank != b.rank) return Integer.compare(a.rank, b.rank);
+            int ta = schedTier(a, logicToday), tb = schedTier(b, logicToday);
+            if (ta != tb) return Integer.compare(ta, tb);
             String da = a.deadline, db = b.deadline;
             if (da == null && db != null) return 1;
             if (da != null && db == null) return -1;
@@ -219,7 +233,7 @@ public final class LocalAutoScheduler {
     /** 用本地缓存的 schedule 现算一份计划（UI 点名行与触发短路判断用，不发网络）。 */
     public static Plan computeLocal(Context c, TaskStore store) {
         List<Block> base = blocksOf(SyncManager.latestSchedule(c), TaskItem.today());
-        return plan(snapshot(store), base, DayAccount.nowMinutes());
+        return plan(snapshot(store), base, DayAccount.nowMinutes(), Rollover.logicalToday(c));
     }
 
     /** 还有没排进今天的可填任务吗（必做/重要/次要，本地口径，触发短路用）。 */

@@ -5,6 +5,9 @@ package com.ti.tasktimer;
  * 今日还剩（现在到 22:30）、必干占（今日必做未完成任务的 duration 合计 ×1.5，
  * 用户的 50% 缓冲规矩，口径与 Jarvis 晚间时间账一致：priority=must 且今日未完成，
  * 不分 deadline 远近）、空余（还剩 − 必干占，可为负＝超了）。
+ * v1.26.2 另加一笔「到期」小账：今天到期（deadline ≤ 逻辑今天）的非必做
+ * （重要/次要，休息不进账——既有口径）未完成件数与 ×1.5 占用。它只作
+ * 提示、不并入主账：主账仍 must-only，防档位通胀把账冲淡（用户口径）。
  * 纯计算、无 IO，任务页置顶行与聊天上下文共用这一份口径。
  */
 public final class DayAccount {
@@ -17,6 +20,9 @@ public final class DayAccount {
         public int remainMin;      // 今日还剩（分钟，≥0）
         public int mustRawMin;     // 必干原始时长合计
         public int mustBufferedMin;// 必干占（×1.5 向上取整）
+        public int dueCount;       // 今天到期（非必做）未完成件数（v1.26.2）
+        public int dueRawMin;      // 到期原始时长合计
+        public int dueBufferedMin; // 到期占（×1.5 向上取整）
         public int freeMin;        // 空余（可为负）
         public boolean over() { return freeMin < 0; }
     }
@@ -27,19 +33,36 @@ public final class DayAccount {
     }
 
     public static Result compute(TaskStore store) {
+        return compute(store, DayUtil.today());
+    }
+
+    /** today＝逻辑今天（到期判定口径与 Rollover 同一条日界）。 */
+    public static Result compute(TaskStore store, String today) {
         Result r = new Result();
         r.remainMin = Math.max(0, DAY_END_MIN - nowMinutes());
         int sum = 0;
+        int dueSum = 0;
         if (store != null) {
             for (TaskItem t : store.tasks) {
                 if (t.deleted) continue;
-                if (!"must".equals(t.priority)) continue;
                 if (t.isDoneToday()) continue;
-                sum += Math.max(1, t.durationMinutes);
+                if ("must".equals(t.priority)) {
+                    sum += Math.max(1, t.durationMinutes);
+                    continue;
+                }
+                // 到期小账：重要/次要且 deadline ≤ 逻辑今天；休息永不进账
+                int rank = TaskItem.priorityRank(t.priority);
+                if ((rank == 1 || rank == 2) && t.deadline != null
+                        && today != null && t.deadline.compareTo(today) <= 0) {
+                    r.dueCount++;
+                    dueSum += Math.max(1, t.durationMinutes);
+                }
             }
         }
         r.mustRawMin = sum;
         r.mustBufferedMin = buffered(sum);
+        r.dueRawMin = dueSum;
+        r.dueBufferedMin = buffered(dueSum);
         r.freeMin = r.remainMin - r.mustBufferedMin;
         return r;
     }

@@ -1476,10 +1476,10 @@ title.setEllipsize(android.text.TextUtils.TruncateAt.END);
 title.setTextColor(b.done ? Ui.sub(ctx)
 : (dk3 ? Color.rgb(247, 243, 236) : Color.rgb(31, 47, 42)));
 col.addView(title);
-// 优先级 tag（v1.26.0 形态规格不变）：必做＝朱砂红实心白字；重要＝细描边
-// 无填充；次要＝无边框浅灰小字；休息＝浅灰虚线描边。计划栏与实际栏共用本渲染。
+// 优先级标记（v1.26.2 无字版）：颜色与形态本身即轻重——必做朱砂红实心、
+// 重要描边空心、次要浅灰实心小块、休息虚线空心。计划栏与实际栏共用本渲染。
 TaskItem bt = store.byId(b.taskId);
-TextView tag = bt == null ? null : priorityTag(bt.priority, dk3);
+View tag = bt == null ? null : priorityTag(bt.priority, dk3);
 // 起止时间小字：宽栏给全程起止，窄栏只给开始时刻（沿用 v1.12.0 窄栏口径）
 TextView timeV = new TextView(ctx);
 timeV.setText(w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin));
@@ -1517,41 +1517,38 @@ lp.topMargin = (b.startMin - axisStart) * scale;
 canvas.addView(col, lp);
 }
 
-/** 优先级 tag 的四种形态（参数：字号 9sp、内边距 横 5dp/纵 1dp、圆角 6dp、描边 1dp、休息虚线 3dp 线/2dp 空）。 */
-private TextView priorityTag(String priority, boolean darkBlock) {
-TextView tag = new TextView(ctx);
-tag.setText(TaskItem.priorityLabel(priority, Strings.en()));
-tag.setTextSize(9);
-tag.setPadding(dp(5), dp(1), dp(5), dp(1));
-LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-lp.topMargin = dp(2);
-tag.setLayoutParams(lp);
+/**
+ * 优先级标记（v1.26.2 起无字版）：颜色与形态本身就是语言，不写字。
+ * 占位与位置沿用 v1.26.0 的 tag 段（任务名下方、topMargin 2dp），统一
+ * 18×8dp 小块（圆角 3dp）：必做＝朱砂红 #D94B3A 实心；重要＝墨青黑 1dp
+ * 描边空心（深底换米白系）；次要＝浅灰实心、略小（10×8dp）；休息＝
+ * 浅灰 1dp 虚线描边空心（线 3dp／空 2dp）。文字版只留在任务列表行
+ * 与编辑页的档位 chips，不动。
+ */
+private View priorityTag(String priority, boolean darkBlock) {
+View tag = new View(ctx);
 int rank = TaskItem.priorityRank(priority);
 int grey = darkBlock ? Color.rgb(178, 184, 178) : Color.rgb(148, 154, 148);
-if (rank == 0) {
 GradientDrawable g = new GradientDrawable();
-g.setCornerRadius(dp(6));
+g.setCornerRadius(dp(3));
+int wDp = 18;
+if (rank == 0) {
 g.setColor(Color.rgb(217, 75, 58)); // 朱砂红实心（品牌点缀色 #D94B3A）
-tag.setBackground(g);
-tag.setTextColor(Color.WHITE);
 } else if (rank == 1) {
 int ink = darkBlock ? Color.rgb(247, 243, 236) : Color.rgb(31, 47, 42); // 墨青黑／深底换米白
-GradientDrawable g = new GradientDrawable();
-g.setCornerRadius(dp(6));
 g.setColor(Color.TRANSPARENT);
 g.setStroke(dp(1), ink);
-tag.setBackground(g);
-tag.setTextColor(ink);
 } else if (rank == 3) {
-GradientDrawable g = new GradientDrawable();
-g.setCornerRadius(dp(6));
 g.setColor(Color.TRANSPARENT);
 g.setStroke(dp(1), grey, dp(3), dp(2)); // 浅灰虚线描边
-tag.setBackground(g);
-tag.setTextColor(grey);
 } else {
-tag.setTextColor(grey); // 次要：无边框无填充，浅灰小字
+g.setColor(grey); // 次要：浅灰实心，尺寸略小
+wDp = 10;
 }
+tag.setBackground(g);
+LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(wDp), dp(8));
+lp.topMargin = dp(2);
+tag.setLayoutParams(lp);
 return tag;
 }
 

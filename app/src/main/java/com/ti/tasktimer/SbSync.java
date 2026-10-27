@@ -565,13 +565,15 @@ public final class SbSync {
         String today = TaskItem.today();
         int nowMin = DayAccount.nowMinutes();
         LocalAutoScheduler.Plan fallback = LocalAutoScheduler.plan(cands,
-                LocalAutoScheduler.blocksOf(SyncManager.latestSchedule(c), today), nowMin);
+                LocalAutoScheduler.blocksOf(SyncManager.latestSchedule(c), today), nowMin,
+                Rollover.logicalToday(c));
         if (!Supa.isLoggedIn(c)) return fallback;
         try {
             JSONArray us = Supa.restGet(c, "user_state?select=*");
             JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
-            LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin);
+            LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin,
+                    Rollover.logicalToday(c));
             if (plan.additions.isEmpty()) return plan;
             List<LocalAutoScheduler.Block> merged = new ArrayList<>(base);
             merged.addAll(plan.additions);

@@ -116,7 +116,9 @@ public final class AiReschedule {
             if (open < 25) {
                 allOpen.append("- 〔").append(t.id).append("〕").append(t.title)
                         .append("（").append(t.durationMinutes).append(" 分钟，")
-                        .append(TaskItem.priorityLabel(t.priority, false)).append("）\n");
+                        .append(TaskItem.priorityLabel(t.priority, false))
+                        .append(t.deadline != null ? "，截止 " + t.deadline : "，无截止日")
+                        .append("）\n");
                 open++;
             }
         }
@@ -139,7 +141,7 @@ public final class AiReschedule {
           .append("blocks 给出你建议的、尚未开始的块；unscheduled 放实在排不下的任务名，没有就给空数组。")
           .append("排程硬规矩，必须遵守：")
           .append("每件任务按它的计划时长×1.5 留缓冲来占时间；")
-          .append("优先级顺序：必做优先、其次重要、再次次要；休息（leisure）是娱乐类，永不排进日程；")
+          .append("优先级顺序：必做无条件先排，然后今天到期的重要、今天到期的次要，最后未到期的重要、未到期的次要；优先级层级永不自动变，你也不许改任何任务的优先级；休息（leisure）是娱乐类，永不排进日程；")
           .append("已经过去的块和已完成任务的块不许动，也不要把它们写进 blocks（应用时它们会被原样保留）；")
           .append("块的开始时间不许早于现在；")
           .append("不许排过 22:30；")

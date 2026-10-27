@@ -10,9 +10,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 昨日未完成滚入今日必干（v1.23.0，用户口述定案）：
- * 「昨天没干完的，立刻就变成今天的必干任务」——拖延最怕任务掉进黑洞，
- * 滚到今天变必干，它就跑不掉。
+ * 昨日未完成滚入今日（v1.23.0 立制，v1.26.2 改口径）：
+ * 昨天没干完的，第二天一早把截止日挪到今天、挂「昨」字提醒——拖延最怕
+ * 任务掉进黑洞，滚到今天它就跑不掉；但层级一格都不动，升不升必做
+ * 只能用户自己来（v1.26.2：层级永不自动变）。
  *
  * 口径：
  * - 日界与习惯系统同一条：HabitData.sessionDate（dayStart 默认 04:00 之前还算前一天），
@@ -22,9 +23,11 @@ import java.util.Set;
  *   deadline 用「早于逻辑今天」而不是只认昨天：App 关了几天，攒下的过期任务一次滚齐，
  *   不会因为错过某一天就永远漏掉。
  * - 动作：deadline 改逻辑今天（走 TaskStore.save 既有写路径，云端同步随后跟上）；
- *   priority 的处理按档分（v1.26.0）：次要升必做（v1.23.0 原口径）、重要不强制
- *   升级（保持重要，只滚日期）、必做不变；休息（leisure）是娱乐类，永不参与
- *   滚入——不过期处理、不改日期、不挂标记。被滚任务的 id 记入本机 prefs
+ *   priority 一律不改（v1.26.2 定案：优先级与截止日是两条独立的轴，
+ *   Todoist/Motion/Sunsama 均如此；滚入只改日期——废除 v1.23.0「次要滚入
+ *   升必做」，v1.26.0 对重要「只滚日期不升级」的做法自本版扩到全部档位）；
+ *   休息（leisure）是娱乐类，永不参与滚入——不过期处理、不改日期、不挂
+ *   标记。被滚任务的 id 记入本机 prefs
  *   （按日期一组），列表里名字旁挂一个小小的「昨」字（当天有效）。
  * - 每个逻辑日只滚一次（prefs 记 last_date 把关）：用户手动把滚入的任务又改回去，
  *   同一天内不会再被滚回来跟他打架；第二天它若还没做完，会再滚一次、再挂标记。
@@ -82,10 +85,7 @@ public final class Rollover {
             if (TaskItem.isLeisure(t.priority)) continue; // 休息档永不滚入（v1.26.0）
             boolean overdue = t.deadline != null && t.deadline.compareTo(today) < 0;
             if (!overdue && !schedIds.contains(t.id)) continue;
-            // 重要不强制升级（v1.26.0）：只滚日期；次要沿原口径升必做，必做不变
-            if (!"must".equals(t.priority) && !"important".equals(t.priority)) {
-                t.priority = "must";
-            }
+            // 层级永不自动变（v1.26.2）：只挪日期，priority 原样不动
             t.deadline = today; // deadlineTime（当天几点前做完）保留原值，不动用户的钟点
             t.touch();
             rolled.add(t.id);

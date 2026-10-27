@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private TextView nowRemainView;
     private TextView accountView;   // 今日时间账（v1.23.0，任务页最上方）
     private TextView overflowView;  // 时间账下方的点名行（排不下的必干），无溢出时藏
+    private TextView dueView;       // 时间账下的到期小字行（v1.26.2），无到期非必做时藏
     private String accountShown = ""; // 时间账已显示文本，没变就不重设（每秒刷新防闪）
     private TextView liveLeftView; // 正在计时行的「剩余」格，状态条每秒顺手刷新它
     private LinearLayout headerInner;
@@ -398,6 +399,12 @@ public class MainActivity extends Activity {
         accountView.setTextSize(21); // 基准字号：数字按 1.0 显示，标签按 0.62 缩小
         accountView.setTextColor(Ui.text(this));
         accountBox.addView(accountView);
+        dueView = new TextView(this);
+        dueView.setTextSize(12);
+        dueView.setTextColor(Ui.sub(this));
+        dueView.setPadding(0, dp(4), 0, 0);
+        dueView.setVisibility(View.GONE);
+        accountBox.addView(dueView);
         overflowView = new TextView(this);
         overflowView.setTextSize(13);
         overflowView.setTextColor(Ui.accent(this));
@@ -1077,7 +1084,7 @@ public class MainActivity extends Activity {
      */
     private void refreshTimeAccount() {
         if (accountView == null) return;
-        DayAccount.Result a = DayAccount.compute(store);
+        DayAccount.Result a = DayAccount.compute(store, Rollover.logicalToday(this));
         boolean en = Strings.en();
         String remain = DayAccount.fmtDur(a.remainMin);
         String must = DayAccount.fmtDur(a.mustBufferedMin);
@@ -1099,12 +1106,41 @@ public class MainActivity extends Activity {
             }
             accountView.setText(sb);
         }
+        if (dueView != null) {
+            if (a.dueCount > 0) {
+                dueView.setText(en
+                        ? a.dueCount + " due today (not must-do) · about " + DayAccount.fmtDur(a.dueBufferedMin)
+                        : "今天到期（非必做）共 " + a.dueCount + " 件 · 约占 " + DayAccount.fmtDur(a.dueBufferedMin));
+                dueView.setVisibility(View.VISIBLE);
+            } else {
+                dueView.setVisibility(View.GONE);
+            }
+        }
         if (overflowView != null) {
             LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocal(this, store);
-            if (!p.overflow.isEmpty()) {
-                overflowView.setText(en
-                        ? p.overflow.size() + " must-do task(s) don't fit today — tap to see the calendar"
-                        : "还有 " + p.overflow.size() + " 件必干排不进今天，点开日历看看");
+            // 点名范围（v1.26.2）：必做＋今天到期的；没到期又排不下的重要/次要不点名
+            String lt = Rollover.logicalToday(this);
+            int nMust = 0, nDue = 0;
+            for (LocalAutoScheduler.Candidate cd : p.overflow) {
+                if (cd.rank == 0) nMust++;
+                else if (cd.deadline != null && cd.deadline.compareTo(lt) <= 0) nDue++;
+            }
+            if (nMust + nDue > 0) {
+                StringBuilder nm = new StringBuilder();
+                if (en) {
+                    nm.append("Don't fit today: ");
+                    if (nMust > 0) nm.append(nMust).append(" must-do");
+                    if (nMust > 0 && nDue > 0) nm.append(", ");
+                    if (nDue > 0) nm.append(nDue).append(" due today");
+                    nm.append(" — tap to see the calendar");
+                } else {
+                    nm.append("还有 ");
+                    if (nMust > 0) nm.append(nMust).append(" 件必干");
+                    if (nMust > 0 && nDue > 0) nm.append("、");
+                    if (nDue > 0) nm.append(nDue).append(" 件今天到期的");
+                    nm.append("排不进今天，点开日历看看");
+                }
+                overflowView.setText(nm.toString());
                 overflowView.setVisibility(View.VISIBLE);
             } else {
                 overflowView.setVisibility(View.GONE);
