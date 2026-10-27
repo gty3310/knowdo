@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1250 = new Entry("v1.25.0", "2026-10-27");
+        e1250.add(new Group(s("修复", "Fixed"),
+                s("修好问询页有时看不到「分析错误」：页面太长时底部按钮被挤出屏幕、又不能滚动——现在整页可滑，「分析错误」和「误判放行」挨在一起，就在宽限按钮后面；点开「分析错误」后页面会自动滑到纪律输入框，保存和跳过都点得到",
+                  "Fixes the inquiry page sometimes not showing \"Analysis error\": when the page ran long, the bottom buttons were pushed off screen and there was no way to scroll — the whole page now scrolls, \"Analysis error\" sits right next to \"False alarm, let it pass\", just after the grace buttons; and after tapping it, the page scrolls itself to the rule input so Save and Skip are always reachable"),
+                s("「我的纪律」页同样的毛病一并修了：纪律攒多了之后，靠后的条目此前滑不到、删不掉，现在整页可滑",
+                  "The same flaw on the \"My guard rules\" page is fixed too: once you had saved many rules, the later ones could not be scrolled to or deleted — the page now scrolls end to end")));
+        e1250.why = s("判错了却没地方喊冤，这个按钮必须永远够得着",
+                "Being judged wrong with nowhere to appeal is the one thing this button exists for — it has to be reachable every single time");
+        e1250.tryIt = s("1）触发一次分神问询，上下滑页面，确认「分析错误」和「和 AI 聊聊」都能点到；2）把系统字体调到最大再触发一次，同样能滑到底",
+                "1) Trigger a distraction inquiry, scroll the page up and down, and check that both \"Analysis error\" and \"Chat with AI\" can be tapped. 2) Set the system font to the largest size, trigger it again, and check you can still scroll all the way to the bottom");
+        out.add(e1250);
+
         Entry e1245 = new Entry("v1.24.5", "2026-10-25");
         e1245.add(new Group(s("改进", "Improved"),
                 s("换新颜：桌面图标换成定稿的「未闭合的圆」——墨青黑的圆环右上留缺口，一颗朱砂红点落在圆上；App 配色统一成三基色：米白打底、墨青黑为主、朱砂红点缀",

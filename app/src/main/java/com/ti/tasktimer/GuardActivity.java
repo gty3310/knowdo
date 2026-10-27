@@ -17,6 +17,7 @@ import android.content.Context;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -50,6 +51,7 @@ public class GuardActivity extends Activity {
     private final List<Button> graceModeBtns = new ArrayList<>();
 
     // 分析错误（v1.24.3）：应答按钮区与纪律输入区（二选一显示，原页切换）
+    private ScrollView scrollView;
     private LinearLayout actionsBox;
     private LinearLayout ruleBox;
     private EditText ruleInput;
@@ -80,7 +82,19 @@ public class GuardActivity extends Activity {
         root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
-        setContentView(root);
+        // 整页可滚动（v1.25.0 修复）：本页内容＝标题＋多行说明＋立志行＋自检两问
+        // ＋最多 7 个按钮，总高在小屏/大字体下远超一屏；此前裸 LinearLayout 直接
+        // setContentView、无 ScrollView，超出的底部按钮被挤出屏幕且滑不到——
+        // 「分析错误」正好在倒数第二，用户真机反馈有时根本看不到它。套上
+        // ScrollView 后任何内容组合下所有按钮都可达；fillViewport 让短内容
+        // （专注模式无宽限行时）视觉与原来一致。键盘弹出时按 resize 收缩
+        // 滚动区，保证纪律输入区不被键盘盖住。
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        scrollView = new ScrollView(this);
+        scrollView.setBackgroundColor(Color.rgb(247, 243, 236));
+        scrollView.setFillViewport(true);
+        scrollView.addView(root);
+        setContentView(scrollView);
 
         TextView title = new TextView(this);
         title.setText("你是在做正确的任务吗？");
@@ -291,6 +305,15 @@ public class GuardActivity extends Activity {
         if (actionsBox != null) actionsBox.setVisibility(View.GONE);
         if (ruleBox != null) {
             ruleBox.setVisibility(View.VISIBLE);
+            // 展开后把页面滚到输入区（v1.25.0）：等布局与键盘都落定再滚，
+            // 保证输入框与「保存纪律/跳过」一行进入可见区，不被键盘或屏外挡住
+            if (scrollView != null) {
+                scrollView.postDelayed(() -> {
+                    if (scrollView != null && ruleBox != null) {
+                        scrollView.smoothScrollTo(0, ruleBox.getTop());
+                    }
+                }, 300);
+            }
             if (ruleInput != null) {
                 ruleInput.requestFocus();
                 ruleInput.post(() -> {

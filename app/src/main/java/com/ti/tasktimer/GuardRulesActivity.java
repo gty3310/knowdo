@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.json.JSONObject;
@@ -32,7 +33,14 @@ public class GuardRulesActivity extends Activity {
         root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(24);
         root.setPadding(pad, dp(40), pad, pad);
-        setContentView(root);
+        // 整页可滚动（v1.25.0 修复）：纪律上限 100 条，此前裸 LinearLayout
+        // 无 ScrollView，条数一多（小屏/大字体下约 9 条起）靠后的纪律行被挤出
+        // 屏幕、滑不到也删不掉。与问询页同类问题，一并套 ScrollView。
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(Color.rgb(247, 243, 236));
+        scroll.setFillViewport(true);
+        scroll.addView(root);
+        setContentView(scroll);
         build();
     }
 
