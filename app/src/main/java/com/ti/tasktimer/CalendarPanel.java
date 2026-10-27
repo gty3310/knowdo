@@ -77,8 +77,12 @@ private static final int DAY_END_MIN = 23 * 60; // 轴默认 23:00
 private TaskStore store;
 private TextView hintView;
 private TextView askAiBtn;
+private TextView quickBtn;
+private LinearLayout undoRow;
+private TextView undoBtn;
 // 重排状态跃迁观察（防重复提示）：记住上次 render 看到的 status 与 requested_at
 private boolean aiBusy = false; // AI 重排进行中（v1.26.0 内置通道）
+private boolean quickBusy = false; // 快速重排/撤销进行中（v1.27.0 纯算法，立即生效）
 private FrameLayout canvas;
 private LinearLayout laneHead;
 private LinearLayout listBox;
@@ -192,7 +196,26 @@ askAiBtn.setTextSize(12);
 askAiBtn.setPadding(dp(10), dp(3), dp(2), dp(3));
 askAiBtn.setOnClickListener(v -> onAskReschedule());
 askRow.addView(askAiBtn);
+// 「快速重排」（v1.27.0）：与 AI 重排并排——纯算法、点下立即生效（不出提案卡），
+// 排序与内置自动排程共用 LocalAutoScheduler 的同一套排序（见该类 candidateOrder）。
+quickBtn = new TextView(ctx);
+quickBtn.setTextSize(12);
+quickBtn.setPadding(dp(10), dp(3), dp(2), dp(3));
+quickBtn.setOnClickListener(v -> onQuickReschedule());
+askRow.addView(quickBtn);
 calBox.addView(askRow);
+// 「撤销重排」行（v1.27.0）：只在本地存着一份快速重排快照时出现（快照只留最近一份，
+// 存在 SharedPreferences 里，日历重开也还在；点了撤销即还原并清掉快照）。
+undoRow = new LinearLayout(ctx);
+undoRow.setOrientation(LinearLayout.HORIZONTAL);
+undoRow.setGravity(Gravity.END);
+undoRow.setVisibility(GONE);
+undoBtn = new TextView(ctx);
+undoBtn.setTextSize(12);
+undoBtn.setPadding(dp(10), dp(1), dp(2), dp(3));
+undoBtn.setOnClickListener(v -> onUndoQuick());
+undoRow.addView(undoBtn);
+calBox.addView(undoRow);
 // 三栏标题（日历／计划／实际）：宽度与时间轴三栏逐像素对齐，在 render() 里按当次几何重建
 laneHead = new LinearLayout(ctx);
 laneHead.setOrientation(LinearLayout.HORIZONTAL);
@@ -393,6 +416,14 @@ askAiBtn.setText(aiBusy
 : (Strings.en() ? "AI Re-plan" : "AI 重排"));
 askAiBtn.setTextColor(aiBusy ? Ui.sub(ctx) : Ui.link(ctx));
 askAiBtn.setEnabled(!aiBusy);
+if (quickBtn != null) {
+quickBtn.setText(quickBusy
+? (Strings.en() ? "Re-planning…" : "重排中…")
+: (Strings.en() ? "Quick Re-plan" : "快速重排"));
+quickBtn.setTextColor(quickBusy ? Ui.sub(ctx) : Ui.link(ctx));
+quickBtn.setEnabled(!quickBusy && !aiBusy);
+}
+refreshUndoRow();
 }
 
 /**
@@ -410,6 +441,127 @@ aiBusy = false;
 refreshAskBtn();
 render();
 });
+}
+
+// ---------------- 快速重排（v1.27.0：纯算法，点下立即生效） ----------------
+
+private static final String QPREF = "quick_reschedule";
+
+/** 当前存着的撤销快照（没有返回 null）：{date, schedule（重排前原文）, overflow（排不下点名）}。 */
+private org.json.JSONObject quickSnapshot() {
+try {
+String s = ctx.getSharedPreferences(QPREF, android.content.Context.MODE_PRIVATE)
+.getString("snapshot", "");
+if (s.isEmpty()) return null;
+org.json.JSONObject o = new org.json.JSONObject(s);
+return o.has("schedule") ? o : null;
+} catch (Exception e) {
+return null;
+}
+}
+
+private void refreshUndoRow() {
+if (undoRow == null || undoBtn == null) return;
+org.json.JSONObject snap = quickSnapshot();
+if (snap == null) {
+undoRow.setVisibility(GONE);
+return;
+}
+boolean en = Strings.en();
+String ov = snap.optString("overflow", "");
+StringBuilder label = new StringBuilder(en ? "↩ Undo re-plan" : "↩ 撤销重排");
+if (!ov.isEmpty()) label.append(en ? " · no room: " : " · 排不下：").append(ov);
+undoBtn.setText(label.toString());
+undoBtn.setTextColor(quickBusy ? Ui.sub(ctx) : Ui.link(ctx));
+undoBtn.setEnabled(!quickBusy);
+undoRow.setVisibility(VISIBLE);
+}
+
+/**
+ * 点「快速重排」：后台跑 LocalAutoScheduler 的统一排序打包（与内置自动排程、
+ * AI 重排提示词共用同一套规则），绕开锁定块（正在计时／已过去／已完成／
+ * 用户手动拖定），立即落盘生效。生效前把当前 schedule 原文存成撤销快照
+ * （只留最近一份），排不下的沿用现有口径在撤销行点名＋Toast 汇总。
+ */
+private void onQuickReschedule() {
+if (quickBusy || aiBusy) return;
+quickBusy = true;
+refreshAskBtn();
+final boolean en = Strings.en();
+new Thread(() -> {
+final LocalAutoScheduler.RescheduleOutcome o =
+SyncManager.applyQuickReschedule(ctx, store, "quick-reschedule-app");
+host.runOnUiThread(() -> {
+quickBusy = false;
+if (o.error != null) {
+Toast.makeText(ctx, o.error, Toast.LENGTH_LONG).show();
+} else {
+if (o.previousSchedule != null) {
+StringBuilder ov = new StringBuilder();
+for (LocalAutoScheduler.Candidate oc : o.overflow) {
+if (ov.length() > 0) ov.append("、");
+ov.append(oc.title);
+}
+try {
+org.json.JSONObject snap = new org.json.JSONObject();
+snap.put("date", TaskItem.today());
+snap.put("schedule", o.previousSchedule);
+snap.put("overflow", ov.toString());
+ctx.getSharedPreferences(QPREF, android.content.Context.MODE_PRIVATE)
+.edit().putString("snapshot", snap.toString()).apply();
+} catch (Exception ignored) { }
+}
+StringBuilder ovNames = new StringBuilder();
+for (LocalAutoScheduler.Candidate oc : o.overflow) {
+if (ovNames.length() > 0) ovNames.append(en ? ", " : "、");
+ovNames.append(oc.title);
+}
+String msg;
+if (o.additions.isEmpty() && o.overflow.isEmpty()) {
+msg = en ? "Nothing to re-plan — everything is already in place"
+: "没有需要重排的任务，日程已经排好了";
+} else if (o.overflow.isEmpty()) {
+msg = en ? "Re-planned: " + o.additions.size() + " tasks placed"
+: "已快速重排：" + o.additions.size() + " 件排好了";
+} else {
+msg = en ? "Re-planned, but no room before 22:30 for: " + ovNames
+: "已快速重排；但 22:30 前排不下：" + ovNames;
+}
+Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show();
+}
+refreshAskBtn();
+render();
+});
+}).start();
+}
+
+/** 点「撤销重排」：把快照里的 schedule 原样写回，还原后清掉快照。 */
+private void onUndoQuick() {
+if (quickBusy) return;
+final org.json.JSONObject snap = quickSnapshot();
+if (snap == null) {
+refreshUndoRow();
+return;
+}
+quickBusy = true;
+refreshAskBtn();
+new Thread(() -> {
+final String err = SyncManager.restoreScheduleSnapshot(ctx,
+snap.optJSONObject("schedule"), "quick-reschedule-undo");
+host.runOnUiThread(() -> {
+quickBusy = false;
+if (err != null) {
+Toast.makeText(ctx, err, Toast.LENGTH_LONG).show();
+} else {
+ctx.getSharedPreferences(QPREF, android.content.Context.MODE_PRIVATE)
+.edit().remove("snapshot").apply();
+Toast.makeText(ctx, Strings.en() ? "Re-plan undone" : "已撤销重排，日程恢复到重排前",
+Toast.LENGTH_SHORT).show();
+}
+refreshAskBtn();
+render();
+});
+}).start();
 }
 
 // ---------------- 渲染 ----------------

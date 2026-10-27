@@ -146,7 +146,42 @@ public final class ChatStore {
         for (String k : sp(c).getAll().keySet()) {
             if (k.startsWith("hist_")) e.remove(k);
         }
+        e.remove(KEY_SEEN_MAIN);
         e.apply();
         notifyMainChanged();
+    }
+
+    // ---------------- 主线未读（v1.27.0：聊聊页签红点角标） ----------------
+
+    /** 已看到的主线消息条数（下标口径：seen 之前都看过）。只存本机，不必上云。 */
+    private static final String KEY_SEEN_MAIN = "seen_main_count";
+
+    /**
+     * 主线里还没看的 AI 消息条数：下标 ≥ seen 的 assistant 消息。
+     * 第一次算时（从未记过 seen）以当前全量为已看——不给历史消息补挂红点；
+     * 列表被裁短/清过导致 seen 超界时就地收敛到当前长度。
+     */
+    public static int unreadMainCount(Context c) {
+        List<Msg> ms = load(c, MAIN);
+        SharedPreferences p = sp(c);
+        if (!p.contains(KEY_SEEN_MAIN)) {
+            p.edit().putInt(KEY_SEEN_MAIN, ms.size()).apply();
+            return 0;
+        }
+        int seen = p.getInt(KEY_SEEN_MAIN, 0);
+        if (seen > ms.size()) {
+            seen = ms.size();
+            p.edit().putInt(KEY_SEEN_MAIN, seen).apply();
+        }
+        int n = 0;
+        for (int i = seen; i < ms.size(); i++) {
+            if ("assistant".equals(ms.get(i).role)) n++;
+        }
+        return n;
+    }
+
+    /** 标记主线全部已看（进入聊聊页签时调用，红点清零）。 */
+    public static void markMainSeen(Context c) {
+        sp(c).edit().putInt(KEY_SEEN_MAIN, load(c, MAIN).size()).apply();
     }
 }

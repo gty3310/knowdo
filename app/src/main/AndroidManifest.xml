@@ -20,6 +20,9 @@
     <!-- 安卓 11+ 包可见性：不声明就只能看到极少数应用（选择器里只剩商店/云端硬盘/设置）。
          本应用需要列出全部可启动应用供用户给任务挑软件（专注规则、主软件、Muse 应用）。 -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- 软件内自动更新（v1.27.0）：自己下载新版 APK 后拉起系统安装需要此权限；
+         每个用户还要在系统设置里为知行开一次「安装未知应用」，App 内有引导。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -308,5 +311,16 @@
             android:name=".ChatActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+        <!-- 软件内自动更新（v1.27.0）：下好的新版 APK 经它分享给系统安装器 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

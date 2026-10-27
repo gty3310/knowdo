@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
     private FrameLayout habitContainer;
     private FrameLayout zhixingContainer;
     private FrameLayout chatContainer;
-    private final LinearLayout[] tabCells = new LinearLayout[4];
+    private final View[] tabCells = new View[4];
     private final TextView[] tabLabels = new TextView[4];
     private final View[] tabMarks = new View[4];
     private HabitPage habitPage;
@@ -115,6 +115,9 @@ public class MainActivity extends Activity {
     private final Runnable statusLoop = new Runnable() {
         @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); }
     };
+    // 聊聊未读角标（v1.27.0）：主线有新 AI 消息落账时刷新页签红点
+    private TextView chatBadge;
+    private final ChatStore.ChangeListener chatListener = () -> handler.post(this::refreshChatBadge);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,6 +140,11 @@ public class MainActivity extends Activity {
         // 升级时建议设置每次抢先全屏、弹框被跳过，返回走 onResume 又没人补，经常不弹。
         // 本轮若呈现了建议设置页，onResume 第一轮先让行，用户返回主界面后再补弹。
         suggestedJustShown = SuggestedSettingsActivity.maybeShow(this);
+        // 软件更新（v1.27.0）：启动自动检查（内部节流：每天至多一次、开关可关）
+        AppUpdate.checkOnStartup(this);
+        // 聊聊未读红点：主线变更时刷新角标，进聊聊页签即清零
+        ChatStore.addChangeListener(chatListener);
+        refreshChatBadge();
         // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
@@ -164,8 +172,22 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        ChatStore.removeChangeListener(chatListener);
         if (chatPanel != null) chatPanel.detach();
         super.onDestroy();
+    }
+
+    /** 聊聊页签角标刷新：正在看聊聊时先标已看（新消息当场可见，不挂红点）；数字封顶 99+。 */
+    private void refreshChatBadge() {
+        if (chatBadge == null) return;
+        if (currentTab == TAB_CHAT) ChatStore.markMainSeen(this);
+        int n = ChatStore.unreadMainCount(this);
+        if (n <= 0) {
+            chatBadge.setVisibility(View.GONE);
+        } else {
+            chatBadge.setText(n > 99 ? "99+" : String.valueOf(n));
+            chatBadge.setVisibility(View.VISIBLE);
+        }
     }
 
     @Override
@@ -224,6 +246,10 @@ public class MainActivity extends Activity {
         } else {
             WhatsNew.maybeShow(this);
         }
+        // 聊聊角标回前台刷新一次（在外面积攒的未读 AI 消息）；软件更新下好后的
+        // 安装提示补弹（v1.27.0，每版只弹一次，AppUpdate 内有标记）
+        refreshChatBadge();
+        AppUpdate.maybePromptInstall(this);
         // 任务衔接守卫（v1.10.0）：冷启动/回到主页时若处于空档，全屏问「下一个任务」
         IdleGuard.checkAndFire(this);
     }
@@ -544,20 +570,23 @@ public class MainActivity extends Activity {
                 Strings.tabChat()};
         for (int i = 0; i < 4; i++) {
             final int idx = i;
-            LinearLayout cell = new LinearLayout(this);
-            cell.setOrientation(LinearLayout.VERTICAL);
-            cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            cell.setPadding(0, dp(2), 0, 0);
+            // 外层 FrameLayout 是为了给「聊聊」页签留一个右上角角标位（v1.27.0），
+            // 内层仍是原来的竖排（图标/文字/选中标记），排版不变。
+            FrameLayout cell = new FrameLayout(this);
+            LinearLayout inner = new LinearLayout(this);
+            inner.setOrientation(LinearLayout.VERTICAL);
+            inner.setGravity(Gravity.CENTER_HORIZONTAL);
+            inner.setPadding(0, dp(2), 0, 0);
             TextView ic = new TextView(this);
             ic.setText(icons[i]);
             ic.setTextSize(19);
             ic.setGravity(Gravity.CENTER);
-            cell.addView(ic);
+            inner.addView(ic);
             TextView lab = new TextView(this);
             lab.setText(labels[i]);
             lab.setTextSize(11.5f);
             lab.setGravity(Gravity.CENTER);
-            cell.addView(lab);
+            inner.addView(lab);
             View mark = new View(this);
             android.graphics.drawable.GradientDrawable mg = new android.graphics.drawable.GradientDrawable();
             mg.setColor(Ui.accent(this));
@@ -565,7 +594,32 @@ public class MainActivity extends Activity {
             mark.setBackground(mg);
             LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(18), dp(3));
             mlp.topMargin = dp(3);
-            cell.addView(mark, mlp);
+            inner.addView(mark, mlp);
+            cell.addView(inner, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+            if (i == TAB_CHAT) {
+                // 未读角标：朱砂红小圆角标＋白字数字，克制地挂在页签右上角
+                chatBadge = new TextView(this);
+                chatBadge.setTextSize(9.5f);
+                chatBadge.setTextColor(android.graphics.Color.WHITE);
+                chatBadge.setTypeface(chatBadge.getTypeface(), android.graphics.Typeface.BOLD);
+                chatBadge.setGravity(Gravity.CENTER);
+                chatBadge.setMinWidth(dp(17));
+                chatBadge.setMinHeight(dp(17));
+                chatBadge.setPadding(dp(4), 0, dp(4), 0);
+                android.graphics.drawable.GradientDrawable bg =
+                        new android.graphics.drawable.GradientDrawable();
+                bg.setColor(Ui.accent(this));
+                bg.setCornerRadius(dp(9));
+                chatBadge.setBackground(bg);
+                chatBadge.setVisibility(View.GONE);
+                FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+                blp.gravity = Gravity.TOP | Gravity.END;
+                blp.topMargin = dp(1);
+                blp.rightMargin = dp(10);
+                cell.addView(chatBadge, blp);
+            }
             cell.setOnClickListener(v -> switchTab(idx));
             bar.addView(cell, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             tabCells[i] = cell;
@@ -589,6 +643,11 @@ public class MainActivity extends Activity {
     public void switchTab(int tab) {
         if (tab < TAB_SCHEDULE || tab > TAB_CHAT) tab = TAB_SCHEDULE;
         currentTab = tab;
+        // 进入聊聊页签＝主线看过了，红点清零（v1.27.0）
+        if (tab == TAB_CHAT) {
+            ChatStore.markMainSeen(this);
+            refreshChatBadge();
+        }
         if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
         if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);

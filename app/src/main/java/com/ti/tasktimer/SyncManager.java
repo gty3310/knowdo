@@ -132,4 +132,16 @@ public class SyncManager {
                                                String updatedBy) {
         return SbSync.applyScheduleProposal(c, store, cardBlocks, updatedBy);
     }
+
+    /** 快速重排落盘（v1.27.0，纯算法立即生效；生效前原文在 outcome.previousSchedule）。后台线程调用。 */
+    public static LocalAutoScheduler.RescheduleOutcome applyQuickReschedule(
+            Context c, TaskStore store, String updatedBy) {
+        return SbSync.applyQuickReschedule(c, store, updatedBy);
+    }
+
+    /** 撤销快速重排：把快照 schedule 原样写回。后台线程调用；null＝成功。 */
+    public static String restoreScheduleSnapshot(Context c, org.json.JSONObject snapshot,
+                                                 String updatedBy) {
+        return SbSync.restoreScheduleSnapshot(c, snapshot, updatedBy);
+    }
 }

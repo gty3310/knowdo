@@ -18,6 +18,11 @@ public class KnowDoApp extends Application {
     private static int startedCount = 0;
     private static WeakReference<Activity> resumedRef;
 
+    /** 最近处于 resumed 的 Activity（没有返回 null）；软件更新下载完弹「已下载好」对话框用（v1.27.0）。 */
+    public static Activity resumedActivity() {
+        return resumedRef == null ? null : resumedRef.get();
+    }
+
     @Override public void onCreate() {
         super.onCreate();
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {

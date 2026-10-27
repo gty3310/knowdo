@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 软件内自动更新（v1.27.0）：把 files/updates/ 里下好的新版 APK 经 FileProvider
+     分享给系统安装器。只开放这一个子目录，不开放整个 files 根。 -->
+<paths>
+    <files-path name="updates" path="updates/" />
+</paths>

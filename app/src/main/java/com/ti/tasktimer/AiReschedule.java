@@ -134,6 +134,28 @@ public final class AiReschedule {
                   : DayAccount.fmtDur(a.freeMin))
           .append("。现在时间约 ")
           .append(LocalAutoScheduler.hhmm(DayAccount.nowMinutes())).append("。\n");
+        // ---- v1.27.0 上下文增强 ①基准排序规则原文（与快速重排共用同一份，LocalAutoScheduler.rulesText）----
+        sb.append("\n基准排序逻辑（内置「快速重排」用的就是这套，你以它为基准排）：\n");
+        sb.append(LocalAutoScheduler.rulesText());
+        sb.append("你可以结合下面的日历约会与今天实际节奏微调顺序，但红线不变：不许改任何任务的优先级档位，优先级层级永不自动变（下面的硬规矩里再申一遍）。\n");
+        // ---- v1.27.0 上下文增强 ②今天的 Google 日历事件（已有 gcal 缓存，只作参考、排程不用避让）----
+        sb.append("\n今天的其他日程（Google 日历，标题＋起止，只作参考背景）：\n");
+        sb.append("按既定口径，排任务不用绕开它们；心里有数即可——若某时段正好压着重要约会，可在正文里提醒一句。\n");
+        List<String> gcalLines = todayGcalLines(host, today);
+        if (gcalLines.isEmpty()) {
+            sb.append("（今天没有 Google 日历事件）\n");
+        } else {
+            for (String l : gcalLines) sb.append("- ").append(l).append("\n");
+        }
+        // ---- v1.27.0 上下文增强 ③今天已经做的事（已完成任务＋实际执行段，来自实际栏数据）----
+        sb.append("\n今天已经做过的事：\n");
+        List<String> doneLines = todayDoneLines(host, store, today);
+        if (doneLines.isEmpty()) {
+            sb.append("（今天还没有做完的任务，也没有实际执行记录）\n");
+        } else {
+            for (String l : doneLines) sb.append("- ").append(l).append("\n");
+        }
+        sb.append("已做完的任务不要再排；实际执行段反映他今天真实的节奏与用时，排剩余时段时参考。\n");
         sb.append("\n在回复的最后另起一段，输出一个代码块，格式严格如下：\n")
           .append(FENCE).append("\n")
           .append("{\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"09:00\",\"end\":\"10:30\"}],\"unscheduled\":[\"排不下的任务名\"]}\n")
@@ -149,6 +171,56 @@ public final class AiReschedule {
           .append("只能用上面列出的真实 taskId，不许编造任务或 id。")
           .append("这版排程只是建议：用户点「应用」才生效。");
         return sb.toString();
+    }
+
+    /** 今天的 Google 日历事件行（标题＋起止）：读 App 已有的 gcal 缓存（SyncManager.latestGcal）。 */
+    private static List<String> todayGcalLines(Activity host, String today) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONObject g = SyncManager.latestGcal(host);
+            if (g == null || !today.equals(g.optString("date", ""))) return out;
+            JSONArray ev = g.optJSONArray("events");
+            if (ev == null) return out;
+            for (int i = 0; i < ev.length() && out.size() < 20; i++) {
+                JSONObject e = ev.optJSONObject(i);
+                if (e == null) continue;
+                String title = e.optString("title", "");
+                if (title.isEmpty()) continue;
+                if (e.optBoolean("allDay", false)) {
+                    out.add(title + "（全天）");
+                } else {
+                    out.add(e.optString("start", "") + "–" + e.optString("end", "") + " " + title);
+                }
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /**
+     * 今天已经做过的事：已完成任务的标题＋实际执行段（SessionLog，实际栏同源数据）。
+     * 行格式：「标题（今天已完成）」与「HH:mm–HH:mm 标题（实际约 N 分钟）」。
+     */
+    private static List<String> todayDoneLines(Activity host, TaskStore store, String today) {
+        List<String> out = new ArrayList<>();
+        for (TaskItem t : store.tasks) {
+            if (!t.deleted && t.isDoneToday()) out.add(t.title + "（今天已完成）");
+        }
+        try {
+            java.text.SimpleDateFormat hm = new java.text.SimpleDateFormat("HH:mm",
+                    java.util.Locale.US);
+            List<SessionLog.Seg> segs = SessionLog.segmentsForDay(host, today);
+            for (int i = 0; i < segs.size() && i < 40; i++) {
+                SessionLog.Seg s = segs.get(i);
+                String line = hm.format(new java.util.Date(s.startMs)) + "–"
+                        + (s.endMs > 0 ? hm.format(new java.util.Date(s.endMs)) : "进行中")
+                        + " " + s.title;
+                if (s.endMs > s.startMs) {
+                    line += "（实际约 " + Math.max(1, (s.endMs - s.startMs) / 60000) + " 分钟）";
+                }
+                out.add(line);
+            }
+        } catch (Exception ignored) { }
+        return out;
     }
 
     /** 从回复全文里剥出 knowdo-schedule 代码块的 JSON 原文；没有返回 null。 */

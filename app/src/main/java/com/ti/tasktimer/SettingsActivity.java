@@ -27,17 +27,29 @@ public class SettingsActivity extends Activity {
     private TaskStore store;
     private LinearLayout root;
 
+    // 软件更新状态回调（v1.27.0）：下载进度/状态变化时重画本页，让更新行的小字跟上
+    private final AppUpdate.Listener updateListener = () -> {
+        if (!isFinishing()) buildUi();
+    };
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Strings.init(this);
         store = new TaskStore(this);
+        AppUpdate.setListener(updateListener);
         buildUi();
     }
 
     @Override protected void onResume() {
         super.onResume();
         store.load();
+        AppUpdate.setListener(updateListener);
         buildUi(); // 回到本页时状态（登录/开关/桥文件）可能已变，整页重画最稳
+    }
+
+    @Override protected void onDestroy() {
+        AppUpdate.setListener(null);
+        super.onDestroy();
     }
 
     private int dp(int v) {
@@ -66,6 +78,7 @@ public class SettingsActivity extends Activity {
 
         buildAspirationGroup();
         buildAccountGroup();
+        buildUpdateGroup();
         buildDisplayGroup();
         buildGuardsGroup();
         buildMorningGroup();
@@ -313,6 +326,59 @@ public class SettingsActivity extends Activity {
         if ("zh".equals(p)) return Strings.langZh();
         if ("en".equals(p)) return Strings.langEn();
         return Strings.langFollow();
+    }
+
+    // ---------------- 软件更新组（v1.27.0）：软件自己查新版、自己下、下好点一下装 ----------------
+    // 通道与契约见 AppUpdate；下载网络经云端 user_state.update_prefs 同步（UpdatePrefs）。
+
+    private void buildUpdateGroup() {
+        final boolean en = Strings.en();
+        groupTitle(en ? "App Updates" : "软件更新");
+        row(en ? "Current version" : "当前版本", Strings.versionLine(), null, null);
+        Switch ac = mkSwitch(UpdatePrefs.autoCheck(this));
+        ac.setOnCheckedChangeListener((b, on) -> {
+            UpdatePrefs.setAutoCheck(this, on);
+            toast(on ? (en ? "Auto-check on: KnowDo checks for a new version at most once a day"
+                            : "自动检查已打开：每天至多自动查一次有没有新版")
+                    : (en ? "Auto-check off" : "自动检查已关闭"));
+        });
+        row(en ? "Check for updates automatically" : "自动检查更新",
+                en ? "When a new version appears it downloads quietly in the background; "
+                        + "you only tap Install once"
+                        : "有新版时在后台安静下载，下好后你点一下「安装」就行",
+                ac, null);
+        row(en ? "Download over" : "下载网络",
+                en ? "Which network may be used to download a new version automatically. "
+                        + "Your pick, synced via cloud"
+                        : "新版自动下载时可以用哪种网络。你的个人设置，存云端同步",
+                arrowBtn(UpdatePrefs.wifiOnlyLabel(UpdatePrefs.wifiOnly(this)) + " ›"),
+                v -> pickWifiOnly());
+        // 检查更新行：副标题就是实时状态（下载进度也在这里显示，不打扰别处）；
+        // 已下好待安装时整行点击直接走安装。
+        boolean ready = AppUpdate.pendingReady(this);
+        row(en ? "Check for updates" : "检查更新",
+                AppUpdate.statusText(this),
+                arrowBtn(ready ? (en ? "Install ›" : "安装 ›") : "›"),
+                v -> AppUpdate.onSettingsRowTapped(this));
+    }
+
+    /** 下载网络二选一（v1.27.0）：写本地＋回写云端在 UpdatePrefs.setWifiOnly 里。 */
+    private void pickWifiOnly() {
+        final boolean en = Strings.en();
+        final boolean[] vals = {true, false};
+        String[] items = {UpdatePrefs.wifiOnlyLabel(true), UpdatePrefs.wifiOnlyLabel(false)};
+        int cur = UpdatePrefs.wifiOnly(this) ? 0 : 1;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(en ? "Download over" : "下载网络")
+                .setSingleChoiceItems(items, cur, (d, which) -> {
+                    UpdatePrefs.setWifiOnly(this, vals[which]);
+                    d.dismiss();
+                    toast(en ? "New versions will download over: " + items[which]
+                            : "以后新版下载网络：" + items[which]);
+                    buildUi();
+                })
+                .setNegativeButton(en ? "Cancel" : "取消", null)
+                .show();
     }
 
     private void buildDisplayGroup() {

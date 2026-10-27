@@ -20,10 +20,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 今日任务（含滚入）且还没排进今日 schedule 的，由 App 自己按 duration×1.5
  * 填进今天剩下的空档——只填空档：已有块、已过去的时段一律不动、不重叠、
  * 不排过 22:30；排不下的不硬塞，留给时间账下方的点名行。
- * 填充顺序（v1.26.2，用户拍板，与 Todoist/Motion 的双轴口径对齐）：
- * 必做（无条件）→ 今天到期的重要 → 今天到期的次要 → 未到期的重要 →
- * 未到期的次要（「今天到期」＝deadline ≤ 逻辑今天，含刚被 Rollover
- * 滚入的）；休息（leisure）是娱乐类，永不自动排。
+ * 填充顺序（v1.27.0 统一口径，自动填空档与快速重排共用 candidateOrder）：
+ * 置顶组（≤15 分钟＋重要以上＋今天到期）→ 其余必做 → 今天到期的重要 →
+ * 今天到期的次要 → 未到期的重要 → 未到期的次要；休息（leisure）是
+ * 娱乐类，永不自动排。
  *
  * 分工：本类只有纯算法（plan）＋快照/触发脚手架；真正落盘走 SyncManager 的
  * sanction 写入口（autoFillSchedule），写前在那边回读云端最新 schedule 合并，
@@ -43,8 +43,15 @@ public final class LocalAutoScheduler {
         public final String taskId;
         public final int startMin;
         public final int endMin;
+        /** 用户亲手拖动/拖入定下的块（写入口 updateScheduleBlock/addScheduleBlock 打标）：
+         *  「用户拖过的块固定」口径的落盘标记，快速重排绕开它。 */
+        public final boolean manual;
         public Block(String taskId, int startMin, int endMin) {
+            this(taskId, startMin, endMin, false);
+        }
+        public Block(String taskId, int startMin, int endMin, boolean manual) {
             this.taskId = taskId; this.startMin = startMin; this.endMin = endMin;
+            this.manual = manual;
         }
     }
 
@@ -113,7 +120,7 @@ public final class LocalAutoScheduler {
             int s = parseHhmm(o.optString("start", ""));
             int e = parseHhmm(o.optString("end", ""));
             if (tid.isEmpty() || s < 0 || e <= s) continue;
-            out.add(new Block(tid, s, e));
+            out.add(new Block(tid, s, e, o.optBoolean("manual", false)));
         }
         return out;
     }
@@ -130,26 +137,65 @@ public final class LocalAutoScheduler {
             o.put("taskId", b.taskId);
             o.put("start", hhmm(b.startMin));
             o.put("end", hhmm(b.endMin));
+            if (b.manual) o.put("manual", true);
             arr.put(o);
         }
         sch.put("blocks", arr);
         return sch;
     }
 
-    /** 排程组序（v1.26.2）：0 必做／1 到期重要／2 到期次要／3 未到期重要／4 未到期次要。 */
-    private static int schedTier(Candidate cd, String logicToday) {
-        if (cd.rank == 0) return 0;
-        boolean due = cd.deadline != null && logicToday != null
+    /** 到期＝deadline ≤ 逻辑今天 logicToday（含等于今天）；无 deadline 不算到期。 */
+    private static boolean isDue(Candidate cd, String logicToday) {
+        return cd.deadline != null && logicToday != null
                 && cd.deadline.compareTo(logicToday) <= 0;
-        if (due) return cd.rank == 1 ? 1 : 2;
-        return cd.rank == 1 ? 3 : 4;
+    }
+
+    /**
+     * 排程组序（v1.27.0 统一口径，自动填空档与快速重排共用，禁止两套）：
+     * 0 置顶组（时长 ≤15 分钟＋档位重要以上＋今天到期）／1 其余必做／
+     * 2 今天到期的重要／3 今天到期的次要／4 未到期的重要／5 未到期的次要。
+     * （v1.26.2 时是必做无条件第一；v1.27.0 起置顶组按用户新规矩压过其余必做。）
+     */
+    private static int schedTier(Candidate cd, String logicToday) {
+        boolean due = isDue(cd, logicToday);
+        if (due && cd.rank <= 1 && cd.durationMinutes <= 15) return 0;
+        if (cd.rank == 0) return 1;
+        if (due) return cd.rank == 1 ? 2 : 3;
+        return cd.rank == 1 ? 4 : 5;
+    }
+
+    /**
+     * 唯一的候选排序（v1.27.0）：自动排程 plan()、快速重排与（经 AiReschedule
+     * 转述的）AI 重排基准共用这一份。组序见 schedTier；置顶组内按时长升序，
+     * 其余组内 deadline 早先（无 deadline 最后）、再按创建时间。
+     */
+    public static Comparator<Candidate> candidateOrder(final String logicToday) {
+        return (a, b) -> {
+            int ta = schedTier(a, logicToday), tb = schedTier(b, logicToday);
+            if (ta != tb) return Integer.compare(ta, tb);
+            if (ta == 0 && a.durationMinutes != b.durationMinutes) {
+                return Integer.compare(a.durationMinutes, b.durationMinutes);
+            }
+            String da = a.deadline, db = b.deadline;
+            if (da == null && db != null) return 1;
+            if (da != null && db == null) return -1;
+            if (da != null && !da.equals(db)) return da.compareTo(db);
+            return Long.compare(a.createdAtMs, b.createdAtMs);
+        };
+    }
+
+    /** 排序规则的原文（给 AI 重排做基准逻辑时整段引用，与 candidateOrder 同源，不许另行改写）。 */
+    public static String rulesText() {
+        return "先排置顶组：时长不超过 15 分钟、优先级是必做或重要、且截止日期是今天（或已逾期）的任务，"
+                + "组内按时长从短到长；然后排其余必做；然后排今天到期的重要；然后排今天到期的次要；"
+                + "然后排还没到期的重要；最后排还没到期的次要。同一组里截止早的先排、没有截止日的最后、"
+                + "再按创建时间先后。每件任务按计划时长×1.5 占时间，从现在起依次排到 22:30 为止；"
+                + "休息（leisure）是娱乐类，永不排进日程。";
     }
 
     /**
      * 纯算法：把未排候选按 ×1.5 填进 [nowMin, 22:30] 扣掉已有块后的空档。
-     * 候选顺序（v1.26.2）：必做 → 到期重要 → 到期次要 → 未到期重要 →
-     * 未到期次要（到期＝deadline ≤ 逻辑今天 logicToday）；同一组内 deadline
-     * 近的先（无 deadline 最后）、同 deadline 按创建先后。休息档永不填。
+     * 候选顺序走 candidateOrder（v1.27.0 统一口径，见 schedTier）。
      * 已有块原样视为占用，本方法从不产出与已有块重叠、或开始时间早于 nowMin 的块。
      */
     public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin,
@@ -167,15 +213,7 @@ public final class LocalAutoScheduler {
             if (scheduledIds.contains(cd.id)) continue;
             todo.add(cd);
         }
-        todo.sort((a, b) -> {
-            int ta = schedTier(a, logicToday), tb = schedTier(b, logicToday);
-            if (ta != tb) return Integer.compare(ta, tb);
-            String da = a.deadline, db = b.deadline;
-            if (da == null && db != null) return 1;
-            if (da != null && db == null) return -1;
-            if (da != null && !da.equals(db)) return da.compareTo(db);
-            return Long.compare(a.createdAtMs, b.createdAtMs);
-        });
+        todo.sort(candidateOrder(logicToday));
         // 空档表：[nowMin, DAY_END] 扣掉 busy
         busy.sort(Comparator.comparingInt(iv -> iv[0]));
         List<int[]> free = new ArrayList<>();
@@ -202,6 +240,61 @@ public final class LocalAutoScheduler {
             if (!placed) plan.overflow.add(cd);
         }
         return plan;
+    }
+
+    // ---------------- 快速重排（v1.27.0：纯算法、点下立即生效，与 AI 重排并存） ----------------
+
+    /** 快速重排的计算结果：锁定块（原样保留）＋新排块＋排不下点名＋最终全表。 */
+    public static final class RescheduleOutcome {
+        public String error; // null＝算好了（落盘在 SbSync 侧）
+        public JSONObject previousSchedule; // 生效前的 schedule 原文（撤销快照来源）
+        public final List<Block> locked = new ArrayList<>();
+        public final List<Block> additions = new ArrayList<>();
+        public final List<Candidate> overflow = new ArrayList<>();
+        public List<Block> merged() {
+            List<Block> out = new ArrayList<>(locked);
+            out.addAll(additions);
+            out.sort(Comparator.comparingInt(b -> b.startMin));
+            return out;
+        }
+    }
+
+    /**
+     * 快速重排的纯算法：把今天未锁定的计划块全部拆下、任务回到候选池，与还没排的
+     * 任务一起按 candidateOrder 从 nowMin 起重新打包（×1.5、绕开锁定块、到 22:30）。
+     * 锁定块＝正在计时的任务的块／已经过去的块（endMin ≤ nowMin）／已完成任务的块／
+     * 用户亲手拖定（manual）的块／任务已不存在、无从判断的块。正在计时的任务本身
+     * 不进候选池（它已经在做了）。真正的打包走 plan()（同一排序函数、同一打包器）。
+     */
+    public static RescheduleOutcome computeReschedule(List<Candidate> cands, List<Block> existing,
+                                                        int nowMin, String logicToday,
+                                                        String runningTaskId) {
+        RescheduleOutcome o = new RescheduleOutcome();
+        java.util.Map<String, Candidate> byId = new java.util.HashMap<>();
+        for (Candidate cd : cands) byId.put(cd.id, cd);
+        Set<String> lockedIds = new HashSet<>();
+        for (Block b : existing) {
+            Candidate cd = byId.get(b.taskId);
+            boolean lock = b.manual
+                    || b.endMin <= nowMin
+                    || (runningTaskId != null && runningTaskId.equals(b.taskId))
+                    || cd == null
+                    || cd.doneToday;
+            if (lock) {
+                o.locked.add(b);
+                lockedIds.add(b.taskId);
+            }
+        }
+        List<Candidate> pool = new ArrayList<>();
+        for (Candidate cd : cands) {
+            if (runningTaskId != null && runningTaskId.equals(cd.id)) continue;
+            if (lockedIds.contains(cd.id)) continue;
+            pool.add(cd);
+        }
+        Plan p = plan(pool, o.locked, nowMin, logicToday);
+        o.additions.addAll(p.additions);
+        o.overflow.addAll(p.overflow);
+        return o;
     }
 
     /**

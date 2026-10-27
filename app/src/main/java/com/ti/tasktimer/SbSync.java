@@ -235,6 +235,7 @@ public final class SbSync {
         boolean hasRules = probeUserStateCol(c, "guard_rules"); // v1.24.3：用户纪律，列未就绪只用本地、绝不碰此键
         boolean hasAppLists = probeUserStateCol(c, "app_lists"); // v1.26.0：任务软件名单，列未就绪只用本地、绝不碰此键
         boolean hasRepop = probeUserStateCol(c, "prompt_repop"); // v1.26.3：提示页重弹间隔，列未就绪只用本地、绝不碰此键
+        boolean hasUpd = probeUserStateCol(c, "update_prefs"); // v1.27.0：更新下载网络，列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -313,6 +314,16 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasUpd) {
+                // 更新下载网络合并（v1.27.0，与 prompt_repop 同口径，只动 update_prefs 一个键）
+                JSONObject remoteUpd = urow.isNull("update_prefs") ? null : urow.optJSONObject("update_prefs");
+                if (!UpdatePrefs.hasLocal(c) && remoteUpd != null) {
+                    UpdatePrefs.adoptCloud(c, remoteUpd);
+                } else if (UpdatePrefs.hasLocal(c) && !UpdatePrefs.cloudEquals(c, remoteUpd)) {
+                    write.put("update_prefs", UpdatePrefs.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (hasHabit) {
                 // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
@@ -379,6 +390,10 @@ public final class SbSync {
                 write.put("prompt_repop", PromptRepop.toCloudJson(c));
                 needWrite = true;
             }
+            if (hasUpd && UpdatePrefs.hasLocal(c)) {
+                write.put("update_prefs", UpdatePrefs.toCloudJson(c));
+                needWrite = true;
+            }
             if (hasHabit && HabitData.hasLocal(c)) {
                 write.put("habit_data", HabitData.load(c));
                 needWrite = true;
@@ -443,6 +458,11 @@ public final class SbSync {
                 JSONObject rp = row.optJSONObject("prompt_repop");
                 if (rp != null) PromptRepop.adoptCloud(c, rp);
             }
+            // 更新下载网络（v1.27.0）：本机从未存过时才采用云端推来的值（与 prompt_repop 同口径），不在这里回写
+            if (!row.isNull("update_prefs") && !UpdatePrefs.hasLocal(c)) {
+                JSONObject ru = row.optJSONObject("update_prefs");
+                if (ru != null) UpdatePrefs.adoptCloud(c, ru);
+            }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
             if (!row.isNull("habit_data")) {
                 JSONObject rh = row.optJSONObject("habit_data");
@@ -488,6 +508,7 @@ public final class SbSync {
                         && oldStart.equals(o.optString("start", ""))) {
                     o.put("start", newStart);
                     o.put("end", newEnd);
+                    o.put("manual", true); // v1.27.0：用户亲手拖定的块，快速重排绕开（「拖过的块固定」）
                     hit = true;
                     break;
                 }
@@ -546,6 +567,7 @@ public final class SbSync {
             nb.put("taskId", taskId);
             nb.put("start", newStart);
             nb.put("end", newEnd);
+            nb.put("manual", true); // v1.27.0：用户亲手拖进日历定的块，同 updateScheduleBlock 口径
             blocks.put(nb);
             sch.put("updatedAtMs", System.currentTimeMillis());
             sch.put("updatedBy", "KnowDo App（用户把任务拖进日历）");
@@ -652,6 +674,82 @@ public final class SbSync {
             return "保存排程失败（" + e.status + "）";
         } catch (Exception e) {
             return "保存排程失败：" + e.getMessage();
+        }
+    }
+
+    /**
+     * 快速重排落盘（v1.27.0，纯算法、点下立即生效）：读云端最新 schedule 为底 →
+     * LocalAutoScheduler.computeReschedule 算锁定块＋重排 → 整表写回 → 回读校验。
+     * 生效前的 schedule 原文放在 outcome.previousSchedule 里，调用方（日历页）
+     * 存为撤销快照。后台线程调用；outcome.error 非 null 即失败原因。
+     */
+    public static LocalAutoScheduler.RescheduleOutcome applyQuickReschedule(
+            Context c, TaskStore store, String updatedBy) {
+        LocalAutoScheduler.RescheduleOutcome o = new LocalAutoScheduler.RescheduleOutcome();
+        if (!Supa.isLoggedIn(c)) {
+            o.error = "未登录 Supabase，无法保存排程";
+            return o;
+        }
+        String today = TaskItem.today();
+        try {
+            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
+            o.previousSchedule = sch;
+            List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
+            String runningId = TimerState.isRunning(c) ? TimerState.taskId(c) : null;
+            LocalAutoScheduler.RescheduleOutcome calc = LocalAutoScheduler.computeReschedule(
+                    LocalAutoScheduler.snapshot(store), base, DayAccount.nowMinutes(),
+                    Rollover.logicalToday(c), runningId);
+            o.locked.addAll(calc.locked);
+            o.additions.addAll(calc.additions);
+            o.overflow.addAll(calc.overflow);
+            List<LocalAutoScheduler.Block> merged = o.merged();
+            JSONObject nsch = LocalAutoScheduler.scheduleJson(today, merged);
+            nsch.put("updatedAtMs", System.currentTimeMillis());
+            nsch.put("updatedBy", updatedBy);
+            SyncManager.cacheSchedule(c, nsch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", nsch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            List<LocalAutoScheduler.Block> got = chk.length() > 0
+                    ? LocalAutoScheduler.blocksOf(chk.getJSONObject(0).optJSONObject("schedule"), today)
+                    : new ArrayList<>();
+            if (got.size() != merged.size()) {
+                o.error = "已写回但回读块数对不上，请刷新日历确认";
+            }
+            return o;
+        } catch (Supa.Err e) {
+            o.error = e.network ? "离线，暂时存不了排程，联网后再点一次" : "保存排程失败（" + e.status + "）";
+            return o;
+        } catch (Exception e) {
+            o.error = "保存排程失败：" + e.getMessage();
+            return o;
+        }
+    }
+
+    /**
+     * 撤销快速重排：把快照的 schedule 原样写回（只换 updatedAtMs/updatedBy）。
+     * 后台线程调用；null＝成功。
+     */
+    public static String restoreScheduleSnapshot(Context c, JSONObject snapshot, String updatedBy) {
+        if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法恢复排程";
+        try {
+            JSONObject sch = new JSONObject(snapshot.toString());
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", updatedBy);
+            SyncManager.cacheSchedule(c, sch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", sch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            return null;
+        } catch (Supa.Err e) {
+            if (e.network) return "离线，暂时恢复不了，联网后再点一次撤销";
+            return "恢复排程失败（" + e.status + "）";
+        } catch (Exception e) {
+            return "恢复排程失败：" + e.getMessage();
         }
     }
 
