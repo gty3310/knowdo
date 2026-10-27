@@ -2,6 +2,36 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.27.0] - 2026-10-27（versionCode 63）
+
+为什么：用户定——AI 重排太慢，要一个点一下就排好的纯算法「快速重排」（AI 版保留，两个都要）；每次更新去网盘手动下安装包太折腾，软件要能自己更新；顺手两件：AI 重排要拿到快速重排的同一套排序规则＋今天日历约会＋今天已做的事，排得更贴合真实一天；分神陪聊的主动消息经常被错过，聊聊页签要有未读红点。排序口径全软件统一一套（自动填空档、快速重排、AI 提示词同源），不再各排各的。
+
+发布提交：`bba2a65`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.26.3...v1.27.0 比较](https://github.com/gty3310/knowdo/compare/v1.26.3...v1.27.0)
+
+### 新增
+
+**快速重排：纯算法、点下立即生效（`LocalAutoScheduler.candidateOrder` 统一排序＋`computeReschedule`）**
+
+日历页「AI 重排」旁新增「快速重排」（`CalendarPanel.quickBtn`），点下不出提案卡、直接落盘生效；AI 重排按钮与提案卡流程原样保留。排序只有一套实现：`LocalAutoScheduler.candidateOrder(logicToday)`——六段分档 `schedTier`：⓪置顶组＝deadline≤逻辑今天＋档位重要以上（rank≤1）＋时长≤15 分钟，组内时长升序；①其余必做；②到期重要；③到期次要；④未到期重要；⑤未到期次要；休息（leisure）永不参与。同组内 deadline 升序（无 deadline 最后）、再按创建时间。原自动填空档的 `plan()` 改为同一比较器排序（此前是内联 sort），自动排程与快速重排从此共用同一口径；同源的规则原文由 `rulesText()` 产出，供 AI 重排提示词整段引用（见下「改进」）。
+
+打包走 `computeReschedule`：锁定块原样保留——块带 `manual` 标记（用户亲手拖定）、已结束（endMin≤现在）、正在计时任务的块、任务已不在候选池（已删等）、任务今日已完成；候选池另排除正在计时的任务本身。其余未排任务按统一排序从当前时刻起 ×1.5 依次填到 22:30（复用 `plan()` 的打包与溢出判定），排不下沿用现有点名呈现（结果 Toast＋撤销行同列名单）。落盘走新入口 `SbSync.applyQuickReschedule`（回读云端 schedule 为底→计算→整表写回→回读校验块数），生效前把 schedule 原文经 outcome 带回，日历页存入 SharedPreferences「quick_reschedule」（只留最近一份）；日历顶部出现「↩ 撤销重排」行，点之经 `restoreScheduleSnapshot` 原样写回并清快照。`manual` 标记的写入点：拖拽改时间 `updateScheduleBlock` 与拖入新建块 `addScheduleBlock` 落盘时置 `manual: true`（此前该口径只有约定、无字段，本版补上）。
+
+**软件内自动更新：Gitee 发行版附件分片通道（新类 `AppUpdate`＋`UpdatePrefs`＋云端 `user_state.update_prefs`）**
+
+发布契约（Jarvis 侧执行）：每版在私有仓 knowdo-resources 建 release（tag＝`v{versionName}`），APK 切约 5MB 二进制分片作附件（`knowdo-{versionName}.apk.partNN`），仓库 `update/update.json`（contents API）写 `{versionCode, versionName, releaseTag, apkSize, apkMd5, shards:[{name,size,md5}], notes}`。App 流程：启动自动检查（`MainActivity.onCreate`→`AppUpdate.checkOnStartup`，节流 20 小时＋设置开关）与设置页手动「检查更新」→拉 update.json 比 versionCode→按网络策略决定是否自动下载：经 API 先按 tag 查 release（`GET /releases/tags/{tag}`，失败回退列表匹配）、列 `attach_files` 对名取 id、逐片走 `GET /releases/{release_id}/attach_files/{attach_file_id}/download`（带与模型下载同一只读令牌、跟随 302 到 CDN；网页直链 403 不可用，此路已实测 md5 完整）→逐片验 size＋md5（已下好且校验过的分片跳过，断点续下）→拼合验整件 size＋md5，全对才置「待安装」。安装经 FileProvider（`res/xml/file_paths.xml` 只开放 files/updates/）＋`REQUEST_INSTALL_PACKAGES` 拉起系统安装框；无「安装未知应用」授权时先出一次性引导对话框（跳系统设置页为知行授权）。呈现安静：进度只在设置页「软件更新」组的检查行小字显示；下好后普通对话框「新版 X 已下载好」（每版只弹一次，`prompted_vc` 记账；下载完成时前台有页面即弹，否则回主界面 onResume 补弹）。
+
+设置「软件更新」组（账号组之后）：当前版本行、自动检查开关（默认开、仅本地）、下载网络二选一（仅 Wi-Fi 默认／Wi-Fi 与流量）、检查更新行（待安装态点行直接走安装）。下载网络经云端 `update_prefs`（`{"wifi_only": bool}`）同步，仿 `prompt_repop` 口径接线（`SbSync` 探测列→本机没存过采用云端／本机有值且不同回写／Realtime 到达且本机没存过采用；列不可用静默只用本地）；作者账号云端已预设 `wifi_only=false`（流量也可下）。注意：本版自身仍需手动安装一次，自更新从下一版起生效。
+
+**聊聊未读红点（`ChatStore` 主线已看计数＋`MainActivity` 页签角标）**
+
+主线（main 键）新增本地已看计数 `seen_main_count`（只存本机不上云）：未读＝已看下标之后的 assistant 消息条数；首次计算惰性初始化为当前全量（不给历史消息补挂红点），列表裁短/清空时下标就地收敛，「清除全部对话」一并清该键。判定点：进入「聊聊」页签（`switchTab`）即 `markMainSeen` 清零；在聊聊页签上时新消息到达也即时标已看（`refreshChatBadge` 内先行标记），他回复自然也算看过。角标：底部页签改 FrameLayout 包原竖排，聊聊页签右上角朱砂红圆角标＋白色粗体数字（封顶 99+，0 时隐藏），主线变更经既有 ChangeListener 刷新，onResume 再刷一次。
+
+### 改进
+
+**AI 重排上下文增强（`AiReschedule.buildSystem` 补三段，提案卡与应用流程不变）**
+
+①基准规则：整段嵌入 `LocalAutoScheduler.rulesText()`（与快速重排同源原文），并写明红线——可结合下述信息微调，但不许改任何任务优先级、层级永不自动变（原有硬规矩段落同义再申）。②今天的 Google 日历事件：读 App 已有 gcal 缓存（`SyncManager.latestGcal`，日期须为今天），逐条列标题＋起止（全天事件标注），并注明只作参考、排程不用避让。③今天已做的事：已完成任务标题（`isDoneToday`）＋实际执行段（`SessionLog.segmentsForDay`，与日历实际栏同源）逐条列实际起止与实际时长（进行中段标注），已做完的不再排。
+
 ## [1.26.3] - 2026-10-27（versionCode 62）
 
 为什么：用户定——任何全屏提示页被划走（未解决就离开）后，不要再等 5 分钟，15 秒就弹回来；且这个间隔做成他账户里的个人设置（云端一份、四处共用），不是写死在代码里。同版附修两件同日发现的：日历计划块渲染器漏改（v1.26.1/1.26.2 只改了实际块，用户截图实证）、更新日志弹框经常不弹（用户报障，根因代码实证）。
