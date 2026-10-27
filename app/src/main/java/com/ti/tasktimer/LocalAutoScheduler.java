@@ -262,9 +262,12 @@ public final class LocalAutoScheduler {
     /**
      * 快速重排的纯算法：把今天未锁定的计划块全部拆下、任务回到候选池，与还没排的
      * 任务一起按 candidateOrder 从 nowMin 起重新打包（×1.5、绕开锁定块、到 22:30）。
-     * 锁定块＝正在计时的任务的块／已经过去的块（endMin ≤ nowMin）／已完成任务的块／
-     * 用户亲手拖定（manual）的块／任务已不存在、无从判断的块。正在计时的任务本身
-     * 不进候选池（它已经在做了）。真正的打包走 plan()（同一排序函数、同一打包器）。
+     * 锁定块＝正在计时的任务的块／已完成任务的块／用户亲手拖定（manual）的块／
+     * 任务已不存在、无从判断的块。正在计时的任务本身不进候选池（它已经在做了）。
+     * v1.27.1 修正（用户点名）：没做完的任务，其计划块哪怕结束时间已经过了，
+     * 也不许留在过去——块收走、任务回候选池从此刻重排（已执行的部分在实际栏
+     * 里、不靠计划块承载，不受影响）；真正执行的事实只由 doneToday 把关。
+     * 真正的打包走 plan()（同一排序函数、同一打包器）。
      */
     public static RescheduleOutcome computeReschedule(List<Candidate> cands, List<Block> existing,
                                                         int nowMin, String logicToday,
@@ -276,7 +279,6 @@ public final class LocalAutoScheduler {
         for (Block b : existing) {
             Candidate cd = byId.get(b.taskId);
             boolean lock = b.manual
-                    || b.endMin <= nowMin
                     || (runningTaskId != null && runningTaskId.equals(b.taskId))
                     || cd == null
                     || cd.doneToday;

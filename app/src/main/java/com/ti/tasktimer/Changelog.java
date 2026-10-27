@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1271 = new Entry("v1.27.1", "2026-10-27");
+        e1271.add(new Group(s("修复", "Fixed"),
+                s("快速重排不再把没做完的事留在过去：以前只要一块计划的时间已经过了，重排就把它锁死不动——任务明明没做完，日程却卡在过去，没法用。现在改成：没做完的任务，计划时间过了就把那块收走，从现在这一刻起重新往后排；真正不动的只剩做完的、正在计时的、你亲手拖定的，还有已经实际做过的部分（它在实际栏里，不受影响）",
+                  "Quick Re-plan no longer strands unfinished work in the past: before, once a planned block's time had passed, re-planning locked it in place — the task was unfinished, yet the schedule stayed stuck in the past and unusable. Now an unfinished task whose planned time has passed gets its block taken away and is re-planned from this moment on. The only things that stay put are finished tasks, the one currently timing, blocks you dragged into place yourself, and work actually done (that lives in the actual column and is untouched)")));
+        e1271.why = s("你说得很明确：没做完的事不能留在过去，重排就是从现在重新安排。快速重排是你每天顺手用的，没有它你今天的任务都不方便用，所以这一版只修这一件",
+                "You put it plainly: unfinished work must not be left in the past — a re-plan means arranging from now. Quick Re-plan is something you reach for every day, so this release fixes only this");
+        e1271.tryIt = s("找一件没做完、计划时间已经过了的任务，打开日历页点「快速重排」：它应该被挪到现在之后重新排好，过去不再留它的块；排完仍可点右上角「撤销重排」回到重排前",
+                "Find an unfinished task whose planned time has already passed and tap \u201cQuick Re-plan\u201d on the calendar page: it should land after the current moment, with no block of it left in the past. \u201cUndo re-plan\u201d at the top right still restores the previous layout");
+        out.add(e1271);
+
         Entry e1270 = new Entry("v1.27.0", "2026-10-27");
         e1270.add(new Group(s("新增", "New"),
                 s("日历页多了「快速重排」：在「AI 重排」旁边，点一下就按固定排序立刻把今天剩下的日程重排好，不用等 AI、不用确认。顺序是——先排「15 分钟以内、重要以上、今天到期」的小事（短的先），然后其余必做、今天到期的重要、今天到期的次要、未到期的重要、未到期的次要；休息类永不自动排。正在计时的、已经过去的、做完的、你亲手拖定的块都不动，从现在起按每件 ×1.5 占时填到 22:30，排不下的会当场点名。排完日历右上角有「撤销重排」，点一下回到重排前（只留最近一次）",
