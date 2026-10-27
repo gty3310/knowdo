@@ -7,7 +7,6 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -76,8 +75,6 @@ public class NextTaskActivity extends Activity {
     private int restMinutes = 15;
     private final List<Button> restBtns = new ArrayList<>();
 
-    private static final int REQ_CAPTURE = 47;
-    private TaskItem pendingStart;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -461,6 +458,17 @@ public class NextTaskActivity extends Activity {
         np2.topMargin = dp(18);
         root.addView(note, np2);
 
+        // 休息档任务组（v1.26.0）：进了休息态，把娱乐类任务置顶成一组，点一行直接开始它
+        store.load();
+        List<TaskItem> leisure = new ArrayList<>();
+        for (TaskItem t : store.visibleSorted()) {
+            if (!t.isDoneToday() && TaskItem.isLeisure(t.priority)) leisure.add(t);
+        }
+        if (!leisure.isEmpty()) {
+            root.addView(sectionCap(Strings.en() ? "FOR REST TIME" : "休息时做"));
+            for (final TaskItem t : leisure) root.addView(taskRow(t));
+        }
+
         root.addView(sectionCap(Strings.en() ? "HOW LONG" : "歇多久"));
         restBtns.clear();
         LinearLayout flow = chipFlow();
@@ -487,6 +495,7 @@ public class NextTaskActivity extends Activity {
         Button start = serifButton(Strings.en() ? "Start resting" : "开始休息");
         start.setOnClickListener(v -> {
             TaskItem t = TaskItem.create(Strings.nextRest());
+            t.priority = "leisure"; // 休息占位同属休息档：不被自动排程/滚入碰（v1.26.0）
             t.durationMinutes = Math.max(1, restMinutes);
             store.add(t);
             TimerState.logEvent(this, "选任务页开始休息：" + restMinutes + " 分钟（占位计时）");
@@ -587,39 +596,9 @@ public class NextTaskActivity extends Activity {
         startTiming(t);
     }
 
-    /** 开始计时（含屏幕守卫截图授权流程，与主页同一口径：结果如何都开始）。 */
+    /** 开始计时（v1.26.0：截图只走无障碍通道，不再请求录屏授权，直接开始）。 */
     private void startTiming(TaskItem t) {
-        if (ScreenGuardPrefs.enabled(this) && !ScreenCaptureService.isAuthorized(this)) {
-            try {
-                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
-                Intent intent = mpm == null ? null : mpm.createScreenCaptureIntent();
-                if (intent != null) {
-                    pendingStart = t;
-                    startActivityForResult(intent, REQ_CAPTURE);
-                    return;
-                }
-            } catch (Exception e) {
-                TimerState.logEvent(this, "衔接守卫页：申请截图授权失败，直接开始：" + e.getClass().getSimpleName());
-            }
-        }
         doStart(t);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_CAPTURE) return;
-        boolean ok = resultCode == RESULT_OK && data != null;
-        if (ok) {
-            ProjectionAuth.store(resultCode, data);
-            TimerState.logEvent(this, "衔接守卫页：截图授权成功，屏幕内容守卫开启采样");
-        } else {
-            TimerState.logEvent(this, "衔接守卫页：截图授权未通过，本次不启用内容守卫");
-        }
-        if (pendingStart != null) {
-            TaskItem t = pendingStart;
-            pendingStart = null;
-            doStart(t);
-        }
     }
 
     private void doStart(TaskItem t) {

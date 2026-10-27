@@ -19,7 +19,6 @@ import android.widget.TextView;
 
 /** 权限体检页：六项权限逐项显示状态，未开的一键跳转开启；另有 Muse 应用、悬浮窗与屏幕内容守卫设置。 */
 public class PermActivity extends Activity {
-    private static final int REQ_SG_AUTH = 77;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -102,7 +101,7 @@ public class PermActivity extends Activity {
         museRow.setPadding(0, dp(10), 0, dp(6));
         TextView mt = new TextView(this);
         String mp = FocusGuard.musePackage(this);
-        mt.setText("「回到 Muse」指向：" + (mp == null ? "未设置" : AppLister.labelOf(this, mp)));
+        mt.setText("「回到 AI 助手」指向：" + (mp == null ? "未设置" : AppLister.labelOf(this, mp)));
         mt.setTextSize(15);
         mt.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         museRow.addView(mt);
@@ -113,7 +112,7 @@ public class PermActivity extends Activity {
             String[] labels = new String[apps.size()];
             for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).label;
             new android.app.AlertDialog.Builder(this)
-                    .setTitle("哪个是 Muse？")
+                    .setTitle("哪个是你的 AI 助手？")
                     .setItems(labels, (d, which) -> {
                         FocusGuard.setMusePackage(this, apps.get(which).pkg);
                         buildUi();
@@ -177,7 +176,7 @@ public class PermActivity extends Activity {
                 GuardEnableGate.tryEnable(this, null);
             } else {
                 ScreenGuardPrefs.setEnabled(this, false);
-                ScreenCaptureService.onTimerStopped(this);
+                KnowDoAccessibilityService.onTimerStopped(this);
             }
             buildUi();
         });
@@ -212,7 +211,7 @@ public class PermActivity extends Activity {
         }
         root.addView(a11yRow);
         TextView a11yNote = new TextView(this);
-        a11yNote.setText("开启后守卫优先用它截图：不用每次授权、采样更密；不开则回退到下面的录屏授权");
+        a11yNote.setText("守卫截图只走这条通道（v1.26.0 起录屏通道已移除）：开启后计时中自动采样，不用每次授权；没开启时守卫不采样，也不会再弹任何录屏授权");
         a11yNote.setTextSize(13);
         a11yNote.setTextColor(Color.DKGRAY);
         root.addView(a11yNote);
@@ -252,33 +251,6 @@ public class PermActivity extends Activity {
                 && AlertHelper.canDrawOverlays(this)) {
             GuardTestMode.start(this);
         }
-
-        LinearLayout authRow = new LinearLayout(this);
-        authRow.setOrientation(LinearLayout.HORIZONTAL);
-        authRow.setPadding(0, dp(10), 0, dp(6));
-        TextView at = new TextView(this);
-        at.setText("截图授权：" + (ScreenCaptureService.isAuthorized(this) ? "已有可用授权" : "暂无（开始计时时系统会请求）"));
-        at.setTextSize(15);
-        at.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        authRow.addView(at);
-        Button authBtn = new Button(this);
-        authBtn.setText("授权/重新授权");
-        authBtn.setOnClickListener(v -> {
-            android.media.projection.MediaProjectionManager mpm =
-                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            if (mpm != null) startActivityForResult(mpm.createScreenCaptureIntent(), REQ_SG_AUTH);
-        });
-        authRow.addView(authBtn);
-        root.addView(authRow);
-
-        TextView note = new TextView(this);
-        note.setText("说明：这份录屏授权只在无障碍通道没开时作回退用。安卓 14 起每次截图会话都要授权一次——"
-                + "回退流程是开始计时时顺手点一次“允许”，整个计时期间持续采样，计时结束授权即失效。这里的按钮是提前授权/换授权用："
-                + "授权在被用掉（开始一次带守卫的计时）之前一直有效；自动开始（autoStart）的任务没有授权时不会采样，会在记录里留一行说明。");
-        note.setTextSize(13);
-        note.setTextColor(Color.DKGRAY);
-        note.setPadding(0, dp(4), 0, 0);
-        root.addView(note);
     }
 
     private interface ToggleAction { void run(boolean on); }
@@ -297,21 +269,6 @@ public class PermActivity extends Activity {
         b.setOnClickListener(v -> action.run(!on));
         row.addView(b);
         root.addView(row);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_SG_AUTH) {
-            if (resultCode == RESULT_OK && data != null) {
-                ProjectionAuth.store(resultCode, data);
-                android.widget.Toast.makeText(this, "已授权：下一次开着守卫的计时会用它采样", android.widget.Toast.LENGTH_LONG).show();
-                if (TimerState.isRunning(this)) ScreenCaptureService.onTimerStarted(this);
-            } else {
-                android.widget.Toast.makeText(this, "未获得截图授权", android.widget.Toast.LENGTH_LONG).show();
-            }
-            buildUi();
-        }
     }
 
     private void addRow(LinearLayout root, String name, boolean ok, View.OnClickListener go) {

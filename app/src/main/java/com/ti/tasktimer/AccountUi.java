@@ -31,7 +31,7 @@ public final class AccountUi {
     }
 
     /** 未登录显示邮箱+密码+登录/注册；已登录显示邮箱、同步状态、立即同步与退出登录。
-     *  未登录不硬挡：App 本地与 Drive 桥照常可用。 */
+     *  未登录不硬挡：App 本地功能照常可用（v1.26.0 起同步只有云端一条路）。 */
     public static void show(final Activity act, final TaskStore store, final Runnable onChanged) {
         LinearLayout box = new LinearLayout(act);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -76,7 +76,7 @@ public final class AccountUi {
         box.addView(password2);
         TextView tip = new TextView(act);
         tip.setText("登录后进入云端同步：本机现有任务会全量成为你的云端数据，不会丢失。"
-                + "没登录也能照常用本机与 Drive 桥。");
+                + "没登录也能照常用本机功能，只是不同步到云端。");
         tip.setTextSize(13);
         tip.setTextColor(Color.DKGRAY);
         box.addView(tip);
@@ -148,7 +148,6 @@ public final class AccountUi {
                     return;
                 }
                 handler(act).post(() -> {
-                    SyncManager.setSupabaseMode(act, true);
                     if (SyncManager.realtimeEnabled(act)) SyncService.start(act);
                     toast(act, "登录成功，正在同步");
                     runSync(act, store, onChanged, true);
@@ -168,11 +167,10 @@ public final class AccountUi {
         new Thread(() -> {
             Supa.signOut(act);
             handler(act).post(() -> {
-                SyncManager.setSupabaseMode(act, false);
                 SupaRealtime.shutdown();
                 SyncService.stop(act);
                 if (onChanged != null) onChanged.run();
-                toast(act, "已退出登录：回到 Drive 桥模式（本机数据都在）");
+                toast(act, "已退出登录（本机数据都在，云端同步已停）");
             });
         }).start();
     }
@@ -181,7 +179,7 @@ public final class AccountUi {
     public static void runSync(final Activity act, final TaskStore store,
                                final Runnable onChanged, final boolean verbose) {
         new Thread(() -> {
-            String result = SyncManager.syncNowSmart(act, store);
+            String result = SbSync.syncNow(act, store);
             SyncManager.setLastResult(act, result);
             handler(act).post(() -> {
                 if (onChanged != null) onChanged.run();

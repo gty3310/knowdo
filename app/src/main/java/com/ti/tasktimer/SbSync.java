@@ -232,19 +232,23 @@ public final class SbSync {
         boolean hasSc = probeUserStateCol(c, "self_checks");
         boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
         boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
-        boolean hasResched = probeUserStateCol(c, "reschedule_request"); // v1.20.0：问 AI 重排，列未就绪绝不碰
         boolean hasRules = probeUserStateCol(c, "guard_rules"); // v1.24.3：用户纪律，列未就绪只用本地、绝不碰此键
+        boolean hasAppLists = probeUserStateCol(c, "app_lists"); // v1.26.0：任务软件名单，列未就绪只用本地、绝不碰此键
+        // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
+        // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
             if (sch != null) SyncManager.cacheSchedule(c, sch);
-            if (hasResched) {
-                // 重排请求状态只读镜像进本地缓存（日历页按钮态读它）：本键的写只走
-                // requestReschedule 的显式请求与 Muse 侧回写 status，合并绝不回写它，
-                // 免得把 pending/done 冲掉。
-                JSONObject rr = urow.isNull("reschedule_request")
-                        ? null : urow.optJSONObject("reschedule_request");
-                SyncManager.cacheReschedule(c, rr);
+            if (hasAppLists) {
+                // 软件名单合并（v1.26.0）：本地手改条目（manualPkgs）不被云端覆盖
+                // （AppLists.merge），合并签名与云端不同才回写，只动 app_lists 一个键
+                JSONObject remoteLists = urow.isNull("app_lists") ? null : urow.optJSONObject("app_lists");
+                JSONObject mergedLists = AppLists.merge(c, remoteLists);
+                if (!AppLists.signature(mergedLists).equals(AppLists.signature(remoteLists))) {
+                    write.put("app_lists", mergedLists);
+                    needWrite = true;
+                }
             }
             JSONObject g = urow.isNull("gcal") ? null : urow.optJSONObject("gcal");
             if (g != null) SyncManager.cacheGcal(c, g);
@@ -327,6 +331,13 @@ public final class SbSync {
                 write.put("guard_events", local);
                 needWrite = true;
             }
+            if (hasAppLists) {
+                JSONObject localLists = AppLists.loadAll(c);
+                if (localLists.length() > 0) {
+                    write.put("app_lists", localLists);
+                    needWrite = true;
+                }
+            }
             if (hasRules) {
                 JSONArray localRules = GuardRules.loadArray(c);
                 if (localRules.length() > 0) {
@@ -387,6 +398,12 @@ public final class SbSync {
             if (!row.isNull("guard_rules")) {
                 GuardRules.merge(c, row.optJSONArray("guard_rules"));
             }
+            // 软件名单（v1.26.0）：推来时合并进本地（手改条目不被覆盖），不在这里回写；
+            // 列不存在时行里没有这个键，自然不碰
+            if (!row.isNull("app_lists")) {
+                JSONObject rl = row.optJSONObject("app_lists");
+                if (rl != null) AppLists.merge(c, rl);
+            }
             if (!row.isNull("self_checks")) {
                 SelfChecks.merge(c, row.optJSONArray("self_checks"));
             }
@@ -438,7 +455,7 @@ public final class SbSync {
             if (us.length() == 0) return "云端还没有日程";
             JSONObject sch = us.getJSONObject(0).optJSONObject("schedule");
             if (sch == null) return "云端现在没有日程";
-            if (!TaskItem.today().equals(sch.optString("date", ""))) return "云端日程不是今天的，先让 Muse 重排";
+            if (!TaskItem.today().equals(sch.optString("date", ""))) return "云端日程不是今天的，先在日历页点「AI 重排」排一版今天的";
             JSONArray blocks = sch.optJSONArray("blocks");
             if (blocks == null) return "日程里没有时段块";
             boolean hit = false;
@@ -780,50 +797,35 @@ public final class SbSync {
         new Thread(() -> pushOneVerified(app, new TaskStore(app), taskId)).start();
     }
 
-    // ---------------- 问 AI 重排（v1.20.0） ----------------
-    public interface RescheduleCallback {
-        /** 主线程回调：ok=true 请求已写入云端；err 非空为给用户看的失败原因。 */
-        void onResult(boolean ok, String err);
-    }
-
+    // ---------------- 任务软件名单生成请求（v1.26.0） ----------------
     /**
-     * 点「问 AI 重排」：把 user_state.reschedule_request 写成 pending
-     * （{date: 今天, requested_at: 现在 ISO, status:"pending"}），Muse 侧监视到后
-     * 重排并把新 schedule 写回 user_state.schedule、status 改 done/failed。
-     * 列（reschedule_request）未就绪时按既有纪律不碰它，直接报「还没就绪」。
-     * 本方法自开后台线程，回调回主线程。
+     * 开始计时一个还没有名单的任务时（AppLists.maybeRequest 收口），把
+     * user_state.app_list_request 写成 pending：{status, taskId, taskTitle, note,
+     * apps[至多 100], requestedAt}。云端巡查分类后把结果写回 user_state.app_lists，
+     * 由 syncUserState 的合并落到本地（AppLists.merge）。列（app_list_request）
+     * 未就绪时按既有纪律完全不碰、静默返回（功能走本地兜底名单）。
+     * 必须在后台线程调用；写成功才给该任务落 pending 标记（AppLists.markPending），
+     * 失败不标记，下次开始同一任务再试。
      */
-    public static void requestReschedule(final Context c, final RescheduleCallback cb) {
-        final Context app = c.getApplicationContext();
-        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-        new Thread(() -> {
-            boolean ok = false;
-            String err;
-            try {
-                if (!Supa.isLoggedIn(app)) {
-                    err = "还没登录：先登录，再用「问 AI 重排」";
-                } else if (!probeUserStateCol(app, "reschedule_request")) {
-                    err = "重排通道还没就绪（数据库缺 reschedule_request 列）";
-                } else {
-                    JSONObject req = new JSONObject();
-                    req.put("date", TaskItem.today());
-                    req.put("requested_at", TaskItem.nowIso());
-                    req.put("status", "pending");
-                    JSONObject write = new JSONObject();
-                    write.put("user_id", Supa.userId(app));
-                    write.put("reschedule_request", req);
-                    Supa.restUpsertOne(app, "user_state", "user_id", write);
-                    SyncManager.cacheReschedule(app, req); // 本地先行镜像，按钮立刻转「重排中…」
-                    ok = true;
-                    err = null;
-                }
-            } catch (Exception e) {
-                err = "重排请求没发出去：" + e.getMessage();
-            }
-            final boolean fok = ok;
-            final String ferr = err;
-            main.post(() -> { if (cb != null) cb.onResult(fok, ferr); });
-        }).start();
+    public static void requestAppList(Context c, String taskId, String taskTitle,
+                                      String note, JSONArray apps) {
+        try {
+            if (!Supa.isLoggedIn(c)) return;
+            if (!probeUserStateCol(c, "app_list_request")) return;
+            JSONObject req = new JSONObject();
+            req.put("status", "pending");
+            req.put("taskId", taskId);
+            req.put("taskTitle", taskTitle == null ? "" : taskTitle);
+            req.put("note", note == null ? "" : note);
+            req.put("apps", apps == null ? new JSONArray() : apps);
+            req.put("requestedAt", TaskItem.nowIso());
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("app_list_request", req);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            AppLists.markPending(c, taskId);
+            TimerState.logEvent(c, "软件名单：已为「" + taskTitle + "」发出生成请求，名单到达前用通用名单兜底");
+        } catch (Exception ignored) { }
     }
 
     // ---------------- 签名与探测 ----------------

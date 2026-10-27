@@ -103,7 +103,7 @@ public class TaskStore {
         v.sort((a, b) -> {
             int da = a.isDoneToday() ? 1 : 0, db = b.isDoneToday() ? 1 : 0;
             if (da != db) return da - db;
-            int pa = "must".equals(a.priority) ? 0 : 1, pb = "must".equals(b.priority) ? 0 : 1;
+            int pa = TaskItem.priorityRank(a.priority), pb = TaskItem.priorityRank(b.priority);
             if (pa != pb) return pa - pb;
             String ea = effDate(a), eb = effDate(b);
             if (ea == null && eb != null) return 1;

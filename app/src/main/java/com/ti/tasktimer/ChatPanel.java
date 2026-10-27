@@ -486,9 +486,8 @@ public class ChatPanel {
                         : (en() ? "Rename to \"" : "标题改为「") + p.optString("title").trim() + (en() ? "\"" : "」"));
             }
             if (p.has("priority") && !p.optString("priority").trim().isEmpty()) {
-                boolean must = "must".equals(p.optString("priority").trim());
-                lines.add((en() ? "Priority: " : "优先级：") + (must
-                        ? (en() ? "Must-do" : "必做") : (en() ? "Secondary" : "次要")));
+                lines.add((en() ? "Priority: " : "优先级：")
+                        + TaskItem.priorityLabel(p.optString("priority").trim(), en()));
             }
             JSONArray subs = p.optJSONArray("subtasks");
             if (subs != null && subs.length() > 0) {
@@ -570,7 +569,8 @@ public class ChatPanel {
         }
         if (p.has("priority")) {
             String pr = p.optString("priority", "").trim();
-            if ("must".equals(pr) || "secondary".equals(pr)) t.priority = pr;
+            if ("must".equals(pr) || "important".equals(pr)
+                    || "secondary".equals(pr) || "leisure".equals(pr)) t.priority = pr;
         }
         JSONArray subs = p.optJSONArray("subtasks");
         if (subs != null && subs.length() > 0) {
@@ -1018,7 +1018,7 @@ public class ChatPanel {
         }
         sb.append("其余字段全部可选，只放你真要改的：title 任务标题；durationMinutes 计划时长（分钟整数）；")
           .append("deadline 截止日期 YYYY-MM-DD；nextStartAt 计划开始时间 YYYY-MM-DDTHH:mm；")
-          .append("priority 优先级，must＝必做、secondary＝次要；")
+          .append("priority 优先级，must＝必做、important＝重要、secondary＝次要、leisure＝休息（娱乐类，永不自动排进日程）；")
           .append("subtasks 子任务数组，给出即整体替换子任务，总时长按子任务之和重算（此时不要再同时给 durationMinutes）。")
           .append("一次回复最多给一个任务提案。提案只是建议：用户点「应用」才生效，删除也不例外；点「不用」就当没提过。")
           .append("只是闲聊或追问时不要输出代码块。");
@@ -1077,7 +1077,7 @@ public class ChatPanel {
             if (open < 25) {
                 allOpen.append("- 〔").append(t.id).append("〕").append(t.title)
                         .append("（").append(t.durationMinutes).append(" 分钟，")
-                        .append(must ? "必做" : "次要").append("）\n");
+                        .append(TaskItem.priorityLabel(t.priority, false)).append("）\n");
                 open++;
             }
         }
@@ -1100,7 +1100,7 @@ public class ChatPanel {
           .append("blocks 给出你建议的、尚未开始的块；unscheduled 放实在排不下的任务名，没有就给空数组。")
           .append("排程硬规矩，必须遵守：")
           .append("每件任务按它的计划时长×1.5 留缓冲来占时间；")
-          .append("必做任务优先排；")
+          .append("优先级顺序：必做优先、其次重要、再次次要；休息（leisure）是娱乐类，永不排进日程；")
           .append("已经过去的块和已完成任务的块不许动，也不要把它们写进 blocks（应用时它们会被原样保留）；")
           .append("块的开始时间不许早于现在；")
           .append("不许排过 22:30；")

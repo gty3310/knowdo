@@ -17,8 +17,8 @@ import java.util.Set;
 
 /**
  * 屏幕内容守卫的判定事件记录：本地存应用私有文件 guard_events.json，
- * 同步时并入桥 tasks.json 顶层 guardEvents 数组（只含时间/类别/置信度/证据文字，
- * 绝不含截图原图——原图从不落盘，见 ScreenCaptureService）。
+ * 同步时并入云端 user_state 的 guard_events（只含时间/类别/置信度/证据文字，
+ * 绝不含截图原图——原图从不落盘，见 KnowDoAccessibilityService）。
  * 上限 200 条，超出丢最旧的。
  */
 public final class GuardEvents {

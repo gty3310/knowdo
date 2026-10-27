@@ -3,11 +3,11 @@ package com.ti.tasktimer;
 import android.graphics.Bitmap;
 
 /**
- * 帧级小工具（两个截图通道共用）：
+ * 帧级小工具（无障碍截图通道用）：
  * aHash —— 8×8 灰度均值感知哈希，采样格中心像素即可，不缩放整图，成本可忽略；
  *         连续两帧哈希相同视为「画面未变」，跳过分析省电（v1.21.0）。
  * isBlackFrame —— FLAG_SECURE 界面（银行/无痕）截出来是纯黑帧，只记不可见、不判定；
- *         原是 ScreenCaptureService 的私有实现，v1.21.0 起两通道共用这一份。
+ *         v1.26.0 起截图只走无障碍一条通道，本工具由它独用。
  */
 public final class FrameUtil {
     private FrameUtil() {}

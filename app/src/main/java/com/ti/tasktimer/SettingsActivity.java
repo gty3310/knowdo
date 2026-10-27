@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -20,11 +19,11 @@ import android.widget.Toast;
  * 设置页（v1.8.0 新设）：按「账号／显示／守卫／通用」四组承接原主页顶栏、权限页的全部设置与入口。
  * 红线：只是搬位置——开关都写回各自原有的存储（SyncManager / ScreenGuardPrefs / FloatingWindow /
  * Ui 本地偏好），同步与守卫语义一律不变。
- * v1.9.0：账号区状态精简为一行、桥文件行只显示已选择/未选择、「实时同步」开关整行去掉
- * （云端实时推送常开，语义见 SyncManager.realtimeEnabled）。
+ * v1.9.0：账号区状态精简为一行、「实时同步」开关整行去掉（云端实时推送常开）。
+ * v1.26.0：Drive 桥整套移除——桥文件行、选文件流程与桥状态文案一并删去，
+ * 账号组只剩云端账号与立即同步。
  */
 public class SettingsActivity extends Activity {
-    private static final int REQ_PICK_BRIDGE = 42;
     private TaskStore store;
     private LinearLayout root;
 
@@ -46,14 +45,6 @@ public class SettingsActivity extends Activity {
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
-
-    /** 桥文件的显示名（Drive 文档 Uri 取最后一段并解码，没有现成 helper）。 */
-    private static String bridgeName(Uri uri) {
-        String seg = uri.getLastPathSegment();
-        if (seg == null) return uri.toString();
-        try { return java.net.URLDecoder.decode(seg, "UTF-8"); }
-        catch (Exception e) { return seg; }
-    }
 
     // ---------------- 骨架 ----------------
 
@@ -255,7 +246,8 @@ public class SettingsActivity extends Activity {
             }
             return SbSync.statusText(this, store);
         }
-        return Strings.bridgeModeLabel();
+        return Strings.en() ? "Not signed in — tap Account to sign in"
+                : "未登录，点「账号」登录后走云端同步";
     }
 
     private void buildAccountGroup() {
@@ -266,36 +258,8 @@ public class SettingsActivity extends Activity {
                 v -> AccountUi.show(this, store, this::buildUi));
         row(Strings.rowSyncNow(), null, arrowBtn("›"),
                 v -> AccountUi.runSync(this, store, this::buildUi, true));
-        // 「实时同步」开关已按用户定案去掉（v1.9.0）：云端模式实时推送常开，
-        // 桥模式维持原 30 秒轮询，常开语义收进 SyncManager.realtimeEnabled。
-        Uri uri = SyncManager.getUri(this);
-        row(Strings.rowBridgeFile(), uri == null ? Strings.rowBridgeNone()
-                        : Strings.rowBridgeSelected(),
-                arrowBtn(Strings.rowBridgePick()), v -> pickBridgeFile());
-    }
-
-    private void pickBridgeFile() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("*/*");
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_PICK_BRIDGE);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK_BRIDGE || resultCode != RESULT_OK || data == null
-                || data.getData() == null) return;
-        Uri uri = data.getData();
-        try {
-            getContentResolver().takePersistableUriPermission(uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-        } catch (Exception ignored) { }
-        SyncManager.setUri(this, uri);
-        toast((Strings.en() ? "Bridge file: " : "已选桥文件：") + bridgeName(uri));
-        if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-        AccountUi.runSync(this, store, this::buildUi, true);
+        // 「实时同步」开关已按用户定案去掉（v1.9.0）：云端实时推送常开，
+        // 常开语义收进 SyncManager.realtimeEnabled。
     }
 
     // ---------------- 显示组 ----------------
@@ -400,17 +364,17 @@ public class SettingsActivity extends Activity {
             if (on) {
                 // v1.21.4：模型按需下载后，开守卫先过闸门——模型没下好先弹下载引导，不直接开
                 GuardEnableGate.tryEnable(this, () -> toast(Strings.en()
-                        ? "Screen content guard on"
-                        : "屏幕内容守卫已打开：下次开始计时时会请你授权一次截屏"));
+                        ? "Screen content guard on: screenshots come only from the accessibility channel"
+                        : "屏幕内容守卫已打开：截图只走无障碍通道"));
             } else {
                 ScreenGuardPrefs.setEnabled(this, false);
-                ScreenCaptureService.onTimerStopped(this);
+                KnowDoAccessibilityService.onTimerStopped(this);
                 toast(Strings.en() ? "Screen content guard off" : "屏幕内容守卫已关闭");
             }
             buildUi();
         });
-        row(Strings.rowScreenGuard(), Strings.en() ? "Details & capture grant live in Permissions"
-                : "细项与截屏授权在权限页", sg, null);
+        row(Strings.rowScreenGuard(), Strings.en() ? "Details live in Permissions"
+                : "细项在权限页里", sg, null);
         Switch ns = mkSwitch(ScreenGuardPrefs.nsfwOneShot(this));
         ns.setOnCheckedChangeListener((b, on) -> {
             ScreenGuardPrefs.setNsfwOneShot(this, on);
@@ -439,6 +403,21 @@ public class SettingsActivity extends Activity {
                         + "online verdicts judge with them included"
                         : "守卫判错时你留下的纪律，联网判定会带着它一起判；在这里查看、删除",
                 arrowBtn("›"), v -> startActivity(new Intent(this, GuardRulesActivity.class)));
+        // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单弹问询，兜底名单也停
+        Switch al = mkSwitch(ScreenGuardPrefs.appListsEnabled(this));
+        al.setOnCheckedChangeListener((b, on) -> {
+            ScreenGuardPrefs.setAppListsEnabled(this, on);
+            toast(on ? (Strings.en() ? "App lists on" : "任务软件名单已打开")
+                    : (Strings.en() ? "App lists off: no requests, no list-based inquiries"
+                    : "任务软件名单已关闭：不再发名单请求，也不再按名单弹问询"));
+        });
+        row(Strings.en() ? "Per-task app lists" : "任务软件名单",
+                Strings.en() ? "When a task starts, your frequently used apps are sorted into "
+                        + "white / grey / black for that task in the background. Opening a blacklisted "
+                        + "app during the task asks right away; whitelisted apps never trigger focus-rule inquiries"
+                        : "开始任务时，常用软件会被按这个任务分成白、灰、黑三档（在后台生成）。计时中打开"
+                        + "黑名单软件立刻弹问询，白名单软件不再触发专注规则问询。在任务详情里点「软件名单」查看和改档",
+                al, null);
         // 测试者模式（内部 key diag_mode，v1.24.1 由暂名「测试模式」正式改名，用户钦定）：
         // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
         Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));

@@ -19,13 +19,23 @@ import org.json.JSONObject;
  * 本类只存「门行为」状态（本机 prefs morning_gate，不进同步——与 FloatSnooze 同类）：
  * - snooze_until：暂停推后的截止时刻（ms）。持久化：杀进程/重启后以它为准续排闹钟；
  * - pulled_session：首触自动路径已经拉起过的 session 日（同一 session 只自动拉一次，
- *   之后靠推后闹钟或用户自己打开知行走 MainActivity.onResume 入口）。
+ *   之后靠推后闹钟或用户自己打开知行走 MainActivity.onResume 入口）；
+ * - nag_session / nag_next_at：5 分钟重弹循环（v1.26.0）——晨间页一旦以门模式
+ *   展示过（engageNag），未提交、又没选「暂停一会儿」推迟时，每 5 分钟经
+ *   AlertHelper.fireMorning 全屏再拉一次；按 Home/返回/切走一律不算推迟，
+ *   照样弹回。提交（onCompleted）当天永久停；点推迟（snooze）循环暂停，
+ *   推后到点由 MorningReceiver 拉回页面、展示时重新 engage。两个字段都落盘，
+ *   杀进程/重启后由 ensureScheduled 按 nag_next_at 续排（已过点补一拍）。
  * 「完成与否」的内容状态仍在 HabitData.morningDone（habit_data 同步），本类不碰内容。
  */
 public final class MorningGate {
     private static final String PREF = "morning_gate";
     private static final String ACTION_DEFER = "com.ti.tasktimer.MORNING_DEFER";
+    static final String ACTION_NAG = "com.ti.tasktimer.MORNING_NAG";
     private static final int REQ_DEFER = 779;
+    private static final int REQ_NAG = 780;
+    /** 重弹节奏：固定 5 分钟（用户 2026-10-27 亲口定）。 */
+    private static final long NAG_INTERVAL_MS = 5 * 60_000L;
 
     /** 晨间页点「暂停一会儿」退下后，紧接着的那次 MainActivity.onResume 不要立刻把页拉回来。 */
     private static volatile boolean suppressResumePull = false;
@@ -44,11 +54,13 @@ public final class MorningGate {
         return snoozeUntil(c) > System.currentTimeMillis();
     }
 
-    /** 点「暂停一会儿」选定分钟数：落盘截止时刻＋排精确闹钟＋标记下一次 onResume 不拉回。 */
+    /** 点「暂停一会儿」选定分钟数：落盘截止时刻＋排精确闹钟＋标记下一次 onResume 不拉回。
+     *  同时暂停 5 分钟重弹循环（nag_session 保留，推后到点拉回页面时重新 engage）。 */
     public static void snooze(Context c, long delayMs) {
         long until = System.currentTimeMillis() + Math.max(60_000L, delayMs);
         sp(c).edit().putLong("snooze_until", until).apply();
         suppressResumePull = true;
+        cancelNagAlarm(c);
         scheduleAlarm(c, until);
         TimerState.logEvent(c, "晨间页暂停一会儿：" + (delayMs / 60000) + " 分钟后再次拉起");
     }
@@ -75,6 +87,75 @@ public final class MorningGate {
         else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(c));
     }
 
+    // ---------------- 5 分钟重弹循环（v1.26.0） ----------------
+
+    private static PendingIntent nagAlarmIntent(Context c) {
+        Intent i = new Intent(c, MorningReceiver.class);
+        i.setAction(ACTION_NAG);
+        return PendingIntent.getBroadcast(c, REQ_NAG, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static void scheduleNag(Context c, long at) {
+        sp(c).edit().putLong("nag_next_at", at).apply();
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
+        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, nagAlarmIntent(c));
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, nagAlarmIntent(c));
+    }
+
+    private static void cancelNagAlarm(Context c) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am != null) am.cancel(nagAlarmIntent(c));
+    }
+
+    /**
+     * 晨间页以门模式展示出来时调用：本 session 进入重弹循环——从这一刻起，
+     * 未提交、未选推迟，就每 5 分钟全屏再拉一次（onNagTick）。落盘 nag_session，
+     * 进程被杀/重启后由 ensureScheduled 续排。
+     */
+    public static void engageNag(Context c, String session) {
+        if (session == null || session.isEmpty()) return;
+        sp(c).edit().putString("nag_session", session).apply();
+        scheduleNag(c, System.currentTimeMillis() + NAG_INTERVAL_MS);
+    }
+
+    /** 彻底停掉重弹循环并清状态（晨间完成、或 session 已变时调用）。 */
+    public static void stopNag(Context c) {
+        sp(c).edit().remove("nag_session").remove("nag_next_at").apply();
+        cancelNagAlarm(c);
+    }
+
+    /**
+     * 重弹闹钟到点（MorningReceiver 转发）：核对状态后决定这一拍拉不拉——
+     * 晨间已完成/session 已变 → 停循环；正在推后期 → 顺延到推后到点之后；
+     * 晨间页正在显、知行自己的页面在前台、正在通话 → 不抢，顺延 5 分钟再试；
+     * 其余情况（计时/暂停等一律不豁免，晨间门优先级最高）→ 全屏拉起并排下一拍。
+     */
+    public static void onNagTick(Context c) {
+        try {
+            JSONObject root = HabitData.load(c);
+            String session = HabitData.sessionDate(root);
+            if (!session.equals(sp(c).getString("nag_session", ""))) { stopNag(c); return; }
+            if (!HabitData.shouldShowMorning(root)) { stopNag(c); return; }
+            long now = System.currentTimeMillis();
+            if (snoozeActive(c)) {
+                ensureScheduled(c); // 推后闹钟续上，推后到点拉回后展示时会重新 engage
+                scheduleNag(c, Math.max(now + NAG_INTERVAL_MS, snoozeUntil(c)));
+                return;
+            }
+            if (TopPages.morningShown || KnowDoApp.ownActivityVisible() || inCall(c)) {
+                scheduleNag(c, now + NAG_INTERVAL_MS);
+                return;
+            }
+            sp(c).edit().putString("pulled_session", session).apply();
+            TimerState.logEvent(c, "晨间门：未提交也未选推迟，5 分钟到点再次全屏拉起");
+            AlertHelper.fireMorning(c);
+            scheduleNag(c, now + NAG_INTERVAL_MS);
+        } catch (Exception ignored) { }
+    }
+
     /**
      * 开机/服务启动时按持久化状态续排：闹钟不跨重启保留。
      * 未到点 → 按原时刻重排；已过点（推后期间关机/被杀没响成）→ 1 秒后补响当前轮，
@@ -82,9 +163,22 @@ public final class MorningGate {
      */
     public static void ensureScheduled(Context c) {
         long until = snoozeUntil(c);
-        if (until == 0L) return;
-        long now = System.currentTimeMillis();
-        scheduleAlarm(c, until > now ? until : now + 1_000L);
+        if (until != 0L) {
+            long now = System.currentTimeMillis();
+            scheduleAlarm(c, until > now ? until : now + 1_000L);
+        }
+        // 重弹循环续排（v1.26.0）：nag_session 仍是当前 session、晨间未完成、
+        // 不在推后期 → 按落盘的 nag_next_at 续排（已过点 1 秒后补一拍，由 onNagTick 复核）
+        try {
+            JSONObject root = HabitData.load(c);
+            String ns = sp(c).getString("nag_session", "");
+            if (!ns.isEmpty() && ns.equals(HabitData.sessionDate(root))
+                    && HabitData.shouldShowMorning(root) && !snoozeActive(c)) {
+                long next = sp(c).getLong("nag_next_at", 0);
+                long now = System.currentTimeMillis();
+                scheduleNag(c, next > now ? next : now + 1_000L);
+            }
+        } catch (Exception ignored) { }
     }
 
     // ---------------- 首触自动拉起 ----------------
@@ -137,9 +231,10 @@ public final class MorningGate {
     /** 晨间页（门/测试模式）展示出来：推后闹钟的使命已达，清掉推后状态与闹钟。 */
     public static void onGateShown(Context c) { clearSnooze(c); }
 
-    /** 晨间完成：推后状态与全屏通知一并收尾。 */
+    /** 晨间完成：推后状态、全屏通知与重弹循环一并收尾（当天永久停）。 */
     public static void onCompleted(Context c) {
         clearSnooze(c);
+        stopNag(c);
         AlertHelper.cancelMorning(c);
     }
 

@@ -93,6 +93,9 @@ public class MorningActivity extends Activity {
             session = baseSession;
             // 门/测试页展示出来：推后闹钟的使命已达，清掉推后状态（完成或再暂停时另行处理）
             MorningGate.onGateShown(this);
+            // 门模式自此进入 5 分钟重弹循环（v1.26.0）：未提交、未选推迟就每 5 分钟
+            // 弹回，直到提交或选了推迟时长；测试页只是验收工具，不进循环
+            if (!testMode) MorningGate.engageNag(this, session);
         }
         logDate = HabitData.logDateFor(session);
         habits = HabitData.habits(root);

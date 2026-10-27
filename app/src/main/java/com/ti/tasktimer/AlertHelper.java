@@ -363,6 +363,15 @@ public final class AlertHelper {
 
     /** 专注守卫问询页的统一出口：与计时提醒同一策略（亮屏直接启动，锁屏走 FSI 通知）。 */
     public static void fireGuard(Context c, String fgPkg) {
+        fireGuard(c, fgPkg, null);
+    }
+
+    /**
+     * 带一句理由的问询（v1.26.0，任务软件名单黑名单命中时用）：reason 是给用户看的
+     * 一句完整的话（如「你打开了「抖音」，它在「读经典」的黑名单里」），经
+     * GuardActivity.EXTRA_REASON 带到问询页副文案；为 null 时走原文案。
+     */
+    public static void fireGuard(Context c, String fgPkg, String reason) {
         createChannels(c);
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
@@ -372,6 +381,7 @@ public final class AlertHelper {
             try {
                 Intent direct = new Intent(c, GuardActivity.class);
                 direct.putExtra(GuardActivity.EXTRA_PKG, fgPkg);
+                if (reason != null) direct.putExtra(GuardActivity.EXTRA_REASON, reason);
                 direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 c.startActivity(direct);
                 TimerState.logEvent(c, "已直接弹出专注守卫页（亮屏路径）");
@@ -382,6 +392,7 @@ public final class AlertHelper {
         }
         Intent intent = new Intent(c, GuardActivity.class);
         intent.putExtra(GuardActivity.EXTRA_PKG, fgPkg);
+        if (reason != null) intent.putExtra(GuardActivity.EXTRA_REASON, reason);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         PendingIntent pi = PendingIntent.getActivity(c, NOTIF_GUARD, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

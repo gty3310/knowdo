@@ -94,7 +94,7 @@ public class CurrentTaskActivity extends Activity {
         });
         bar.addView(toList);
         Button toClaude = new Button(this);
-        toClaude.setText("回到 Muse");
+        toClaude.setText("回到 AI 助手");
         toClaude.setTextSize(16);
         LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(56), 1f);
         lp2.setMargins(dp(10), 0, 0, 0);
@@ -135,7 +135,7 @@ public class CurrentTaskActivity extends Activity {
         String[] labels = new String[apps.size()];
         for (int i = 0; i < apps.size(); i++) labels[i] = apps.get(i).label;
         new AlertDialog.Builder(this)
-                .setTitle("哪个是 Muse？选一次，我记住")
+                .setTitle("哪个是你的 AI 助手？选一次，我记住")
                 .setItems(labels, (d, which) -> {
                     String p = apps.get(which).pkg;
                     FocusGuard.setMusePackage(this, p);

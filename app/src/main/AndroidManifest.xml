@@ -9,8 +9,6 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- 屏幕内容守卫：MediaProjection 采集前台服务类型（安卓 14+ 必须声明） -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -65,14 +63,8 @@
             android:name=".CalendarActivity"
             android:exported="false" />
 
-        <!-- 屏幕内容守卫采集服务（回退通道）：无障碍未开启时计时期间随机采样屏幕（MediaProjection，仅本机分析） -->
-        <service
-            android:name=".ScreenCaptureService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
-
-        <!-- 屏幕内容守卫无障碍通道（v1.21.0 首选）：一次性截图 + 节点文字预筛，
-             采样宿主也在这里；由用户在系统无障碍设置里手动开启，本应用无权代开 -->
+        <!-- 屏幕内容守卫无障碍通道（v1.21.0 首选，v1.26.0 起唯一通道）：一次性截图
+             + 节点文字预筛，采样宿主也在这里；由用户在系统无障碍设置里手动开启，本应用无权代开 -->
         <service
             android:name=".KnowDoAccessibilityService"
             android:exported="false"
@@ -86,7 +78,7 @@
                 android:resource="@xml/knowdo_accessibility_service" />
         </service>
 
-        <!-- 实时同步服务：桥模式每 30 秒轮询 Drive 桥文件；Supabase 模式走 Realtime 推送 + 30 秒对账；
+        <!-- 实时同步服务（v1.26.0 起只有 Supabase 一条路）：Realtime 推送 + 30 秒对账；
              有新任务自动合并、带立即开始标记的自动开始计时，计时状态跨设备镜像 -->
         <service
             android:name=".SyncService"
@@ -94,7 +86,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="与云端任务清单同步（桥文件轮询或 Supabase 实时推送），发现立即开始标记时自动启动任务倒计时，计时状态跨设备同步" />
+                android:value="与云端任务清单同步（Supabase 实时推送＋定期对账），发现立即开始标记时自动启动任务倒计时，计时状态跨设备同步" />
         </service>
 
         <receiver
@@ -304,6 +296,11 @@
         <!-- 我的纪律页（v1.24.3）：问询页「分析错误」留下的纪律，查看与逐条删除 -->
         <activity
             android:name=".GuardRulesActivity"
+            android:exported="false" />
+
+        <!-- 软件名单页（v1.26.0）：看某任务的三档名单、点软件改档；普通设置页 -->
+        <activity
+            android:name=".AppListActivity"
             android:exported="false" />
 
         <!-- AI 对话页（v1.22.0）：带任务聊成型＋提案卡，或通用聊天；历史只存本机 -->

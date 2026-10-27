@@ -222,7 +222,7 @@ public class FloatingWindow {
         hide();
         build(c.getApplicationContext());
         if (rootView == null) {
-            android.widget.Toast.makeText(c, "悬浮窗创建失败，请把现象告诉 Muse", android.widget.Toast.LENGTH_LONG).show();
+            android.widget.Toast.makeText(c, "悬浮窗创建失败，请把现象反馈给开发者", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         if (titleView != null) titleView.setText("预览：这里显示当前第一要务");
@@ -877,7 +877,7 @@ public class FloatingWindow {
         if (fromEnd && noteDirty) {
             TimerState.logEvent(c, "悬浮窗笔记[" + t.title + "]：" + v);
             final Context app = c.getApplicationContext();
-            new Thread(() -> SyncManager.syncNow(app, new TaskStore(app))).start();
+            new Thread(() -> SbSync.syncNow(app, new TaskStore(app))).start();
         }
     }
 

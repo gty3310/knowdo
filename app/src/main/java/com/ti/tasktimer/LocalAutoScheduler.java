@@ -17,9 +17,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 本地自动排程（v1.23.0，用户定案的生效口径：新增与滚入自动排、挪动已有走提案卡）：
- * 今日必做（含滚入）且还没排进今日 schedule 的任务，由 App 自己按 duration×1.5
+ * 今日任务（含滚入）且还没排进今日 schedule 的，由 App 自己按 duration×1.5
  * 填进今天剩下的空档——只填空档：已有块、已过去的时段一律不动、不重叠、
  * 不排过 22:30；排不下的不硬塞，留给时间账下方的点名行。
+ * v1.26.0 优先级扩为四档后的填充口径：按 必做 → 重要 → 次要 的顺序填
+ * （同档内 deadline 近的先）；休息（leisure）是娱乐类，永不自动排。
  *
  * 分工：本类只有纯算法（plan）＋快照/触发脚手架；真正落盘走 SyncManager 的
  * sanction 写入口（autoFillSchedule），写前在那边回读云端最新 schedule 合并，
@@ -52,6 +54,7 @@ public final class LocalAutoScheduler {
         public final String deadline;
         public final long createdAtMs;
         public final boolean must;
+        public final int rank; // 优先级档位序（TaskItem.priorityRank：0 必做 1 重要 2 次要 3 休息）
         public final boolean doneToday;
         Candidate(TaskItem t) {
             id = t.id;
@@ -60,6 +63,7 @@ public final class LocalAutoScheduler {
             deadline = t.deadline;
             createdAtMs = t.createdAtMs;
             must = "must".equals(t.priority);
+            rank = TaskItem.priorityRank(t.priority);
             doneToday = t.isDoneToday();
         }
     }
@@ -131,8 +135,9 @@ public final class LocalAutoScheduler {
     }
 
     /**
-     * 纯算法：把未排的必做候选按 ×1.5 填进 [nowMin, 22:30] 扣掉已有块后的空档。
-     * 候选顺序：deadline 近的先（无 deadline 最后）、同 deadline 按创建先后。
+     * 纯算法：把未排候选按 ×1.5 填进 [nowMin, 22:30] 扣掉已有块后的空档。
+     * 候选顺序（v1.26.0）：先按档位——必做、重要、次要；同档内 deadline 近的先
+     * （无 deadline 最后）、同 deadline 按创建先后。休息档（rank 3）永不填。
      * 已有块原样视为占用，本方法从不产出与已有块重叠、或开始时间早于 nowMin 的块。
      */
     public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin) {
@@ -145,11 +150,12 @@ public final class LocalAutoScheduler {
         }
         List<Candidate> todo = new ArrayList<>();
         for (Candidate cd : cands) {
-            if (!cd.must || cd.doneToday) continue;
+            if (cd.rank >= 3 || cd.doneToday) continue; // 休息档永不自动排
             if (scheduledIds.contains(cd.id)) continue;
             todo.add(cd);
         }
         todo.sort((a, b) -> {
+            if (a.rank != b.rank) return Integer.compare(a.rank, b.rank);
             String da = a.deadline, db = b.deadline;
             if (da == null && db != null) return 1;
             if (da != null && db == null) return -1;
@@ -216,7 +222,7 @@ public final class LocalAutoScheduler {
         return plan(snapshot(store), base, DayAccount.nowMinutes());
     }
 
-    /** 还有没排进今天的必做吗（本地口径，触发短路用）。 */
+    /** 还有没排进今天的可填任务吗（必做/重要/次要，本地口径，触发短路用）。 */
     public static boolean hasUnscheduledMust(Context c, TaskStore store) {
         Plan p = computeLocal(c, store);
         return !p.additions.isEmpty() || !p.overflow.isEmpty();

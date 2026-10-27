@@ -7,20 +7,16 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 
-import java.io.InputStream;
-
 /**
- * 实时同步服务：前台服务（低打扰常驻通知），每 30 秒检查一次 Drive 桥文件。
- * 文件有变化 → 合并进本地（SyncManager.syncNow）→ 发广播让主界面刷新；
- * 发现 autoStart=true 的新任务且当前没有计时在跑 → 立即开始它的倒计时，
- * 并把 autoStart 回写为 false（新时间戳，合并时胜出）防止重复启动。
- * 30 秒级轮询是 Drive 桥下能做到的近实时方案；真正的秒级推送需换 Firebase/FCM。
+ * 实时同步服务：前台服务（低打扰常驻通知），持有 Supabase Realtime 推送连接，
+ * 并每 30 秒跑一次全量对账兜底（SbSync.syncNow：漏掉的变更、autoStart 立即
+ * 开始、计时状态跨设备镜像都在对账里收敛）。云端有更新 → 发广播让主界面刷新。
+ * （v1.26.0：本服务原有的 Drive 桥 30 秒轮询支路随桥整套移除，只剩 Supabase。）
  */
 public class SyncService extends Service {
     public static final String ACTION_SYNC_UPDATED = "com.ti.tasktimer.SYNC_UPDATED";
@@ -31,7 +27,6 @@ public class SyncService extends Service {
     private HandlerThread thread;
     private Handler handler;
     private volatile boolean running = false;
-    private int lastHash = Integer.MIN_VALUE;
 
     public static void start(Context c) {
         Intent i = new Intent(c, SyncService.class);
@@ -47,9 +42,7 @@ public class SyncService extends Service {
     public void onCreate() {
         super.onCreate();
         createChannel();
-        startForeground(NOTIF_ID, buildNotification(SyncManager.isSupabaseMode(this)
-                ? "Supabase 实时同步中：云端推送 + 每 30 秒对账"
-                : "每 30 秒与 Drive 任务清单同步一次"));
+        startForeground(NOTIF_ID, buildNotification("Supabase 实时同步中：云端推送 + 每 30 秒对账"));
         thread = new HandlerThread("knowdo-sync");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -73,60 +66,11 @@ public class SyncService extends Service {
     };
 
     private void tick() {
-        if (SyncManager.isSupabaseMode(this)) {
-            sbTick();
-            return;
-        }
-        Uri uri = SyncManager.getUri(this);
-        if (uri == null) return;
-        String content;
-        try {
-            InputStream in = getContentResolver().openInputStream(uri);
-            if (in == null) return;
-            content = TaskStore.readAll(in);
-        } catch (Exception e) {
-            return; // 读不到（离线/Drive 未就绪）就等下一轮
-        }
-        int h = content.hashCode();
-        if (h == lastHash) return;
-        boolean first = (lastHash == Integer.MIN_VALUE);
-        lastHash = h;
-        TaskStore store = new TaskStore(this);
-        String result = SyncManager.syncNow(this, store);
-        SyncManager.setLastResult(this, result);
-        if (!first) {
-            TimerState.logEvent(this, "实时同步：" + result);
-            sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
-            updateNotification("最近同步：" + result);
-        }
-        handleAutoStart(store);
+        SupaRealtime.ensure(this, rtListener);
+        sbReconcile(null);
     }
 
-    private void handleAutoStart(TaskStore store) {
-        // v1.16.1 定案：同 SbSync——远程触发的开始直接切换，不等空闲轮次。
-        for (TaskItem t : store.tasks) {
-            if (t.deleted || !t.autoStart) continue;
-            if (SyncManager.autoStartHandled(this, t.id)) {
-                // 已处理过但标记还在（桥端可能又写回旧版）：清掉标记防反复
-                t.autoStart = false;
-                t.touch();
-                store.save();
-                continue;
-            }
-            SyncManager.markAutoStartHandled(this, t.id);
-            t.autoStart = false;
-            t.touch();
-            store.save();
-            TimerService.startTimer(this, Math.max(1, t.durationMinutes) * 60, t.id, t.title);
-            TimerState.logEvent(this, "实时同步：自动开始计时[" + t.title + "] " + t.durationMinutes + " 分钟");
-            SyncManager.syncNow(this, store); // 把清掉的标记回写到桥
-            lastHash = Integer.MIN_VALUE;    // 强制下一轮重新读桥确认
-            sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
-            break; // 一次只启动一个
-        }
-    }
-
-    // ---------------- Supabase 模式（v1.7.0）：Realtime 推送为主，每 30 秒全量对账兜底 ----------------
+    // ---------------- Realtime 推送 + 30 秒对账 ----------------
     private boolean sbFirst = true;
 
     private final SupaRealtime.Listener rtListener = new SupaRealtime.Listener() {
@@ -150,11 +94,6 @@ public class SyncService extends Service {
             });
         }
     };
-
-    private void sbTick() {
-        SupaRealtime.ensure(this, rtListener);
-        sbReconcile(null);
-    }
 
     private void sbReconcile(String note) {
         TaskStore store = new TaskStore(this);

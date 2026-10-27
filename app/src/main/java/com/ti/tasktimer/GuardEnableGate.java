@@ -35,7 +35,7 @@ public final class GuardEnableGate {
         if (!ModelManager.isReady(c, ModelManager.ID_NUDENET)) return false;
         setPending(c, false);
         ScreenGuardPrefs.setEnabled(c, true);
-        if (TimerState.isRunning(c)) ScreenCaptureService.onTimerStarted(c);
+        if (TimerState.isRunning(c)) KnowDoAccessibilityService.onTimerStarted(c);
         return true;
     }
 
@@ -46,7 +46,7 @@ public final class GuardEnableGate {
     public static boolean tryEnable(final Activity act, final Runnable onEnabled) {
         if (ModelManager.isReady(act, ModelManager.ID_NUDENET)) {
             ScreenGuardPrefs.setEnabled(act, true);
-            if (TimerState.isRunning(act)) ScreenCaptureService.onTimerStarted(act);
+            if (TimerState.isRunning(act)) KnowDoAccessibilityService.onTimerStarted(act);
             if (onEnabled != null) onEnabled.run();
             return true;
         }

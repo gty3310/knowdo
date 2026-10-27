@@ -21,9 +21,11 @@ import java.util.Set;
  *   （出现在最近一份往日 schedule 的块里）的任务。每日重复任务除外——它自己会再生。
  *   deadline 用「早于逻辑今天」而不是只认昨天：App 关了几天，攒下的过期任务一次滚齐，
  *   不会因为错过某一天就永远漏掉。
- * - 动作：priority 改 must、deadline 改逻辑今天（走 TaskStore.save 既有写路径，
- *   云端同步随后跟上）；被滚任务的 id 记入本机 prefs（按日期一组），
- *   列表里名字旁挂一个小小的「昨」字（当天有效）。
+ * - 动作：deadline 改逻辑今天（走 TaskStore.save 既有写路径，云端同步随后跟上）；
+ *   priority 的处理按档分（v1.26.0）：次要升必做（v1.23.0 原口径）、重要不强制
+ *   升级（保持重要，只滚日期）、必做不变；休息（leisure）是娱乐类，永不参与
+ *   滚入——不过期处理、不改日期、不挂标记。被滚任务的 id 记入本机 prefs
+ *   （按日期一组），列表里名字旁挂一个小小的「昨」字（当天有效）。
  * - 每个逻辑日只滚一次（prefs 记 last_date 把关）：用户手动把滚入的任务又改回去，
  *   同一天内不会再被滚回来跟他打架；第二天它若还没做完，会再滚一次、再挂标记。
  */
@@ -77,9 +79,13 @@ public final class Rollover {
         for (TaskItem t : store.tasks) {
             if (t.deleted || "daily".equals(t.repeat)) continue;
             if (t.isDoneToday()) continue; // 非 daily 的完成＝status done
+            if (TaskItem.isLeisure(t.priority)) continue; // 休息档永不滚入（v1.26.0）
             boolean overdue = t.deadline != null && t.deadline.compareTo(today) < 0;
             if (!overdue && !schedIds.contains(t.id)) continue;
-            t.priority = "must";
+            // 重要不强制升级（v1.26.0）：只滚日期；次要沿原口径升必做，必做不变
+            if (!"must".equals(t.priority) && !"important".equals(t.priority)) {
+                t.priority = "must";
+            }
             t.deadline = today; // deadlineTime（当天几点前做完）保留原值，不动用户的钟点
             t.touch();
             rolled.add(t.id);

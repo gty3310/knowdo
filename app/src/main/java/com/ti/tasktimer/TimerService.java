@@ -227,7 +227,7 @@ public class TimerService extends Service {
             SessionLog.close(this);
             TimerState.stop(this);
             SbTimerSync.onLocalTimerChanged(this);
-            ScreenCaptureService.onTimerStopped(this);
+            KnowDoAccessibilityService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
             FloatingWindow.hide();
@@ -241,7 +241,7 @@ public class TimerService extends Service {
             SessionLog.close(this);
             TimerState.stop(this);
             SbTimerSync.onLocalTimerChanged(this);
-            ScreenCaptureService.onTimerStopped(this);
+            KnowDoAccessibilityService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
             FloatingWindow.hide();
@@ -300,13 +300,15 @@ public class TimerService extends Service {
                     intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
             FocusGuard.reset(this);
             VerdictEngine.reset(this);
-            ScreenCaptureService.onTimerStarted(this);
+            KnowDoAccessibilityService.onTimerStarted(this);
             SessionLog.open(this, intent.getStringExtra(EXTRA_TASK_ID), intent.getStringExtra(EXTRA_TASK_TITLE));
             // 队列快照按最新列表重写：暂停期间的重建已让暂停槽与列表一致，这里对齐基线
             TaskItem rt = new TaskStore(this).byId(intent.getStringExtra(EXTRA_TASK_ID));
             TimerState.setSubSnapshot(this, rt != null ? rt.subtasks : null);
             TimerState.logEvent(this, "继续计时：" + TimerState.taskTitle(this));
             SbTimerSync.onLocalTimerChanged(this);
+            // 软件名单（v1.26.0）：继续的任务若还没有名单，借这次开始补发一次请求
+            AppLists.maybeRequest(this, rt);
         } else if (ACTION_START.equals(action)) {
             IdleAlarm.onNotIdle(this); // 任何入口开始计时都算：催促周期取消、空档时钟重置
             ResumeReminder.cancel(this);
@@ -332,11 +334,14 @@ public class TimerService extends Service {
                 TimerState.logEvent(this, "子任务模式：「" + st.title + "」共 "
                         + st.subtasks.size() + " 个子任务，先跑「" + st.subtasks.get(0).title + "」");
             }
+            // 软件名单（v1.26.0）：全部开始入口（主页/展开面板/日历/悬浮窗/衔接页/
+            // autoStart）都汇到本 ACTION_START——任务还没有名单时在这里收口发请求
+            AppLists.maybeRequest(this, st);
             // 队列快照（v1.13.0）：记下这轮计时是按哪版子任务列表跑的，供中途接管对账
             TimerState.setSubSnapshot(this, st != null ? st.subtasks : null);
             FocusGuard.reset(this);
             VerdictEngine.reset(this);
-            ScreenCaptureService.onTimerStarted(this);
+            KnowDoAccessibilityService.onTimerStarted(this);
             SessionLog.open(this, sid, intent.getStringExtra(EXTRA_TASK_TITLE));
             if (deducted) {
                 TimerState.logEvent(this, "继续计时（今日已用抵扣）：" + TimerState.taskTitle(this)

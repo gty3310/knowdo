@@ -38,9 +38,9 @@ import java.util.Set;
 
 /**
 * 日历页（今日时间表）：纵向一天时间轴，三栏并排（v1.12.0 定案）——最左窄栏是 Google 日历
-* （桥 gcal，Muse 写入，只读、只在本栏内渲染，不许压到计划栏上）、中间最宽的主栏是计划
-* （云端 user_state 的 schedule，Muse 排的）、右窄栏是实际（本地计时段记录 SessionLog，只读）。
-* 本页在前台时每 10 秒同步一次桥并重画——Muse 在桥端改了 schedule，这里很快就能看到新版。
+* （云端 gcal，助手侧写入，只读、只在本栏内渲染，不许压到计划栏上）、中间最宽的主栏是计划
+* （云端 user_state 的 schedule）、右窄栏是实际（本地计时段记录 SessionLog，只读）。
+* 本页在前台时周期同步并重画——云端改了 schedule，这里很快就能看到新版。
 *
 * v1.6.2 交互：计划块可长按拖拽改时间（用户定案：App 对 schedule 的写权限只走 sanction 入口，
 * 经 SyncManager.updateScheduleBlock 按读-改-写-校验纪律回写）；计划块与未排任务带 ▶，
@@ -63,8 +63,8 @@ import java.util.Set;
 *
 * v1.20.0 简化（用户对着截图亲手圈定）：顶部「今日日程」标题＋完成汇总＋已完成
 * 清单、下方「未排入日程的任务」列表区删除，日历只剩三栏时间轴、现在线与计划块；
-* 「问 AI 重排」保留为日历区右上角的小文字按钮，管道从 Drive 桥换成 Supabase
-* 数据库桥（user_state.reschedule_request，见 SbSync.requestReschedule）；
+* 「AI 重排」保留为日历区右上角的小文字按钮（v1.26.0 改走软件内置聊天通道
+* AiReschedule：当场生成提案、点应用才落盘，不再写云端重排请求）；
 * 点计划栏空白处经 TaskEditSheet 新建任务（预填所点时间、保存顺手排块）；
 * 计划块（含已完成块）拖过现在线自动完成/取消完成（flipDoneByNowLine）。
 */
@@ -73,14 +73,12 @@ private final Activity host;
 private final android.content.Context ctx;
 private static final int DAY_START_MIN = 5 * 60; // 轴默认 05:00
 private static final int DAY_END_MIN = 23 * 60; // 轴默认 23:00
-private static final int REQ_CAPTURE = 44; // 与主页同款：开始计时前的截图授权请求
 
 private TaskStore store;
 private TextView hintView;
 private TextView askAiBtn;
 // 重排状态跃迁观察（防重复提示）：记住上次 render 看到的 status 与 requested_at
-private String lastReschedStatus = "";
-private String lastReschedAt = "";
+private boolean aiBusy = false; // AI 重排进行中（v1.26.0 内置通道）
 private FrameLayout canvas;
 private LinearLayout laneHead;
 private LinearLayout listBox;
@@ -99,7 +97,6 @@ private final Handler handler = new Handler(Looper.getMainLooper());
 private boolean foreground = false;
 private boolean syncing = false;
 private boolean dragging = false; // 有块正被拖动时，周期 render 不要打断它
-private TaskItem pendingGuardTask; // 等截图授权结果的待开始任务（与主页同语义）
 
 /** 任务数据一变（主页/悬浮窗/同步改的都算）就重画日历——与主页同一条 TaskStore 通知。 */
 private final TaskStore.ChangeListener storeListener = () -> {
@@ -185,9 +182,8 @@ LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 LinearLayout calBox = new LinearLayout(ctx);
 calBox.setOrientation(LinearLayout.VERTICAL);
 calBox.setPadding(0, 0, 0, dp(28));
-// 「问 AI 重排」小文字按钮（v1.20.0 保留并改走数据库桥）：低调地挂在日历区
-// 右上角一行，不抢眼；功能走 Supabase user_state.reschedule_request——点它写
-// pending，Muse 侧重排后回写 status，日历页经同步观察到 done/failed 给提示。
+// 「AI 重排」小文字按钮：低调地挂在日历区右上角一行，不抢眼；
+// v1.26.0 起走软件内置 AI 通道当场出提案（AiReschedule），点「应用」才落盘。
 LinearLayout askRow = new LinearLayout(ctx);
 askRow.setOrientation(LinearLayout.HORIZONTAL);
 askRow.setGravity(Gravity.END);
@@ -303,7 +299,7 @@ if (syncing) { render(); return;}
 syncing = true;
 new Thread(() -> {
 try {
-String r = SyncManager.syncNowSmart(ctx, store);
+String r = SbSync.syncNow(ctx, store);
 SyncManager.setLastResult(ctx, r);
 } catch (Exception ignored) {}
 handler.post(() -> {
@@ -387,57 +383,32 @@ out.sort((a, b) -> a.startMin!= b.startMin? a.startMin - b.startMin: a.endMin - 
 return out;
 }
 
-// ---------------- 问 AI 重排（v1.20.0，数据库桥） ----------------
+// ---------------- AI 重排（v1.26.0：走内置聊天通道，当场提案） ----------------
 
-/** 按钮态：pending 时显示「重排中…」并禁用，否则是可点的「问 AI 重排」。 */
+/** 按钮态：生成中显示「重排中…」并禁用，否则是可点的「AI 重排」。 */
 private void refreshAskBtn() {
 if (askAiBtn == null) return;
-JSONObject rr = SyncManager.latestReschedule(ctx);
-boolean pending = rr != null && "pending".equals(rr.optString("status", ""));
-askAiBtn.setText(pending
+askAiBtn.setText(aiBusy
 ? (Strings.en() ? "Re-planning…" : "重排中…")
-: (Strings.en() ? "Ask AI to re-plan" : "问 AI 重排"));
-askAiBtn.setTextColor(pending ? Ui.sub(ctx) : Ui.link(ctx));
-askAiBtn.setEnabled(!pending);
+: (Strings.en() ? "AI Re-plan" : "AI 重排"));
+askAiBtn.setTextColor(aiBusy ? Ui.sub(ctx) : Ui.link(ctx));
+askAiBtn.setEnabled(!aiBusy);
 }
 
 /**
- * 每次 render 顺带观察重排状态跃迁：同一条请求（requested_at 相同）从 pending
- * 变 done → 轻提示「日程已重排」；变 failed → 提示原因（字段 message 有就带上）。
- * 只在跃迁时提示一次；新 schedule 本身走既有 user_state.schedule 同步刷新，不另处理。
+ * 点「AI 重排」：走软件内置的 AI 通道（AiReschedule，与「聊聊」同一条）当场
+ * 生成一版提案对话框，点「应用」才落盘、「不用」作废。v1.26.0 起不再写
+ * 云端重排请求（旧巡查接线已撤除）。
  */
-private void observeReschedule() {
-refreshAskBtn();
-JSONObject rr = SyncManager.latestReschedule(ctx);
-String st = rr == null ? "" : rr.optString("status", "");
-String at = rr == null ? "" : rr.optString("requested_at", "");
-if (!at.isEmpty() && at.equals(lastReschedAt) && "pending".equals(lastReschedStatus)) {
-if ("done".equals(st)) {
-toast(Strings.en() ? "Your day has been re-planned" : "日程已重排");
-} else if ("failed".equals(st)) {
-String m = rr.optString("message", "");
-toast((Strings.en() ? "Re-plan failed" : "重排没成功") + (m.isEmpty() ? "" : "：" + m));
-}
-}
-lastReschedStatus = st;
-lastReschedAt = at;
-}
-
 private void onAskReschedule() {
-JSONObject rr = SyncManager.latestReschedule(ctx);
-if (rr != null && "pending".equals(rr.optString("status", ""))) return;
-// 先给即时反馈，写入结果回来再按云端状态校正按钮
-if (askAiBtn != null) {
-askAiBtn.setText(Strings.en() ? "Re-planning…" : "重排中…");
-askAiBtn.setEnabled(false);
-}
-SbSync.requestReschedule(ctx, (ok, err) -> {
-if (ok) {
-toast(Strings.en() ? "Asked AI to re-plan the rest of today" : "已请 AI 重排今天剩下的日程");
-} else {
-toast(err != null ? err : (Strings.en() ? "Request failed, try again later" : "重排请求没发出去，稍后再试"));
-}
+if (aiBusy) return;
+if (!(ctx instanceof android.app.Activity)) return;
+aiBusy = true;
 refreshAskBtn();
+AiReschedule.run((android.app.Activity) ctx, store, () -> {
+aiBusy = false;
+refreshAskBtn();
+render();
 });
 }
 
@@ -446,7 +417,7 @@ refreshAskBtn();
 private void render() {
 if (canvas == null) return;
 if (dragging) return; // 拖拽进行中不重画，免得把手里那块销毁
-observeReschedule();
+refreshAskBtn();
 store.load();
 List<Block> plan = planBlocks();
 List<Block> actual = actualBlocks();
@@ -1117,7 +1088,7 @@ box.setOrientation(LinearLayout.VERTICAL);
 box.setPadding(dp(16), dp(8), dp(16), 0);
 
 final EditText ruleInput = new EditText(ctx);
-ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站（Muse 会据此翻译成要拦/只许用的软件名单）");
+ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站");
 ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
 ruleInput.setMinLines(2);
 ruleInput.setTextSize(15);
@@ -1461,18 +1432,8 @@ return;
 startTaskTimer(t);
 }
 
-/** 与主页 startTaskTimer 同语义：屏幕内容守卫未授权时先走一次截图授权，拿到结果都照常开始。 */
+/** 与主页 startTaskTimer 同语义（v1.26.0：截图只走无障碍通道，开始计时不再请求录屏授权）。 */
 private void startTaskTimer(final TaskItem t) {
-if (ScreenGuardPrefs.enabled(ctx) && !ScreenCaptureService.isAuthorized(ctx)) {
-android.media.projection.MediaProjectionManager mpm =
-(android.media.projection.MediaProjectionManager) getContext().getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE);
-if (mpm != null) {
-pendingGuardTask = t;
-toast("屏幕内容守卫已开：请在系统弹窗里允许这一次截图授权（每个任务一次）");
-host.startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
-return;
-}
-}
 doStartTaskTimer(t);
 }
 
@@ -1485,20 +1446,10 @@ toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
 handler.postDelayed(this::render, 350);
 }
 
-public void onCaptureResult(int resultCode, Intent data) {
-if (true) {
-TaskItem t = pendingGuardTask;
-pendingGuardTask = null;
-if (resultCode == Activity.RESULT_OK && data != null) {
-ProjectionAuth.store(resultCode, data);
-} else {
-toast("未获得截图授权：本次计时不做屏幕内容采样，其余功能照常");
-}
-if (t != null) doStartTaskTimer(t);
-}
-}
-
 private void addBlock(Block b, int x, int w, int axisStart, int scale, boolean planned) {
+LinearLayout col = new LinearLayout(ctx);
+col.setOrientation(LinearLayout.VERTICAL);
+col.setPadding(dp(3), dp(2), dp(2), dp(2));
 TextView v = new TextView(ctx);
 // 实际栏是窄栏（v1.12.0）：栏太窄时时间只放开始时刻，避免时间串被拦腰换行；标题可截断
 String time = w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin);
@@ -1506,8 +1457,7 @@ String label = time + "\n" + b.title
 + (b.running? " ▶": "");
 v.setText(label);
 v.setTextSize(10);
-v.setPadding(dp(3), dp(2), dp(2), dp(2));
-v.setMaxLines(3);
+v.setMaxLines(2);
 v.setEllipsize(android.text.TextUtils.TruncateAt.END);
 GradientDrawable bg = new GradientDrawable();
 bg.setCornerRadius(dp(4));
@@ -1523,12 +1473,57 @@ v.setTextColor(dk3 ? Color.rgb(200, 235, 203) : Color.rgb(20, 60, 24));
 bg.setColor(dk3 ? Color.rgb(30, 56, 37) : Color.rgb(165, 214, 167));
 v.setTextColor(dk3 ? Color.rgb(165, 226, 170) : Color.rgb(27, 94, 32));
 }
-v.setBackground(bg);
+col.setBackground(bg);
+col.addView(v);
+// 优先级 tag（v1.26.0，用户点名）：任务名下方一个小标签，四档同位置同尺寸，
+// 只靠形态分轻重、全场只有必做一个上色——必做＝朱砂红实心白字；重要＝细描边
+// 无填充；次要＝无边框浅灰小字；休息＝浅灰虚线描边。深色块上描边/字色换米白
+// 与浅灰系（按 Ui.dark 取），必做实心红不变。计划栏与实际栏共用本渲染，一并带上。
+TaskItem bt = store.byId(b.taskId);
+if (bt != null) col.addView(priorityTag(bt.priority, dk3));
 int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
 lp.leftMargin = x;
 lp.topMargin = (b.startMin - axisStart) * scale;
-canvas.addView(v, lp);
+canvas.addView(col, lp);
+}
+
+/** 优先级 tag 的四种形态（参数：字号 9sp、内边距 横 5dp/纵 1dp、圆角 6dp、描边 1dp、休息虚线 3dp 线/2dp 空）。 */
+private TextView priorityTag(String priority, boolean darkBlock) {
+TextView tag = new TextView(ctx);
+tag.setText(TaskItem.priorityLabel(priority, Strings.en()));
+tag.setTextSize(9);
+tag.setPadding(dp(5), dp(1), dp(5), dp(1));
+LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+lp.topMargin = dp(2);
+tag.setLayoutParams(lp);
+int rank = TaskItem.priorityRank(priority);
+int grey = darkBlock ? Color.rgb(178, 184, 178) : Color.rgb(148, 154, 148);
+if (rank == 0) {
+GradientDrawable g = new GradientDrawable();
+g.setCornerRadius(dp(6));
+g.setColor(Color.rgb(217, 75, 58)); // 朱砂红实心（品牌点缀色 #D94B3A）
+tag.setBackground(g);
+tag.setTextColor(Color.WHITE);
+} else if (rank == 1) {
+int ink = darkBlock ? Color.rgb(247, 243, 236) : Color.rgb(31, 47, 42); // 墨青黑／深底换米白
+GradientDrawable g = new GradientDrawable();
+g.setCornerRadius(dp(6));
+g.setColor(Color.TRANSPARENT);
+g.setStroke(dp(1), ink);
+tag.setBackground(g);
+tag.setTextColor(ink);
+} else if (rank == 3) {
+GradientDrawable g = new GradientDrawable();
+g.setCornerRadius(dp(6));
+g.setColor(Color.TRANSPARENT);
+g.setStroke(dp(1), grey, dp(3), dp(2)); // 浅灰虚线描边
+tag.setBackground(g);
+tag.setTextColor(grey);
+} else {
+tag.setTextColor(grey); // 次要：无边框无填充，浅灰小字
+}
+return tag;
 }
 
 private TextView laneLabel(String s) {

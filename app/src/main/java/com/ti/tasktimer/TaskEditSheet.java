@@ -55,6 +55,12 @@ public final class TaskEditSheet {
         void onResetTimer(TaskItem t);
     }
 
+    /** 优先级归一：四档之外的（含 null）按次要论（老数据零迁移）。 */
+    static String normPriority(String p) {
+        if ("must".equals(p) || "important".equals(p) || "leisure".equals(p)) return p;
+        return "secondary";
+    }
+
     private static int dp(Context c, int v) {
         return (int) (v * c.getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -100,7 +106,7 @@ public final class TaskEditSheet {
         final String[] startHolder = {src.nextStartAt};       // "YYYY-MM-DDTHH:mm"
         final String[] deadlineHolder = {src.deadline};       // "YYYY-MM-DD"
         final boolean[] startDirty = {false};
-        final String[] priority = {"must".equals(src.priority) ? "must" : "secondary"};
+        final String[] priority = {normPriority(src.priority)};
         final String[] repeat = {"daily".equals(src.repeat) ? "daily" : "none"};
         final String[] alarmMode = {TaskItem.normAlarmMode(src.alarmMode)};
         final Set<String> scenarios = new LinkedHashSet<>(src.scenarios);
@@ -226,15 +232,16 @@ public final class TaskEditSheet {
         col.addView(label(ctx, en ? "Importance" : "重要性"));
         LinearLayout prioRow = new LinearLayout(ctx);
         prioRow.setOrientation(LinearLayout.HORIZONTAL);
-        final TextView[] prioChips = new TextView[2];
-        final String[] prioVals = {"must", "secondary"};
-        final String[] prioNames = {en ? "Must do" : "必做", en ? "Secondary" : "次要"};
-        for (int i = 0; i < 2; i++) {
+        final TextView[] prioChips = new TextView[4];
+        final String[] prioVals = {"must", "important", "secondary", "leisure"};
+        final String[] prioNames = {en ? "Must do" : "必做", en ? "Important" : "重要",
+                en ? "Secondary" : "次要", en ? "Leisure" : "休息"};
+        for (int i = 0; i < 4; i++) {
             final int idx = i;
             prioChips[i] = chip(ctx, prioNames[i], prioVals[i].equals(priority[0]));
             prioChips[i].setOnClickListener(v -> {
                 priority[0] = prioVals[idx];
-                for (int j = 0; j < 2; j++) setChip(prioChips[j], j == idx);
+                for (int j = 0; j < 4; j++) setChip(prioChips[j], j == idx);
             });
             prioRow.addView(prioChips[i]);
         }
@@ -318,6 +325,14 @@ public final class TaskEditSheet {
                 if (host != null) host.onResetTimer(src);
             });
             moreRow.addView(resetBtn);
+            // 软件名单入口（v1.26.0）：看这个任务的三档名单、点软件改档
+            TextView appListBtn = chip(ctx, en ? "App list" : "软件名单", false);
+            appListBtn.setOnClickListener(v -> {
+                Dialog dlg = (Dialog) appListBtn.getTag();
+                if (dlg != null) dlg.dismiss();
+                AppListActivity.open(act, src.id, src.title);
+            });
+            moreRow.addView(appListBtn);
             col.addView(moreRow);
             // AI 聊天入口（v1.22.0）：陪用户把这个任务聊成型，改法走提案卡、点应用才落盘
             TextView chatBtn = chip(ctx, en ? "Chat with AI about this task" : "和 AI 聊聊这个任务", false);
@@ -335,7 +350,8 @@ public final class TaskEditSheet {
             focusBtn.setTag(null);
             resetBtn.setTag(null);
             chatBtn.setTag(null);
-            col.setTag(new TextView[]{focusBtn, resetBtn, chatBtn});
+            appListBtn.setTag(null);
+            col.setTag(new TextView[]{focusBtn, resetBtn, chatBtn, appListBtn});
         }
 
         // 底部按钮

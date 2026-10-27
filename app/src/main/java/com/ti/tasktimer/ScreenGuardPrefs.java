@@ -113,6 +113,20 @@ public final class ScreenGuardPrefs {
         prefs(c).edit().putBoolean("diag_mode", on).apply();
     }
 
+    // ---- 任务软件名单（v1.26.0） ----
+    /**
+     * 「任务软件名单」开关（默认开）：开始任务时把任务与常用软件名单交云端
+     * 巡查分类（白/灰/黑），黑名单软件在任务期间一打开就弹问询。关掉后不发
+     * 请求、不按名单弹问询（内置通用兜底名单也一并停用）。
+     */
+    public static boolean appListsEnabled(Context c) {
+        return prefs(c).getBoolean("app_lists_enabled", true);
+    }
+
+    public static void setAppListsEnabled(Context c, boolean on) {
+        prefs(c).edit().putBoolean("app_lists_enabled", on).apply();
+    }
+
     // ---- 语义云端退避（SemanticJudge 用）：连续失败后一段时间内不再试云端 ----
     public static long semanticBackoffUntil(Context c) {
         return prefs(c).getLong("semantic_backoff_until", 0);

@@ -14,7 +14,6 @@ import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.content.IntentFilter;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -49,9 +48,6 @@ import java.util.Set;
  * 长按一行：标记完成 / 删除。与 Drive 的 tasks.json 通过「同步」双向合并。
  */
 public class MainActivity extends Activity {
-    private static final int REQ_PICK_BRIDGE = 42;
-    private static final int REQ_CAPTURE = 43;
-    private TaskItem pendingGuardTask; // 等待截图授权结果的待启动任务
 
     private TaskStore store;
     private TaskAdapter adapter;
@@ -103,7 +99,6 @@ public class MainActivity extends Activity {
     private ChatPanel chatPanel;
     private String expandedTaskId; // 手风琴：当前展开的任务 id（一次一个）
     private final java.util.Set<String> expandedDays = new java.util.HashSet<>();
-    private static final int REQ_CAL_CAPTURE = 44;
     private android.content.BroadcastReceiver syncReceiver;
     // 数据变更监听（v1.6.2）：悬浮窗/同步在别处改了数据，本页前台时立刻跟上
     private final TaskStore.ChangeListener storeListener = this::onStoreChanged;
@@ -129,15 +124,11 @@ public class MainActivity extends Activity {
         buildUi();
         // 常驻悬浮窗：打开过知行就一直在（开关在权限页；没给悬浮权限时服务空转等待授权）
         if (FloatingWindow.enabled(this)) FloatService.start(this);
-        if (getIntent() != null && getIntent().getBooleanExtra("pick_bridge", false)) {
-            launchBridgePicker();
-        } else if (SyncManager.isSupabaseMode(this)) {
-            runSync(false); // Supabase 模式：打开即对账一次（含漏掉的 autoStart/计时状态）
-            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-        } else if (SyncManager.getUri(this) != null) {
-            runSync(false); // 打开即自动同步一次
-            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-        }
+        // 同步只剩 Supabase 一条路（v1.26.0，Drive 桥整套移除）：打开即对账一次
+        // （含漏掉的 autoStart/计时状态）；旧桥的 Uri 残留顺手清掉
+        SyncManager.purgeLegacyBridge(this);
+        runSync(false);
+        if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
         // 建议设置（v1.19.0）：新装/升级后首次打开呈现一次（不阻断功能）；
         // 本轮呈现了清单页，就先不叠更新日志弹框（更新日志的已弹记录未写，下次打开再弹）
         // 更新日志（v1.13.0 起的长期规矩）：升级后首次打开弹一次，全新安装不弹
@@ -1616,8 +1607,14 @@ public class MainActivity extends Activity {
                 if ("must".equals(t.priority)) {
                     v.setText(Strings.priMust());
                     v.setTextColor(Ui.danger(this));
+                } else if ("important".equals(t.priority)) {
+                    v.setText(Strings.priImportant());
+                    v.setTextColor(Ui.text(this));
                 } else if ("secondary".equals(t.priority)) {
                     v.setText(Strings.priSecondary());
+                    v.setTextColor(Ui.sub(this));
+                } else if ("leisure".equals(t.priority)) {
+                    v.setText(Strings.priLeisure());
                     v.setTextColor(Ui.sub(this));
                 } else {
                     v.setText("—");
@@ -1977,18 +1974,8 @@ public class MainActivity extends Activity {
     }
 
     private void startTaskTimer(TaskItem t) {
-        // 屏幕内容守卫开着且还没有可用授权时，先请求一次截图授权（安卓 14+ 每个计时会话一次），
-        // 拿到结果（允许或拒绝）后都照常开始计时：拒绝就本次不采样，不拦着做事。
-        if (ScreenGuardPrefs.enabled(this) && !ScreenCaptureService.isAuthorized(this)) {
-            android.media.projection.MediaProjectionManager mpm =
-                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            if (mpm != null) {
-                pendingGuardTask = t;
-                toast("屏幕内容守卫已开：请在系统弹窗里允许这一次截图授权（每个任务一次）");
-                startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
-                return;
-            }
-        }
+        // v1.26.0：截图只走无障碍通道，开始计时不再请求任何录屏授权，直接开表；
+        // 无障碍没就绪时守卫本次静默不采样（分流在 TimerService→无障碍服务入口）
         doStartTaskTimer(t);
     }
 
@@ -2046,6 +2033,23 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- 编辑对话框 ----------------
+    /** 优先级四档选择（v1.26.0：必做／重要／次要／休息）。 */
+    private void dialogPriority(final TaskItem t) {
+        final String[] vals = {"must", "important", "secondary", "leisure"};
+        String[] names = {Strings.priMust(), Strings.priImportant(), Strings.priSecondary(), Strings.priLeisure()};
+        int cur = TaskItem.priorityRank(t.priority);
+        new AlertDialog.Builder(this)
+                .setTitle("优先级")
+                .setSingleChoiceItems(names, cur, (d, which) -> {
+                    TaskItem c = freshCopyOf(t);
+                    c.priority = vals[which];
+                    c.touch(); store.save(); adapter.notifyDataSetChanged();
+                    d.dismiss();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void dialogTitle(final TaskItem t) {
         final EditText input = new EditText(this);
         input.setText(t.title);
@@ -2060,11 +2064,7 @@ public class MainActivity extends Activity {
                         cur.title = name; cur.touch(); store.save(); adapter.notifyDataSetChanged();
                     }
                 })
-                .setNeutralButton("设为必要/取消必要", (d, w) -> {
-                    TaskItem cur = freshCopyOf(t);
-                    cur.priority = "must".equals(cur.priority) ? null : "must";
-                    cur.touch(); store.save(); adapter.notifyDataSetChanged();
-                })
+                .setNeutralButton("设优先级", (d, w) -> dialogPriority(t))
                 .setNegativeButton("取消", null)
                 .show();
     }
@@ -2314,7 +2314,7 @@ public class MainActivity extends Activity {
         box.setPadding(dp(16), dp(8), dp(16), 0);
 
         final EditText ruleInput = new EditText(this);
-        ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站（Muse 会据此翻译成要拦/只许用的软件名单）");
+        ruleInput.setHint("描述什么情况下你可能会分神，如：读经典时想刷微信、查资料容易逛到购物网站");
         ruleInput.setText(t.focusRule == null ? "" : t.focusRule);
         ruleInput.setMinLines(2);
         ruleInput.setTextSize(15);
@@ -2475,50 +2475,9 @@ public class MainActivity extends Activity {
         });
     }
 
-    // ---------------- Drive 同步 ----------------
-    private void launchBridgePicker() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("application/json");
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_PICK_BRIDGE);
-        toast("请在 Google Drive 里打开 _电子大脑/task list/ 并选中 tasks.json");
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_CAL_CAPTURE) {
-            if (calendarPanel != null) calendarPanel.onCaptureResult(resultCode, data);
-            return;
-        }
-        if (requestCode == REQ_CAPTURE) {
-            TaskItem t = pendingGuardTask;
-            pendingGuardTask = null;
-            if (resultCode == RESULT_OK && data != null) {
-                ProjectionAuth.store(resultCode, data);
-            } else {
-                toast("未获得截图授权：本次计时不做屏幕内容采样，其余功能照常");
-            }
-            if (t != null) doStartTaskTimer(t);
-            return;
-        }
-        if (requestCode == REQ_PICK_BRIDGE && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            Uri uri = data.getData();
-            try {
-                getContentResolver().takePersistableUriPermission(uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            } catch (Exception ignored) { }
-            SyncManager.setUri(this, uri);
-            runSync(true);
-            if (SyncManager.realtimeEnabled(this)) SyncService.start(this);
-        }
-    }
-
     private void runSync(final boolean verbose) {
         new Thread(() -> {
-            String result = SyncManager.syncNowSmart(this, store);
+            String result = SbSync.syncNow(this, store);
             SyncManager.setLastResult(this, result);
             handler.post(() -> {
                 store.load();

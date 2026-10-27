@@ -36,6 +36,30 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1260 = new Entry("v1.26.0", "2026-10-27");
+        e1260.add(new Group(s("新功能", "New"),
+                s("任务软件名单：开始一个任务时，AI 会按这个任务把你的常用软件分成三档——白：放心用；灰：可能有用，先不打扰你；黑：跟任务明显无关，一打开就弹出来问你是不是分神。名单没生成好之前，先用一份通用黑名单（抖音、快手、小红书这类）兜底",
+                  "Per-task app lists: when you start a task, the AI sorts your frequently used apps for that task into three tiers — white: safe to use; grey: might be useful, no interruptions for now; black: clearly unrelated to the task, and opening one pops up the inquiry asking whether you're drifting. Until a task's list is ready, a built-in generic blacklist (Douyin, Kuaishou, Xiaohongshu and the like) stands in"),
+                s("「AI 重排」改走软件内置的 AI：点日历页的「AI 重排」，内置 AI 当场按老规矩（每件 ×1.5、不排过 22:30、已过和已完成的块不动）给一版新排程提案，摆给你看，点「应用」才落盘、点「不用」整版作废",
+                  "\"AI Re-plan\" now runs on the app's built-in AI: tap it on the calendar page and the built-in AI drafts a new plan on the spot under the standing rules (each task ×1.5, nothing past 22:30, past and finished blocks untouched), shows it to you, and it only lands when you tap Apply — No, thanks discards the whole draft"),
+                s("优先级多了两档——重要和休息：现在是必做、重要、次要、休息四档。必做今天必须排上日历，重要有空就排，次要最后填；休息是娱乐类的事，只在你休息的时候才做，永远不会被自动排进日程。日历上每个任务下面多了一个小标签：必做是朱砂红实心，重要是细描边，次要是浅灰小字，休息是灰色虚线边，一眼看出轻重",
+                  "Priorities gain two levels — Important and Leisure. There are now four: Must (goes on today's calendar), Important (scheduled when there is room), Secondary (fills what is left) and Leisure (fun stuff for rest time only, never auto-scheduled). Each calendar block now carries a small tag under the task name: solid vermilion for Must, a thin outline for Important, plain grey for Secondary and a dashed grey outline for Leisure")));
+        e1260.add(new Group(s("修复", "Fixed"),
+                s("修好晨间提醒：早上 check-in 没做完、又没说推迟多久的，每 5 分钟全屏弹回，直到你做完或选了推迟时长",
+                  "Fixes the morning reminder: if the morning check-in isn't finished and you haven't picked a pause length, the page comes back full-screen every 5 minutes until you finish it or choose how long to pause"),
+                s("守卫不再向你要屏幕录制授权：录屏通道整套拿掉，截图只走无障碍一条路；无障碍没开时守卫就静默不采样，不会再弹出「录哪个软件还是整个屏幕」的系统框",
+                  "The guard never asks for screen-recording permission again: the recording channel is removed entirely and screenshots come only from the accessibility channel; with accessibility off, the guard silently skips sampling instead of popping the system's \"record one app or the whole screen\" dialog")));
+        e1260.add(new Group(s("改进", "Improved"),
+                s("旧的同步桥彻底移除：同步只剩云端一条路，设置和各个页面里再没有旧桥的入口和字样；断网重连后同步照常走云端",
+                  "The old sync bridge is gone for good: sync is cloud-only now, and no page or setting mentions the old bridge anymore; reconnecting after being offline still syncs through the cloud as usual"),
+                s("软件里不再提外部助手：排程由本地自动排程和内置 AI 完成，帮助里新增了「AI 功能的边界」一节，把哪些 AI 是软件自带的、哪些是作者个人的设置、数据谁能看，都写明白了",
+                  "The app no longer mentions any outside assistant: planning is done by local auto-planning and the built-in AI, and Help has a new section, \"What the AI can and cannot do\", spelling out which AI ships with the app, which parts are the author's personal setup, and who can see your data")));
+        e1260.why = s("以前守卫只能看屏幕内容猜你是不是分神；先按任务把软件分好档，黑名单就不用猜、反应也快，白名单也不会再误拦。这一版也把两件历史包袱清干净（旧同步桥、录屏授权），并把 AI 的边界一次说清",
+                "The guard used to have to guess from screen content whether you were drifting; with apps sorted per task up front, the blacklist needs no guessing and reacts fast, and the whitelist stops false blocks. This release also clears out two pieces of legacy (the old sync bridge and the recording permission) and states the AI's boundaries once and for all");
+        e1260.tryIt = s("1）开始一个任务（比如读经典），等几分钟名单生成；2）任务详情里点「软件名单」看三档分得对不对，点某个软件能改档，你改过的不会再被覆盖；3）计时中打开抖音，应该立刻弹问询；打开 AI 聊天软件则不会因为名单被拦；4）明早晨间 check-in 先别提交、也别点推迟，把页面切走，看 5 分钟内是否弹回；5）打开日历页点「AI 重排」，看它当场给出的提案，点「不用」不会动日程；6）翻设置与各页面，确认再没有旧桥字样；守卫开着用一天，确认不再出现任何录屏授权弹窗；7）设置→帮助，翻到「新用户必读：AI 功能的边界」那一节；8）把一个任务改成『重要』：主列表点优先级那格选重要，或在编辑页点『重要』，看自动排程是不是排在必做后面、日历块下面有没有『重要』标签；再把一个娱乐任务设成『休息』，确认它不会被自动排进日程，在衔接页选『休息一会』时它会出现在『休息时做』一组里",
+                "1) Start a task (say, reading the classics) and wait a few minutes for its list to be generated. 2) In the task's details, tap \"App list\" to check the three tiers; tap any app to re-tier it — your changes are never overwritten. 3) While timing, open Douyin: the inquiry should pop up at once; opening an AI chat app should not be blocked by the list. 4) Tomorrow morning, don't submit the check-in and don't pick a pause; switch away and see whether the page comes back within 5 minutes. 5) Open the calendar and tap \"AI Re-plan\" to see the on-the-spot draft; \"No, thanks\" leaves your schedule untouched. 6) Look through Settings and the pages and confirm the old bridge is nowhere to be seen; run the guard for a day and confirm no recording-permission dialog ever appears. 7) Settings → Help, scroll to \"For new users: what the AI can and cannot do\"");
+        out.add(e1260);
+
         Entry e1250 = new Entry("v1.25.0", "2026-10-27");
         e1250.add(new Group(s("修复", "Fixed"),
                 s("修好问询页有时看不到「分析错误」：页面太长时底部按钮被挤出屏幕、又不能滚动——现在整页可滑，「分析错误」和「误判放行」挨在一起，就在宽限按钮后面；点开「分析错误」后页面会自动滑到纪律输入框，保存和跳过都点得到",

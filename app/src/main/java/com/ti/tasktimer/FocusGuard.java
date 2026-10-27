@@ -32,6 +32,7 @@ public final class FocusGuard {
                 .remove("grace_pkg").remove("grace_until")
                 .remove("cooldown_until")
                 .remove("last_popup_pkg").remove("last_popup_at")
+                .remove("list_popup_pkg").remove("list_popup_at").remove("list_popup_task")
                 .remove("session_allow")
                 .apply();
     }
@@ -99,7 +100,7 @@ public final class FocusGuard {
         lastEvalMs = now;
         if (!TimerState.isRunning(c) || TimerState.endFired(c)) return;
         TaskItem task = currentTask(c);
-        if (task == null || task.focusMode == null || "off".equals(task.focusMode)) return;
+        if (task == null) return;
         if (!DETECTOR.isReady(c)) return;
 
         String fg = DETECTOR.foregroundPackage(c);
@@ -116,6 +117,13 @@ public final class FocusGuard {
         }
         if (p.getStringSet("session_allow", new HashSet<>()).contains(fg)) return;
 
+        // 任务软件名单·白（v1.26.0）：当前任务名单里放行的软件，本次计时内
+        // 不再触发专注规则问询（与 session_allow 同位，排在宽限处理之前）
+        if (AppLists.TIER_WHITE.equals(AppLists.tierFor(c, task.id, fg))) {
+            if (gracePkg != null && !gracePkg.equals(fg)) clearGrace(c);
+            return;
+        }
+
         if (gracePkg != null) {
             if (gracePkg.equals(fg)) {
                 if (now >= graceUntil) {
@@ -129,6 +137,28 @@ public final class FocusGuard {
             clearGrace(c); // 换了个别的分神应用，按新违规处理
         }
 
+        // 任务软件名单·黑（v1.26.0）：名单（含未生成时的通用兜底）判黑的软件，
+        // 一打开就弹问询——不看任务有没有设专注规则。同应用同任务 3 分钟内
+        // 不重复弹（防抖）；通话中不抢（GuardDispatch 同口径）；在问询页选过
+        // 宽限的，宽限期内由上面的宽限分支兜住、到期照旧跳回。
+        if (AppLists.TIER_BLACK.equals(AppLists.tierFor(c, task.id, fg))) {
+            if (now < p.getLong("cooldown_until", 0)) return;
+            if (GuardDispatch.inCall(c)) return;
+            String lp = p.getString("list_popup_pkg", null);
+            long lat = p.getLong("list_popup_at", 0);
+            String lt = p.getString("list_popup_task", "");
+            if (fg.equals(lp) && task.id.equals(lt) && now - lat < 180_000L) return;
+            p.edit().putString("list_popup_pkg", fg).putLong("list_popup_at", now)
+                    .putString("list_popup_task", task.id).apply();
+            TimerState.logEvent(c, "软件名单：打开黑名单应用「" + AppLister.labelOf(c, fg)
+                    + "」（任务「" + task.title + "」），弹出问询页");
+            FloatingWindow.setSuppressed(true);
+            AlertHelper.fireGuard(c, fg, AppLists.reasonFor(c, task.id, fg, task.title));
+            return;
+        }
+        // 灰名单与未分类：不新增打扰，落回既有专注规则判定
+
+        if (task.focusMode == null || "off".equals(task.focusMode)) return;
         if (!isViolation(task, fg)) return;
         if (now < p.getLong("cooldown_until", 0)) return;
         String lastPkg = p.getString("last_popup_pkg", null);

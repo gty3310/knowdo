@@ -30,7 +30,7 @@ public class PipelineAnalyzer implements ContentAnalyzer {
         return analyze(c, bmp, task, fgPkg, null);
     }
 
-    /** nodeText 为无障碍节点文字（录屏回退通道传 null，走原 OCR 路径）。 */
+    /** nodeText 为无障碍节点文字（传 null 时走 OCR 路径兜底）。 */
     public Result analyze(Context c, Bitmap bmp, TaskItem task, String fgPkg, String nodeText) {
         lastText = nodeText != null ? nodeText : "";
         SemanticJudge.beginFrame();

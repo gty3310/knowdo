@@ -82,13 +82,18 @@ EOF
 
 # 版本追溯（v1.13.0 起）：把构建时 HEAD 的 git 短 hash 注入 BuildInfo.java（生成类，永不入库），
 # App 内版本显示带上它，保证与实际构建的提交永远一致，不许手写。
+# v1.26.0 起连 versionName 也一并从 app/build.gradle 注入——此前 Strings.versionLine
+# 把版本号写死成旧值（显示 v1.21.3 而实际已 1.25.0），改走注入后不可能再漂移。
 _GIT_SHORT=$(git -C "$PWD" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+_VERSION_NAME=$(sed -n "s/.*versionName '\([0-9.]*\)'.*/\1/p" app/build.gradle | head -1)
+[ -z "$_VERSION_NAME" ] && _VERSION_NAME="unknown"
 cat > app/src/main/java/com/ti/tasktimer/BuildInfo.java <<EOF
 package com.ti.tasktimer;
 
-/** 构建时由 build-gradle.sh 从 git rev-parse --short HEAD 生成，永不入库，请勿手改。 */
+/** 构建时由 build-gradle.sh 注入（git 短 hash + build.gradle 的 versionName），永不入库，请勿手改。 */
 public final class BuildInfo {
     public static final String GIT_SHORT = "$_GIT_SHORT";
+    public static final String VERSION_NAME = "$_VERSION_NAME";
     private BuildInfo() {}
 }
 EOF

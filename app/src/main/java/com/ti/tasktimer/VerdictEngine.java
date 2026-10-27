@@ -39,12 +39,16 @@ public final class VerdictEngine {
                 .apply();
     }
 
-    /** 本次计时还没拿到截图授权（autoStart 场景）时，记一次日志即可，别刷屏。 */
-    public static void noteNoAuthOnce(Context c) {
+    /**
+     * 本次计时无障碍截图通道没就绪时记一次日志即可，别刷屏（v1.26.0 改名改口径：
+     * 录屏授权通道已移除，拿不到截图的唯一原因是无障碍没开/不可用——静默
+     * 跳过本次采样，不弹任何授权框）。
+     */
+    public static void noteNoA11yOnce(Context c) {
         SharedPreferences p = prefs(c);
         if (p.getBoolean("noauth_logged", false)) return;
         p.edit().putBoolean("noauth_logged", true).apply();
-        TimerState.logEvent(c, "屏幕内容守卫：本次计时没有截图授权（自动开始的任务无法弹授权框），本次不采样");
+        TimerState.logEvent(c, "屏幕内容守卫：无障碍截图通道未就绪，本次计时不采样（去权限页开启无障碍后即恢复）");
     }
 
     /** 最近一次问询是否由语义判定在降级状态下触发（GuardActivity 诊断行用）。 */

@@ -34,6 +34,8 @@ public class GuardActivity extends Activity {
     public static final String EXTRA_SOURCE = "source";
     public static final String EXTRA_CATEGORY = "category";
     public static final String EXTRA_DETAIL = "detail";
+    /** 名单黑问询的理由（v1.26.0）：一句完整的话，点明该软件在当前任务黑名单里；缺省走原文案。 */
+    public static final String EXTRA_REASON = "reason";
 
     private String fgPkg;
     private boolean contentMode;
@@ -110,8 +112,14 @@ public class GuardActivity extends Activity {
                     + (detail == null ? "" : detail)
                     + "\n截图只在本机分析、已经销毁，不会保存或上传。");
         } else {
-            String appLabel = AppLister.labelOf(this, fgPkg);
-            sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n你打开了「" + appLabel + "」，它不在这个任务的专注规则里。");
+            String reason = getIntent().getStringExtra(EXTRA_REASON);
+            if (reason != null && !reason.isEmpty()) {
+                // 名单黑问询（v1.26.0）：理由本身已点明「在黑名单里」，直接作副文案
+                sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n" + reason + "。");
+            } else {
+                String appLabel = AppLister.labelOf(this, fgPkg);
+                sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n你打开了「" + appLabel + "」，它不在这个任务的专注规则里。");
+            }
         }
         sub.setTextSize(18);
         sub.setTextColor(Color.rgb(31, 47, 42));

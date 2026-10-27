@@ -4,13 +4,12 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-/** 开机自启实时同步（开关开着，且已选过桥文件或已进入 Supabase 模式时）。 */
+/** 开机自启实时同步（已登录云端时；v1.26.0 起同步只有 Supabase 一条路）。 */
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            if (SyncManager.realtimeEnabled(context)
-                    && (SyncManager.getUri(context) != null || SyncManager.isSupabaseMode(context))) {
+            if (SyncManager.realtimeEnabled(context) && Supa.isLoggedIn(context)) {
                 SyncService.start(context);
             }
             if (FloatingWindow.enabled(context)) FloatService.start(context);

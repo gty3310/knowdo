@@ -43,7 +43,7 @@ public class TaskItem {
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
-    public String priority;            // must / secondary / null
+    public String priority;            // must / important / secondary / leisure / null（null 与未知值按 secondary 论）
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
     public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
     public String note = "";           // 任务笔记，可在计时悬浮窗里随手写，随桥同步
@@ -156,6 +156,28 @@ public class TaskItem {
         return o;
     }
 
+// ---- 优先级四档（v1.26.0：must 必做 ＞ important 重要 ＞ secondary 次要 ＞ leisure 休息） ----
+    /** 档位序：must=0、important=1、secondary=2（含 null 与未知值）、leisure=3。 */
+    public static int priorityRank(String p) {
+        if ("must".equals(p)) return 0;
+        if ("important".equals(p)) return 1;
+        if ("leisure".equals(p)) return 3;
+        return 2;
+    }
+
+    /** 档位文案（界面与日历 tag 共用）。 */
+    public static String priorityLabel(String p, boolean en) {
+        switch (priorityRank(p)) {
+            case 0: return en ? "Must" : "必做";
+            case 1: return en ? "Important" : "重要";
+            case 3: return en ? "Leisure" : "休息";
+            default: return en ? "Secondary" : "次要";
+        }
+    }
+
+    /** 是否休息档（娱乐类：永不自动排程、不进时间账、不参与滚入与落差清单）。 */
+    public static boolean isLeisure(String p) { return "leisure".equals(p); }
+
     public static TaskItem fromJson(JSONObject o) throws JSONException {
         TaskItem t = new TaskItem();
         t.id = o.getString("id");
@@ -175,6 +197,7 @@ public class TaskItem {
         t.repeat = o.optString("repeat", "none");
         t.durationMinutes = o.optInt("durationMinutes", 30);
         t.actualMinutes = o.optInt("actualMinutes", 0);
+
         t.priority = o.isNull("priority") ? null : o.optString("priority", null);
         if (t.priority != null && t.priority.isEmpty()) t.priority = null;
         t.status = o.optString("status", "todo");

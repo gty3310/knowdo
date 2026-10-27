@@ -22,14 +22,17 @@ import java.util.Random;
 import java.util.concurrent.Executor;
 
 /**
- * 屏幕内容守卫的新截图通道（v1.21.0）：无障碍一次性截图，替代 MediaProjection。
- * 为什么换：录屏授权一份只够一次（安卓 14+）、锁屏即停、进程被杀不可自愈；
- * 无障碍服务由系统托管，进程被杀后系统会重新绑定续跑，且 takeScreenshot()
- * 是一次性截图，不需要每次计时重新授权（研究结论见仓库研究记录）。
+ * 屏幕内容守卫的唯一截图通道：无障碍一次性截图（v1.21.0 起为首选通道，
+ * v1.26.0 起录屏回退通道整套移除，只剩这一条路）。
+ * 为什么只走无障碍：录屏授权一份只够一次（安卓 14+）、锁屏即停、进程被杀
+ * 不可自愈，真机上回退被反复触发、反复弹系统授权框；无障碍服务由系统托管，
+ * 进程被杀后系统会重新绑定续跑，且 takeScreenshot() 是一次性截图，不需要
+ * 每次计时重新授权。无障碍没开启/截图拿不到时，按既有降级语义静默跳过
+ * 该帧（测试者模式有一行诊断），永不再拉起任何录屏授权。
  * 本服务同时是正式守卫的采样宿主：守卫开 + 计时中时，采样循环跑在这里
- * （15–45 秒随机一张，平均 30 秒）；无障碍未开启时 ScreenCaptureService
- * 回退到旧的录屏通道，两条通道共用 PipelineAnalyzer 与 VerdictEngine。
- * 隐私红线不变：截图只在内存里分析、分析完立刻 recycle，从不落盘、从不上传。
+ * （15–45 秒随机一张，平均 30 秒），分析与判定走 PipelineAnalyzer 与
+ * VerdictEngine。隐私红线不变：截图只在内存里分析、分析完立刻 recycle，
+ * 从不落盘、从不上传。
  * 另提供节点文字读取（getRootInActiveWindow）给管线做零成本预筛，
  * 以及 captureFrame 给守卫测试模式借帧（测试模式只显示、从不处置）。
  */
@@ -85,9 +88,8 @@ public class KnowDoAccessibilityService extends AccessibilityService {
         handler = new Handler(thread.getLooper());
         handlerExecutor = r -> handler.post(r);
         // 绑定时若守卫开着且正在计时（进程被杀后系统重绑、或计时中途刚开启无障碍），
-        // 无缝续上采样，并停掉可能在跑的录屏回退通道，避免两通道同采
+        // 无缝续上采样
         if (ScreenGuardPrefs.enabled(this) && TimerState.isRunning(this)) {
-            ScreenCaptureService.stopServiceOnly(this);
             startGuardSampling();
         }
         // 测试模式开关还开着的话，把测试采样也续上
@@ -238,7 +240,6 @@ public class KnowDoAccessibilityService extends AccessibilityService {
     }
 
     // ---------- 正式守卫采样（宿主在本服务内） ----------
-    /** 计时开始时由 ScreenCaptureService 分流调用：无障碍就绪就走本通道。 */
     public static void startGuardSampling() {
         KnowDoAccessibilityService s = instance;
         if (s != null) s.startLoop();
@@ -247,6 +248,27 @@ public class KnowDoAccessibilityService extends AccessibilityService {
     public static void stopGuardSampling() {
         KnowDoAccessibilityService s = instance;
         if (s != null) s.stopLoop();
+    }
+
+    // ---------- 计时分流入口（v1.26.0：截图只走无障碍一条通道） ----------
+    /**
+     * 计时开始时由 TimerService 调用：守卫开着且无障碍就绪 → 开始采样；
+     * 无障碍没就绪 → 静默跳过本次计时的采样、只在运行日志里记一次
+     * （VerdictEngine.noteNoA11yOnce），永不拉起任何录屏授权——录屏通道
+     * 已于 v1.26.0 整套移除，本方法是唯一的采样启动口。
+     */
+    public static void onTimerStarted(Context c) {
+        if (!ScreenGuardPrefs.enabled(c)) return;
+        if (isReady()) {
+            startGuardSampling();
+        } else {
+            VerdictEngine.noteNoA11yOnce(c);
+        }
+    }
+
+    /** 计时停止时调：停采样（无障碍未就绪时为无-op）。 */
+    public static void onTimerStopped(Context c) {
+        stopGuardSampling();
     }
 
     private void startLoop() {

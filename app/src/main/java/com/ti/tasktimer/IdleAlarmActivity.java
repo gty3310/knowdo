@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -37,12 +36,10 @@ public class IdleAlarmActivity extends Activity {
     private static final int LINE = Color.parseColor("#3A4A41");
     private static final int AMBER = Color.parseColor("#D94B3A");
     private static final int PASSER_BG = Color.parseColor("#2C4036");
-    private static final int REQ_CAPTURE = 48;
 
     private TaskStore store;
     private TextView stageTag;
     private TextView soundCap;
-    private TaskItem pendingStart;
     private boolean quietShown;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable stageTick = new Runnable() {
@@ -372,31 +369,9 @@ public class IdleAlarmActivity extends Activity {
         finish();
     }
 
-    /** 开始计时（含屏幕守卫截图授权流程，与守卫页同一口径：结果如何都开始）。 */
+    /** 开始计时（v1.26.0：截图只走无障碍通道，不再请求录屏授权，直接开始）。 */
     private void startTiming(TaskItem t) {
-        if (ScreenGuardPrefs.enabled(this) && !ScreenCaptureService.isAuthorized(this)) {
-            try {
-                MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
-                Intent intent = mpm == null ? null : mpm.createScreenCaptureIntent();
-                if (intent != null) {
-                    pendingStart = t;
-                    startActivityForResult(intent, REQ_CAPTURE);
-                    return;
-                }
-            } catch (Exception ignored) { }
-        }
         doStart(t);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_CAPTURE) return;
-        if (resultCode == RESULT_OK && data != null) ProjectionAuth.store(resultCode, data);
-        if (pendingStart != null) {
-            TaskItem t = pendingStart;
-            pendingStart = null;
-            doStart(t);
-        }
     }
 
     private void doStart(TaskItem t) {

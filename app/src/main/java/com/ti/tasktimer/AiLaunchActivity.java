@@ -50,7 +50,7 @@ return;
 
 String pkg = FocusGuard.musePackage(this);
 if (pkg == null) {
-Toast.makeText(this, what + "已复制。先去「权限」页选一下 Muse 是哪个应用，我再帮你直接打开它",
+Toast.makeText(this, what + "已复制。先去「权限」页选一下你的 AI 助手是哪个应用，我再帮你直接打开它",
 Toast.LENGTH_LONG).show();
 Intent p = new Intent(this, PermActivity.class);
 p.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -76,7 +76,7 @@ if (launch!= null) {
 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 try { startActivity(launch);} catch (Exception ignored) {}
 }
-Toast.makeText(this, what + "已复制到剪贴板，在 Muse 里粘贴即可", Toast.LENGTH_LONG).show();
+Toast.makeText(this, what + "已复制到剪贴板，在你的 AI 助手里粘贴即可", Toast.LENGTH_LONG).show();
 } else {
 Toast.makeText(this, what + "已同时复制到剪贴板（若没自动填入，粘贴即可）", Toast.LENGTH_SHORT).show();
 }
@@ -99,7 +99,7 @@ else if (t.deadline!= null) {
 }
 sb.append("计划时长：").append(t.durationMinutes).append(" 分钟\n");
 if (t.actualMinutes > 0) sb.append("实际用时：").append(t.actualMinutes).append(" 分钟\n");
-sb.append("优先级：").append("must".equals(t.priority)? "必要": "次要").append('\n');
+sb.append("优先级：").append(TaskItem.priorityLabel(t.priority, false)).append('\n');
 if (t.focusRule!= null &&!t.focusRule.isEmpty()) {
 sb.append("专注规则：").append(t.focusRule).append('\n');
 }

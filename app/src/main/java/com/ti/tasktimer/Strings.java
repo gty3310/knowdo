@@ -44,7 +44,9 @@ public final class Strings {
     public static String colScenarios() { return s("情景", "Context"); }
     public static String columnsTitle() { return s("显示哪些列", "Columns to show"); }
     public static String priMust() { return s("必要", "Must"); }
+    public static String priImportant() { return s("重要", "Important"); }
     public static String priSecondary() { return s("次要", "Secondary"); }
+    public static String priLeisure() { return s("休息", "Leisure"); }
     public static String scenariosEmpty() { return s("＋情景", "+ Context"); }
     public static String dateDaily() { return s("每日", "Daily"); }
     public static String dateEmpty() { return s("＋日期", "+ Date"); }
@@ -82,7 +84,6 @@ public final class Strings {
     public static String loginHint() {
         return s("点此登录 / 注册（云端同步）", "Tap to sign in / sign up (cloud sync)");
     }
-    public static String bridgeModeLabel() { return s("Drive 桥模式", "Drive bridge mode"); }
     public static String language() { return s("语言", "Language"); }
     public static String appearance() { return s("外观", "Appearance"); }
     public static String light() { return s("亮", "Light"); }
@@ -90,7 +91,7 @@ public final class Strings {
     public static String help() { return s("帮助", "Help"); }
     public static String settings() { return s("设置", "Settings"); }
     /** 版本行带构建提交短号（v1.13.0 起）：短号由构建脚本从 git 注入 BuildInfo，不许手写。 */
-    public static String versionLine() { return "知行 KnowDo v1.21.3 · " + BuildInfo.GIT_SHORT; }
+    public static String versionLine() { return "知行 KnowDo v" + BuildInfo.VERSION_NAME + " · " + BuildInfo.GIT_SHORT; }
 
     // ---------------- 设置页 ----------------
     public static String settingsTitle() { return s("设置", "Settings"); }
@@ -101,10 +102,6 @@ public final class Strings {
     public static String rowAccount() { return s("账号（登录 / 注册 / 退出）", "Account (sign in / up / out)"); }
     public static String rowSyncNow() { return s("立即同步", "Sync now"); }
     public static String rowRealtime() { return s("实时同步", "Realtime sync"); }
-    public static String rowBridgeFile() { return s("Drive 桥文件", "Drive bridge file"); }
-    public static String rowBridgePick() { return s("选择 / 更换", "Choose / change"); }
-    public static String rowBridgeNone() { return s("（未选择）", "(not chosen)"); }
-    public static String rowBridgeSelected() { return s("已选择", "Selected"); }
     public static String rowColumns() { return s("显示哪些列", "Columns to show"); }
     public static String rowAppearance() { return s("外观", "Appearance"); }
     public static String rowLanguage() { return s("语言", "Language"); }
@@ -285,12 +282,12 @@ public final class Strings {
     public static String calLanePlan() { return s("计划", "Plan"); }
     public static String calLaneActual() { return s("实际", "Actual"); }
     public static String calAskAi() {
-        return s("问 AI：让 Muse 帮我重排今天剩下的日程",
-                "Ask AI: let Muse re-plan the rest of today");
+        return s("AI 重排：重新排今天剩下的日程",
+                "AI Re-plan: re-plan the rest of today");
     }
     public static String calNoPlanHint() {
-        return en ? "No schedule yet today: tell Muse your tasks in chat, or tap Ask AI — once planned, it shows up here."
-                  : "今天还没有日程：在对话里把任务告诉 Muse、或点上面的「问 AI」，排好后这里就会有计划块。";
+        return en ? "No schedule yet today: tap AI Re-plan above, or let the local auto-planner fill in your must-dos — once planned, it shows up here."
+                  : "今天还没有日程：点上面的「AI 重排」，或等本地自动排程把必做填进来，排好后这里就会有计划块。";
     }
     public static String calUnscheduledTitle() { return s("未排入日程的任务", "Not scheduled yet"); }
     public static String calTodayTasksTitle() { return s("今天的任务（还没排日程）", "Today's tasks (no schedule yet)"); }
@@ -364,8 +361,8 @@ public final class Strings {
         {"一、知行是什么",
          "知行是你的电子大脑、个人任务管理中枢：任务不靠脑子记，放在这张表里；"
          + "每个任务都配好时长，点「开始」就倒计时，用行动把“知”变成“行”，目标是知行合一。\n"
-         + "设计理念：本地优先（数据先存手机，断网照常用）＋ Google Drive 桥同步"
-         + "（一份 tasks.json 是你、Muse、知行三方共用的任务清单）。\n"
+         + "设计理念：本地优先（数据先存手机，断网照常用）＋云端同步"
+         + "（登录后任务存进你自己的云端账号，手机与电脑共用同一份清单）。\n"
          + "已开源：github.com/gty3310/knowdo，许可 CC BY-NC-SA 4.0"
          + "（谁都可以继续开发，衍生版本必须同样免费且非商业；动手前先知会作者一声是礼仪约定，不是许可的强制条款）。"},
         {"二、任务表怎么用",
@@ -392,46 +389,51 @@ public final class Strings {
          + "没在计时也能直接在悬浮窗里开始/继续这个任务。全屏检查页弹出时它会让位，检查页关掉自动回来。三种模式互相切换，模式会被记住：\n"
          + "• 吸附：贴在屏幕左/右边缘的小标签，只显示分钟数（计时/暂停=剩余分钟，待开始=计划分钟，向上取整、最多 99+）。上面没有任何按钮、不能暂停。点它展开；沿边缘上下拖可换高度；往屏幕中间拖离边缘也会展开。\n"
          + "• 小展开：半透明小窗：任务名 + 时间 + ▶/⏸ + 浅灰色的极简字符“✎”。点 ▶ 开始/继续；点 ⏸ 不会直接暂停——会先弹出菜单让你选多久后提醒（1/3/5/10/15/20/30/60 分钟、2 小时、自定义），到点全屏叫你回来继续。点内容区、或点“✎”，直接进入编辑模式并弹键盘；按住拖动可以移动，拖到屏幕左/右边缘松手就吸附成标签。\n"
-         + "• 编辑：更不透明的完整卡片——任务名、大字时间、状态、笔记输入框（笔记就是输入框本身）。点笔记区直接打字，停笔约 1 秒自动保存（并随桥同步）；"
+         + "• 编辑：更不透明的完整卡片——任务名、大字时间、状态、笔记输入框（笔记就是输入框本身）。点笔记区直接打字，停笔约 1 秒自动保存（联网时同步到云端）；"
          + "时间行左边的大字是剩余时间，右边小字是「已用 / 计划总」：已用是这个任务在本机累计计时过的时间（从 v1.6.0 起记录），计划总是当前目标总时长（含加时后的）；"
          + "按钮：开始/暂停/继续（同上，暂停要选提醒时间）、AI、完成（计时中才显示，弹出结束检查页）、打开知行、收起。\n"
-         + "• AI 按钮：把这个任务的全部信息（名称、情景、截止、时长、优先级、专注规则、当前状态、笔记）复制到剪贴板，并打开你在权限页选定的 AI 助手（目前是 Muse）：若对方支持分享直达，文字会直接进输入框；否则打开助手后粘贴即可。\n"
+         + "• AI 按钮：把这个任务的全部信息（名称、情景、截止、时长、优先级、专注规则、当前状态、笔记）复制到剪贴板，并打开你在权限页选定的 AI 助手：若对方支持分享直达，文字会直接进输入框；否则打开助手后粘贴即可。\n"
          + "• 复制按钮：笔记编辑区右上角常驻一个「复制」，点的效果和 AI 按钮的前半步一样——把任务全部信息复制到剪贴板——但不打开助手。主界面里弹出的笔记编辑框、专注规则编辑框右上角也有同样的「复制」，复制时用的是编辑框里正在写的内容。\n"
          + "权限页有“预览悬浮窗”，不用开始计时也能看 10 秒效果（常驻服务在跑时预览会被实时内容覆盖，属正常）。\n"
          + "• 定时关闭（v1.14.0）：大卡片上有「关闭」——选 10/15/30/60 分钟后回来、等当前任务结束回来、"
          + "自定义分钟数，或者「不再出现」（等于关掉设置里的悬浮窗开关，在设置里能再打开）。"
          + "定时项到点自动再现，关机重启也照算；隐藏期间只是没了这块窗，计时、守卫弹页、闹铃、通知全都照常。"},
-        {"五、Drive 实时同步与“立即开始”",
-         "桥文件是 Google Drive「_电子大脑 / task list」文件夹里的 tasks.json。"
-         + "第一次点“同步”时选中它、授权一次，之后 App 自动读写（v1.8.0 起选桥文件在设置页「账号」组）。\n"
-         + "在设置页「账号」组打开“实时同步”时，后台每 30 秒跟桥对一次：Muse 在别处改了任务，手机半分钟内跟上；"
-         + "合并规则是同一任务按修改时间新者胜，删除用墓碑标记防复活。\n"
-         + "口令：对 Muse 说“接下来 N 分钟做 X”，Muse 会往桥里写一个带“立即开始”标记的任务，"
-         + "知行发现后自动开始计时（正有计时在跑时排队等空闲）。\n"
-         + "说明：30 秒轮询是 Drive 桥能做到的近实时上限，不是秒级推送（秒级要换 Firebase，见第十节）。"},
+        {"五、云端实时同步与“立即开始”",
+         "登录后，同步走云端实时推送：任务在别处改了，手机几秒内跟上；每 30 秒还有一次全量对账兜底。"
+         + "合并规则是同一任务按修改时间新者胜，删除用墓碑标记防复活。断网时本机照常用，改动先留着，联网后自动同步。\n"
+         + "“立即开始”：任务带上“立即开始”标记同步过来时（比如你在对话里说了“接下来 N 分钟做 X”、"
+         + "由软件之外的助手记进你的云端），知行收到后自动开始计时；正有计时在跑时直接切换过去。\n"
+         + "没登录时只有本机功能可用，不同步。同步状态在设置页「账号」组与主页抽屉里都能看到。"},
         {"六、专注守卫（看你在用哪个应用）",
          "原理：计时中每 2 秒借“使用情况访问”看一眼前台应用，违反当前任务的专注规则就弹全屏问询页。\n"
          + "规则在任务的专注规则里设（展开区「编辑 → 专注规则」）：自然语言规则（写给人看的，如“读经典只用时习”）＋ 模式"
          + "（不监测 / 黑名单：拦名单里的 / 白名单：只许名单里的）＋ 软件名单（点开多选）＋ 主软件。\n"
          + "被拦下时“关掉”的意思不是回桌面，而是把你送回应该用的软件：设了主软件就跳它"
-         + "（如读经典跳时习），没设就跳知行自己的“当前任务页”（任务名 + 倒计时 + 笔记 + 回到任务列表 / 回到 Muse）。\n"
+         + "（如读经典跳时习），没设就跳知行自己的“当前任务页”（任务名 + 倒计时 + 笔记 + 回到任务列表 / 回到 AI 助手）。\n"
          + "问询页四个选择：立即回到任务 / 给我 30 秒 / 给我 60 秒（宽限到期还赖在分神应用里会自动跳回）"
          + " / 这是误判、本次放行（本次计时内不再拦它）。\n"
-         + "不拦的：知行自己、桌面、输入法、在权限页选定的 Muse 应用（跟 Muse 对话算元操作）。\n"
-         + "局限：靠轮询，最长约 2 秒延迟；更强的无障碍版暂缓（第十节）。"},
+         + "不拦的：知行自己、桌面、输入法、在权限页选定的 AI 助手应用（跟 AI 助手对话算元操作）。\n"
+         + "局限：靠轮询，最长约 2 秒延迟。\n"
+         + "任务软件名单（v1.26.0）：开始一个任务时，你的常用软件会被按这个任务在后台分成白、灰、黑三档——"
+         + "白名单软件在本次计时内不再触发专注规则问询；黑名单软件一打开就立刻弹问询（不用等屏幕内容判定）；"
+         + "灰名单不新增打扰，照旧走屏幕内容守卫。名单还没生成好时，先用一份内置的通用黑名单"
+         + "（抖音、抖音极速版、快手、快手极速版、小红书、微博、哔哩哔哩、淘宝、拼多多、京东、王者荣耀、和平精英这类）兜底；"
+         + "名单到了就以名单为准。在任务详情里点「软件名单」能看三档、点某个软件改档，你改过的不会再被覆盖。"
+         + "设置页「守卫」组有总开关，关了就不发名单请求、不按名单弹问询，兜底也停。"
+         + "注意：名单的自动分类目前只对作者本人的账号开放，其他账号只有通用黑名单兜底（见第二十五节）。"},
         {"七、屏幕内容守卫（看屏幕上是什么）",
          "专注守卫只能看“在用哪个应用”，看不见“在浏览器里购物、刷短视频网页版、看黄色内容”——这个守卫补这一块。"
          + "在权限页「屏幕内容守卫」一节打开总开关（默认关；设置页「守卫」组也有同一个开关）。\n"
-         + "采样：只在计时中 + 亮屏 + 已解锁时工作；随机每 45–170 秒截一张图"
-         + "（任意 3 分钟内至少一张，时刻猜不到）。每次开始计时，系统会弹一次截图授权，请点“允许”"
-         + "（安卓硬规定，每个任务一次）；没有授权的计时（比如自动开始的）整场不采样。\n"
+         + "采样：只在计时中 + 亮屏 + 已解锁时工作；随机每 15–45 秒截一张图（平均约 30 秒，时刻猜不到）。"
+         + "截图只走无障碍通道（在权限页开启）：开启后计时中自动采样，不再弹任何录屏授权；"
+         + "没开启无障碍时整场不采样，只在记录里留一行说明。\n"
          + "分析全部在手机本机完成，分三级：先由小模型 NudeNet 看图抓黄色/暴露内容"
          + "（按你的定义：衣服穿得很少的照片也算违规）；再看前台应用是不是购物/视频类；"
          + "最后用 OCR 读屏幕文字（中文/日文/英文），命中购物、短视频关键词，或文字很多却与当前任务毫无关系，才算命中。\n"
          + "防误判：同一类连续命中 2 张才弹问询页（黄色类可在设置里改成 1 张即触发）；"
          + "问询页和专注守卫是同一页：立即回到任务 / 30 秒 / 60 秒（宽限到期再命中同类会直接跳回）/ 误判放行（本次计时内不再判这一类）。"
-         + "每次判定都会进记录，并以事件形式同步进桥文件的 guardEvents（只有时间、类别、置信度、一句证据文字）。\n"
-         + "隐私红线：截图只在内存里分析、分析完立刻销毁——不保存、不上 Drive、不发给 Muse。\n"
+         + "每次判定都会进记录，并以事件形式同步到云端（只有时间、类别、置信度、一句证据文字）。\n"
+         + "隐私红线：截图只在内存里分析、分析完立刻销毁——不保存、不上传、不发给任何人。\n"
          + "已知盲区：银行类应用、部分付费视频、浏览器无痕模式的界面受系统保护，截出来是纯黑图，"
          + "只能记一次“不可见”、判不了；游泳、健身等画面小模型可能误报；"
          + "“跟 AI 聊的是不是正题”是最难判的，本版只靠关键词，判不了就放过，不硬判。"},
@@ -442,59 +444,49 @@ public final class Strings {
          + "• 精确闹钟：App 进程被系统杀掉时，过半/结束仍能准时触发的兜底；\n"
          + "• 电池优化豁免：防止系统把计时、同步服务冻掉；\n"
          + "• 使用情况访问：两个守卫判断前台应用靠它；\n"
-         + "• 另有：在这里选“回到 Muse”指向哪个应用、开关悬浮窗与预览、屏幕内容守卫的开关与重新授权。"},
+         + "• 另有：在这里选“回到 AI 助手”指向哪个应用、开关悬浮窗与预览、屏幕内容守卫的开关。"},
         {"九、记录页",
          "每次开始/过半/结束/加时、两个守卫的每次动作、每次同步结果，都带时间戳记在这里，方便回看对账。"
-         + "换手机或重装后要重新选桥文件，也从记录页进（或设置页「账号」组）。"},
+         + "换手机或重装后，用同一个账号重新登录，云端数据就会同步回来。"},
         {"十、提到过但暂不做 / 决定不做的功能",
-         "1. Firebase 秒级推送——暂缓。Drive 桥 30 秒轮询目前够用；上 Firebase 要另建云端项目并长期维护。\n"
+         "1. 更快的推送通道——暂缓。云端实时推送加 30 秒对账目前够用。\n"
          + "2. 把截图发给云端 AI 判读——决定不做。隐私上截图不出手机；且云端模型的内容政策会拒绝分析黄色截图，最需要它判的那一类恰恰判不了。\n"
          + "3. 强力版专注守卫（无障碍模拟按键 + 给分神应用盖全屏遮罩）——暂缓。轻量版先用；架构上检测层、执行层都留了可替换接口，日后要上不用推倒重来。\n"
          + "4. 端侧多模态大模型深判（Gemma 3n 一类，模型 3GB 起）——只留了接口、未启用。它专治“AI 聊天跑题”这类语义题，但耗电、发热都大，等真需要再接。\n"
          + "5. 保留截图原图作证据 / 原图上云——决定不做（红线）。判了分神也只留文字结论。\n"
-         + "6. 截图全隐形（不弹授权框、状态栏无图标）——做不到。安卓 14 起系统硬规定每次会话必须授权一次，任何应用都绕不过。\n"
+         + "6. 截图不走无障碍、还想全隐形采样——做不到也不做。截图只走无障碍通道，要你先在系统设置里亲手开启。\n"
          + "7. 屏幕内容守卫全天开启（不计时也采样）——暂不做。电量与隐私成本都翻倍，先只守计时时段。"},
         {"十一、其他先知道的事",
-         "• 换手机/重装 App 后，桥文件的授权要重新选一次（系统授权跟着安装走）。\n"
+         "• 换手机/重装 App 后，用同一个账号重新登录，云端数据会自动同步回来。\n"
          + "• 手机重启后实时同步会自动恢复；若发现没跟上，打开一次知行即可。\n"
-         + "• 任务数据有两份：手机本地一份、Drive 桥一份，以修改时间新者胜合并；本地母本之外，桥文件就是备份。\n"
-         + "• 有问题或想要新功能，直接跟 Muse 说：任务、规则、桥文件都由 Muse 在桥端维护。"},
-        {"十二、让你的 Muse 接入知行（进阶）",
-         "知行不只是一个手机 App：它用放在 Google Drive 的一个 tasks.json 文件当“桥”，"
-         + "手机 App 和 Muse 都读写这一个文件，就能互相看到同一份任务清单——"
-         + "你在 App 里改，Muse 那边知道；Muse 帮你加的任务，也会自动出现在 App 里。\n"
-         + "想让你的 Muse（AI 助手）也接入，按这四步设：\n"
-         + "1. 在 Google Drive 里建一个文件夹（如「_电子大脑 / task list」），桥文件 tasks.json 就放里面；"
-         + "还没有这个文件时，可以让 Muse 按 schema v1 先建一个空的。\n"
-         + "2. 在知行里点“同步”选中这个桥文件、授权一次，并打开“实时同步”（设置页「账号」组），之后 App 会定时自动同步，不用再手动点。\n"
-         + "3. 让你的 Muse 连接同一个 Google Drive，并告诉它桥文件的位置和字段规矩："
-         + "priority=must 是必做、secondary 是次要；durationMinutes 是计划分钟、actualMinutes 是实际用时分钟；"
-         + "deadline 是截止日期、deadlineTime 是当天完成时间；focusRule 是用自然语言写的分神情况描述。"
-         + "改文件时必须保留 App 写入的 doneDates、毫秒时间戳、guardEvents 等字段，不要整表重写把字段弄丢。\n"
-         + "4.（可选，进阶）在 Muse 那边设一个后台“小钩子”（监视脚本）：每几分钟比对一次桥文件的指纹（md5），"
-         + "没变就安安静静，变了才唤醒 Muse。唤醒后 Muse 可以替你做两件事："
-         + "把你新写的分神描述翻译成专注守卫的软件名单；算一算今晚必做任务的时间够不够"
-         + "（必做任务计划时长合计 ×1.5，对比你睡前还剩的时间，不够就提醒你）。\n"
-         + "成本与隐私：这个监视脚本只是个小脚本，运行时不消耗 AI 的钱，只有文件真的变了 Muse 才醒来干活；"
-         + "桥文件里只有任务数据，屏幕内容守卫的截图原图从不进桥、不上云。"},
+         + "• 任务数据有两份：手机本地一份、云端一份，以修改时间新者胜合并；云端那份就是备份。\n"
+         + "• 有问题或想要新功能，可以先在「聊聊」里问问，或联系作者。"},
+        {"十二、日程是怎么排出来的",
+         "你今天的日程存在你账号的云端里，日历页读它来画「计划」栏。排法有三条路：\n"
+         + "• 本地自动排程：今天没排上的必做任务，App 自己按每件时长 ×1.5 填进空档，不排到 22:30 之后；"
+         + "已经排好的块、已经过去的块、已完成任务的块都不动。\n"
+         + "• 日历页的「AI 重排」：点它，软件内置的 AI 当场按同一套规矩给一版新排程提案，摆给你看——"
+         + "点「应用」才落盘，点「不用」整版作废。\n"
+         + "• 你亲手拖：长按计划块拖到新时间，或把未排任务拖进日历（见第十三节），拖过的块会被当作固定块。\n"
+         + "三条路都遵守同一套硬规矩：每件按计划时长 ×1.5 占时段（留 50% 缓冲）；必做优先；不排到 22:30 之后；"
+         + "已过去与已完成的块不动；排不下要明说，不许硬塞。"},
         {"十三、日历页（今日时间表）",
          "主界面点右上角「日历」，日历在日程页里展开：左边就是任务列表、右边是日历，底部三个页签始终都在，"
          + "随时可以切走再回来（日历保持展开）；日历左缘拉手可拖动定宽，拖到很窄松手自动关上，点顶栏「日历」也能收起："
          + "时间轴是三栏并排：最左一条窄栏是「日历」（你的 Google 日历日程，只放开始时间＋标题），"
-         + "中间最宽的一栏是「计划」（Muse 排的时段，浅色描边块，是这页的主角），"
+         + "中间最宽的一栏是「计划」（排好的时段，浅色描边块，是这页的主角），"
          + "右边一条窄栏是「实际」（你真正计时的时段，绿色实心块）；同一件任务分段做的，就分几段显示；"
          + "做完的任务变灰，正在计时的高亮，还有一条红线标着现在几点。\n"
          + "顶部写着今天已完成几件、未完成几件、从现在到 22:30（睡觉）还可自由安排多少分钟，"
          + "一眼就知道今天还剩多少事、时间紧不紧。\n"
-         + "日程是 Muse 在桥文件里排的：必做任务（必要，或截止就在今天）必须排入；"
+         + "日程按第十二节的规矩排：必做任务（必要，或截止就在今天）必须排入；"
          + "每件按计划时长 ×1.5 占时段（留 50% 缓冲，是你多年的习惯）；不排到 22:30 之后；"
-         + "次要任务按重要程度穿插进空档。早上把今天的任务告诉 Muse，它就会把日程排好。\n"
-         + "日程过时了（比如有任务没按点做完），点日历页上方的「问 AI」：它会把今天的日程、"
-         + "完成情况、实际计时记录和剩余可安排时间复制好并打开 Muse，你让 Muse 重排一遍，"
-         + "它写回桥文件，日历页每 10 秒自动刷新一次，很快就能看到新版——停在这一页时不用手动点同步。\n"
+         + "次要任务按重要程度穿插进空档。\n"
+         + "日程过时了（比如有任务没按点做完），点日历页上方的「AI 重排」：软件内置的 AI 当场按规矩给一版新排程，"
+         + "你点「应用」才生效；日历页也会自动刷新，云端有新版很快就能看到——停在这一页时不用手动点同步。\n"
          + "计划块可以亲手挪时间：长按一块把它拾起来（会微微放大），上下拖到新位置松手，"
-         + "按 5 分钟对齐，松手就存回桥文件——这是 App 唯一能改日程的地方，只改被拖那一块的起止，"
-         + "Muse 之后重排时会把你手动拖过的块当作固定块，不再挪回去。\n"
+         + "按 5 分钟对齐，松手就存回云端——只改被拖那一块的起止，"
+         + "之后重排时会把你手动拖过的块当作固定块，不再挪回去。\n"
          + "计划块右上角和未排入日程的任务行上都有一个 ▶：点一下就立即开始这个任务计时"
          + "（悬浮窗会自动切换到它），正在计时的那个显示 ⏸，点它暂停，和主界面的开始/暂停是同一套。\n"
          + "拖拽排计划（v1.18.0）：左边就是主页的任务列表本体，不是另一份列表。"
@@ -506,11 +498,11 @@ public final class Strings {
          + "开始/暂停、编辑、闹钟、加时、完成都能直接操作，和主界面展开任务行是同一套。Google 日历的块点开仍只是看全名，不展开。\n"
          + "分屏时左边每个任务行最前面都有一个 ▶/⏸：点一下直接开始或暂停这个任务，不用展开、不用切回主页；"
          + "开始另一个任务就是直接切换，和主页同一套。\n"
-         + "最左窄栏里的灰紫色块是你的 Google 日历日程（Muse 同步过来的已有安排）："
+         + "最左窄栏里的灰紫色块是你的 Google 日历日程（同步到云端的已有安排）："
          + "只在那一栏里显示，不会压到计划块上；只能看、点一下显示全名和时间，不能拖、也没有 ▶；"
-         + "「问 AI」时只会把它们列出来给你参考，并明确告诉 Muse：排日程时不用管它们、不用避让。"},
+         + "「AI 重排」时只会把它们列出来给你参考：排日程时不用管它们、不用避让。"},
         {"十四、Supabase 账号与跨设备计时（v1.7.0 新增）",
-         "从这一版起，知行可以把同步从 Drive 桥换成云端数据库 Supabase："
+         "知行的同步走云端数据库 Supabase："
          + "在三横线菜单或设置页「账号」组点「账号」，用邮箱+密码注册或登录。第一次登录时，本机现有任务会全量"
          + "成为你在云端的数据（不会丢失、不会变空），之后手机与电脑共用同一份任务清单，"
          + "改哪台、另一台几秒内就跟上；没网时在本机照常用，改动先排队，联网后自动先推后拉合并。"
@@ -518,16 +510,15 @@ public final class Strings {
          + "计时也跟着跨设备：你在任何一台设备上开始、暂停、继续、加时或结束，"
          + "另一台立刻镜像出同一个倒计时（开始时间点严格对齐，两边同一时刻到点弹检查页）；"
          + "哪一台先处理了检查页（确认做完或加时），另一台跟着变——它开着的检查页会自动关掉，"
-         + "不会两边各弹各的。你跟 Muse 说“接下来 N 分钟做 X”时，Muse 写入云端的"
-         + "「立即开始」标记会被 App 实时收到并自动开始计时（以前经桥最慢要等 30 秒，现在基本是秒到）。\n"
-         + "每台设备只看得到自己账号的数据（服务端按账号隔离）；退出登录会回到 Drive 桥模式，"
-         + "本机数据都还在。日历页的 Google 日历事件仍是 Muse 同步过来的只读展示，来源换成云端同一处。"},
+         + "不会两边各弹各的。任务带上「立即开始」标记写入云端时，App 会实时收到并自动开始计时（基本是秒到）。\n"
+         + "每台设备只看得到自己账号的数据（服务端按账号隔离）；退出登录后本机数据都还在，只是不再同步。"
+         + "日历页的 Google 日历事件是同步到云端的只读展示。"},
         {"十五、新界面速览（v1.8.0）",
          "主页顶栏只剩左上角三横线菜单、「知行」字标和右上角「日历」；顶栏下细条显示当前任务与剩余时间；"
          + "新增任务是右下角的圆形「＋」。\n"
          + "三横线菜单从左侧滑出：账号与同步状态、语言（中文 / English）与外观（亮 / 暗）的快捷切换、帮助与设置入口都在里面；"
          + "语言和外观在设置页也能改，都可以选「跟随系统」。\n"
-         + "设置页按「账号 / 显示 / 守卫 / 通用」四组放全部设置：账号（登录、实时同步、立即同步、桥文件）、"
+         + "设置页按「账号 / 显示 / 守卫 / 通用」四组放全部设置：账号（登录、立即同步）、"
          + "显示（列显隐、外观、语言）、守卫（专注守卫、屏幕内容守卫）、通用（悬浮窗、权限、记录、帮助、关于）。\n"
          + "亮版是白底清新风，暗版是深灰底配琥珀色强调；悬浮窗维持原样，不受主题切换影响。"},
         {"十六、任务衔接守卫与暂停规则（v1.10.0）",
@@ -639,6 +630,8 @@ public final class Strings {
          + "中途退出、页面被关，回来都是接着填。\n"
          + "• 暂停一会儿：早上真有急事（关闹钟、回紧急消息、接电话），点页面下方的「暂停一会儿」，选 5/10/15/20/30/60 分钟"
          + "或自定义分钟数——这一页会退下，到点全屏自己回来；可以反复暂停，不限次数。暂停期间你打开知行，也能提前进这一页。\n"
+         + "• 没填完、又没选推迟时长时（v1.26.0）：按 Home、按返回、切到别的 App 都不算推迟——每 5 分钟全屏再弹回来一次，"
+         + "直到你填完点「开启今天」，或明确选了「暂停一会儿」的时长为止（通话中不抢，挂断后补上）。已填的内容照旧即时保存，不会丢。\n"
          + "• 测试晨间页：设置「晨间」组里有「测试晨间页」按钮，白天点一下就以正式模式打开晨间页"
          + "（不看时间、不看今天是否已完成），打开的就是真页面真数据——填完点「开启今天」即按正常完成，或者用「暂停一会儿」退出。\n"
          + "• 补记/修改：习惯页有「晨间记录补记 / 修改」入口，打开的是晨间页的编辑版——可以返回退出、不必全填，"
@@ -660,14 +653,27 @@ public final class Strings {
          + "• 建议设置：电池优化豁免、悬浮窗、无障碍截图通道、全屏通知、精确闹钟、通知权限六项，新装或升级后首次打开会呈现一次，"
          + "设置页里有常设入口随时复查。都是可选的——每一项管一个功能，用得上就开、用不上不开，不开不影响其他功能使用，只是系统可能在后台把知行停掉，晨间和提醒可能不准时；"
          + "小米、华为等机型还需在系统里另开自启动与后台弹出（应用内检测不到，清单底部有一行说明）。"},
+        {"二十五、新用户必读：AI 功能的边界",
+         "这个软件的 AI 分两部分。一部分在软件里面：『聊聊』聊天机器人，开箱就能用，走的是项目方的免费模型通道。"
+         + "另一部分在软件外面：把任务说给软件之外的助手记下来、在云端替你盯着重排的机会、给任务分软件名单，"
+         + "这些是作者个人的 AI 助手在作者自己的云端巡查着完成的，是作者个人的设置在干活，不是软件自带的功能。\n"
+         + "软件里面的各个 AI 按钮，对所有用户都走同一个内置聊天机器人，没有给作者单开的通道；"
+         + "作者和大家在软件里用的是同一个 AI。\n"
+         + "对新用户把话说死：能连上的 AI 有且只有软件自带的『聊聊』这一种，没有别的选择；"
+         + "把自己的外部助手连进来这条路，目前不存在。你的外部助手进不了这个软件的云端数据库，也没有巡查在为你跑。"
+         + "对你实际能用的，是软件自带的本地功能（本地自动排程、通用黑名单、本地守卫判定），加上『聊聊』；"
+         + "日历页的「AI 重排」也走内置 AI，当场给提案、你点应用才生效。软件名单的自动分类同理，是作者个人的设置："
+         + "由作者自己的助手在后台为作者的账号生成；其他用户的账号暂时没有这项功能，只用软件内置的通用黑名单兜底。\n"
+         + "数据方面请放心：你的任务、名单和记录只存在你自己的账号下面，作者看不到，作者的助手也碰不到；"
+         + "任何人的 AI 都读不到别人的数据。这是数据库层面的隔离，不是口头承诺。"},
     };
 
     private static final String[][] HELP_EN = {
         {"1. What KnowDo is",
          "KnowDo is your electronic brain and personal task hub: tasks live in this table instead of your head. "
          + "Each task has a planned length; tap Start and the countdown runs — turning knowing into doing, toward the unity of knowledge and action.\n"
-         + "Design: local-first (data lives on the phone first; everything works offline) + a Google Drive bridge "
-         + "(one tasks.json shared by you, Muse and KnowDo).\n"
+         + "Design: local-first (data lives on the phone first; everything works offline) + cloud sync "
+         + "(once signed in, tasks live in your own cloud account, shared between phone and computer).\n"
          + "Open source: github.com/gty3310/knowdo, CC BY-NC-SA 4.0 (anyone may keep developing it; derivatives must stay free and non-commercial; "
          + "telling the author before you start is a courtesy, not a license condition)."},
         {"2. Using the task table",
@@ -697,47 +703,55 @@ public final class Strings {
          + "• Mini: a translucent card — task name + time + ▶/⏸ + a pale minimal \"✎\". ▶ starts/resumes; ⏸ doesn't pause directly — it first asks when to remind you "
          + "(1/3/5/10/15/20/30/60 minutes, 2 hours, or custom); when it fires, a full-screen page calls you back. "
          + "Tap the content, or ✎, to enter edit mode with the keyboard up; drag to move; drop near an edge to dock.\n"
-         + "• Edit: a fuller, more opaque card — task name, big time, status, and the note field (the note is the input itself). Type and it autosaves after ~1 s idle (and syncs via the bridge). "
+         + "• Edit: a fuller, more opaque card — task name, big time, status, and the note field (the note is the input itself). Type and it autosaves after ~1 s idle (and syncs to the cloud when online). "
          + "The big number on the time row is the time left; the small text on the right is \"used / planned total\": used is this task's accumulated timed time on this device (recorded since v1.6.0), "
          + "planned total is the current target including extensions. Buttons: Start/Pause/Resume (pause asks for a remind time, as above), AI, Done (only while timing; opens the end check page), Open KnowDo, Collapse.\n"
-         + "• AI button: copies the task's full info (name, contexts, deadline, length, priority, focus rule, current state, note) to the clipboard and opens the AI assistant chosen on the Permissions page "
-         + "(currently Muse): if it supports share-intent delivery the text lands in its input box; otherwise just paste after it opens.\n"
+         + "• AI button: copies the task's full info (name, contexts, deadline, length, priority, focus rule, current state, note) to the clipboard and opens the AI assistant chosen on the Permissions page: "
+         + "if it supports share-intent delivery the text lands in its input box; otherwise just paste after it opens.\n"
          + "• Copy button: a permanent \"Copy\" at the top right of the note editor — same first half as the AI button (copies the full task info) but doesn't open the assistant. "
          + "The note and focus-rule dialogs on the home page have the same Copy button, copying what's currently in the editor.\n"
          + "The Permissions page has a 10-second floating-window preview (while the resident service runs, the preview is covered by live content — that's normal).\n"
          + "• Timed close (v1.14.0): the Edit card has a \"Close\" button — pick back in 10/15/30/60 minutes, back when the current task ends, "
          + "a custom number of minutes, or \"never again\" (the same as turning the floating-window switch off in Settings, where you can turn it back on). "
          + "Timed closes reappear on schedule, even across reboots; while hidden, only the window is gone — timing, guard pop-ups, alarms and notifications all carry on."},
-        {"5. Drive realtime sync & \"start immediately\"",
-         "The bridge file is tasks.json in the Google Drive folder \"_电子大脑 / task list\". "
-         + "Pick it once via Sync and grant access; after that the app reads and writes it automatically (since v1.8.0, picking lives in Settings → Account).\n"
-         + "With Realtime sync on (Settings → Account), the app reconciles with the bridge every 30 seconds: tasks Muse changed elsewhere show up within half a minute. "
-         + "Merge rule: for the same task, the newer edit wins; deletions use tombstones so nothing resurrects.\n"
-         + "The command: tell Muse \"next, spend N minutes on X\" and Muse writes a task flagged \"start immediately\" into the bridge; "
-         + "KnowDo starts timing it automatically (queued if another timer is running).\n"
-         + "Note: 30-second polling is the Drive bridge's near-real-time ceiling, not second-level push (that would take Firebase — section 10)."},
+        {"5. Cloud realtime sync & \"start immediately\"",
+         "Once signed in, sync runs over cloud realtime push: tasks changed elsewhere reach the phone within seconds, "
+         + "with a full reconciliation every 30 seconds as a backstop. Merge rule: for the same task, the newer edit wins; "
+         + "deletions use tombstones so nothing resurrects. Offline, the phone keeps working locally and changes sync when back online.\n"
+         + "\"Start immediately\": when a task arrives carrying a \"start immediately\" flag (for example, you said \"next, spend N minutes on X\" "
+         + "in a conversation and an assistant outside the app filed it into your cloud), KnowDo starts timing it automatically — "
+         + "switching straight over if another timer is running.\n"
+         + "Not signed in means local features only, no sync. Sync status shows in Settings → Account and in the home drawer."},
         {"6. Focus guard (watches which app you're in)",
          "How it works: while timing, every 2 seconds it peeks at the foreground app via usage access; breaking the current task's focus rule raises a full-screen question page.\n"
          + "The rule lives in the task's focus rule (expanded area → Edit → Focus rule): a plain-language rule (for humans, e.g. \"only the recitation app while reading the classics\") + a mode "
          + "(off / blocklist: block these apps / allowlist: only these apps) + app lists (multi-select) + a primary app.\n"
          + "\"Close\" when blocked doesn't mean going home — it sends you back to the app you should be using: the primary app if set "
-         + "(e.g. the recitation app), otherwise KnowDo's own current-task page (task name + countdown + note + back to task list / back to Muse).\n"
+         + "(e.g. the recitation app), otherwise KnowDo's own current-task page (task name + countdown + note + back to task list / back to the AI assistant).\n"
          + "Four choices on the question page: back to the task now / give me 30 seconds / give me 60 seconds (if you're still in the distracting app when grace expires, it jumps back automatically) "
          + "/ false alarm, allow this time (not blocked again for it during this run).\n"
-         + "Never blocked: KnowDo itself, the launcher, IMEs, and the Muse app chosen on the Permissions page (talking to Muse counts as a meta-operation).\n"
-         + "Limit: polling means up to ~2 s of delay; the stronger accessibility version is postponed (section 10)."},
+         + "Never blocked: KnowDo itself, the launcher, IMEs, and the AI assistant app chosen on the Permissions page (talking to the assistant counts as a meta-operation).\n"
+         + "Limit: polling means up to ~2 s of delay.\n"
+         + "Per-task app lists (v1.26.0): when a task starts, your frequently used apps are sorted for that task in the background into white, grey and black — "
+         + "white apps no longer trigger focus-rule inquiries during that run; a black app raises the question page the moment it opens (no need to wait for content judging); "
+         + "grey adds no new interruptions and follows the screen content guard as before. Until a task's list is ready, a built-in generic blacklist stands in "
+         + "(Douyin, Douyin Lite, Kuaishou, Kuaishou Lite, Xiaohongshu, Weibo, Bilibili, Taobao, Pinduoduo, JD, Honor of Kings, Game for Peace and the like); "
+         + "once the list arrives it rules. Open \"App list\" in a task's details to see the three tiers and tap any app to re-tier it — your changes are never overwritten. "
+         + "There is a master switch in Settings → Guards; off means no list requests, no list-based inquiries, and no generic stand-in either. "
+         + "Note: automatic classification currently serves the author's own account only; other accounts get the generic blacklist stand-in (see section 25)."},
         {"7. Screen content guard (watches what's on the screen)",
          "The focus guard sees which app is open, but not \"shopping in a browser, the web version of short videos, adult content\" — this guard covers that. "
          + "Turn on the master switch in the Permissions page's Screen content guard section (default off; Settings → Guards has the same switch).\n"
-         + "Sampling: only while timing + screen on + unlocked; a random screenshot every 45–170 seconds (at least one in any 3 minutes, unpredictable). "
-         + "Each timing run, the system asks once for capture permission — tap Allow (an Android rule, once per task); runs without a grant (e.g. auto-started) aren't sampled at all.\n"
+         + "Sampling: only while timing + screen on + unlocked; a random screenshot every 15–45 seconds (about 30 on average, unpredictable). "
+         + "Screenshots come only from the accessibility channel (turn it on in Permissions): once on, sampling is automatic while timing and no recording "
+         + "permission is ever asked again; with accessibility off, the run simply isn't sampled and one line is left in the log.\n"
          + "Analysis is entirely on-device, in three tiers: a small model (NudeNet) looks for adult/exposed content (by your definition, revealing photos count too); "
          + "then whether the foreground app is a shopping/video app; then OCR reads the screen text (Chinese/Japanese/English) — shopping or short-video keywords, "
          + "or lots of text with no relation to the current task, count as a hit.\n"
          + "False-positive care: two consecutive hits of the same category raise the question page (adult content can be set to trigger on the first in Settings). "
          + "The question page is the same as the focus guard's: back now / 30 s / 60 s (a repeat hit after grace jumps straight back) / false alarm (that category is not judged again this run). "
-         + "Every verdict goes to the log and syncs as an event into the bridge's guardEvents (time, category, confidence, one line of evidence text only).\n"
-         + "Privacy red line: screenshots are analyzed in memory and destroyed immediately — never saved, never uploaded to Drive, never sent to Muse.\n"
+         + "Every verdict goes to the log and syncs to the cloud as an event (time, category, confidence, one line of evidence text only).\n"
+         + "Privacy red line: screenshots are analyzed in memory and destroyed immediately — never saved, never uploaded, never sent to anyone.\n"
          + "Known blind spots: banking apps, some paid video, and browser incognito are system-protected and come out pure black — logged once as \"not visible\", never judged; "
          + "swimming/fitness imagery may false-positive the small model; \"is this AI chat on-topic\" is the hardest call — this version uses keywords only and lets uncertain cases pass."},
         {"8. What the Permissions page items are for",
@@ -747,50 +761,44 @@ public final class Strings {
          + "• Exact alarms: the fallback that still fires half/end on time if the system kills the app process;\n"
          + "• Battery-optimization exemption: stops the system freezing the timer and sync services;\n"
          + "• Usage access: what both guards use to see the foreground app;\n"
-         + "• Also there: choosing which app \"back to Muse\" points to, the floating-window switch and preview, the screen guard's switch and re-grant."},
+         + "• Also there: choosing which app \"back to the AI assistant\" points to, the floating-window switch and preview, the screen guard's switch."},
         {"9. The Log page",
          "Every start / half / end / extension, every action of both guards, and every sync result is timestamped here for review and reconciliation. "
-         + "After switching phones or reinstalling, re-picking the bridge file also starts here (or in Settings → Account)."},
+         + "After switching phones or reinstalling, just sign in with the same account and your cloud data syncs back."},
         {"10. Mentioned but postponed / decided against",
-         "1. Firebase second-level push — postponed. The Drive bridge's 30-second polling is enough for now; Firebase means another cloud project to maintain forever.\n"
+         "1. A faster push channel — postponed. Cloud realtime push plus a 30-second reconciliation is enough for now.\n"
          + "2. Sending screenshots to a cloud AI for judging — decided against. Screenshots never leave the phone; and cloud models' content policies refuse to analyze adult screenshots — exactly the category that most needs judging.\n"
          + "3. Strong focus guard (accessibility key simulation + a full-screen mask over distracting apps) — postponed. The light version ships first; detection and action layers were built replaceable, so upgrading later needs no rewrite.\n"
          + "4. On-device multimodal LLM deep judging (Gemma 3n class, 3 GB+ models) — interface only, not enabled. It targets semantic calls like \"off-topic AI chat\", but costs battery and heat; wire it up when truly needed.\n"
          + "5. Keeping original screenshots as evidence / uploading them — decided against (red line). Even a confirmed distraction leaves only a text conclusion.\n"
-         + "6. Fully invisible capture (no grant dialog, no status-bar icon) — impossible. Since Android 14 the system requires one grant per session for every app.\n"
+         + "6. Fully invisible capture without the accessibility channel — impossible, and not attempted. Screenshots come only from the accessibility channel, which you turn on yourself in system settings.\n"
          + "7. Screen content guard always on (sampling when not timing too) — not for now. Battery and privacy costs both double; it guards timing sessions first."},
         {"11. Other things to know first",
-         "• After switching phones / reinstalling, the bridge-file grant must be picked once again (system grants follow the install).\n"
+         "• After switching phones / reinstalling, sign in with the same account and your cloud data syncs back automatically.\n"
          + "• Realtime sync restores itself after a reboot; if it ever looks stuck, just open KnowDo once.\n"
-         + "• Task data exists twice: on the phone and in the Drive bridge, merged newest-wins; beyond the local master, the bridge file is the backup.\n"
-         + "• Problems or feature wishes: just tell Muse — tasks, rules and the bridge file are all maintained by Muse on the bridge side."},
-        {"12. Connecting your Muse to KnowDo (advanced)",
-         "KnowDo is not just a phone app: it uses one tasks.json in Google Drive as a \"bridge\" that the phone app and Muse both read and write, "
-         + "so they share one task list — edit in the app and Muse knows; tasks Muse adds appear in the app automatically.\n"
-         + "To connect your Muse (AI assistant), four steps:\n"
-         + "1. Create a folder in Google Drive (e.g. \"_电子大脑 / task list\") to hold tasks.json; if the file doesn't exist yet, have Muse create an empty one per schema v1.\n"
-         + "2. In KnowDo, pick that bridge file via Sync, grant once, and turn Realtime sync on (Settings → Account); the app then syncs on its own.\n"
-         + "3. Connect your Muse to the same Google Drive and tell it the bridge location and field rules: "
-         + "priority=must is must-do, secondary is secondary; durationMinutes is planned minutes, actualMinutes is actual minutes; "
-         + "deadline is the due date, deadlineTime the finish-by time that day; focusRule is a plain-language description of the distraction situations. "
-         + "When editing the file it must preserve app-written fields (doneDates, millisecond timestamps, guardEvents…) — never rewrite the whole file and drop fields.\n"
-         + "4. (Optional, advanced) Set a background \"hook\" (watch script) on Muse's side: every few minutes compare the bridge file's fingerprint (md5); "
-         + "if unchanged, stay quiet; if changed, wake Muse. On waking, Muse can do two things for you: translate your new distraction descriptions into focus-guard app lists, "
-         + "and check tonight's time budget (sum of must-do planned lengths ×1.5 vs. the time left before you sleep; warn you if it doesn't fit).\n"
-         + "Cost & privacy: the watch script is just a small script and costs no AI money while running; Muse only wakes when the file actually changed. "
-         + "The bridge holds task data only — screen-guard screenshots never enter the bridge and never go to the cloud."},
+         + "• Task data exists twice: on the phone and in the cloud, merged newest-wins; the cloud copy is the backup.\n"
+         + "• Problems or feature wishes: ask in the in-app chat first, or contact the author."},
+        {"12. Where the schedule comes from",
+         "Today's schedule lives in your account in the cloud, and the calendar page reads it to draw the Plan column. It gets planned three ways:\n"
+         + "• Local auto-planning: must-dos that have no slot yet are filled into the gaps by the app itself, each occupying its length ×1.5 and never past 22:30; "
+         + "blocks already planned, blocks in the past, and blocks of finished tasks are never touched.\n"
+         + "• \"AI Re-plan\" on the calendar page: the app's built-in AI drafts a new plan on the spot under the same rules and shows it to you — "
+         + "it only lands when you tap Apply; No, thanks discards the whole draft.\n"
+         + "• Dragging by hand: long-press a plan block to move it, or drag an unscheduled task into the calendar (section 13); blocks you dragged count as fixed.\n"
+         + "All three follow the same hard rules: each task occupies its planned length ×1.5 (a 50% buffer); must-dos first; nothing past 22:30; "
+         + "past and finished blocks never move; whatever doesn't fit is named, never squeezed in."},
         {"13. The calendar panel (today's timetable)",
          "Tap Calendar at the top right of the home page and the calendar opens inside the Schedule page: the task list on the left, the calendar on the right, and the three bottom tabs always visible — switch away and back and the calendar stays open. Drag its left-edge grip to size it; drag it very narrow and let go to close it, or tap Calendar again: "
          + "the timeline has three columns side by side: a narrow Calendar column on the left (your Google Calendar events, start time + title only), "
-         + "the widest Plan column in the middle (slots Muse scheduled, pale outlined blocks — the star of the page), and a narrow Actual column on the right (time you really timed, solid green blocks). "
+         + "the widest Plan column in the middle (the planned slots, pale outlined blocks — the star of the page), and a narrow Actual column on the right (time you really timed, solid green blocks). "
          + "A task done in segments shows as several segments; finished tasks turn grey, the running one is highlighted, and a red line marks the current time.\n"
          + "The top shows how many are done and unfinished today, and how many free minutes remain from now until 22:30 (bedtime) — one glance tells you what's left and how tight it is.\n"
-         + "The schedule is planned by Muse in the bridge file: must-dos (Must, or due today) must be placed; each occupies its planned length ×1.5 (a 50% buffer, your long-standing habit); "
-         + "nothing is scheduled past 22:30; secondary tasks fill the gaps by importance. Tell Muse your tasks in the morning and it lays out the day.\n"
-         + "If the schedule goes stale (a task overruns), tap Ask AI at the top of the panel: it copies today's schedule, completion state, actual timing records and remaining free time, "
-         + "and opens Muse; ask it to re-plan, it writes back to the bridge, and the panel auto-refreshes every 10 seconds — no manual sync while you stay on it.\n"
-         + "You can move a plan block yourself: long-press to pick it up (it lifts slightly), drag up/down to the new spot, 5-minute snapping, and letting go saves it back to the bridge — "
-         + "the app's only schedule write, changing only that block's start/end; later, Muse treats blocks you dragged as fixed and won't move them back.\n"
+         + "The schedule follows the rules in section 12: must-dos (Must, or due today) must be placed; each occupies its planned length ×1.5 (a 50% buffer, your long-standing habit); "
+         + "nothing is scheduled past 22:30; secondary tasks fill the gaps by importance.\n"
+         + "If the schedule goes stale (a task overruns), tap AI Re-plan at the top of the panel: the app's built-in AI drafts a new plan on the spot under the rules, "
+         + "and it only lands when you tap Apply. The panel also refreshes on its own — a new version in the cloud shows up quickly, no manual sync while you stay on it.\n"
+         + "You can move a plan block yourself: long-press to pick it up (it lifts slightly), drag up/down to the new spot, 5-minute snapping, and letting go saves it back to the cloud — "
+         + "changing only that block's start/end; later re-plans treat blocks you dragged as fixed and won't move them back.\n"
          + "Plan blocks and unscheduled task rows carry a ▶: tap to start timing that task immediately (the floating window switches to it); the running one shows ⏸ — tap to pause. Same path as the home page's Start/Pause.\n"
          + "Drag to plan (v1.18.0): the left side is the home task list itself, not a copy. Hold an unscheduled task and drag it right into the calendar — "
          + "an amber preview block with start–end times follows in the Plan column; let go and it is scheduled at that moment (5-minute snapping), "
@@ -799,27 +807,27 @@ public final class Strings {
          + "Tap any plan block (task block) in the calendar and the task list on the left scrolls to and expands that task: note, timed segments and subtasks, "
          + "with Start/Pause, Edit, Alarm, +15 and Done all working — the same expansion as the home page. Google Calendar blocks still only show their full name.\n"
          + "In split view, every row in the left list starts with a ▶/⏸ button: tap to start or pause that task directly — no expanding, no switching back to the home page; starting another task switches straight over, same as the home page.\n"
-         + "Grey-purple blocks in the left Calendar column are your Google Calendar events (arrangements Muse synced over): they render only inside that narrow column and never cover plan blocks; "
+         + "Grey-purple blocks in the left Calendar column are your Google Calendar events (existing arrangements synced to the cloud): they render only inside that narrow column and never cover plan blocks; "
          + "view-only — tap for the full name and time; they can't be dragged and have no ▶. "
-         + "Ask AI merely lists them for your reference and tells Muse explicitly: when planning the schedule, ignore them — no need to work around them."},
+         + "AI Re-plan merely lists them for reference: when planning, ignore them — no need to work around them."},
         {"14. Supabase accounts & cross-device timing (new in v1.7.0)",
-         "Since this version, KnowDo can switch sync from the Drive bridge to the Supabase cloud database: "
+         "KnowDo's sync runs on the Supabase cloud database: "
          + "tap Account in the hamburger menu or Settings → Account and register / sign in with an email + password. On first sign-in, this device's existing tasks become your cloud data in full "
          + "(nothing lost, nothing emptied); after that, phone and computer share one task list — edit on either and the other catches up within seconds. "
          + "Offline, the device keeps working locally; changes queue and merge push-then-pull when back online. "
          + "The drawer's account area and Settings show the sync status (not signed in / synced / N pending / syncing).\n"
          + "Timing is cross-device too: start, pause, resume, extend or finish on any device and the other instantly mirrors the same countdown (start points strictly aligned, "
          + "both sides hit the check page at the same moment); whichever side handles the check page first (confirm done or extend), the other follows — its open check page closes itself, "
-         + "so the two never nag independently. When you tell Muse \"next, spend N minutes on X\", the \"start immediately\" flag Muse writes to the cloud is received in realtime "
-         + "and timing starts at once (via the bridge this used to take up to 30 seconds; now it's basically instant).\n"
-         + "Each device only ever sees its own account's data (isolated server-side per account); signing out returns to Drive bridge mode with on-device data intact. "
-         + "The calendar's Google Calendar events are still Muse-synced read-only displays, now sourced from the same cloud place."},
+         + "so the two never nag independently. When a task carrying a \"start immediately\" flag is written to the cloud, the app receives it in realtime "
+         + "and timing starts at once (basically instant).\n"
+         + "Each device only ever sees its own account's data (isolated server-side per account); signing out keeps on-device data intact and simply stops syncing. "
+         + "The calendar's Google Calendar events are a read-only display synced to the cloud."},
         {"15. The new interface at a glance (v1.8.0)",
          "The home top bar keeps only the hamburger menu at the left, the KnowDo wordmark, and Calendar at the right; the strip under it shows the current task and time left; "
          + "the round + at the bottom right adds a task.\n"
          + "The hamburger menu slides in from the left: account & sync status, quick language (中文 / English) and appearance (Light / Dark) switches, plus Help and Settings entries. "
          + "Language and appearance also live in Settings, and both can follow the system.\n"
-         + "Settings groups everything into Account / Display / Guards / General: Account (sign-in, realtime sync, sync now, bridge file), "
+         + "Settings groups everything into Account / Display / Guards / General: Account (sign-in, sync now), "
          + "Display (columns, appearance, language), Guards (focus guard, screen content guard), General (floating window, permissions, log, help, about).\n"
          + "Light is a clean white look; dark is deep grey with an amber accent. The floating window is unchanged and unaffected by theme switches."},
         {"16. The next-task guard and the pause rule (v1.10.0)",
@@ -944,6 +952,9 @@ public final class Strings {
          + "• Pause for a bit: if the morning brings something urgent (an alarm to silence, an urgent message, a call), tap \"Pause for a bit\" at the "
          + "bottom of the page and pick 5/10/15/20/30/60 minutes or a custom length — the page steps aside and comes back full-screen on its own when "
          + "the time is up, as many times as you need. Opening KnowDo during a pause brings the page up early.\n"
+         + "• Left unfinished with no pause length chosen (v1.26.0): pressing Home or Back or switching apps does not count as a pause — "
+         + "the page comes back full-screen every 5 minutes until you finish and tap \"Start the day\", or explicitly pick a pause length "
+         + "(it never barges into a call; it catches up after). Everything already filled stays saved.\n"
          + "• Test the morning page: the \"Test the morning page\" button in Settings → Morning opens the real page in gate mode any time of day "
          + "(ignoring the clock and whether today is already done) — it's the genuine page with genuine data: finishing it counts as today's "
          + "check-in, or leave via \"Pause for a bit\".\n"
@@ -973,5 +984,20 @@ public final class Strings {
          + "open after install or upgrade, and always available in Settings. All optional — each one powers a feature: turn on the ones you use, skip the ones you don't; skipping one never affects the others, but the system "
          + "may stop KnowDo in the background and the morning page and reminders may run late. Xiaomi/Huawei-style phones also need Auto-start and "
          + "background pop-ups enabled in system settings (not detectable from inside the app; there's a note at the bottom of the list)."},
+        {"25. For new users: what the AI can and cannot do",
+         "This app's AI comes in two parts. One part is inside the app: the built-in chat works out of the box, "
+         + "on the project's free model channel. The other part lives outside the app: dictating tasks to an assistant outside the app and having "
+         + "them filed for you, watching in the cloud for a chance to re-plan, and classifying per-task app lists — those are done by the author's "
+         + "personal AI assistant patrolling the author's own cloud setup. They are the author's personal arrangement at work, not features of the app itself.\n"
+         + "Every AI button inside the app uses the same built-in chatbot for all users; there is no special channel for the author — "
+         + "in the app, the author uses the same AI as everyone else.\n"
+         + "To be blunt for new users: the one and only AI you can connect to is the app's built-in chat — there is no other option, and there is "
+         + "currently no way to connect your own external assistant. Your assistant cannot enter this app's cloud database, and no patrol is running "
+         + "for you. What actually works for you is the app's built-in local features (local auto-planning, the generic blacklist, on-device guard "
+         + "verdicts) plus the built-in chat; the calendar's AI Re-plan also runs on the built-in AI, drafting a proposal on the spot that only lands "
+         + "when you tap Apply. Per-task app-list classification is likewise the author's personal setup: the author's own assistant generates the "
+         + "lists in the background for the author's account; other accounts do not have this feature for now and use the built-in generic blacklist.\n"
+         + "Your data is safe: your tasks, lists and records live only under your own account. The author cannot see them, the author's assistant "
+         + "cannot reach them, and nobody's AI can read anyone else's data. That isolation is enforced at the database level — it is not a verbal promise."},
     };
 }

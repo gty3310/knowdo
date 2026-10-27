@@ -78,7 +78,7 @@ public class StartRemindActivity extends Activity {
             // 改动同步回桥（后台线程，口径与主界面手动同步一致）
             new Thread(() -> {
                 try {
-                    String r = SyncManager.syncNow(this, store);
+                    String r = SbSync.syncNow(this, store);
                     SyncManager.setLastResult(this, r);
                 } catch (Exception ignored) { }
             }).start();
