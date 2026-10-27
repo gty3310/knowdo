@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.26.2)
+## Features (Android, v1.26.3)
 
-Current version: **v1.26.2**.
+Current version: **v1.26.3**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -59,6 +59,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.26.3 — 2026-10-27
+
+**Why:** The user ruled that any full-screen prompt swiped away unresolved must come back after 15 seconds, not five minutes — and that the interval should be one personal, cloud-synced setting rather than four hard-coded numbers. Same-day extras: the calendar plan-block renderer had been missed by the v1.26.1/v1.26.2 layout work (user screenshot), and the What's New popup often never appeared (root cause confirmed in code). Build commit `ae54b22` · [compare v1.26.2...v1.26.3](https://github.com/gty3310/knowdo/compare/v1.26.2...v1.26.3) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **One re-pop interval for every full-screen prompt.** A new setting, "Prompt re-pop interval" (Settings → Guards; 15 sec / 30 sec / 1 min / 5 min), stored locally and in the cloud `user_state.prompt_repop` object (`{"sec": …}`, probed like the other optional columns, defaulting silently to 300 sec when unavailable; the author's account is preset to 15). It now drives all four "swiped away unresolved" re-pops: the morning-gate nag chain (was a fixed 5 min), guard inquiry re-fire in both modes (focus 12 sec debounce and overturn cooldown, content 60 sec cooldown), the next-task page's after-Back quiet period (was 3 min), and the silent pause call-back chain (was 5 min). Chosen snooze/grace lengths, sound staging and every other behaviour are untouched.
+
+**Fixed**
+- **Plan blocks caught up with actual blocks.** The v1.26.1 hierarchy and the v1.26.2 textless markers had only landed in the actual-block renderer; plan blocks still led with the time range in a single text view and had no priority marker. `addPlanBlock` now stacks exactly like `addBlock` — task name first (bold, up to two lines, verbatim title), then the shared textless priority marker, then the start–end time as 9sp small print — with the same short-block tiers, while keeping the plan lane's blue colour system, the ▶/⏸ button, tap-to-expand and drag (including its preview text) untouched.
+- **The What's New popup reliably appears.** It used to be attempted only once, in `onCreate`, behind the suggested-settings page that pre-empts it on every upgrade — and it wrote its "shown" record before displaying, so one cover by another full-screen page consumed the version forever. It is now attempted when the main screen returns to the foreground (after suggested settings and the morning gate have had their turn), and the record is only written once the dialog has actually been displayed (OnShow listener, once per process); a covered or failed attempt simply retries on the next foregrounding. Fresh installs still never see it, and the Settings entry still opens it any time.
+
+Not yet verified on a real device: the 15-second re-pop rhythm in all four places, plan-block legibility across its three states and short-block tiers, and the What's New catch-up across the upgrade → suggested-settings → back flow.
+
 ### v1.26.2 — 2026-10-27
 
 **Why:** The user's principle: a task's importance level may only ever be changed by hand, never automatically. Checked against the mainstream apps (Todoist, Motion, Sunsama): all of them keep priority and due date as two independent axes that never rewrite each other, and being overdue only ever moves the date. This release aligns with that consensus and settles, once, how a "due today but not must-do" task is treated — plus the user's other call: a priority marker needs no text, its colour and shape already say the level. Build commit `723f3ac` · [compare v1.26.1...v1.26.2](https://github.com/gty3310/knowdo/compare/v1.26.1...v1.26.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -77,28 +90,6 @@ The Zhixing gap list and index still count Must only; nothing else changed. Not 
 
 **Improved**
 - **Calendar blocks lead with the task name.** Both the plan and actual lanes (one shared renderer) now stack: the task name on top (bold, up to two lines on tall blocks, taken verbatim from the data layer — no time prefix), the v1.26.0 priority tag under it (shapes unchanged), and the start–end time as 9sp grey small print on the last line (narrow lanes keep the start-only form). Short blocks yield in the same order: at 34–47dp the tag and the time share a row; at 26–33dp only the tag stays; below that only the name — a block showing a time but no name can no longer occur. Nothing else changed: no semantics, schema or permission changes. Not yet verified on a real device: name/tag/time legibility across light and dark blocks at the user's font size, and the short-block tiers on very brief tasks.
-
-### v1.26.0 — 2026-10-27
-
-**Why:** With apps sorted per task up front, the guard's blacklist needs no guessing and reacts fast, and the whitelist stops false blocks; this release also clears out two pieces of legacy (the old sync bridge and the recording permission) and states the AI's boundaries once and for all. Build commit `8046afd` · [compare v1.25.0...v1.26.0](https://github.com/gty3310/knowdo/compare/v1.25.0...v1.26.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Per-task app lists.** When you start a task that has no list yet, the app sends the task name, its note and your frequently used apps (launchable apps ∩ usage stats, top 100 by the last 30 days; by name without usage access) to the cloud as a generation request, and the author's own AI assistant classifies them into white / grey / black for that task. Black apps pop the guard inquiry the moment they open during the task (3-minute de-dup per app per task, never during a call); grey adds no new interruptions; white exempts the app from focus-rule inquiries for that session. Until a list exists, a built-in generic blacklist stands in (Douyin, Kuaishou, Xiaohongshu, Weibo, Bilibili, Taobao, Pinduoduo, JD, Honor of Kings, Game for Peace and their lite variants — black tier only). Open a task's details to view its list in three tiers with a one-line reason each, and tap any app to re-tier it: manual edits are pinned per package, synced back and never overwritten. A Settings → Guard toggle (on by default) turns the whole feature off. For now the classification service only covers the author's account; other accounts get the generic blacklist (see "For new users" above).
-- **Four priority tiers, with tags on calendar blocks.** Priorities are now Must, Important, Secondary and Leisure (old data needs no migration). Auto-planning fills Must → Important → Secondary at duration × 1.5 with the 22:30 cut-off; the top time account still counts Must only; overnight roll-in never upgrades Important and never touches Leisure; Leisure is never auto-scheduled at all, and surfaces as a "For rest time" group on the next-task page when you choose a break. Every calendar block carries a small tag under the task name, same size and place for all four tiers, told apart by shape alone: solid vermilion with white text for Must, a thin ink outline for Important, plain light grey for Secondary, a dashed grey outline for Leisure (on dark blocks the outline/text switch to the rice-white family; the solid red never changes).
-- **Help gains a section for new users, "What the AI can and cannot do",** stating the boundaries in plain words (also summarised above).
-
-**Improved**
-- **"AI Re-plan" runs on the built-in AI.** The calendar button stays, but it now drafts the re-plan on the spot through the in-app chat backend under the standing rules (×1.5, nothing past 22:30, past and finished blocks untouched), as an apply-or-discard proposal. Nothing is written to any external patrol queue anymore.
-- **No user-visible copy names an outside assistant anymore** — interface, settings, help, changelog, empty states and error messages were all reworded or trimmed.
-
-**Fixed**
-- **The morning gate now actually re-pops every 5 minutes.** Root cause, confirmed in code: the repeat loop was never implemented — the gate was pulled at most once per process session, and the only re-pull was the one-shot snooze alarm. An unfinished check-in with no chosen pause length now re-arms a 5-minute alarm chain that brings the page back full-screen (through the usual dual channel, never during a call) until you submit it or pick a pause length; answers keep autosaving as before.
-
-**Removed**
-- **The Google Drive bridge, entirely.** The retired bridge's remaining code — the file-based sync implementation, its 30-second polling mode, the file picker entry points and every mention in settings and account copy — is gone; sync is cloud-only (the read-only Google Calendar cache the author writes into the cloud account is untouched).
-- **MediaProjection, entirely.** The recording channel's classes, permission and wiring are deleted; guard screenshots come only from the accessibility channel (same 15–45s random sampling, same backoff), and the system "record one app or the whole screen" dialog can never appear again.
-
-Guard verdicts and timer semantics are unchanged apart from the points named above; no schema changes. Not yet verified on a real device: the app-list round trip, the blacklist instant inquiry, the morning 5-minute re-pop, the in-app re-plan proposal flow, sync after bridge removal, a full guard day with no recording dialog, and the four-tier planning order with calendar tags.
 
 ## Build
 

@@ -2,6 +2,37 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.26.3] - 2026-10-27（versionCode 62）
+
+为什么：用户定——任何全屏提示页被划走（未解决就离开）后，不要再等 5 分钟，15 秒就弹回来；且这个间隔做成他账户里的个人设置（云端一份、四处共用），不是写死在代码里。同版附修两件同日发现的：日历计划块渲染器漏改（v1.26.1/1.26.2 只改了实际块，用户截图实证）、更新日志弹框经常不弹（用户报障，根因代码实证）。
+
+发布提交：`ae54b22`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.26.2...v1.26.3 比较](https://github.com/gty3310/knowdo/compare/v1.26.2...v1.26.3)
+
+### 新增
+
+**提示页重弹间隔：一个数值、四处共用（新类 `PromptRepop`＋云端 `user_state.prompt_repop`）**
+
+新类 `PromptRepop`：本地 SharedPreferences（prompt_repop）＋云端 jsonb 单键对象 `{"sec": 秒数}`；本机无存值时回落默认 300 秒，取值夹在 5–3600 秒。`SbSync` 按既有探测纪律接线（列未就绪完全不碰该键、整功能静默回落默认）：全量同步时本机没存过且云端有值→采用云端，本机有值且与云端不同→整对象回写；Realtime 推送到达且本机没存过→采用云端（各重弹链排下一拍时现读本值，故云端改值下一拍起生效）。作者账号云端已由 Jarvis 预设 `{"sec": 15}`。四处应用点（原间隔 → 新间隔）：
+
+- ① 晨间门 nag 链（`MorningGate`）：固定 5 分钟（`NAG_INTERVAL_MS`，v1.26.0）→ 每次排下一拍现读 `PromptRepop.millis`（engageNag／onNagTick 三处排期）；明确选了「暂停一会儿」时长仍按所选时长走、提交即停链、待提交持久化，均不动。
+- ② 守卫问询页：专注模式（`FocusGuard`）弹出防抖 12 秒与「分析错误」解除冷却 60 秒、内容模式（`VerdictEngine`）触发冷却 `COOLDOWN_MS` 60 秒（触发落冷却／分析错误刷新／宽限到期再命中三处共用）→ 统一读 `PromptRepop`；宽限本身（用户选的 30/60 秒）与宽限到点处置不动。
+- ③ 空档「下一个任务」页（`IdleGuard.snoozeOnDismiss`）：按返回退出后的自动档静默 3 分钟（`DISMISS_SNOOZE_MS`）→ `PromptRepop`；事件档与解锁档本就不受该静默约束，不动；alarm 排期不受影响（静默只压自动弹页）的既有口径保留。
+- ④ 静音暂停叫回链（`SilentResume.scheduleNext`）：再次提醒间隔固定 5 分钟（`INTERVAL_MS`，已删除）→ 排期时现读 `PromptRepop`；普通叫回的震动/闹铃 staging（PauseEscalation 60 秒升级等）不动。
+
+设置入口：设置 → 守卫组新增「提示页重弹间隔」一行（当前值作按钮文案），点开四档单选 15 秒／30 秒／1 分钟／5 分钟；改动即写本地并回写云端（`PromptRepop.setSeconds` 内踢同步）。
+
+### 修复
+
+**计划块渲染器漏改补齐（`CalendarPanel.addPlanBlock`）**
+
+v1.26.1 的层级重排与 v1.26.2 的无字优先级标记只落在了实际块 `addBlock`；计划块走另一条渲染器 `addPlanBlock`，一直是单个 TextView「时间\n标题」（时间在前、共 3 行截断）、且没有优先级标记——用户截图里的蓝块即是它。本版把其内部排版改为与 `addBlock` 完全同一层级：box 内改为竖排 LinearLayout（内边距沿用旧 label 的 5/2/26/2，右侧 26dp 给 ▶/⏸ 按钮让位）——任务名第一（11sp 粗体、标题取原文不拼时间、高块（≥64dp）最多 2 行、余者 1 行）；其次优先级标记（复用 `priorityTag`，按 `store.byId(b.taskId)` 取任务档位）；最后起止时间 9sp 小字一行（宽栏 ≥64dp 给全程起止、窄栏只给开始时刻）。矮块让位分级与 `addBlock` 逐档一致：≥48dp 三段竖排；34–47dp 标记与时间同行；26–33dp 只留标记；<26dp 只保名字。保留不动：计划块蓝色配色体系（三态背景，以及标题的浅蓝/深蓝文字色——层级与 addBlock 同，颜色随计划块自有体系）、右上角 ▶/⏸ 按钮及点击、轻点展开；`attachDrag` 签名与拖拽预览文案（717 行 MOVE 中的「时间\n标题」）不改——attachDrag 仍接收标题 TextView（变量名 label）作为预览写入目标，松手后 render() 重画；858 行落点预览块 `updateDropPreview` 与只读的 `addGcalBlock` 均不在本次范围、未动。
+
+**更新日志弹框经常不弹（`WhatsNew`＋`MainActivity`）**
+
+根因（代码实证）：① 旧触发点只在 `MainActivity.onCreate`，且排在 `SuggestedSettingsActivity.maybeShow` 之后——升级时建议设置每次都抢先全屏呈现并 return true，WhatsNew 被跳过；② 从建议设置页返回走 onResume，旧实现不在 onResume 补弹，要等下一次冷启动，若期间又装新版，循环重复，弹框看似随机；③ `WhatsNew.maybeShow` 是「先写 shown 记录再 show()」，弹框被晨间门等全屏页盖住时该版本机会被静默吃掉。修法：触发点从 onCreate 移到 `MainActivity.onResume` 末尾（任务衔接守卫之前），顺序排在建议设置与晨间门之后——onCreate 本轮呈现了建议设置页时以 `suggestedJustShown` 标记让 onResume 第一轮让行，用户返回主界面后下一轮补弹；晨间门在 onResume 前段已 startActivity 并 return，本轮自然轮不到，晨间填完回来再补弹。shown 记录改为弹框实际显示后才落：`WhatsNew.showInternal(a, recordVc)` 给首弹路径的对话框挂 `OnShowListener`，在回调里写 `shown_version_code` 并置本进程守卫 `shownThisSession`（手动从设置入口翻看走 recordVc=-1，不落记录、不置守卫）；显示失败/被跳过不消耗机会，下次回前台再试。既有口径不变：全新安装不弹只记版本、每版只弹一次、内容仍取 Changelog 最近版本、设置页入口随时可看。
+
+除上述外零功能改动。未真机验证：15 秒重弹在四处的实际节奏、计划块新排版在蓝块三态/矮块分级下的观感、更新日志在「升级→建议设置→返回」全链路下的补弹。
+
 ## [1.26.2] - 2026-10-27（versionCode 61）
 
 为什么：用户定下原则——任务的重要层级永远不自动变，只能人自己改；助理查主流任务软件（Todoist、Motion、Sunsama）核实：它们全都是优先级与截止日两条独立的轴、谁也不改谁，逾期只动日期。本版按此行业共识靠拢，并把「截止日就是今天、但不是必做」的任务待遇一次定清。顺带落实用户另一条：重要性标签不必写字，颜色和形状本身就表明轻重。
