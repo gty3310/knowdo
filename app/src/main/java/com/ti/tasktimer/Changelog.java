@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1261 = new Entry("v1.26.1", "2026-10-27");
+        e1261.add(new Group(s("改进", "Improved"),
+                s("日历块的排版顺序换了：第一行就是任务名（字大、最多显示 2 行，尽量让你先读到是哪件任务），名字下面是必做/重要/次要/休息的小标签，起止时间挪到最后一行、只作小灰字。块太矮时按这个顺序让位——先保任务名，再保标签，时间缩成只写开始时刻、或者干脆不显示，不会再出现只看得见时间、看不见任务名的块",
+                  "Calendar blocks are reordered: the task name comes first (larger, up to two lines, so you read which task it is before anything else), the Must / Important / Secondary / Leisure tag sits under the name, and the start–end time moves to the last line as small grey text. Short blocks yield in that same order — name first, tag second, the time shrinks to just the start or drops out — so a block that shows only a time and no name can no longer happen")));
+        e1261.why = s("之前日历块把时间排在第一行、还跟任务名挤在一个框里共两行，名字经常被截得看不见——你说这个页面太难读，首先得显示任务的名字，其次是重要性级别，时间小字标明就够了",
+                "Calendar blocks used to lead with the time range and squeeze it together with the task name into two shared lines, so names were often cut off — you said the page was hard to read: the task name has to come first, then its priority level, and the time only needs to be there in small print");
+        e1261.tryIt = s("打开日历页：每个块第一眼先读任务名，第二眼看名字下面的小标签认轻重，最底下一行小灰字是起止时间；再找一个时长很短的小块，看它是不是也先显示名字（时间可能只剩开始时刻或不显示，这是故意的）",
+                "Open the calendar page: each block now reads task name first, then the small priority tag under it, with the start–end time as small grey text on the last line. Find a very short block and check it also leads with its name (its time may shrink to just the start, or drop out — that is deliberate)");
+        out.add(e1261);
+
         Entry e1260 = new Entry("v1.26.0", "2026-10-27");
         e1260.add(new Group(s("新功能", "New"),
                 s("任务软件名单：开始一个任务时，AI 会按这个任务把你的常用软件分成三档——白：放心用；灰：可能有用，先不打扰你；黑：跟任务明显无关，一打开就弹出来问你是不是分神。名单没生成好之前，先用一份通用黑名单（抖音、快手、小红书这类）兜底",

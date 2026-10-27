@@ -1450,38 +1450,67 @@ private void addBlock(Block b, int x, int w, int axisStart, int scale, boolean p
 LinearLayout col = new LinearLayout(ctx);
 col.setOrientation(LinearLayout.VERTICAL);
 col.setPadding(dp(3), dp(2), dp(2), dp(2));
-TextView v = new TextView(ctx);
-// 实际栏是窄栏（v1.12.0）：栏太窄时时间只放开始时刻，避免时间串被拦腰换行；标题可截断
-String time = w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin);
-String label = time + "\n" + b.title
-+ (b.running? " ▶": "");
-v.setText(label);
-v.setTextSize(10);
-v.setMaxLines(2);
-v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
 GradientDrawable bg = new GradientDrawable();
 bg.setCornerRadius(dp(4));
 boolean dk3 = Ui.dark(ctx);
 if (b.done) {
 bg.setColor(dk3 ? Color.rgb(43, 48, 52) : Color.rgb(224, 224, 224));
-v.setTextColor(Ui.sub(ctx));
 } else if (b.running) {
 bg.setColor(dk3 ? Color.rgb(46, 84, 52) : Color.rgb(129, 199, 132));
 bg.setStroke(dp(2), dk3 ? Color.rgb(129, 199, 132) : Color.rgb(27, 94, 32));
-v.setTextColor(dk3 ? Color.rgb(200, 235, 203) : Color.rgb(20, 60, 24));
 } else {
 bg.setColor(dk3 ? Color.rgb(30, 56, 37) : Color.rgb(165, 214, 167));
-v.setTextColor(dk3 ? Color.rgb(165, 226, 170) : Color.rgb(27, 94, 32));
 }
 col.setBackground(bg);
-col.addView(v);
-// 优先级 tag（v1.26.0，用户点名）：任务名下方一个小标签，四档同位置同尺寸，
-// 只靠形态分轻重、全场只有必做一个上色——必做＝朱砂红实心白字；重要＝细描边
-// 无填充；次要＝无边框浅灰小字；休息＝浅灰虚线描边。深色块上描边/字色换米白
-// 与浅灰系（按 Ui.dark 取），必做实心红不变。计划栏与实际栏共用本渲染，一并带上。
+// 信息层级（v1.26.1，用户定案）：任务名第一（尽量完整、最多 2 行）＞ 优先级
+// tag 第二 ＞ 起止时间只作 9sp 灰小字放最后一行。矮块按同一优先序逐项让位：
+// 先保名字至少 1 行，再保 tag，最后才轮到时间——绝不出现只有时间没有名字的块。
+// 标题取数据层原文，不再拼时间前缀。深色块上标题用米白、浅底用墨青黑 #1F2F2A。
+TextView title = new TextView(ctx);
+title.setText(b.title + (b.running? " ▶": ""));
+title.setTextSize(11);
+title.setTypeface(title.getTypeface(), Typeface.BOLD);
+title.setMaxLines(hPx >= dp(64)? 2: 1);
+title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+title.setTextColor(b.done ? Ui.sub(ctx)
+: (dk3 ? Color.rgb(247, 243, 236) : Color.rgb(31, 47, 42)));
+col.addView(title);
+// 优先级 tag（v1.26.0 形态规格不变）：必做＝朱砂红实心白字；重要＝细描边
+// 无填充；次要＝无边框浅灰小字；休息＝浅灰虚线描边。计划栏与实际栏共用本渲染。
 TaskItem bt = store.byId(b.taskId);
-if (bt != null) col.addView(priorityTag(bt.priority, dk3));
-int hPx = Math.max(dp(20), (b.endMin - b.startMin) * scale);
+TextView tag = bt == null ? null : priorityTag(bt.priority, dk3);
+// 起止时间小字：宽栏给全程起止，窄栏只给开始时刻（沿用 v1.12.0 窄栏口径）
+TextView timeV = new TextView(ctx);
+timeV.setText(w >= dp(64)? hhmm(b.startMin) + "–" + hhmm(b.endMin): hhmm(b.startMin));
+timeV.setTextSize(9);
+timeV.setMaxLines(1);
+timeV.setTextColor(dk3 ? Color.rgb(178, 184, 178) : Color.rgb(105, 112, 105));
+if (hPx >= dp(48)) {
+// 常规与中块：名（高块 ≤2 行、余者 1 行）／tag／时间小字，三段竖排
+if (tag != null) col.addView(tag);
+col.addView(timeV);
+} else if (hPx >= dp(34)) {
+// 矮块：名 1 行／tag 与时间同行（时间贴在 tag 右边）
+{
+LinearLayout row = new LinearLayout(ctx);
+row.setOrientation(LinearLayout.HORIZONTAL);
+if (tag != null) {
+LinearLayout.LayoutParams tlp = (LinearLayout.LayoutParams) tag.getLayoutParams();
+tlp.rightMargin = dp(4);
+row.addView(tag);
+}
+LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-2, -2);
+vlp.topMargin = dp(2);
+timeV.setLayoutParams(vlp);
+row.addView(timeV);
+col.addView(row);
+}
+} else if (hPx >= dp(26)) {
+// 更矮：名 1 行／只留 tag，时间省略
+if (tag != null) col.addView(tag);
+}
+// 极矮（<26dp）：只保名字 1 行
 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, hPx);
 lp.leftMargin = x;
 lp.topMargin = (b.startMin - axisStart) * scale;
