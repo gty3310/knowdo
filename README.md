@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.34.0)
+## Features (Android, v1.35.0)
 
-Current version: **v1.34.0**.
+Current version: **v1.35.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.35.0 — 2026-10-29
+
+**Why:** When you want to do something, you should start it right away: save, go back to the list, find the task, tap start - those steps in between are exactly where things get delayed and dropped. Build commit `bdd47e2` · [compare v1.34.0...v1.35.0](https://github.com/gty3310/knowdo/compare/v1.34.0...v1.35.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Start-now button on the task edit sheet.** The sheet's bottom row is now Cancel (left) / Start now (centre) / Save (right). Start now saves under exactly the same rules as Save (an empty name is still blocked), then immediately starts timing that task - from all four entry points (home create/edit, calendar create/edit). If that task is already timing it is not restarted; if it is paused it resumes with its remaining time; if another task is timing it switches straight over.
+
+Not yet verified on a real device: tapping through all four entry points, start-now behaviour for an already-running/paused task, and the three-button row on a narrow screen.
+
 ### v1.34.0 — 2026-10-29
 
 **Why:** Some lines cannot be held by reminding yourself alone; a real person needs to know and be present. Accountability gives distraction a real cost, and helps you keep the rule you set for yourself. Build commit `e7f69fa` · [compare v1.33.0...v1.34.0](https://github.com/gty3310/knowdo/compare/v1.33.0...v1.34.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the accountability block rendering in Setting
 - **The guard inquiry is trimmed back to its one question.** The six "current state" chips and the "Analysis error" button leave the inquiry page ("Were you doing what you should?" stays, with its record chain untouched), and the pre-extension state check leaves both check pages, so extending goes straight to the duration choice. The misjudgement-appeal mechanism is withdrawn as a whole — the overturn writers, the in-page rule box, the Guard rules settings page — while the plumbing that serves existing data stays: appeals already recorded still count in the drift tally, and the self-check history is kept.
 
 Not yet verified on a real device: the inquiry page showing only the one question, extending from the check pages going straight to the duration choice, and the Guard rules row being gone from Settings.
-
-### v1.32.0 — 2026-10-28
-
-**Why:** A single day's index cannot tell you whether you are getting better or worse — stretch the window to a week, a month, a year, and the direction becomes visible. Build commit `fdc4536` · [compare v1.31.0...v1.32.0](https://github.com/gty3310/knowdo/compare/v1.31.0...v1.32.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **The Zhixing index gets a detail page.** Tapping the index ring on the KnowDo tab opens it: week / month / year ranges, the index as a big number, a table of its three components (habits 50%, tasks 35%, distraction 15% — the weights are unchanged) and the trend. Every figure is recomputed from the raw records (habit logs, task records, guard events) over the exact window; a stretch with no records is shown as "not enough data", never filled in. Today's index on the KnowDo tab itself is computed exactly as before.
-
-Not yet verified on a real device: tapping the ring into the detail page, the three ranges rendering against a live account's records, and the "not enough data" states for stretches without records.
 
 ## Build
 
