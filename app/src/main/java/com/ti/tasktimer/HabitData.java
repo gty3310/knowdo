@@ -27,6 +27,7 @@ import java.util.TreeMap;
  *                unit: 数值型/累积型的单位（如 步/件）,
  *                startDate: 累积型起始日 yyyy-MM-dd,
  *                totalGoal: 累积型总量目标（0=未设）,
+ *                startValue: 累积型起始数字（建习惯前已攒下的量，0=无）,
  *                reminder: "HH:mm" 或 null,
  *                createdAtMs} ],
  *   "logs":  { "yyyy-MM-dd": { habitId: 数值 } },   // 至少/至多型：1=是 0=否（记了才有键）
@@ -65,6 +66,7 @@ public final class HabitData {
         public String unit = "";
         public String startDate = "";  // 累积型
         public long totalGoal = 0;     // 累积型（0=未设）
+        public long startValue = 0;    // 累积型起始数字（0=无）
         public String reminder;        // "HH:mm"，null=不提醒
         public long createdAtMs = 0;
 
@@ -78,6 +80,7 @@ public final class HabitData {
                 o.put("unit", unit == null ? "" : unit);
                 o.put("startDate", startDate == null ? "" : startDate);
                 o.put("totalGoal", totalGoal);
+                o.put("startValue", startValue);
                 o.put("reminder", reminder == null ? JSONObject.NULL : reminder);
                 o.put("createdAtMs", createdAtMs);
                 return o;
@@ -99,6 +102,7 @@ public final class HabitData {
             h.unit = o.optString("unit", "");
             h.startDate = o.optString("startDate", "");
             h.totalGoal = o.optLong("totalGoal", 0);
+            h.startValue = o.optLong("startValue", 0);
             h.reminder = o.isNull("reminder") ? null : o.optString("reminder", null);
             if (h.reminder != null && h.reminder.isEmpty()) h.reminder = null;
             h.createdAtMs = o.optLong("createdAtMs", 0);

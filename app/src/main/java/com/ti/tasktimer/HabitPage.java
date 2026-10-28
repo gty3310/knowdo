@@ -46,8 +46,8 @@ public final class HabitPage {
     private int fStepMin = 0, fStepMax = 7;
     private String fStepUnit = "";
     // 表单输入引用（重画前把内容收进缓存，避免丢失）
-    private EditText fNameInput, fNumTargetInput, fNumUnitInput, fSumTotalInput, fSumUnitInput, fSumWeekInput;
-    private String cName = "", cNumTarget = "6000", cNumUnit = "", cSumTotal = "", cSumUnit = "", cSumWeek = "";
+    private EditText fNameInput, fNumTargetInput, fNumUnitInput, fSumTotalInput, fSumUnitInput, fSumWeekInput, fSumStartInput;
+    private String cName = "", cNumTarget = "6000", cNumUnit = "", cSumTotal = "", cSumUnit = "", cSumWeek = "", cSumStart = "";
     private TextView fStepperVal, fReminderVal, fSumDateVal;
     private LinearLayout fParamBox;
     private final List<TextView> fTypeCards = new ArrayList<>();
@@ -413,7 +413,7 @@ public final class HabitPage {
     }
 
     private long sumTotal(HabitData.Habit h) {
-        long total = 0;
+        long total = Math.max(0, h.startValue);
         try {
             JSONObject logs = root.optJSONObject("logs");
             if (logs == null) return 0;
@@ -549,6 +549,7 @@ public final class HabitPage {
         box.addView(labeled(targetIn, targetLabel(h.type)));
         final EditText unitIn = new EditText(act);
         final EditText totalIn = new EditText(act);
+        final EditText startIn = new EditText(act);
         if (HabitData.TYPE_NUM.equals(h.type) || HabitData.TYPE_SUM.equals(h.type)) {
             unitIn.setText(h.unit);
             box.addView(labeled(unitIn, s("单位", "Unit")));
@@ -558,6 +559,10 @@ public final class HabitPage {
             totalIn.setText(h.totalGoal > 0 ? String.valueOf(h.totalGoal) : "");
             totalIn.setHint(s("可空", "Optional"));
             box.addView(labeled(totalIn, s("总量目标", "Total goal")));
+            startIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            startIn.setText(h.startValue > 0 ? String.valueOf(h.startValue) : "");
+            startIn.setHint(s("可空，之前已攒下的量", "Optional, what you already had"));
+            box.addView(labeled(startIn, s("起始数字", "Starting number")));
         }
         final TextView remindVal = new TextView(act);
         remindVal.setTextSize(14);
@@ -602,6 +607,7 @@ public final class HabitPage {
                     }
                     if (HabitData.TYPE_SUM.equals(h.type)) {
                         h.totalGoal = Math.max(0, parseLong(totalIn.getText().toString(), 0));
+                        h.startValue = Math.max(0, parseLong(startIn.getText().toString(), 0));
                     }
                     h.reminder = remindHolder[0];
                     List<HabitData.Habit> all = HabitData.habits(root);
@@ -659,6 +665,7 @@ public final class HabitPage {
         if (fSumTotalInput != null) cSumTotal = fSumTotalInput.getText().toString();
         if (fSumUnitInput != null) cSumUnit = fSumUnitInput.getText().toString();
         if (fSumWeekInput != null) cSumWeek = fSumWeekInput.getText().toString();
+        if (fSumStartInput != null) cSumStart = fSumStartInput.getText().toString();
     }
 
     private View buildForm() {
@@ -705,7 +712,7 @@ public final class HabitPage {
                 fType = type;
                 fReminder = reminder;
                 if (HabitData.TYPE_NUM.equals(type)) { cNumTarget = String.valueOf(target); cNumUnit = unit; }
-                if (HabitData.TYPE_SUM.equals(type)) { cSumUnit = unit; cSumTotal = ""; cSumWeek = ""; fSumDate = DayUtil.today(); }
+                if (HabitData.TYPE_SUM.equals(type)) { cSumUnit = unit; cSumTotal = ""; cSumWeek = ""; cSumStart = ""; fSumDate = DayUtil.today(); }
                 if (HabitData.TYPE_MIN.equals(type) || HabitData.TYPE_MAX.equals(type)) fStepperValue = target;
                 formStep = 2;
                 refresh();
@@ -934,6 +941,13 @@ public final class HabitPage {
                 fSumWeekInput.setHint(s("如 28", "e.g. 28"));
                 fSumWeekInput.setTextSize(14);
                 fParamBox.addView(fSumWeekInput, new LinearLayout.LayoutParams(dp(110), LinearLayout.LayoutParams.WRAP_CONTENT));
+                fParamBox.addView(small(s("起始数字（可空，之前已攒下的量）", "Starting number (optional, what you already had)"), 12));
+                fSumStartInput = new EditText(act);
+                fSumStartInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+                fSumStartInput.setText(cSumStart);
+                fSumStartInput.setHint(s("如 120", "e.g. 120"));
+                fSumStartInput.setTextSize(14);
+                fParamBox.addView(fSumStartInput, new LinearLayout.LayoutParams(dp(110), LinearLayout.LayoutParams.WRAP_CONTENT));
                 break;
             }
         }
@@ -1000,6 +1014,7 @@ public final class HabitPage {
             default:
                 h.target = Math.max(0, parseLong(cSumWeek, 0));
                 h.totalGoal = Math.max(0, parseLong(cSumTotal, 0));
+                h.startValue = Math.max(0, parseLong(cSumStart, 0));
                 h.unit = cSumUnit.trim();
                 h.startDate = fSumDate;
                 break;
