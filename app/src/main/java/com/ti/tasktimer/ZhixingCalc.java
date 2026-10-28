@@ -7,6 +7,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -361,6 +362,126 @@ public final class ZhixingCalc {
         s.taskTotal = tc[1];
         s.taskRate = s.taskTotal == 0 ? 100 : (int) Math.round(s.taskDone * 100.0 / s.taskTotal);
         s.driftCount = driftCount(c, monday, sunday);
+        s.driftScore = driftScore(s.driftCount);
+        s.index = (int) Math.round(s.habitAvg * W_HABIT + s.taskRate * W_TASK
+                + s.driftScore * W_DRIFT);
+        return s;
+    }
+
+    // ---------------- 区间回算（知行指数详情页，v1.28.0 feature 5） ----------------
+    /**
+     * 任意窗口 [from, to] 的指数回算，只用与 computeWeek 相同的原语拼装（口径对应）：
+     *   习惯：窗口内每个与窗口相交、且周一不晚于今天的自然周，先按 computeWeek 同法
+     *   算该周习惯平均（逐习惯 habitWeek 率取平均），再对这些周取平均；窗口恰为一个
+     *   自然周时，结果与 computeWeek 逐项相等（同一 habitWeek、同一合成式）。
+     *   任务：taskCompletion(from, to)；分神：driftCount(from, to)＋driftScore。
+     *   合成式与 computeWeek 同一行：index＝round(习惯×W_HABIT＋任务×W_TASK＋分神×W_DRIFT)。
+     * hasData 是「数据不足」的判定：窗口内存在任一原始记录（见 hasDataInWindow）。
+     *   三构成各自的空集起算（无习惯=100、任务总数 0=100、分神 0 次=100）是现行口径
+     *   的一部分，只在窗口整体 hasData 时才有意义；hasData=false 时数值不得呈现。
+     */
+    public static final class PeriodStats {
+        public String from, to;
+        public boolean hasData;
+        public int habitAvg;
+        public int taskDone, taskTotal, taskRate;
+        public int driftCount, driftScore;
+        public int index;
+    }
+
+    /**
+     * 窗口内是否存在任一原始记录：习惯 logs 的日期键、自检条目、守卫事件条目
+     * （存在性，不看内容），或任务侧的实际记录——非每日任务的 deadline 落在窗口内、
+     * 每日任务有 doneDates 落在窗口内、或 schedule 缓存日期落在窗口内。
+     * 注意不用 taskCompletion 的总数判存在：每日任务会被它按天展开到任意历史窗口，
+     * 「任务存在」不等于「那个时段有记录」。
+     */
+    public static boolean hasDataInWindow(Context c, JSONObject root, List<TaskItem> tasks,
+                                          String from, String to) {
+        try {
+            JSONObject logs = root == null ? null : root.optJSONObject("logs");
+            if (logs != null) {
+                Iterator<String> it = logs.keys();
+                while (it.hasNext()) {
+                    String d = it.next();
+                    if (d.compareTo(from) >= 0 && d.compareTo(to) <= 0) {
+                        JSONObject day = logs.optJSONObject(d);
+                        if (day != null && day.length() > 0) return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+        for (TaskItem t : tasks) {
+            if (t == null || t.deleted) continue;
+            if ("daily".equals(t.repeat)) {
+                if (t.doneDates != null) {
+                    for (String d : t.doneDates) {
+                        if (d.compareTo(from) >= 0 && d.compareTo(to) <= 0) return true;
+                    }
+                }
+            } else if (t.deadline != null && t.deadline.compareTo(from) >= 0
+                    && t.deadline.compareTo(to) <= 0) {
+                return true;
+            }
+        }
+        try {
+            JSONObject sch = SyncManager.latestSchedule(c);
+            if (sch != null) {
+                String d = sch.optString("date", "");
+                if (!d.isEmpty() && d.compareTo(from) >= 0 && d.compareTo(to) <= 0) return true;
+            }
+        } catch (Exception ignored) { }
+        long lo = DayUtil.dayStartMs(from);
+        long hi = DayUtil.dayStartMs(DayUtil.addDays(to, 1));
+        try {
+            JSONArray sc = SelfChecks.loadArray(c);
+            for (int i = 0; i < sc.length(); i++) {
+                JSONObject e = sc.optJSONObject(i);
+                if (e == null) continue;
+                long ts = e.optLong("ts", 0);
+                if (ts >= lo && ts < hi) return true;
+            }
+        } catch (Exception ignored) { }
+        try {
+            JSONArray ev = GuardEvents.loadArray(c);
+            for (int i = 0; i < ev.length(); i++) {
+                JSONObject e = ev.optJSONObject(i);
+                if (e == null) continue;
+                long ts = e.optLong("ts", 0);
+                if (ts >= lo && ts < hi) return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    public static PeriodStats computeWindow(Context c, JSONObject root, List<HabitData.Habit> habits,
+                                            List<TaskItem> tasks, String from, String to) {
+        PeriodStats s = new PeriodStats();
+        s.from = from;
+        s.to = to;
+        s.hasData = hasDataInWindow(c, root, tasks, from, to);
+        // 习惯：与窗口相交的自然周逐周算 habitAvg（computeWeek 同法），再对周取平均
+        String today = DayUtil.today();
+        String monday = DayUtil.mondayOf(from);
+        long sum = 0;
+        int weeks = 0;
+        while (monday.compareTo(to) <= 0 && monday.compareTo(today) <= 0) {
+            if (habits.isEmpty()) {
+                sum += 100;
+            } else {
+                long wsum = 0;
+                for (HabitData.Habit h : habits) wsum += habitWeek(root, h, monday).rate;
+                sum += Math.round(wsum * 1.0 / habits.size());
+            }
+            weeks++;
+            monday = DayUtil.addDays(monday, 7);
+        }
+        s.habitAvg = weeks == 0 ? 100 : (int) Math.round(sum * 1.0 / weeks);
+        int[] tc = taskCompletion(c, tasks, from, to);
+        s.taskDone = tc[0];
+        s.taskTotal = tc[1];
+        s.taskRate = s.taskTotal == 0 ? 100 : (int) Math.round(s.taskDone * 100.0 / s.taskTotal);
+        s.driftCount = driftCount(c, from, to);
         s.driftScore = driftScore(s.driftCount);
         s.index = (int) Math.round(s.habitAvg * W_HABIT + s.taskRate * W_TASK
                 + s.driftScore * W_DRIFT);

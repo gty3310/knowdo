@@ -66,6 +66,10 @@
             android:name=".CalendarActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ZhixingDetailActivity"
+            android:exported="false" />
+
         <!-- 屏幕内容守卫无障碍通道（v1.21.0 首选，v1.26.0 起唯一通道）：一次性截图
              + 节点文字预筛，采样宿主也在这里；由用户在系统无障碍设置里手动开启，本应用无权代开 -->
         <service
