@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1360 = new Entry("v1.36.0", "2026-10-29");
+        e1360.add(new Group(s("新增", "New"),
+                s("新增「今天安排」页：晨间门里把日记和习惯都填完、点「开启今天」之后，会先进这一页。页顶吸着一条时间账：还剩多少＝你填的可支配时间减去已经安排掉的，安排超了「还剩」会变红。每张任务小卡写着名字、已用时间、还剩时间（点一下能改）、截止的两个快捷钮「改到今天」「取消截止日期」、重要性四档当场选，展开能改全部字段。上面有一条从今早起床到明早起床的时段横条：睡眠段长期保存；白天被占住的时段可以拖出来命名为「锁时」，也能展开成数字时间条精细改；不想逐段设就直接填「今天可支配 X 小时」。自动排、快速重排、AI 重排和聊天排程都会躲开睡眠和锁时，日历页上也会把这两段画出来",
+                  "A new Today Plan page: after you finish the diary and habits in the morning gate and tap Start today, you land here first. A time account sticks to the top: what is left equals the disposable time you entered minus what is already planned, and it turns red when you over-plan. Each compact task card shows the name, time used, and time left (tap to edit), two deadline shortcuts - Move to today and Clear deadline - and the four importance levels to pick on the spot; expand a card to edit every field. Above is a strip running from this morning's wake-up to tomorrow morning's: the sleep segment is saved long-term; daytime segments that are taken can be dragged out and named as locked time, or expanded into a numeric strip for fine editing; or skip the segments and just enter today's disposable hours directly. Local auto-scheduling, quick reschedule, AI reschedule and chat schedule cards all avoid sleep and locked segments, and the calendar page draws both segments too")));
+        e1360.why = s("一天真正能安排的时间就那么多，早上花几分钟先排定、总量不超过可支配时间，比排满了再一路欠债强；睡眠和锁时先划出去，剩下的安排才是真的能做到的",
+                "There is only so much time in a day that can really be planned. Spending a few minutes in the morning fixing the plan - with the total kept inside your disposable time - beats overfilling the day and carrying the debt forward. Sleep and locked time are fenced off first, so what remains planned is what can actually be done");
+        e1360.tryIt = s("明早走完晨间门，看它是不是进了「今天安排」页；拖出一段锁时，给它起个名，再随便排一下，看任务是不是自动躲开那一段",
+                "Tomorrow morning, finish the morning gate and check you land on the Today Plan page; drag out a locked segment, give it a name, then plan a little and see whether tasks automatically avoid that segment");
+        out.add(e1360);
+
         Entry e1350 = new Entry("v1.35.0", "2026-10-29");
         e1350.add(new Group(s("新增", "New"),
                 s("新建/编辑任务页底部变成三个按钮——取消（左）／立刻开始（中）／保存（右）。「立刻开始」＝先按和保存完全一样的规则存好（名字为空照样拦），然后当场开始给这个任务计时：在主页新建、主页编辑、日历里新建、日历里改任务，四个入口都一样；如果这个任务正在计时，不会重启它；正暂停着，就接着剩下的时间继续；是别的任务在计时，就直接切换过来",
