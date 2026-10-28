@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.29.0)
+## Features (Android, v1.30.0)
 
-Current version: **v1.29.0**.
+Current version: **v1.30.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -42,7 +42,7 @@ Current version: **v1.29.0**.
 - **Account and realtime sync (Supabase)** — sign in with an email account and tasks sync in realtime between devices; merges align by task id with newest-wins and tombstone deletes, so nothing resurrects and nothing is silently overwritten. There is a **single logical timer across devices**: state lives in the cloud, both ends render it, and either end can control it. A task written with an `autoStart` flag starts its own countdown as soon as it arrives. (The legacy Google Drive file bridge was retired and removed in v1.26.0; Supabase is the only sync path.)
 - **Per-task alarms** — any task can have an alarm time (it rings whether or not a timer is running; a daily task re-arms for the next day) and/or ring when its timer ends, before the end-of-task check-in. The default sound is a clear nature recording that fades in from silence to full volume over 60 seconds, played on the alarm audio stream, so it rings even when the phone is muted.
 - **Start-time reminders** — when a task's planned start time arrives, a full-screen reminder pops up: start now, snooze 10 minutes, or ignore.
-- **Habits and the morning gate** — a Habits tab of self-chosen habits in four goal types (at least N days a week, at most N times, a daily number, or a cumulative total toward a goal), each with its own reminder time, a year grid for back-filling, and progress toward the week on every card; habits feed half of the Zhixing index on the KnowDo tab. The day opens with a fullscreen morning gate: yesterday's habits answered one by one, a short read-only report on yesterday, and a morning diary, all before "Start today" unlocks the day. Since v1.28.0, a cumulative habit can carry a starting number, so a count begun before KnowDo continues from where it actually reached instead of from zero. Since v1.29.0, one global setting (Settings → Habit display window) chooses whether every card's main count reckons by today, this week, last week or this month.
+- **Habits and the morning gate** — a Habits tab of self-chosen habits in four goal types (at least N days a week, at most N times, a daily number, or a cumulative total toward a goal), each with its own reminder time, a year grid for back-filling, and progress toward the week on every card; habits feed half of the Zhixing index on the KnowDo tab. The day opens with a fullscreen morning gate: yesterday's habits answered one by one, a short read-only report on yesterday, and a morning diary, all before "Start today" unlocks the day. Since v1.28.0, a cumulative habit can carry a starting number, so a count begun before KnowDo continues from where it actually reached instead of from zero. Since v1.29.0, one global setting (Settings → Habit display window) chooses whether every card's main count reckons by today, this week, last week or this month. Since v1.30.0 the tab also has a compact mode — one line per habit with this week's seven dots and, on the right, how far the habit still is from this week's goal.
 - **Bilingual UI and themes** — Chinese / English interface and light / dark themes, switchable from the drawer or settings. The top bar stays minimal: a drawer (account, language, theme, help, settings) on the left, the calendar on the right.
 - **Self-update (v1.27.0)** — the app checks for new versions itself (at most once a day, switchable), downloads the new build in verified ~5 MB shards from the same private Gitee repository that serves its models, checks every shard and the assembled file by size and MD5, then shows one plain "ready to install" dialog — installing is a single tap on the system installer (with a one-time "install unknown apps" permission walkthrough). Download progress lives only on the Settings → App Updates row; the download network (Wi-Fi only / Wi-Fi & mobile data) is a personal setting synced via the cloud.
 - **Chat unread badge (v1.27.0)** — the Chat tab carries a small vermilion badge counting AI messages you haven't seen yet (above all the proactive distraction-companion messages); opening the tab clears it.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.30.0 — 2026-10-28
+
+**Why:** With habits piling up, the full cards no longer fit on one page. In compact mode — one line per habit, with how far it still is from this week's goal stated plainly on the right — one glance shows which habit is falling behind. Build commit `70d315d` · [compare v1.29.0...v1.30.0](https://github.com/gty3310/knowdo/compare/v1.29.0...v1.30.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Habit cards get a compact mode.** A Full | Compact toggle under the Habits tab's subtitle (a local preference, default Full; the full cards render exactly as before). A compact row is one line: the habit's name, this week's seven dots (tap a dot to back-fill that day, tap the row to edit) and a right-side status that always reckons against this week's goal, independent of the global display window — at-least shows days still short (or "Done"), at-most shows the allowance left or "N over", never a negative "left", numeric pro-rates the daily target over the days elapsed so far, and cumulative measures its total (starting number included) against its total goal.
+
+Not yet verified on a real device: the compact rows' look and dot colours (including dark mode), the small dots as tap targets, and a real habit list fitting on one page.
+
 ### v1.29.0 — 2026-10-28
 
 **Why:** The user reversed the per-habit plan — a display window per habit is fiddly and easy to leave inconsistent — and ruled instead: one global setting governs every habit card's count, reckoned by today, this week, last week or this month. Build commit `49c8120` · [compare v1.28.0...v1.29.0](https://github.com/gty3310/knowdo/compare/v1.28.0...v1.29.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the four windows rendering on real habit card
 - **Cumulative habits get a starting number.** A cumulative habit's definition now carries `startValue`, stored in `habit_data` and synced with it (old data defaults to 0). The one total computation seeds itself with the starting number, so the card's big total, its total-goal progress and its "how far left" all count from it; the create form and the edit dialog both expose the field. No other habit type, the Zhixing index and the morning gate are untouched.
 
 Not yet verified on a real device: entering or editing a starting number and watching the card totals follow, the morning gate adding increments on top of it, and whether the Mac app preserves the new field when it rewrites habit data.
-
-### v1.27.1 — 2026-10-27
-
-**Why:** The user named this one urgent: Quick Re-plan locked every block whose planned time had ended, so unfinished tasks were stranded in the past and the day was unusable. In the user's words, unfinished work must not be left in the past — a re-plan means arranging from now. This release fixes only this. Build commit `1dff0e8` · [compare v1.27.0...v1.27.1](https://github.com/gty3310/knowdo/compare/v1.27.0...v1.27.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Quick Re-plan recycles expired blocks of unfinished tasks.** The lock test in `LocalAutoScheduler.computeReschedule` no longer treats "the block's end time has passed" as a reason to lock. An unfinished task's expired planned block is taken away, the task returns to the candidate pool and is re-packed from the current moment in the unchanged `candidateOrder`; the old block appears in neither the locked set nor the new plan, so no task ends up with one block in the past and another in the future. Still locked: tasks already done today, the currently running task, blocks the user dragged into place (`manual`), and blocks whose task no longer exists. Work actually done lives in the actual lane / SessionLog and is untouched; a partly-done task re-enters the pool with its expired block likewise recycled. The past time freed this way is not backfilled, and the one-tap Undo snapshot is unchanged. AI Re-plan is untouched.
-
-Not yet verified on a real device: an unfinished task with an expired block being re-planned to after now on a live day, and Undo restoring the pre-re-plan layout afterwards.
 
 ## Build
 
