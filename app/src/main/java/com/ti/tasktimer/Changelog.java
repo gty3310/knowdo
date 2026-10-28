@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1280 = new Entry("v1.28.0", "2026-10-28");
+        e1280.add(new Group(s("新增", "New"),
+                s("累积型习惯可以填「起始数字」了：编辑一个累积型习惯（比如「做善事」），填上起始数字，卡片上的累计总数、总量目标的进度和「还差多少」，都从这个数开始往上加；新建累积型习惯时也能直接填。不填就是 0，和以前一样",
+                  "Cumulative habits can take a starting number now: edit a cumulative habit (good deeds, say), enter a starting number, and the card's running total, its progress toward the total goal and its \u201chow far left\u201d all count upward from that number. You can set it when creating the habit too; leave it empty and it is 0, exactly as before")));
+        e1280.why = s("像做善事这种、你用知行之前就已经在做的事，累计不该从零开始数——从你真正已经做到的那个数接着数，才对得起已经做过的那些",
+                "Some things — good deeds above all — were already being done before KnowDo existed, and their count must not restart at zero. It continues from the number you had actually reached, so what you already did still counts");
+        e1280.tryIt = s("打开习惯页，编辑你的累积型习惯（比如做善事），把起始数字填成之前已经累计的件数，保存后看卡片上的总数是不是从这个数起算",
+                "Open the Habits tab, edit a cumulative habit (good deeds, say), set its starting number to what you had already accumulated, save, and check the card's total now counts from that number");
+        out.add(e1280);
+
         Entry e1271 = new Entry("v1.27.1", "2026-10-27");
         e1271.add(new Group(s("修复", "Fixed"),
                 s("快速重排不再把没做完的事留在过去：以前只要一块计划的时间已经过了，重排就把它锁死不动——任务明明没做完，日程却卡在过去，没法用。现在改成：没做完的任务，计划时间过了就把那块收走，从现在这一刻起重新往后排；真正不动的只剩做完的、正在计时的、你亲手拖定的，还有已经实际做过的部分（它在实际栏里，不受影响）",
