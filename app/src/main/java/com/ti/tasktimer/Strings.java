@@ -318,14 +318,6 @@ public final class Strings {
     public static String scDidRightQ() { return s("刚才在做该做的事吗？", "Were you doing what you should?"); }
     public static String scDid() { return s("做到了", "Yes, I was"); }
     public static String scNot() { return s("没有", "No"); }
-    public static String scStateQ() { return s("现在的状态", "How do you feel right now?"); }
-    /** 六个状态的显示名（与 SelfChecks.STATES 同序；记录里存的是标准存值，与界面语言无关）。 */
-    public static String[] selfCheckStates() {
-        return en ? new String[]{"Calm", "Irritated", "Restless", "Groggy", "Overreaching", "Rushing"}
-                  : SelfChecks.STATES;
-    }
-    public static String scExtendAsk() { return s("加时之前，先记一下现在的状态", "Before extending, note how you feel"); }
-    public static String scDirectExtend() { return s("直接加时", "Just extend"); }
 
     // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
@@ -578,14 +570,12 @@ public final class Strings {
          + "• 登录 Supabase 后，这句话会同步进你账号的云端数据并跟着账号走："
          + "换一台设备登录同一账号、本机还没写过时，会自动采用云端的那句；你在 App 里改了，也会回写云端。"},
         {"十九、磨练自检（v1.12.0）",
-         "把每一次「被抓分神」和每一次「加时」都变成一次对自己的察问——这是阳明「省察克治」的日常版。\n"
-         + "• 分神问询页（用错应用、屏幕内容两种模式都有）顶部多了两问："
-         + "「刚才在做该做的事吗？」点[做到了]或[没有]；「现在的状态」点一个：平静 / 烦 / 躁 / 昏沉 / 贪多 / 求快。"
+         "把每一次「被抓分神」都变成一次对自己的察问——这是阳明「省察克治」的日常版。\n"
+         + "• 分神问询页（用错应用、屏幕内容两种模式都有）顶部有一问："
+         + "「刚才在做该做的事吗？」点[做到了]或[没有]。"
          + "点了立刻记下，不点也不会拦着你——页面原有的回到任务、宽限、放行按钮照常可用，不必先答题。\n"
-         + "• 加时之前也要自检：结束检查页与子任务检查页上，点任何加时（+50%、+5/+10/+15 分钟、自定义）"
-         + "都会先让你点一下当前状态，点完才真正加时；不想记，点一行不显眼的「直接加时」即可——照常加时、不留记录。\n"
          + "• 记录只存本机并同步到你账号名下的云端（self_checks），本版只记录、不出统计页——"
-         + "先攒着，日后的「每日省察」会拿它对账：哪天、什么状态下最容易知而未行，一看便知。"},
+         + "先攒着，日后的「每日省察」会拿它对账：哪天最容易知而未行，一看便知。"},
         {"二十、更新日志（v1.13.0）",
          "每次升级到新版本后，第一次打开知行会弹一个「更新日志」框：最近 5 个版本纵向排列——"
          + "每版改了什么（按新功能／改进／修复分组）、为什么改、最新版还有「怎么试」，下滑就能翻完。\n"
@@ -896,15 +886,12 @@ public final class Strings {
          + "• Signed in to Supabase, the line syncs into your account's cloud data and follows the account: "
          + "on a new device with the same account, a device that has none yet adopts the cloud line automatically; edits in the app are written back."},
         {"19. Self-check (v1.12.0)",
-         "Every drift catch and every extension becomes a moment of self-examination — Wang Yangming's \"reflect and subdue\" as a daily habit.\n"
-         + "• The drift inquiry page (both wrong-app and screen-content modes) gains two questions at the top: "
-         + "\"Were you doing what you should?\" — tap Yes or No; \"How do you feel right now?\" — pick one: Calm / Irritated / Restless / Groggy / Overreaching / Rushing. "
-         + "Answers are recorded the moment you tap; not answering never blocks you — the return, grace and allow buttons work as before.\n"
-         + "• Extending asks too: on the end check page and the subtask check page, any extension (+50%, +5/+10/+15 min, custom) "
-         + "first asks you to tap your current state; only then does the time actually get added. "
-         + "Don't want to record? Tap the quiet \"Just extend\" — the time is added as usual, with nothing recorded.\n"
-         + "• Records live on the device and sync to your account's cloud data (self_checks). This version only records — no stats page yet; "
-         + "they are being saved up for a future daily review: which states, on which days, most often separate knowing from doing."},
+         "Every drift catch becomes a moment of self-examination \u2014 Wang Yangming's \"reflect and subdue\" as a daily habit.\n"
+         + "• The drift inquiry page (both wrong-app and screen-content modes) asks one question at the top: "
+         + "\"Were you doing what you should?\" \u2014 tap Yes or No. "
+         + "Answers are recorded the moment you tap; not answering never blocks you \u2014 the return, grace and allow buttons work as before.\n"
+         + "• Records live on the device and sync to your account's cloud data (self_checks). This version only records \u2014 no stats page yet; "
+         + "they are being saved up for a future daily review: which days most often separate knowing from doing."},
         {"20. What's new (v1.13.0)",
          "After you update to a new version, the first time you open KnowDo a \"What's new\" box pops up: the latest 5 versions stacked — "
          + "what changed in each (grouped as New / Improved / Fixed), why it changed, and, for the newest, how to try it. Scroll to read them all.\n"

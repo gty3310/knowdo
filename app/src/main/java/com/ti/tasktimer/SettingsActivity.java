@@ -492,12 +492,6 @@ public class SettingsActivity extends Activity {
                         : "守卫拿不准时把屏幕文字和任务比一比：先用手机本地的小模型比，还拿不准才把文字"
                         + "（敏感信息已自动打码，绝不发图）发给云端大模型帮判。关掉则只用手机本地判定，任何数据都不出手机",
                 sem, null);
-        // 我的纪律（v1.24.3）：守卫问询页点「分析错误」留下的纪律，在这里查看与删除
-        row(Strings.en() ? "My guard rules" : "我的纪律",
-                Strings.en() ? "Rules you left after tapping \"Analysis error\" on a guard inquiry; "
-                        + "online verdicts judge with them included"
-                        : "守卫判错时你留下的纪律，联网判定会带着它一起判；在这里查看、删除",
-                arrowBtn("›"), v -> startActivity(new Intent(this, GuardRulesActivity.class)));
         // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单弹问询，兜底名单也停
         Switch al = mkSwitch(ScreenGuardPrefs.appListsEnabled(this));
         al.setOnCheckedChangeListener((b, on) -> {

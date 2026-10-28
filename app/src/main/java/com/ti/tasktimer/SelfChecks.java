@@ -16,9 +16,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 磨练自检记录（v1.12.0）：分神问询页自答（做到了/没有＋现在的状态）与加时前状态点选。
- * 事件 {id, ts, time, context: drift|extend, didRight: true|false|null,
- *       state: string|null, taskId}。
+ * 磨练自检记录（v1.12.0）：分神问询页自答「刚才在做该做的事吗」（做到了/没有）。
+ * 事件 {id, ts, time, context: drift, didRight: true|false|null,
+ *       state: string|null, taskId}。state 字段与 context=extend 是已撤销的
+ *       状态自检/加时自检留下的历史格式：老记录原样保留，新记录不再产生。
  * 本地存应用私有文件 self_checks.json；同步并入 Supabase user_state.self_checks，
  * 与 GuardEvents 同一套合并纪律：按 id 去重（无 id 的旧条按 ts|context|taskId）、
  * 按 ts 排序、上限 200 条丢最旧。
@@ -28,9 +29,6 @@ import java.util.Set;
 public final class SelfChecks {
     private static final String FILE = "self_checks.json";
     private static final int MAX = 200;
-
-    /** 六个状态的标准存值（与 Strings.selfCheckStates() 同序同文案，存值与界面语言无关）。 */
-    public static final String[] STATES = {"平静", "烦", "躁", "昏沉", "贪多", "求快"};
 
     private SelfChecks() {}
 
@@ -70,13 +68,6 @@ public final class SelfChecks {
                 }
             }
         } catch (Exception ignored) { }
-    }
-
-    /** 一次点选直接成条（加时自检：只有状态一问，didRight 留 null）。 */
-    public static synchronized void add(Context c, String context, Boolean didRight,
-                                        String state, String taskId) {
-        String id = begin(c, context, taskId);
-        answer(c, id, didRight, state);
     }
 
     public static synchronized JSONArray loadArray(Context c) {

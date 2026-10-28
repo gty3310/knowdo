@@ -16,25 +16,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 /**
- * 用户纪律（v1.24.3）：守卫判错时，用户在问询页点「分析错误」顺手留下的规矩。
+ * 用户纪律（v1.24.3 引入）：守卫判错时，用户在问询页点「分析错误」顺手留下的规矩。
+ * 误判申诉机制已整套撤销：问询页的收集入口与设置里的「我的纪律」管理页都没了，
+ * 本类不再新增、删除纪律——只保留既有数据的本地存储、云端合并与随终判带参，
+ * 云端已有数据原样留着。
  * 本地存应用私有文件 guard_rules.json（与 GuardEvents 同办法），云端存
  * user_state.guard_rules（jsonb 数组）——列不存在时 SbSync 完全不碰该键、本类
  * 只管本地（探测纪律见 SbSync.probeUserStateCol，照 aspiration/habit_data 先例）。
  *
  * 每条纪律：{id, text, ts}。删除走墓碑：条目留在数组里标 deleted:true，
  * 合并是按 id 取并集、墓碑在场就不复活（与任务删除墓碑同一纪律），
- * 展示与带参时滤掉墓碑。纪律内容立后不改（要改先删后立），合并同 id 时本地优先。
+ * 带参时滤掉墓碑。合并同 id 时本地优先。
  * 上限 100 条，超出先丢最旧的墓碑、再丢最旧的纪律。
  *
- * 纪律只随云端终判请求带出（SemanticJudge 的 rules 数组）；本地降级判定不参与
- * （能力所限），这一点在「我的纪律」页向用户写明。
+ * 纪律只随云端终判请求带出（SemanticJudge 的 rules 数组）；本地降级判定不参与。
  */
 public final class GuardRules {
-    /** 一条纪律最多 20 个字（问询页输入端卡死，本类再兜底截断）。 */
-    public static final int MAX_LEN = 20;
     private static final String FILE = "guard_rules.json";
     private static final int MAX = 100;
 
@@ -94,41 +93,6 @@ public final class GuardRules {
         JSONArray out = new JSONArray();
         for (String t : texts(c)) out.put(t);
         return out;
-    }
-
-    // ---------------- 增删 ----------------
-
-    public static synchronized void add(Context c, String text) {
-        String t = text == null ? "" : text.trim();
-        if (t.isEmpty()) return;
-        if (t.length() > MAX_LEN) t = t.substring(0, MAX_LEN);
-        try {
-            JSONArray arr = loadArray(c);
-            JSONObject o = new JSONObject();
-            o.put("id", UUID.randomUUID().toString());
-            o.put("text", t);
-            o.put("ts", System.currentTimeMillis());
-            arr.put(o);
-            saveArray(c, trim(arr));
-        } catch (Exception ignored) { }
-        kickSync(c);
-    }
-
-    /** 删除＝打墓碑（条目留在数组里防合并复活），展示与带参即刻不再出现。 */
-    public static synchronized void delete(Context c, String id) {
-        if (id == null || id.isEmpty()) return;
-        try {
-            JSONArray arr = loadArray(c);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o != null && id.equals(o.optString("id", ""))) {
-                    o.put("deleted", true);
-                    break;
-                }
-            }
-            saveArray(c, trim(arr));
-        } catch (Exception ignored) { }
-        kickSync(c);
     }
 
     // ---------------- 云端合并 ----------------
@@ -206,8 +170,7 @@ public final class GuardRules {
 
     /**
      * 顺手把全量同步踢一脚（与 HabitData.requestSync 同办法）：未登录就不动，
-     * 等常规同步。立纪/删纪后调用；VerdictEngine 标误报后也调它，好让
-     * overturned 标记尽快上云。
+     * 等常规同步。多个设置类借它做改完设置后的通用同步踢脚。
      */
     public static void kickSync(final Context c) {
         if (!Supa.isLoggedIn(c)) return;

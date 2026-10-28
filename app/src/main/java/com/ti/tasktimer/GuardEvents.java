@@ -34,14 +34,6 @@ public final class GuardEvents {
     }
 
     /**
-     * 同 add，但返回这条事件的时间戳（v1.24.3）：触发问询时调用方把 ts 记下来，
-     * 用户随后点「分析错误」就能精确标中这一条打误报标记，不靠类别猜。
-     */
-    public static synchronized long addEvent(Context c, TaskItem task, String category, float confidence, String detail) {
-        return addInternal(c, task, category, confidence, detail, false);
-    }
-
-    /**
      * 备注事件（v1.21.4）：不是一次触发，只是一条可审计的记录（如语义降级
      * 放行），带 note=true 标记。知行指数的分神计数会跳过备注事件，
      * 备注绝不当成一次分神扣分。
@@ -68,44 +60,6 @@ public final class GuardEvents {
             saveArray(c, trim(arr));
         } catch (Exception ignored) { }
         return now;
-    }
-
-    /**
-     * 误报标记（v1.24.3）：给 ts 命中的那条事件打 overturned=true。
-     * 知行指数的分神计数跳过带此标记的事件（见 ZhixingCalc.driftCount）；
-     * 标记随 guard_events 既有通道同步（SbSync/SyncManager 的事件键签名带此标记，
-     * 内容变了就会触发回写）。找不到返回 false。
-     */
-    public static synchronized boolean markOverturned(Context c, long ts) {
-        if (ts <= 0) return false;
-        try {
-            JSONArray arr = loadArray(c);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject e = arr.optJSONObject(i);
-                if (e != null && e.optLong("ts", 0) == ts) {
-                    e.put("overturned", true);
-                    saveArray(c, arr);
-                    return true;
-                }
-            }
-        } catch (Exception ignored) { }
-        return false;
-    }
-
-    /** 兜底：触发时记下的 ts 丢了时，把最近一条未标误报的真实事件（非备注）标上。 */
-    public static synchronized boolean markLatestOverturned(Context c) {
-        try {
-            JSONArray arr = loadArray(c);
-            for (int i = arr.length() - 1; i >= 0; i--) {
-                JSONObject e = arr.optJSONObject(i);
-                if (e == null || e.optBoolean("note", false)
-                        || e.optBoolean("overturned", false)) continue;
-                e.put("overturned", true);
-                saveArray(c, arr);
-                return true;
-            }
-        } catch (Exception ignored) { }
-        return false;
     }
 
     public static synchronized JSONArray loadArray(Context c) {

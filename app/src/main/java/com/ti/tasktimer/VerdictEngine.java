@@ -99,11 +99,9 @@ public final class VerdictEngine {
         // 记下触发这一问询时的前台包名：用户若选宽限，宽限状态连它一起存，
         // 到点复查「是不是还停在当时那个分神应用」就靠它比对
         String fg = currentForeground(c);
-        // 事件先落账拿 ts：用户在问询页点「分析错误」时按这个 ts 精确标中本条（v1.24.3）
-        long evTs = GuardEvents.addEvent(c, task, r.category, r.confidence, r.detail);
+        GuardEvents.add(c, task, r.category, r.confidence, r.detail);
         SharedPreferences.Editor e = prefs(c).edit().remove("last_cat").remove("streak")
                 .putLong("cooldown_until", now + cooldownMs(c))
-                .putLong("inquiry_event_ts", evTs)
                 // 本次问询是否「语义判定触发且当时在降级」（v1.21.4）：只供
                 // diag_mode 开启时问询页底部显示诊断行，普通用户永远看不到
                 .putBoolean("inquiry_semantic_degraded", "degraded".equals(r.semanticSource));
@@ -151,27 +149,6 @@ public final class VerdictEngine {
         s.add(cat);
         p.edit().putStringSet("session_allow_cats", s).remove("inquiry_pkg").apply();
         TimerState.logEvent(c, "屏幕内容守卫：用户放行「" + ContentAnalyzer.label(cat) + "」（本次计时内不再判该类）");
-    }
-
-    /**
-     * 「分析错误」（v1.24.3）：用户认定本次判定是误报——给触发本次问询的那条
-     * GuardEvents 事件打 overturned 标记（知行指数分神计数跳过它，标记随既有
-     * 通道上云），问询就此解除：清掉问询状态、刷新一轮冷却，不升级任何催促、
-     * 不跳回、不放行整类（同类以后少判错靠用户留的纪律，不靠这次一并放行）。
-     */
-    public static void contentOverturn(Context c) {
-        SharedPreferences p = prefs(c);
-        long ts = p.getLong("inquiry_event_ts", 0);
-        boolean marked = ts > 0 && GuardEvents.markOverturned(c, ts);
-        if (!marked) marked = GuardEvents.markLatestOverturned(c); // ts 丢了的兜底
-        p.edit().remove("inquiry_pkg").remove("inquiry_event_ts")
-                .remove("last_cat").remove("streak")
-                .putLong("cooldown_until", System.currentTimeMillis() + cooldownMs(c))
-                .apply();
-        TimerState.logEvent(c, "屏幕内容守卫：用户点「分析错误」，本次判定按误报处理"
-                + (marked ? "（事件已标 overturned，不计入分神）" : "（未找到对应事件，仅解除问询）"));
-        // 标记要上云才算数：踢一脚同步（未登录/列未就绪都无妨，下次常规同步带走）
-        GuardRules.kickSync(c);
     }
 
     // ---- 宽限到点处理（v1.21.3）：闹钟到点与「到期再命中」共用这一份 ----

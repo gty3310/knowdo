@@ -5,21 +5,14 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.InputFilter;
-import android.text.TextWatcher;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,23 +34,17 @@ public class GuardActivity extends Activity {
     private boolean contentMode;
     private String category = "";
 
-    // 磨练自检（v1.12.0）：两问的点选状态与本页的自检记录 id（首次点选时才建条）
+    // 磨练自检（v1.12.0）：第一问的点选状态与本页的自检记录 id（首次点选时才建条）
     private String scEventId;
     private int scDidSel = -1;
-    private int scStateSel = -1;
     private final List<Button> scDidBtns = new ArrayList<>();
-    private final List<Button> scStateBtns = new ArrayList<>();
 
     // 宽限到点处理方式（v1.21.3，仅 content 模式）：true=退掉这个软件（默认），false=只放到后台
     private boolean graceQuit = true;
     private final List<Button> graceModeBtns = new ArrayList<>();
 
-    // 分析错误（v1.24.3）：应答按钮区与纪律输入区（二选一显示，原页切换）
     private ScrollView scrollView;
     private LinearLayout actionsBox;
-    private LinearLayout ruleBox;
-    private EditText ruleInput;
-    private TextView ruleCounter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,13 +71,11 @@ public class GuardActivity extends Activity {
         root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
-        // 整页可滚动（v1.25.0 修复）：本页内容＝标题＋多行说明＋立志行＋自检两问
-        // ＋最多 7 个按钮，总高在小屏/大字体下远超一屏；此前裸 LinearLayout 直接
-        // setContentView、无 ScrollView，超出的底部按钮被挤出屏幕且滑不到——
-        // 「分析错误」正好在倒数第二，用户真机反馈有时根本看不到它。套上
-        // ScrollView 后任何内容组合下所有按钮都可达；fillViewport 让短内容
-        // （专注模式无宽限行时）视觉与原来一致。键盘弹出时按 resize 收缩
-        // 滚动区，保证纪律输入区不被键盘盖住。
+        // 整页可滚动（v1.25.0 修复）：本页内容＝标题＋多行说明＋立志行＋自检一问
+        // ＋多个按钮，总高在小屏/大字体下可能超出一屏；裸 LinearLayout 直接
+        // setContentView、无 ScrollView 时，超出的底部按钮会被挤出屏幕且滑不到。
+        // 套上 ScrollView 后任何内容组合下所有按钮都可达；fillViewport 让短内容
+        // （专注模式无宽限行时）视觉与原来一致。
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         scrollView = new ScrollView(this);
         scrollView.setBackgroundColor(Color.rgb(247, 243, 236));
@@ -136,7 +121,7 @@ public class GuardActivity extends Activity {
 
         buildSelfCheck(root);
 
-        // 应答按钮区：点「分析错误」后整区收起、原页展开纪律输入区（见 ruleBox）
+        // 应答按钮区
         actionsBox = new LinearLayout(this);
         actionsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(actionsBox);
@@ -179,19 +164,6 @@ public class GuardActivity extends Activity {
         actionsBox.addView(allow);
         spacer(actionsBox, 12);
 
-        // 分析错误（v1.24.3）：与「误判放行」是两回事——放行只是本次计时内不再判
-        // 这一类，这次判定照样计分神；分析错误是把本次判定按误报撤销（不计分神、
-        // 事件打 overturned 标记），并在原页展开纪律输入区，可留一条 ≤20 字的
-        // 纪律，往后云端终判带上它判。样式克制：白底描边的次级按钮。
-        Button overturn = plainButton(Strings.en() ? "Analysis error" : "分析错误");
-        overturn.setOnClickListener(v -> {
-            if (contentMode) VerdictEngine.contentOverturn(this);
-            else FocusGuard.chooseOverturn(this, fgPkg);
-            showRuleBox();
-        });
-        actionsBox.addView(overturn);
-        spacer(actionsBox, 12);
-
         // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
         // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
         // 聊天里 AI 已收到分神主动消息（内容守卫确认分神时落账），可以接着聊。
@@ -208,8 +180,6 @@ public class GuardActivity extends Activity {
         });
         actionsBox.addView(chat);
 
-        buildRuleBox(root);
-
         // 诊断行（v1.21.4）：只在 diag_mode 开启、且本次问询是语义判定在
         // 降级状态下触发时，才在页底显示这一行；普通用户永不出现
         if (contentMode && ScreenGuardPrefs.diagMode(this)
@@ -221,135 +191,6 @@ public class GuardActivity extends Activity {
             diag.setPadding(0, dp(20), 0, 0);
             root.addView(diag);
         }
-    }
-
-    // ---------------- 分析错误：纪律输入区（v1.24.3） ----------------
-    /**
-     * 点「分析错误」后在原页展开：误报撤销在点按钮那一刻已经生效（见
-     * VerdictEngine.contentOverturn / FocusGuard.chooseOverturn），这里只管
-     * 可选的纪律输入——写一条 ≤20 字的规矩保存，或跳过只标误报。
-     * 保存走 GuardRules.add（本地落盘＋踢同步＋随云端终判带参）。
-     */
-    private void buildRuleBox(LinearLayout root) {
-        ruleBox = new LinearLayout(this);
-        ruleBox.setOrientation(LinearLayout.VERTICAL);
-        ruleBox.setVisibility(View.GONE);
-        root.addView(ruleBox);
-
-        TextView label = new TextView(this);
-        label.setText(Strings.en()
-                ? "Marked as a false alarm — this one doesn't count. Leave a rule if you like: "
-                        + "online verdicts will judge with it from now on (optional)"
-                : "已按误报处理，这次不算分神。想留一条纪律也行：往后联网判定会带着它一起判（可跳过）");
-        label.setTextSize(17);
-        label.setTextColor(Color.rgb(31, 47, 42));
-        ruleBox.addView(label);
-
-        ruleInput = new EditText(this);
-        ruleInput.setHint(Strings.en() ? "e.g. Looking things up in the browser is work"
-                : "例：查资料用浏览器算正事");
-        ruleInput.setTextSize(18);
-        ruleInput.setSingleLine(true);
-        ruleInput.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(GuardRules.MAX_LEN) });
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        ilp.setMargins(0, dp(12), 0, 0);
-        ruleInput.setLayoutParams(ilp);
-        ruleBox.addView(ruleInput);
-
-        ruleCounter = new TextView(this);
-        ruleCounter.setText("0/" + GuardRules.MAX_LEN);
-        ruleCounter.setTextSize(13);
-        ruleCounter.setTextColor(Color.GRAY);
-        ruleCounter.setGravity(android.view.Gravity.END);
-        ruleBox.addView(ruleCounter);
-        ruleInput.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) { }
-            @Override public void onTextChanged(CharSequence s, int a, int b, int n) {
-                ruleCounter.setText(s.length() + "/" + GuardRules.MAX_LEN);
-            }
-            @Override public void afterTextChanged(Editable s) { }
-        });
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        rlp.setMargins(0, dp(10), 0, 0);
-        row.setLayoutParams(rlp);
-        ruleBox.addView(row);
-
-        Button save = bigButton(Strings.en() ? "Save rule" : "保存纪律", Color.rgb(46, 125, 50));
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(60), 1f);
-        blp.setMargins(0, 0, dp(6), 0);
-        save.setLayoutParams(blp);
-        save.setOnClickListener(v -> {
-            String t = ruleInput.getText() == null ? "" : ruleInput.getText().toString().trim();
-            if (!t.isEmpty()) {
-                GuardRules.add(this, t);
-                Toast.makeText(this, Strings.en() ? "Rule saved — this one doesn't count"
-                        : "纪律已保存，这次不算分神", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, Strings.en() ? "Marked as a false alarm"
-                        : "已标记误报，这次不算分神", Toast.LENGTH_SHORT).show();
-            }
-            finish();
-        });
-        row.addView(save);
-
-        Button skip = plainButton(Strings.en() ? "Skip" : "跳过");
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, dp(60), 1f);
-        slp.setMargins(dp(6), 0, 0, 0);
-        skip.setLayoutParams(slp);
-        skip.setOnClickListener(v -> {
-            Toast.makeText(this, Strings.en() ? "Marked as a false alarm"
-                    : "已标记误报，这次不算分神", Toast.LENGTH_SHORT).show();
-            finish();
-        });
-        row.addView(skip);
-    }
-
-    private void showRuleBox() {
-        if (actionsBox != null) actionsBox.setVisibility(View.GONE);
-        if (ruleBox != null) {
-            ruleBox.setVisibility(View.VISIBLE);
-            // 展开后把页面滚到输入区（v1.25.0）：等布局与键盘都落定再滚，
-            // 保证输入框与「保存纪律/跳过」一行进入可见区，不被键盘或屏外挡住
-            if (scrollView != null) {
-                scrollView.postDelayed(() -> {
-                    if (scrollView != null && ruleBox != null) {
-                        scrollView.smoothScrollTo(0, ruleBox.getTop());
-                    }
-                }, 300);
-            }
-            if (ruleInput != null) {
-                ruleInput.requestFocus();
-                ruleInput.post(() -> {
-                    try {
-                        InputMethodManager imm = (InputMethodManager)
-                                getSystemService(Context.INPUT_METHOD_SERVICE);
-                        if (imm != null) imm.showSoftInput(ruleInput, InputMethodManager.SHOW_IMPLICIT);
-                    } catch (Exception ignored) { }
-                });
-            }
-        }
-    }
-
-    /** 克制的次级按钮（白底描边、深灰字），与 bigButton 的主按钮区分。 */
-    private Button plainButton(String s) {
-        Button b = new Button(this);
-        b.setText(s);
-        b.setTextSize(18);
-        b.setAllCaps(false);
-        b.setTextColor(Color.rgb(31, 47, 42));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(Color.rgb(247, 243, 236));
-        g.setStroke(dp(1), Color.rgb(211, 204, 188));
-        g.setCornerRadius(dp(10));
-        b.setBackground(g);
-        b.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
-        return b;
     }
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
@@ -394,9 +235,9 @@ public class GuardActivity extends Activity {
 
     // ---------------- 磨练自检（v1.12.0） ----------------
     /**
-     * 问询页顶部自检区：问一「刚才在做该做的事吗？」[做到了][没有]；
-     * 问二「现在的状态」六个 chips。点了即时记录（同一页共用一条记录），
-     * 不点不拦任何原有动作——下面的回到任务/宽限/放行照常可用。
+     * 问询页顶部自检区：「刚才在做该做的事吗？」[做到了][没有]。
+     * 点了即时记录，不点不拦任何原有动作——下面的回到任务/宽限/放行照常可用。
+     * （原第二问「现在的状态」六个 chips 已随状态自检一并撤销。）
      */
     private void buildSelfCheck(LinearLayout root) {
         TextView q1 = new TextView(this);
@@ -424,29 +265,6 @@ public class GuardActivity extends Activity {
         r1.addView(did);
         r1.addView(not);
 
-        TextView q2 = new TextView(this);
-        q2.setText(Strings.scStateQ());
-        q2.setTextSize(17);
-        q2.setTextColor(Color.rgb(31, 47, 42));
-        q2.setPadding(0, dp(14), 0, 0);
-        root.addView(q2);
-        String[] states = Strings.selfCheckStates();
-        for (int r = 0; r < 2; r++) {
-            LinearLayout row = scRow(root);
-            for (int k = 0; k < 3; k++) {
-                final int i = r * 3 + k;
-                Button chip = scButton(states[i]);
-                chip.setOnClickListener(v -> {
-                    scStateSel = i;
-                    ensureScEvent();
-                    // 存标准存值（与界面语言无关），日后省察对账才对得齐
-                    SelfChecks.answer(this, scEventId, null, SelfChecks.STATES[i]);
-                    refreshScStyles();
-                });
-                scStateBtns.add(chip);
-                row.addView(chip);
-            }
-        }
         spacer(root, 26);
     }
 
@@ -493,7 +311,6 @@ public class GuardActivity extends Activity {
 
     private void refreshScStyles() {
         for (int i = 0; i < scDidBtns.size(); i++) styleScButton(scDidBtns.get(i), scDidSel == i);
-        for (int i = 0; i < scStateBtns.size(); i++) styleScButton(scStateBtns.get(i), scStateSel == i);
     }
 
     @Override

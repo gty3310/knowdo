@@ -300,11 +300,6 @@
             android:name=".ModelActivity"
             android:exported="false" />
 
-        <!-- 我的纪律页（v1.24.3）：问询页「分析错误」留下的纪律，查看与逐条删除 -->
-        <activity
-            android:name=".GuardRulesActivity"
-            android:exported="false" />
-
         <!-- 软件名单页（v1.26.0）：看某任务的三档名单、点软件改档；普通设置页 -->
         <activity
             android:name=".AppListActivity"

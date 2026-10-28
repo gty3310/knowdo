@@ -62,20 +62,6 @@ public final class FocusGuard {
         TimerState.logEvent(c, "专注守卫：用户给「" + AppLister.labelOf(c, pkg) + "」宽限 " + seconds + " 秒");
     }
 
-    /**
-     * 「分析错误」（v1.24.3）：用户认定这次问询是误判——问询就此解除：
-     * 作废未决宽限、进入一轮重弹间隔冷却不立刻再弹，不跳回、不放行该应用。
-     * 专注守卫（应用名单式）本身不写 GuardEvents、不计知行指数分神，
-     * 这里没有事件可标，只留任务日志；用户顺手留的纪律照样生效于内容守卫的云端终判。
-     */
-    public static void chooseOverturn(Context c, String pkg) {
-        clearGrace(c);
-        // 冷却＝问询解除后的重拉间隔（v1.26.3 起读 PromptRepop，与内容守卫同口径，原固定 60 秒）
-        prefs(c).edit().putLong("cooldown_until", System.currentTimeMillis() + PromptRepop.millis(c)).apply();
-        TimerState.logEvent(c, "专注守卫：用户点「分析错误」，本次问询按误报解除（「"
-                + AppLister.labelOf(c, pkg) + "」）");
-    }
-
     public static void chooseAllow(Context c, String pkg) {
         Set<String> s = new HashSet<>(prefs(c).getStringSet("session_allow", new HashSet<>()));
         s.add(pkg);
