@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1330 = new Entry("v1.33.0", "2026-10-28");
+        e1330.add(new Group(s("改进", "Improved"),
+                s("守卫问询页变简洁了：去掉了「现在的状态」六个选项和「分析错误」按钮，问询只剩一个问题——「刚才在做该做的事吗」；给任务加时也不再先问状态，点加时直接选时长就生效。和「分析错误」连着的那套申诉机制（页内的规则收集、设置里的「守卫规则」页）也一并撤了；以前申诉过的记录还留着，分神计数照旧认它，已经记下的状态自检历史也不删",
+                  "The guard inquiry page is leaner: the six \u201ccurrent state\u201d chips and the \u201cAnalysis error\u201d button are gone, and the inquiry is back to its one question \u2014 \u201cWere you doing what you should?\u201d Extending a task no longer asks your state first either: tap extend, pick a duration, done. The appeal machinery that hung off the removed button (the in-page rule box, the Guard rules page in Settings) is withdrawn with it; appeals already recorded stay on record and still count in the drift tally, and the self-check history is kept")));
+        e1330.why = s("问询越短越愿意认真答，加时是常用动作不该多绕一步",
+                "The shorter the inquiry, the more seriously it gets answered \u2014 and extending a task is an everyday action that should not take a detour");
+        e1330.tryIt = s("下次守卫问询弹出时，看它是不是只剩一个问题；任务结束页点一次加时，看是不是直接选时长就加上了",
+                "Next time the guard inquiry pops up, check it asks just the one question; on a task's end page, tap extend once and see the duration picker come straight up");
+        out.add(e1330);
+
         Entry e1320 = new Entry("v1.32.0", "2026-10-28");
         e1320.add(new Group(s("新增", "New"),
                 s("知行页的指数圆环可以点了：点开是指数详情页，能看一周、一月、一年的指数和三项构成（习惯、任务、分神）的变化——大数字、构成表和趋势都在一页。详情页的数字全部由习惯记录、任务记录和守卫事件这些原始记录当场回算；某个时段没有记录就写「数据不足」，不拿别的值填",
