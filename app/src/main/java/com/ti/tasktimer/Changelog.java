@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1340 = new Entry("v1.34.0", "2026-10-29");
+        e1340.add(new Group(s("新增", "New"),
+                s("设置 → 守卫新增「黄图问责」块（测试版），开关默认关。打开后，守卫确认截到黄图时，会把图只在内存里打码模糊（原图从不保存、不上传），经邮件发给预先填好的问责朋友邮箱（可多个；只有作者账号会预填母亲的两个有效地址，别人不预填），标题和正文模板都能改。防滥发：同类事件 10 分钟内合并成一封，每天上限 5 封。设置里有醒目说明：「现在是测试版，这些邮件借用作者郭天宇的邮箱通道发送，发送内容作者可以看得见」。发信还差作者补最后一把 Resend Key（用户决定后补），补好并验通投递之前，邮件不会真正发出——本版先把 App 侧全部环节备好",
+                  "Settings \u2192 Guards gains an NSFW accountability block (beta), off by default. When it is on and the guard confirms an explicit image, the frame is blurred in memory only (the original is never saved or uploaded) and emailed to the accountability contacts filled in beforehand (several allowed; only the author's own account is prefilled, with his mother's two valid addresses). The subject and body templates are editable. Anti-abuse: events of the same kind within 10 minutes merge into one mail, capped at 5 a day. A prominent note in Settings says: this is a beta, these mails are sent through author Guo Tianyu's own mail channel, and the author can see what is sent. One piece is still missing: the author has yet to add the final Resend key (his call, coming later) \u2014 until it is added and delivery is verified, no mail will actually be sent; this release readies everything on the app side first")));
+        e1340.why = s("有些底线光靠自己提醒自己不够，需要一位真实的人知情在场——问责是为了让分神有真实代价，帮自己守住自己定的规矩",
+                "Some lines cannot be held by reminding yourself alone; a real person needs to know and be present. Accountability gives distraction a real cost, and helps you keep the rule you set for yourself");
+        e1340.tryIt = s("打开设置 → 守卫，找到「黄图问责」块，看一遍说明、核对收件人邮箱对不对（开关先不开也可以）。真正的测试邮件要等发信配置补完后才发，而且第一次只发作者本人邮箱",
+                "Open Settings \u2192 Guards and find the NSFW accountability block: read the note and check the recipient addresses (leaving the switch off for now is fine). A real test mail goes out only once the sending setup is completed, and the first test goes to the author's own mailbox only");
+        out.add(e1340);
+
         Entry e1330 = new Entry("v1.33.0", "2026-10-28");
         e1330.add(new Group(s("改进", "Improved"),
                 s("守卫问询页变简洁了：去掉了「现在的状态」六个选项和「分析错误」按钮，问询只剩一个问题——「刚才在做该做的事吗」；给任务加时也不再先问状态，点加时直接选时长就生效。和「分析错误」连着的那套申诉机制（页内的规则收集、设置里的「守卫规则」页）也一并撤了；以前申诉过的记录还留着，分神计数照旧认它，已经记下的状态自检历史也不删",
