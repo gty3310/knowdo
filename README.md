@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.27.1)
+## Features (Android, v1.28.0)
 
-Current version: **v1.27.1**.
+Current version: **v1.28.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -42,6 +42,7 @@ Current version: **v1.27.1**.
 - **Account and realtime sync (Supabase)** — sign in with an email account and tasks sync in realtime between devices; merges align by task id with newest-wins and tombstone deletes, so nothing resurrects and nothing is silently overwritten. There is a **single logical timer across devices**: state lives in the cloud, both ends render it, and either end can control it. A task written with an `autoStart` flag starts its own countdown as soon as it arrives. (The legacy Google Drive file bridge was retired and removed in v1.26.0; Supabase is the only sync path.)
 - **Per-task alarms** — any task can have an alarm time (it rings whether or not a timer is running; a daily task re-arms for the next day) and/or ring when its timer ends, before the end-of-task check-in. The default sound is a clear nature recording that fades in from silence to full volume over 60 seconds, played on the alarm audio stream, so it rings even when the phone is muted.
 - **Start-time reminders** — when a task's planned start time arrives, a full-screen reminder pops up: start now, snooze 10 minutes, or ignore.
+- **Habits and the morning gate** — a Habits tab of self-chosen habits in four goal types (at least N days a week, at most N times, a daily number, or a cumulative total toward a goal), each with its own reminder time, a year grid for back-filling, and progress toward the week on every card; habits feed half of the Zhixing index on the KnowDo tab. The day opens with a fullscreen morning gate: yesterday's habits answered one by one, a short read-only report on yesterday, and a morning diary, all before "Start today" unlocks the day. Since v1.28.0, a cumulative habit can carry a starting number, so a count begun before KnowDo continues from where it actually reached instead of from zero.
 - **Bilingual UI and themes** — Chinese / English interface and light / dark themes, switchable from the drawer or settings. The top bar stays minimal: a drawer (account, language, theme, help, settings) on the left, the calendar on the right.
 - **Self-update (v1.27.0)** — the app checks for new versions itself (at most once a day, switchable), downloads the new build in verified ~5 MB shards from the same private Gitee repository that serves its models, checks every shard and the assembled file by size and MD5, then shows one plain "ready to install" dialog — installing is a single tap on the system installer (with a one-time "install unknown apps" permission walkthrough). Download progress lives only on the Settings → App Updates row; the download network (Wi-Fi only / Wi-Fi & mobile data) is a personal setting synced via the cloud.
 - **Chat unread badge (v1.27.0)** — the Chat tab carries a small vermilion badge counting AI messages you haven't seen yet (above all the proactive distraction-companion messages); opening the tab clears it.
@@ -60,6 +61,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 ## Changelog
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
+
+### v1.28.0 — 2026-10-28
+
+**Why:** Some counts did not start with KnowDo — good deeds, above all, were already being done before the app existed, and starting their total at zero erases what was already done. A cumulative habit must be able to continue from the number it had actually reached. Build commit `43c3bd7` · [compare v1.27.1...v1.28.0](https://github.com/gty3310/knowdo/compare/v1.27.1...v1.28.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Cumulative habits get a starting number.** A cumulative habit's definition now carries `startValue`, stored in `habit_data` and synced with it (old data defaults to 0). The one total computation seeds itself with the starting number, so the card's big total, its total-goal progress and its "how far left" all count from it; the create form and the edit dialog both expose the field. No other habit type, the Zhixing index and the morning gate are untouched.
+
+Not yet verified on a real device: entering or editing a starting number and watching the card totals follow, the morning gate adding increments on top of it, and whether the Mac app preserves the new field when it rewrites habit data.
 
 ### v1.27.1 — 2026-10-27
 
@@ -83,19 +93,6 @@ Not yet verified on a real device: an unfinished task with an expired block bein
 - **AI Re-plan sees the whole day.** Its prompt now embeds the exact Quick Re-plan rule text as the baseline (with the red line restated: it may adjust, but never change any task's priority — levels never change automatically), today's Google Calendar events from the app's existing cache (titles and times, reference only — scheduling still does not avoid them), and what has already been done today: finished tasks plus the actual execution segments (real start–end times and durations, the same data as the calendar's actual lane). The proposal card and Apply flow are unchanged.
 
 Not yet verified on a real device: quick re-plan placement/undo on a live day, the self-update chain end to end (check → shard download → install prompt → system installer, including the first-time permission walkthrough), AI Re-plan with the enlarged context, and the chat badge across a proactive distraction message.
-
-### v1.26.3 — 2026-10-27
-
-**Why:** The user ruled that any full-screen prompt swiped away unresolved must come back after 15 seconds, not five minutes — and that the interval should be one personal, cloud-synced setting rather than four hard-coded numbers. Same-day extras: the calendar plan-block renderer had been missed by the v1.26.1/v1.26.2 layout work (user screenshot), and the What's New popup often never appeared (root cause confirmed in code). Build commit `ae54b22` · [compare v1.26.2...v1.26.3](https://github.com/gty3310/knowdo/compare/v1.26.2...v1.26.3) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **One re-pop interval for every full-screen prompt.** A new setting, "Prompt re-pop interval" (Settings → Guards; 15 sec / 30 sec / 1 min / 5 min), stored locally and in the cloud `user_state.prompt_repop` object (`{"sec": …}`, probed like the other optional columns, defaulting silently to 300 sec when unavailable; the author's account is preset to 15). It now drives all four "swiped away unresolved" re-pops: the morning-gate nag chain (was a fixed 5 min), guard inquiry re-fire in both modes (focus 12 sec debounce and overturn cooldown, content 60 sec cooldown), the next-task page's after-Back quiet period (was 3 min), and the silent pause call-back chain (was 5 min). Chosen snooze/grace lengths, sound staging and every other behaviour are untouched.
-
-**Fixed**
-- **Plan blocks caught up with actual blocks.** The v1.26.1 hierarchy and the v1.26.2 textless markers had only landed in the actual-block renderer; plan blocks still led with the time range in a single text view and had no priority marker. `addPlanBlock` now stacks exactly like `addBlock` — task name first (bold, up to two lines, verbatim title), then the shared textless priority marker, then the start–end time as 9sp small print — with the same short-block tiers, while keeping the plan lane's blue colour system, the ▶/⏸ button, tap-to-expand and drag (including its preview text) untouched.
-- **The What's New popup reliably appears.** It used to be attempted only once, in `onCreate`, behind the suggested-settings page that pre-empts it on every upgrade — and it wrote its "shown" record before displaying, so one cover by another full-screen page consumed the version forever. It is now attempted when the main screen returns to the foreground (after suggested settings and the morning gate have had their turn), and the record is only written once the dialog has actually been displayed (OnShow listener, once per process); a covered or failed attempt simply retries on the next foregrounding. Fresh installs still never see it, and the Settings entry still opens it any time.
-
-Not yet verified on a real device: the 15-second re-pop rhythm in all four places, plan-block legibility across its three states and short-block tiers, and the What's New catch-up across the upgrade → suggested-settings → back flow.
 
 ## Build
 
