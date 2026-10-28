@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1300 = new Entry("v1.30.0", "2026-10-28");
+        e1300.add(new Group(s("新增", "New"),
+                s("习惯页顶部多了「展开｜精简」切换：精简模式下每个习惯只占一行——名字、本周七个小圆点（点哪天就补记哪天）、右边直接写本周还差多少（达标写「已达标」；至多型超了写「超了 N 次」，不会出现负数）。点一行进编辑；习惯多了，一页就能看完，第一眼就知道哪个还没达标",
+                  "The Habits tab gains a Full | Compact switch at the top. In Compact mode each habit takes one line: its name, this week's seven dots (tap a dot to back-fill that day), and on the right how far it still is from this week's goal (\u201cDone\u201d when reached; an at-most habit over its limit says \u201cN over\u201d, never a negative \u201cleft\u201d). Tap a row to edit it. With many habits, one page shows them all, and the one falling behind is obvious at a glance")));
+        e1300.why = s("习惯攒多了，展开模式一页看不完、还得往下翻；精简模式一眼扫过去，哪个没达标清清楚楚",
+                "As habits pile up, the full cards no longer fit on one page. Compact mode lets one glance show which habit is falling behind");
+        e1300.tryIt = s("打开习惯页，点顶部的「精简」：看每个习惯是不是变成一行、右边写着本周还差多少；点某个小圆点能补记那一天",
+                "Open the Habits tab and tap \u201cCompact\u201d at the top: each habit should become one line with this week's remaining distance on the right, and tapping a dot back-fills that day");
+        out.add(e1300);
+
         Entry e1290 = new Entry("v1.29.0", "2026-10-28");
         e1290.add(new Group(s("新增", "New"),
                 s("设置里多了「习惯显示口径」：一个设置管全部习惯卡的主行数字——按今天、本周、上周或本月显示，不用再一个个习惯去切。默认本周，和你现在看到的一样；累积型习惯的累计总数不受这个设置影响，知行指数的算法也没有动",
