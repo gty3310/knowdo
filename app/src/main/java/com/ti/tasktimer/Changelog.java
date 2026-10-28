@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1310 = new Entry("v1.31.0", "2026-10-28");
+        e1310.add(new Group(s("新增", "New"),
+                s("新习惯类型「每日提醒」：新建习惯时选它，写一段提醒自己的话，长短不限。每天早上，晨间门里会完整显示这段话，读完点「读过了」就算当天完成；在晨间门的昨日必答里，昨天的这段话也会连全文一起问你读过没有。习惯页的卡片显示全文，精简模式只露一行。它和其它习惯一样计入习惯达成率",
+                  "A new habit type, \u201cDaily Reminder\u201d: pick it when creating a habit and write a passage to yourself, any length. Every morning the morning gate shows the passage in full; read it and tap \u201cRead\u201d and today counts as done. In the gate's must-answer section for yesterday, yesterday's passage appears in full too, asking whether you read it. Habit cards show the full text (one truncated line in Compact mode), and the type counts toward the habit rate like the others")));
+        e1310.why = s("有些话需要每天看一遍提醒自己，光记次数记不住话本身——让这段话每天早上自己出现在你面前",
+                "Some words need to be read again every day, not counted. A reminder is only kept if the passage itself shows up in front of you each morning; counting alone cannot carry the words");
+        e1310.tryIt = s("新建一个习惯，类型选「每日提醒」，填一句话保存；明早打开晨间门，昨日必答之后会有这段话的全文，读完点「读过了」",
+                "Create a habit, choose the \u201cDaily Reminder\u201d type, write one sentence and save. Tomorrow morning the morning gate will show the passage in full — read it and tap \u201cRead\u201d");
+        out.add(e1310);
+
         Entry e1300 = new Entry("v1.30.0", "2026-10-28");
         e1300.add(new Group(s("新增", "New"),
                 s("习惯页顶部多了「展开｜精简」切换：精简模式下每个习惯只占一行——名字、本周七个小圆点（点哪天就补记哪天）、右边直接写本周还差多少（达标写「已达标」；至多型超了写「超了 N 次」，不会出现负数）。点一行进编辑；习惯多了，一页就能看完，第一眼就知道哪个还没达标",
