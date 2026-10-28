@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.33.0)
+## Features (Android, v1.34.0)
 
-Current version: **v1.33.0**.
+Current version: **v1.34.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.34.0 — 2026-10-29
+
+**Why:** Some lines cannot be held by reminding yourself alone; a real person needs to know and be present. Accountability gives distraction a real cost, and helps you keep the rule you set for yourself. Build commit `e7f69fa` · [compare v1.33.0...v1.34.0](https://github.com/gty3310/knowdo/compare/v1.33.0...v1.34.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **NSFW accountability mail (beta).** Settings → Guards gains an accountability block, off by default. When it is on and the guard confirms an explicit image, the frame is blurred in memory only (the original is never saved or uploaded) and emailed to the accountability contacts filled in beforehand (several allowed; only the author's account is prefilled, with his mother's two valid addresses — an older address that bounces is never used (addresses are not spelled out in repo docs)). Subject and body templates are editable, and anti-abuse is built in: same-kind events within 10 minutes merge into one mail, capped at 5 a day. A prominent note in Settings says this beta sends through the author's own mail channel and the author can see what is sent. One piece is still missing: the author has yet to add the final Resend key — until it is added and delivery is verified, no mail will actually be sent; this release readies everything on the app side first.
+
+Not yet verified on a real device: the accountability block rendering in Settings, the blur timing and effect on a live guard catch, and — pending the Resend key — actual mail delivery (the first delivery test will go to the author's own mailbox only, never to his mother).
+
 ### v1.33.0 — 2026-10-28
 
 **Why:** The shorter the inquiry, the more seriously it gets answered — and extending a task is an everyday action that should not take a detour. Build commit `6e583e0` · [compare v1.32.0...v1.33.0](https://github.com/gty3310/knowdo/compare/v1.32.0...v1.33.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the inquiry page showing only the one questio
 - **The Zhixing index gets a detail page.** Tapping the index ring on the KnowDo tab opens it: week / month / year ranges, the index as a big number, a table of its three components (habits 50%, tasks 35%, distraction 15% — the weights are unchanged) and the trend. Every figure is recomputed from the raw records (habit logs, task records, guard events) over the exact window; a stretch with no records is shown as "not enough data", never filled in. Today's index on the KnowDo tab itself is computed exactly as before.
 
 Not yet verified on a real device: tapping the ring into the detail page, the three ranges rendering against a live account's records, and the "not enough data" states for stretches without records.
-
-### v1.31.0 — 2026-10-28
-
-**Why:** Some words need to be read again every day, not counted — a reminder is only kept if the passage itself shows up in front of you each morning. Counting alone cannot carry the words. Build commit `4a4dc71` · [compare v1.30.0...v1.31.0](https://github.com/gty3310/knowdo/compare/v1.30.0...v1.31.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A fifth habit type: Daily Reminder.** You write a passage to yourself (any length; the text is required) and the habit is done for the day when you tap "Read". The morning gate shows yesterday's reminder in full in its must-answer section (Read / Not read) and today's full text in a new reading section — reading it there completes today, with no second tap waiting in the Habits tab. Habit cards show the full text (one truncated line in compact mode), and the type counts toward the habit rate like the others (read = 100%, unread = 0%). The KnowDo (Zhixing) page's per-type rows and the in-app help (five types, the gate's two reminder sections) are updated to match.
-
-Not yet verified on a real device: creating a reminder habit, reading it in the morning gate (both yesterday's check and today's reading section), and its effect on the habit rate and Zhixing index on a live account.
 
 ## Build
 
