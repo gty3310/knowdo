@@ -37,6 +37,10 @@ public final class HabitPage {
 
     private JSONObject root;
     private String dispScope = HabitDisplay.SCOPE_WEEK; // 习惯显示口径（总设置，refresh 时现读）
+    // ---- 卡片模式（v1.28.0 feature 3：展开/精简，本地持久化，只管本页渲染） ----
+    private static final String PREF_MODE = "habit_page_mode";
+    private static final String KEY_COMPACT = "compact";
+    private boolean compactMode;
     // ---- 添加表单状态（整页重画时保留） ----
     private boolean formOpen;
     private int formStep = 1;
@@ -82,6 +86,7 @@ public final class HabitPage {
         captureForm();
         root = HabitData.load(act);
         dispScope = HabitDisplay.scope(act);
+        compactMode = loadCompactMode();
         container.removeAllViews();
         ScrollView scroll = new ScrollView(act);
         scroll.setBackgroundColor(Ui.bg(act));
@@ -102,6 +107,7 @@ public final class HabitPage {
                 "Yesterday gets filled in on the morning page; this is the long-term ledger"), 12);
         sub.setPadding(0, dp(4), 0, 0);
         col.addView(sub);
+        col.addView(modeToggle());
 
         // 晨间记录补记/修改入口（v1.17.0）：打开晨间页的编辑版——可返回、不强制填完，
         // 顶部切换记录日（今天/昨天/前天/选日期），补改那一轮的习惯记录与日记
@@ -138,7 +144,7 @@ public final class HabitPage {
             llp.topMargin = dp(10);
             col.addView(legend, llp);
         }
-        for (HabitData.Habit h : habits) col.addView(habitCard(h));
+        for (HabitData.Habit h : habits) col.addView(compactMode ? compactRow(h) : habitCard(h));
         if (habits.isEmpty()) {
             TextView empty = small(s("还没有习惯。点下面「＋ 添加习惯」，从默认习惯库里选一个开始记。",
                     "No habits yet. Tap \"+ Add a habit\" below and pick one from the library."), 13);
@@ -164,6 +170,241 @@ public final class HabitPage {
         addBtn.setOnClickListener(v -> { formOpen = !formOpen; if (formOpen) formStep = 1; refresh(); });
         col.addView(addBtn, alp);
         if (formOpen) col.addView(buildForm());
+    }
+
+    // ---------------- 卡片模式（展开/精简，feature 3） ----------------
+    private boolean loadCompactMode() {
+        return act.getSharedPreferences(PREF_MODE, android.content.Context.MODE_PRIVATE)
+                .getBoolean(KEY_COMPACT, false);
+    }
+
+    private void saveCompactMode(boolean compact) {
+        act.getSharedPreferences(PREF_MODE, android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean(KEY_COMPACT, compact).apply();
+    }
+
+    /** 习惯页顶部的模式切换（展开｜精简）：只影响本页卡片渲染，不进设置页、不影响晨间门。 */
+    private View modeToggle() {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(12);
+        row.setLayoutParams(rlp);
+        row.addView(small(s("卡片", "Cards"), 12));
+        row.addView(modeSeg(s("展开", "Full"), !compactMode, v -> {
+            if (compactMode) { saveCompactMode(false); refresh(); }
+        }));
+        row.addView(modeSeg(s("精简", "Compact"), compactMode, v -> {
+            if (!compactMode) { saveCompactMode(true); refresh(); }
+        }));
+        return row;
+    }
+
+    private TextView modeSeg(String label, boolean selected, View.OnClickListener oc) {
+        TextView t = new TextView(act);
+        t.setText(label);
+        t.setTextSize(12.5f);
+        t.setTypeface(t.getTypeface(), Typeface.BOLD);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(14), dp(6), dp(14), dp(6));
+        if (selected) {
+            t.setTextColor(Ui.onAccent(act));
+            t.setBackground(round(Ui.text(act), dp(99)));
+        } else {
+            t.setTextColor(Ui.sub(act));
+            t.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(99)));
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.leftMargin = dp(6);
+        t.setLayoutParams(lp);
+        t.setOnClickListener(oc);
+        return t;
+    }
+
+    // ---------------- 精简行（feature 3） ----------------
+    /**
+     * 精简模式一行：习惯名 + 本周 7 个点（周一至周日）+ 右侧「还差」。
+     * 点击分工沿用展开态：点行＝编辑习惯（展开态点头部），点某个点＝补记那天（展开态点年格）。
+     */
+    private View compactRow(final HabitData.Habit h) {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(9), dp(12), dp(9));
+        row.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(8);
+
+        TextView name = new TextView(act);
+        name.setText(h.name);
+        name.setTextSize(14.5f);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(act));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        String today = DayUtil.today();
+        String monday = DayUtil.mondayOf(today);
+        LinearLayout dots = new LinearLayout(act);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER_VERTICAL);
+        for (final String date : DayUtil.weekDates(monday)) {
+            View cell = dotCell(h, date, monday, today);
+            cell.setOnClickListener(v -> logDialog(h, date));
+            dots.addView(cell);
+        }
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        dlp.leftMargin = dp(8);
+        row.addView(dots, dlp);
+
+        CS st = compactStatus(h, monday);
+        TextView right = new TextView(act);
+        right.setText(st.text);
+        right.setTextSize(13);
+        right.setTypeface(right.getTypeface(), Typeface.BOLD);
+        if (st.kind == CS_DONE) right.setTextColor(Ui.green(act));
+        else if (st.kind == CS_OVER) right.setTextColor(Ui.danger(act));
+        else right.setTextColor(Ui.text(act));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = dp(10);
+        row.addView(right, tlp);
+
+        row.setOnClickListener(v -> editHabitDialog(h));
+        return wrapWithMargin(row, rlp);
+    }
+
+    private static final int DOT_GOOD = 0, DOT_BAD = 1, DOT_LOGGED = 2, DOT_EMPTY = 3;
+
+    /** 一个点（带大一圈的点击区）：颜色语义见 dotState，未来天一律空心淡描边。 */
+    private View dotCell(HabitData.Habit h, String date, String monday, String today) {
+        FrameLayout cell = new FrameLayout(act);
+        cell.setLayoutParams(new LinearLayout.LayoutParams(dp(17), dp(22)));
+        boolean future = date.compareTo(today) > 0;
+        int state = future ? DOT_EMPTY : dotState(h, date, monday);
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        if (state == DOT_GOOD) {
+            g.setColor(Ui.green(act));
+        } else if (state == DOT_BAD) {
+            g.setColor(Ui.danger(act));
+        } else if (state == DOT_LOGGED) {
+            g.setColor(mix(Ui.sub(act), Ui.surface(act), 0.35f));
+        } else {
+            g.setColor(Ui.surface(act));
+            g.setStroke(dp(1), future ? mix(Ui.line(act), Ui.surface(act), 0.45f) : Ui.line(act));
+        }
+        View dot = new View(act);
+        dot.setBackground(g);
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(dp(9), dp(9));
+        dlp.gravity = Gravity.CENTER;
+        cell.addView(dot, dlp);
+        return cell;
+    }
+
+    /**
+     * 点的状态（今天及以前）：绿实心＝那天达标/有贡献，红实心＝至多型那天发生了，
+     * 灰实心＝数值型记了但没到日目标，空心＝没记或没做到。
+     */
+    private int dotState(HabitData.Habit h, String date, String monday) {
+        Long v = HabitData.logValue(root, date, h.id);
+        switch (h.type) {
+            case HabitData.TYPE_MIN:
+                return v != null && v > 0 ? DOT_GOOD : DOT_EMPTY;
+            case HabitData.TYPE_MAX:
+                if (v == null) return DOT_EMPTY;
+                return v > 0 ? DOT_BAD : DOT_GOOD;
+            case HabitData.TYPE_NUM: {
+                if (v == null) return DOT_EMPTY;
+                long t = HabitData.effectiveTarget(root, h, monday);
+                return t <= 0 || v >= t ? DOT_GOOD : DOT_LOGGED;
+            }
+            default: // sum
+                return v != null && v > 0 ? DOT_GOOD : DOT_EMPTY;
+        }
+    }
+
+    private static final int CS_NORMAL = 0, CS_DONE = 1, CS_OVER = 2;
+
+    private static final class CS {
+        final String text;
+        final int kind;
+        CS(String text, int kind) { this.text = text; this.kind = kind; }
+    }
+
+    /**
+     * 精简行右侧文案：本周还差多少。固定本周口径，不随总设置 HabitDisplay 变——
+     * 用户定：精简模式的要害是一眼看出哪个习惯这周还没完成多少。四类口径：
+     *   min 差额＝周目标天数−已做到天数（ZhixingCalc.habitWeek 的 target/primary）
+     *   max 至多型没有「欠量」：未超显示剩余额度「还可 X 次」，超了显示「超了 X 次」（不写负数还差）
+     *   num 按已过天数累计：应达＝日目标×已过天数，实际＝已过天数记录之和（没记按 0，
+     *       与 habitWeek 的 rate 口径一致），差额按单位显示
+     *   sum 距总量目标：totalGoal − 总累计（sumTotal，含起始数字）；没设总量目标时
+     *       显示本周增量（与展开卡同口径）
+     */
+    private CS compactStatus(HabitData.Habit h, String monday) {
+        String today = DayUtil.today();
+        ZhixingCalc.HabitWeek w = ZhixingCalc.habitWeek(root, h, monday);
+        switch (h.type) {
+            case HabitData.TYPE_MIN: {
+                if (w.target <= 0) {
+                    return new CS(s("本周已做 ", "Done ") + w.primary + s(" 天", " days this week"), CS_NORMAL);
+                }
+                long remain = w.target - w.primary;
+                if (remain <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
+                return new CS(s("还差 ", "") + remain + (Strings.en()
+                        ? (remain == 1 ? " day to go" : " days to go") : " 天"), CS_NORMAL);
+            }
+            case HabitData.TYPE_MAX: {
+                if (w.primary > w.target) {
+                    return new CS(s("超了 ", "Over by ") + (w.primary - w.target) + s(" 次", ""), CS_OVER);
+                }
+                if (w.target <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
+                long left = w.target - w.primary;
+                if (left <= 0) return new CS(s("已到上限", "At the limit"), CS_NORMAL);
+                return new CS(s("还可 ", "") + left + (Strings.en()
+                        ? (left == 1 ? " time left" : " times left") : " 次"), CS_NORMAL);
+            }
+            case HabitData.TYPE_NUM: {
+                long target = w.target; // 本周生效的日目标
+                if (target <= 0) {
+                    long sum = 0;
+                    int cnt = 0;
+                    for (String d : DayUtil.weekDates(monday)) {
+                        if (d.compareTo(today) > 0) break;
+                        Long v = HabitData.logValue(root, d, h.id);
+                        if (v != null) { sum += v; cnt++; }
+                    }
+                    long avg = cnt == 0 ? 0 : Math.round(sum * 1.0 / cnt);
+                    return new CS(s("本周日均 ", "Weekly avg ") + fmtNum(avg) + " " + h.unit, CS_NORMAL);
+                }
+                long actual = 0;
+                int elapsed = 0;
+                for (String d : DayUtil.weekDates(monday)) {
+                    if (d.compareTo(today) > 0) break;
+                    elapsed++;
+                    Long v = HabitData.logValue(root, d, h.id);
+                    if (v != null) actual += v;
+                }
+                long remain = target * elapsed - actual;
+                if (remain <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
+                return new CS(s("还差 ", "") + fmtNum(remain) + " " + h.unit, CS_NORMAL);
+            }
+            default: { // sum
+                if (h.totalGoal > 0) {
+                    long remain = h.totalGoal - sumTotal(h);
+                    if (remain <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
+                    return new CS(s("还差 ", "") + fmtNum(remain) + " " + h.unit, CS_NORMAL);
+                }
+                return new CS(s("本周 +", "This week +") + fmtNum(w.primary) + " " + h.unit, CS_NORMAL);
+            }
+        }
     }
 
     // ---------------- 建议卡 ----------------
