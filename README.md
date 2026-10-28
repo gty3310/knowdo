@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.32.0)
+## Features (Android, v1.33.0)
 
-Current version: **v1.32.0**.
+Current version: **v1.33.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.33.0 — 2026-10-28
+
+**Why:** The shorter the inquiry, the more seriously it gets answered — and extending a task is an everyday action that should not take a detour. Build commit `6e583e0` · [compare v1.32.0...v1.33.0](https://github.com/gty3310/knowdo/compare/v1.32.0...v1.33.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Removed**
+- **The guard inquiry is trimmed back to its one question.** The six "current state" chips and the "Analysis error" button leave the inquiry page ("Were you doing what you should?" stays, with its record chain untouched), and the pre-extension state check leaves both check pages, so extending goes straight to the duration choice. The misjudgement-appeal mechanism is withdrawn as a whole — the overturn writers, the in-page rule box, the Guard rules settings page — while the plumbing that serves existing data stays: appeals already recorded still count in the drift tally, and the self-check history is kept.
+
+Not yet verified on a real device: the inquiry page showing only the one question, extending from the check pages going straight to the duration choice, and the Guard rules row being gone from Settings.
+
 ### v1.32.0 — 2026-10-28
 
 **Why:** A single day's index cannot tell you whether you are getting better or worse — stretch the window to a week, a month, a year, and the direction becomes visible. Build commit `fdc4536` · [compare v1.31.0...v1.32.0](https://github.com/gty3310/knowdo/compare/v1.31.0...v1.32.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: tapping the ring into the detail page, the th
 - **A fifth habit type: Daily Reminder.** You write a passage to yourself (any length; the text is required) and the habit is done for the day when you tap "Read". The morning gate shows yesterday's reminder in full in its must-answer section (Read / Not read) and today's full text in a new reading section — reading it there completes today, with no second tap waiting in the Habits tab. Habit cards show the full text (one truncated line in compact mode), and the type counts toward the habit rate like the others (read = 100%, unread = 0%). The KnowDo (Zhixing) page's per-type rows and the in-app help (five types, the gate's two reminder sections) are updated to match.
 
 Not yet verified on a real device: creating a reminder habit, reading it in the morning gate (both yesterday's check and today's reading section), and its effect on the habit rate and Zhixing index on a live account.
-
-### v1.30.0 — 2026-10-28
-
-**Why:** With habits piling up, the full cards no longer fit on one page. In compact mode — one line per habit, with how far it still is from this week's goal stated plainly on the right — one glance shows which habit is falling behind. Build commit `70d315d` · [compare v1.29.0...v1.30.0](https://github.com/gty3310/knowdo/compare/v1.29.0...v1.30.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Habit cards get a compact mode.** A Full | Compact toggle under the Habits tab's subtitle (a local preference, default Full; the full cards render exactly as before). A compact row is one line: the habit's name, this week's seven dots (tap a dot to back-fill that day, tap the row to edit) and a right-side status that always reckons against this week's goal, independent of the global display window — at-least shows days still short (or "Done"), at-most shows the allowance left or "N over", never a negative "left", numeric pro-rates the daily target over the days elapsed so far, and cumulative measures its total (starting number included) against its total goal.
-
-Not yet verified on a real device: the compact rows' look and dot colours (including dark mode), the small dots as tap targets, and a real habit list fitting on one page.
 
 ## Build
 
