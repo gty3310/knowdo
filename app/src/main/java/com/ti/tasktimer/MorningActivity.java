@@ -842,6 +842,8 @@ public class MorningActivity extends Activity {
         HabitData.save(this, root);
         MorningGate.onCompleted(this);
         Toast.makeText(this, s("今天已开启", "The day has begun"), Toast.LENGTH_SHORT).show();
+        // v1.28.0 feature 9：开启今天 后直接进「今天安排」页排定今天（用户定案的晨间动线）
+        startActivity(new android.content.Intent(this, TodayPlanActivity.class));
         finish();
     }
 

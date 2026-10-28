@@ -254,6 +254,13 @@
             android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 今天安排页（v1.28.0 feature 9）：晨间门「开启今天」后进来排定今天；
+             普通页，不进最近任务之外无特殊要求 -->
+        <activity
+            android:name=".TodayPlanActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 习惯提醒接收器（v1.16.0）：每习惯独立提醒时间到点发通知 -->
         <receiver
             android:name=".HabitReceiver"

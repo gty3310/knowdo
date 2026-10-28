@@ -299,6 +299,8 @@ public final class Strings {
     public static String calActualTitle() { return s("今天实际投入（计时记录）", "Actual time today (timer log)"); }
     public static String calRunningTag() { return s("（正在计时）", "(timing)"); }
     public static String calNowTag() { return s("现在", "Now"); }
+    public static String calLockTag() { return s("锁时", "Locked"); }
+    public static String calSleepTag() { return s("睡觉", "Sleep"); }
     public static String calMustTag() { return s(" · 必做", " · must"); }
     public static String calPlannedFmt(int mins, boolean must) {
         return en ? "(planned " + mins + " min" + (must ? " · must)" : ")")

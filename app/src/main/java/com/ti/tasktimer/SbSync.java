@@ -238,6 +238,7 @@ public final class SbSync {
         boolean hasUpd = probeUserStateCol(c, "update_prefs"); // v1.27.0：更新下载网络，列未就绪只用本地、绝不碰此键
         boolean hasDisp = probeUserStateCol(c, "habit_display"); // v1.28.0：习惯显示口径（总设置），列未就绪只用本地、绝不碰此键
         boolean hasAcc = probeUserStateCol(c, "accountability"); // v1.28.0：黄图问责邮件设置，列未就绪只用本地、绝不碰此键
+        boolean hasDayAvail = probeUserStateCol(c, "day_avail"); // v1.28.0 feature 9：今天安排时段（睡眠/锁时/可支配），列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -346,6 +347,16 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasDayAvail) {
+                // 今天安排时段合并（v1.28.0 feature 9，与 habit_display 同口径，只动 day_avail 一个键）
+                JSONObject remoteDa = urow.isNull("day_avail") ? null : urow.optJSONObject("day_avail");
+                if (!DayAvail.hasLocal(c) && remoteDa != null) {
+                    DayAvail.adoptCloud(c, remoteDa);
+                } else if (DayAvail.hasLocal(c) && !DayAvail.cloudEquals(c, remoteDa)) {
+                    write.put("day_avail", DayAvail.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (hasHabit) {
                 // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
@@ -422,6 +433,10 @@ public final class SbSync {
             }
             if (hasAcc && Accountability.hasLocal(c)) {
                 write.put("accountability", Accountability.toCloudJson(c));
+                needWrite = true;
+            }
+            if (hasDayAvail && DayAvail.hasLocal(c)) {
+                write.put("day_avail", DayAvail.toCloudJson(c));
                 needWrite = true;
             }
             if (hasHabit && HabitData.hasLocal(c)) {
@@ -503,6 +518,11 @@ public final class SbSync {
             if (!row.isNull("accountability") && !Accountability.hasLocal(c)) {
                 JSONObject ra = row.optJSONObject("accountability");
                 if (ra != null) Accountability.adoptCloud(c, ra);
+            }
+            // 今天安排时段（v1.28.0 feature 9）：本机从未存过时才采用云端推来的值（与 accountability 同口径），不在这里回写
+            if (!row.isNull("day_avail") && !DayAvail.hasLocal(c)) {
+                JSONObject rda = row.optJSONObject("day_avail");
+                if (rda != null) DayAvail.adoptCloud(c, rda);
             }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
             if (!row.isNull("habit_data")) {
@@ -649,16 +669,19 @@ public final class SbSync {
             Context c, List<LocalAutoScheduler.Candidate> cands, String updatedBy) {
         String today = TaskItem.today();
         int nowMin = DayAccount.nowMinutes();
+        String logicToday = Rollover.logicalToday(c);
+        // v1.28.0 feature 9 硬约束：锁时段与睡眠段必须避开（本地缓存口径，离线也算数）
+        List<int[]> blocked = DayAvail.blockedWall(c, logicToday);
         LocalAutoScheduler.Plan fallback = LocalAutoScheduler.plan(cands,
                 LocalAutoScheduler.blocksOf(SyncManager.latestSchedule(c), today), nowMin,
-                Rollover.logicalToday(c));
+                logicToday, blocked);
         if (!Supa.isLoggedIn(c)) return fallback;
         try {
             JSONArray us = Supa.restGet(c, "user_state?select=*");
             JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
             LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin,
-                    Rollover.logicalToday(c));
+                    logicToday, blocked);
             if (plan.additions.isEmpty()) return plan;
             List<LocalAutoScheduler.Block> merged = new ArrayList<>(base);
             merged.addAll(plan.additions);
@@ -738,9 +761,10 @@ public final class SbSync {
             o.previousSchedule = sch;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
             String runningId = TimerState.isRunning(c) ? TimerState.taskId(c) : null;
+            String logicTodayQ = Rollover.logicalToday(c);
             LocalAutoScheduler.RescheduleOutcome calc = LocalAutoScheduler.computeReschedule(
                     LocalAutoScheduler.snapshot(store), base, DayAccount.nowMinutes(),
-                    Rollover.logicalToday(c), runningId);
+                    logicTodayQ, runningId, DayAvail.blockedWall(c, logicTodayQ));
             o.locked.addAll(calc.locked);
             o.additions.addAll(calc.additions);
             o.overflow.addAll(calc.overflow);

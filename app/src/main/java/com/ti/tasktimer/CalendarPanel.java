@@ -654,6 +654,35 @@ tlp.leftMargin = 0;
 tlp.topMargin = Math.max(0, y - dp(7));
 canvas.addView(lab, tlp);
 }
+// 锁时与睡眠带（v1.28.0 feature 9）：跨计划＋实际两栏的只读背景层，画在任务块
+// 之前（块压在带上不丢信息）；数据与排程硬约束同一份 DayAvail 口径，按现有轴裁剪。
+for (DayAvail.WallSeg ws : DayAvail.wallSegments(ctx, Rollover.logicalToday(ctx))) {
+int bs = Math.max(ws.s, axisStart), be = Math.min(ws.e, axisEnd);
+if (be <= bs) continue;
+int bandX = planX, bandW = planW + gap + actW;
+View band = new View(ctx);
+GradientDrawable bbg = new GradientDrawable();
+bbg.setCornerRadius(dp(3));
+bbg.setColor(Ui.dark(ctx) ? Color.argb(110, 90, 102, 94) : Color.argb(120, 199, 203, 190));
+band.setBackground(bbg);
+FrameLayout.LayoutParams blp2 = new FrameLayout.LayoutParams(bandW, (be - bs) * scale);
+blp2.leftMargin = bandX;
+blp2.topMargin = (bs - axisStart) * scale;
+canvas.addView(band, blp2);
+if ((be - bs) * scale >= dp(14)) {
+TextView blab = new TextView(ctx);
+blab.setText(ws.sleep ? Strings.calSleepTag()
+        : (ws.label == null || ws.label.isEmpty() ? Strings.calLockTag() : Strings.calLockTag() + " · " + ws.label));
+blab.setTextSize(9);
+blab.setMaxLines(1);
+blab.setEllipsize(android.text.TextUtils.TruncateAt.END);
+blab.setTextColor(Ui.dark(ctx) ? Color.rgb(178, 184, 178) : Color.rgb(105, 112, 105));
+FrameLayout.LayoutParams btlp = new FrameLayout.LayoutParams(bandW - dp(6), dp(12));
+btlp.leftMargin = bandX + dp(4);
+btlp.topMargin = (bs - axisStart) * scale + dp(1);
+canvas.addView(blab, btlp);
+}
+}
 // Google 日历事件（最左窄栏，独立灰紫样式，只读：不可拖、无 ▶、点一下看全文；只在本栏内渲染）
 for (GcalEvent e : gcalTimed) addGcalBlock(e, gcalX, gcalW, axisStart, scale);
 // 计划块（中间主栏，浅色描边，可拖、带 ▶——行为只在本栏内，口径不变）

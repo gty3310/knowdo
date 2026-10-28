@@ -721,7 +721,9 @@ public class ChatPanel {
                 out.add(new LocalAutoScheduler.Block(tid, s, e));
             }
         } catch (Exception ignored) { }
-        return out;
+        // v1.28.0 feature 9 硬约束：与锁时段/睡眠段重叠的块滤掉（与 AI 重排同一口径）
+        return LocalAutoScheduler.filterBlocked(out,
+                DayAvail.blockedWall(act, Rollover.logicalToday(act)));
     }
 
     /** 排程提案里「排不下」的任务名清单。 */
@@ -1093,6 +1095,24 @@ public class ChatPanel {
                   : DayAccount.fmtDur(a.freeMin))
           .append("。现在时间约 ")
           .append(LocalAutoScheduler.hhmm(DayAccount.nowMinutes())).append("。\n");
+        // v1.28.0 feature 9：锁时段与睡眠段（硬约束，落盘前还会按同一口径校验滤除）
+        String logicTodayC = Rollover.logicalToday(act);
+        sb.append("今天不能安排任务的时段（锁时与睡眠，排程必须避开）：睡眠 ")
+          .append(LocalAutoScheduler.hhmm(DayAvail.sleepStartMin(act)))
+          .append("–").append(LocalAutoScheduler.hhmm(DayAvail.sleepEndMin(act))).append("。");
+        java.util.List<DayAvail.Seg> locksC = DayAvail.locksFor(act, logicTodayC);
+        if (locksC.isEmpty()) {
+            sb.append("没有锁时段。\n");
+        } else {
+            sb.append("\n");
+            int wakeC = DayAvail.wakeMin(act);
+            for (DayAvail.Seg g : locksC) {
+                sb.append("- 锁时 ").append(LocalAutoScheduler.hhmm((wakeC + g.s) % 1440))
+                  .append("–").append(LocalAutoScheduler.hhmm((wakeC + g.e) % 1440));
+                if (!g.name.isEmpty()) sb.append("（").append(g.name).append("）");
+                sb.append("\n");
+            }
+        }
         sb.append("\n如果用户让你排或重排今天的日程，在回复的最后另起一段，输出一个代码块，格式严格如下（正文里把思路讲清，不要再复述代码块内容）：\n")
           .append(FENCE_SCHED).append("\n")
           .append("{\"blocks\":[{\"taskId\":\"任务id\",\"start\":\"09:00\",\"end\":\"10:30\"}],\"unscheduled\":[\"排不下的任务名\"]}\n")
@@ -1103,6 +1123,7 @@ public class ChatPanel {
           .append("优先级顺序：必做优先、其次重要、再次次要；休息（leisure）是娱乐类，永不排进日程；")
           .append("已经过去的块和已完成任务的块不许动，也不要把它们写进 blocks（应用时它们会被原样保留）；")
           .append("块的开始时间不许早于现在；")
+          .append("不许把块排进上面列出的锁时段与睡眠时段，压线重叠也不行；")
           .append("不许排过 22:30；")
           .append("排不下就放进 unscheduled 并在正文里明说，不许硬塞；")
           .append("只能用上面列出的真实 taskId，不许编造任务或 id。")

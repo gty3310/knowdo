@@ -66,7 +66,8 @@ public final class AiReschedule {
             @Override public void onDone(String fullText) {
                 String proposal = extractProposal(fullText);
                 List<LocalAutoScheduler.Block> blocks = proposal == null
-                        ? new ArrayList<>() : parseBlocks(store, proposal);
+                        ? new ArrayList<>() : parseBlocks(store, proposal,
+                                DayAvail.blockedWall(host, Rollover.logicalToday(host)));
                 List<String> unscheduled = proposal == null
                         ? new ArrayList<>() : parseUnscheduled(proposal);
                 if (blocks.isEmpty() && unscheduled.isEmpty()) {
@@ -134,6 +135,23 @@ public final class AiReschedule {
                   : DayAccount.fmtDur(a.freeMin))
           .append("。现在时间约 ")
           .append(LocalAutoScheduler.hhmm(DayAccount.nowMinutes())).append("。\n");
+        // ---- v1.28.0 feature 9：锁时段与睡眠段（硬约束，落盘前还会按同一口径校验滤除）----
+        String logicToday = Rollover.logicalToday(host);
+        sb.append("\n今天不能安排任务的时段（锁时与睡眠，排程必须避开）：\n");
+        sb.append("睡眠 ").append(LocalAutoScheduler.hhmm(DayAvail.sleepStartMin(host)))
+          .append("–").append(LocalAutoScheduler.hhmm(DayAvail.sleepEndMin(host))).append("。\n");
+        java.util.List<DayAvail.Seg> locks = DayAvail.locksFor(host, logicToday);
+        if (locks.isEmpty()) {
+            sb.append("（没有锁时段）\n");
+        } else {
+            int wake = DayAvail.wakeMin(host);
+            for (DayAvail.Seg g : locks) {
+                sb.append("- 锁时 ").append(LocalAutoScheduler.hhmm((wake + g.s) % 1440))
+                  .append("–").append(LocalAutoScheduler.hhmm((wake + g.e) % 1440));
+                if (!g.name.isEmpty()) sb.append("（").append(g.name).append("）");
+                sb.append("\n");
+            }
+        }
         // ---- v1.27.0 上下文增强 ①基准排序规则原文（与快速重排共用同一份，LocalAutoScheduler.rulesText）----
         sb.append("\n基准排序逻辑（内置「快速重排」用的就是这套，你以它为基准排）：\n");
         sb.append(LocalAutoScheduler.rulesText());
@@ -166,6 +184,7 @@ public final class AiReschedule {
           .append("优先级顺序：必做无条件先排，然后今天到期的重要、今天到期的次要，最后未到期的重要、未到期的次要；优先级层级永不自动变，你也不许改任何任务的优先级；休息（leisure）是娱乐类，永不排进日程；")
           .append("已经过去的块和已完成任务的块不许动，也不要把它们写进 blocks（应用时它们会被原样保留）；")
           .append("块的开始时间不许早于现在；")
+          .append("不许把块排进上面列出的锁时段与睡眠时段，压线重叠也不行；")
           .append("不许排过 22:30；")
           .append("排不下就放进 unscheduled 并在正文里明说，不许硬塞；")
           .append("只能用上面列出的真实 taskId，不许编造任务或 id。")
@@ -234,8 +253,12 @@ public final class AiReschedule {
         return fullText.substring(jsonStart + 1, end).trim();
     }
 
-    /** 落盘前校验（与聊天排程卡同口径）：任务真实存在、时间合法、不排过 22:30、开始不早于现在。 */
-    static List<LocalAutoScheduler.Block> parseBlocks(TaskStore store, String proposalJson) {
+    /**
+     * 落盘前校验（与聊天排程卡同口径）：任务真实存在、时间合法、不排过 22:30、开始不早于现在。
+     * v1.28.0 feature 9：与锁时段/睡眠段重叠的块一律滤掉（硬约束不靠模型自觉）。
+     */
+    static List<LocalAutoScheduler.Block> parseBlocks(TaskStore store, String proposalJson,
+                                                      List<int[]> blocked) {
         List<LocalAutoScheduler.Block> out = new ArrayList<>();
         try {
             JSONObject p = new JSONObject(proposalJson);
@@ -254,7 +277,7 @@ public final class AiReschedule {
                 out.add(new LocalAutoScheduler.Block(tid, s, e));
             }
         } catch (Exception ignored) { }
-        return out;
+        return LocalAutoScheduler.filterBlocked(out, blocked);
     }
 
     private static List<String> parseUnscheduled(String proposalJson) {

@@ -193,6 +193,23 @@ public final class LocalAutoScheduler {
                 + "休息（leisure）是娱乐类，永不排进日程。";
     }
 
+    /** 块与占用区间是否重叠（[s,e) 半开区间口径）。 */
+    public static boolean overlaps(Block b, List<int[]> blocked) {
+        if (blocked == null) return false;
+        for (int[] iv : blocked) {
+            if (b.startMin < iv[1] && iv[0] < b.endMin) return true;
+        }
+        return false;
+    }
+
+    /** 从块表里滤掉与占用区间重叠的块（AI 重排/聊天排程卡的落盘前校验共用，v1.28.0 feature 9）。 */
+    public static List<Block> filterBlocked(List<Block> blocks, List<int[]> blocked) {
+        List<Block> out = new ArrayList<>();
+        if (blocks == null) return out;
+        for (Block b : blocks) if (!overlaps(b, blocked)) out.add(b);
+        return out;
+    }
+
     /**
      * 纯算法：把未排候选按 ×1.5 填进 [nowMin, 22:30] 扣掉已有块后的空档。
      * 候选顺序走 candidateOrder（v1.27.0 统一口径，见 schedTier）。
@@ -200,12 +217,29 @@ public final class LocalAutoScheduler {
      */
     public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin,
                             String logicToday) {
+        return plan(cands, existing, nowMin, logicToday, null);
+    }
+
+    /**
+     * 带硬约束的版本（v1.28.0 feature 9）：blocked 是今天必须避开的墙钟区间
+     * （锁时段＋睡眠段，DayAvail.blockedWall 给出），与已有块一样视为占用，
+     * 但不产生块、不进 scheduledIds。本地自动排与快速重排都走这一份。
+     */
+    public static Plan plan(List<Candidate> cands, List<Block> existing, int nowMin,
+                            String logicToday, List<int[]> blocked) {
         Plan plan = new Plan();
         Set<String> scheduledIds = new HashSet<>();
         List<int[]> busy = new ArrayList<>();
         for (Block b : existing) {
             scheduledIds.add(b.taskId);
             busy.add(new int[]{b.startMin, b.endMin});
+        }
+        if (blocked != null) {
+            for (int[] iv : blocked) {
+                if (iv != null && iv.length >= 2 && iv[1] > iv[0]) {
+                    busy.add(new int[]{iv[0], iv[1]});
+                }
+            }
         }
         List<Candidate> todo = new ArrayList<>();
         for (Candidate cd : cands) {
@@ -272,6 +306,13 @@ public final class LocalAutoScheduler {
     public static RescheduleOutcome computeReschedule(List<Candidate> cands, List<Block> existing,
                                                         int nowMin, String logicToday,
                                                         String runningTaskId) {
+        return computeReschedule(cands, existing, nowMin, logicToday, runningTaskId, null);
+    }
+
+    /** 带锁时/睡眠硬约束的版本（v1.28.0 feature 9）：blocked 透传给 plan()。 */
+    public static RescheduleOutcome computeReschedule(List<Candidate> cands, List<Block> existing,
+                                                        int nowMin, String logicToday,
+                                                        String runningTaskId, List<int[]> blocked) {
         RescheduleOutcome o = new RescheduleOutcome();
         java.util.Map<String, Candidate> byId = new java.util.HashMap<>();
         for (Candidate cd : cands) byId.put(cd.id, cd);
@@ -293,7 +334,7 @@ public final class LocalAutoScheduler {
             if (lockedIds.contains(cd.id)) continue;
             pool.add(cd);
         }
-        Plan p = plan(pool, o.locked, nowMin, logicToday);
+        Plan p = plan(pool, o.locked, nowMin, logicToday, blocked);
         o.additions.addAll(p.additions);
         o.overflow.addAll(p.overflow);
         return o;
@@ -325,10 +366,13 @@ public final class LocalAutoScheduler {
         return out;
     }
 
-    /** 用本地缓存的 schedule 现算一份计划（UI 点名行与触发短路判断用，不发网络）。 */
+    /** 用本地缓存的 schedule 现算一份计划（UI 点名行与触发短路判断用，不发网络）。
+     *  v1.28.0 feature 9：同样避开锁时段与睡眠段，与落盘口径一致。 */
     public static Plan computeLocal(Context c, TaskStore store) {
         List<Block> base = blocksOf(SyncManager.latestSchedule(c), TaskItem.today());
-        return plan(snapshot(store), base, DayAccount.nowMinutes(), Rollover.logicalToday(c));
+        String logicToday = Rollover.logicalToday(c);
+        return plan(snapshot(store), base, DayAccount.nowMinutes(), logicToday,
+                DayAvail.blockedWall(c, logicToday));
     }
 
     /** 还有没排进今天的可填任务吗（必做/重要/次要，本地口径，触发短路用）。 */
