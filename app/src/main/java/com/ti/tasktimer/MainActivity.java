@@ -535,6 +535,11 @@ public class MainActivity extends Activity {
                         adapter.notifyDataSetChanged();
                         refreshStatus();
                     }
+                    @Override public void onStartNow(TaskItem t, boolean created) {
+                        adapter.notifyDataSetChanged();
+                        refreshStatus();
+                        startTaskNow(t);
+                    }
                     @Override public void onFocusRule(TaskItem t) { }
                     @Override public void onResetTimer(TaskItem t) { }
                 }));
@@ -1783,6 +1788,11 @@ public class MainActivity extends Activity {
                         adapter.notifyDataSetChanged();
                         refreshStatus();
                     }
+                    @Override public void onStartNow(TaskItem saved, boolean created) {
+                        adapter.notifyDataSetChanged();
+                        refreshStatus();
+                        startTaskNow(saved);
+                    }
                     @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
                     @Override public void onResetTimer(TaskItem task) { resetTask(task); }
                 })));
@@ -2091,6 +2101,29 @@ public class MainActivity extends Activity {
             toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
         }
         adapter.notifyDataSetChanged();
+    }
+
+    /** 编辑页「立刻开始」的开始分发（v1.28.0 feature 8）：与 onPlay 的开始语义一致，
+     *  只去掉暂停分支——正在计时的就是它＝已经开始了，不重启也不弹暂停卡；
+     *  暂停中的就是它＝按剩余继续（同 onPlay 的继续分支）；其余走 startTaskTimer
+     *  （直接切换/全新开始同 ▶）。调用前宿主已按 onSaved 口径刷新过界面。 */
+    private void startTaskNow(TaskItem t) {
+        if (TimerState.isRunning(this)) {
+            if (t.id.equals(TimerState.taskId(this))) return;
+            startTaskTimer(t);
+            return;
+        }
+        if (t.id.equals(TimerState.pausedTaskId(this))) {
+            int total = TimerState.pausedTotalSec(this);
+            if (total <= 0) total = Math.max(1, t.durationMinutes) * 60;
+            int remain = (int) Math.max(1, TimerState.pausedRemainMs(this) / 1000);
+            TimerService.resumeTimer(this, total, remain, t.id, t.title);
+            toast("继续计时：" + t.title + "（剩余约 " + (remain / 60) + " 分 " + (remain % 60) + " 秒）");
+            adapter.notifyDataSetChanged();
+            refreshStatus();
+            return;
+        }
+        startTaskTimer(t);
     }
 
     // ---------------- 复制任务信息（v1.6.1） ----------------

@@ -969,6 +969,7 @@ cal.set(Calendar.MILLISECOND, 0);
 TaskEditSheet.showCreate(host, store, cal.getTimeInMillis(), true,
 new TaskEditSheet.Host() {
 @Override public void onSaved(TaskItem t, boolean created) { render(); }
+@Override public void onStartNow(TaskItem t, boolean created) { render(); startTaskNow(t); }
 @Override public void onFocusRule(TaskItem t) { }
 @Override public void onResetTimer(TaskItem t) { }
 });
@@ -1137,6 +1138,7 @@ chips.addView(chipCal(primary, true, v -> togglePlayTask(t.id)));
 chips.addView(chipCal(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(host, store, t,
 new TaskEditSheet.Host() {
 @Override public void onSaved(TaskItem saved, boolean created) { afterTaskEdited(); }
+@Override public void onStartNow(TaskItem saved, boolean created) { afterTaskEdited(); startTaskNow(saved); }
 @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
 @Override public void onResetTimer(TaskItem task) { resetTaskFromCal(task); }
 })));
@@ -1637,6 +1639,28 @@ TimerService.startTimer(ctx, Math.max(1, t.durationMinutes) * 60, t.id, t.title)
 toast("开始计时：" + t.title + "（" + t.durationMinutes + " 分钟）");
 }
 handler.postDelayed(this::render, 350);
+}
+
+/** 编辑页「立刻开始」的开始分发（v1.28.0 feature 8）：与 togglePlayTask 的开始语义
+ *  一致，只去掉暂停分支——正在计时的就是它＝已经开始了，不重启也不弹暂停卡；
+ *  暂停中的就是它＝按剩余继续（同 togglePlayTask 的继续分支）；其余走
+ *  startTaskTimer（直接切换/全新开始同 ▶）。 */
+private void startTaskNow(final TaskItem t) {
+if (TimerState.isRunning(ctx)) {
+if (t.id.equals(TimerState.taskId(ctx))) return;
+startTaskTimer(t);
+return;
+}
+if (t.id.equals(TimerState.pausedTaskId(ctx))) {
+int total = TimerState.pausedTotalSec(ctx);
+if (total <= 0) total = Math.max(1, t.durationMinutes) * 60;
+int remain = (int) Math.max(1, TimerState.pausedRemainMs(ctx) / 1000);
+TimerService.resumeTimer(ctx, total, remain, t.id, t.title);
+toast("继续计时：" + t.title + "（剩余约 " + (remain / 60) + " 分 " + (remain % 60) + " 秒）");
+handler.postDelayed(this::render, 350);
+return;
+}
+startTaskTimer(t);
 }
 
 private void addBlock(Block b, int x, int w, int axisStart, int scale, boolean planned) {

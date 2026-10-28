@@ -42,6 +42,9 @@ import java.util.Set;
  * 笔记与闹钟仍在展开区的笔记行与闹钟 chip 上，不在本层重复。
  * 保存纪律与既有编辑一致：按 id 重取最新副本再改（freshCopy），touch 后落盘，
  * 开始时间变了重排 StartReminder；取消不落盘。
+ * 底部三钮（v1.28.0 feature 8，用户亲定）：取消（左）／立刻开始（中）／保存（右）。
+ * 立刻开始与保存共用同一套校验与落盘（doSave），存好后经 Host.onStartNow 由宿主
+ * 走它自己的开始路径起表；不另起一套保存逻辑。
  */
 public final class TaskEditSheet {
     private TaskEditSheet() { }
@@ -49,6 +52,10 @@ public final class TaskEditSheet {
     public interface Host {
         /** 保存成功后回调（created=true 为新建）：宿主自己刷新列表/日历。 */
         void onSaved(TaskItem t, boolean created);
+        /** 「立刻开始」：保存成功且用户要当场开始计时。默认退化为 onSaved；
+         *  有既有开始路径的宿主应覆盖本方法，先刷新再走自己的开始分发，
+         *  保持与点该任务 ▶ 相同的切换/继续语义。 */
+        default void onStartNow(TaskItem t, boolean created) { onSaved(t, created); }
         /** 编辑态「专注规则」入口（宿主既有 dialogFocus）。 */
         void onFocusRule(TaskItem t);
         /** 编辑态「重置计时」入口（宿主既有 reset 路径）。 */
@@ -354,16 +361,25 @@ public final class TaskEditSheet {
             col.setTag(new TextView[]{focusBtn, resetBtn, chatBtn, appListBtn});
         }
 
-        // 底部按钮
+        // 底部按钮（三钮等分，v1.28.0 feature 8 用户亲定）：取消最左、立刻开始居中、保存最右
         LinearLayout btnRow = new LinearLayout(ctx);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
-        btnRow.setGravity(Gravity.END);
         btnRow.setPadding(0, dp(ctx, 18), 0, 0);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         Button cancelBtn = new Button(ctx);
         cancelBtn.setText(en ? "Cancel" : "取消");
+        cancelBtn.setLayoutParams(btnLp);
         btnRow.addView(cancelBtn);
+        Button startNowBtn = new Button(ctx);
+        startNowBtn.setText(en ? "Start now" : "立刻开始");
+        startNowBtn.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        btnRow.addView(startNowBtn);
         Button saveBtn = new Button(ctx);
         saveBtn.setText(en ? "Save" : "保存");
+        saveBtn.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         btnRow.addView(saveBtn);
         col.addView(btnRow);
 
@@ -392,7 +408,11 @@ public final class TaskEditSheet {
         if (!creating && col.getTag() instanceof TextView[]) {
             for (TextView b : (TextView[]) col.getTag()) b.setTag(dlg);
         }
-        saveBtn.setOnClickListener(v -> {
+        // 保存与立刻开始共用同一套校验＋落盘（doSave，feature 8）：startNowFlag 区分
+        // 落盘后走 onSaved 还是 onStartNow，校验失败两钮行为完全一致、不起表。
+        final boolean[] startNowFlag = {false};
+        final Runnable doSave = () -> {
+            final boolean startNow = startNowFlag[0];
             String name = nameIn.getText().toString().trim();
             if (name.isEmpty()) {
                 toast(ctx, en ? "Give the task a name first" : "先给任务起个名字");
@@ -460,20 +480,40 @@ public final class TaskEditSheet {
                 new Thread(() -> {
                     String err = SyncManager.addScheduleBlock(ctx, tid, bs, be);
                     handler.post(() -> {
-                        toast(ctx, err == null
-                                ? (en ? "Added and planned at " : "已添加，并排到 ") + bs + "–" + be
-                                : err);
-                        if (host != null) host.onSaved(target, true);
+                        // 排块照旧生成（保存语义不变）；立刻开始时不弹「已添加」类 toast，
+                        // 由宿主开始路径的提示顶替，避免连弹两个；排块出错两模式都报。
+                        if (err != null) toast(ctx, err);
+                        else if (!startNow) {
+                            toast(ctx, (en ? "Added and planned at " : "已添加，并排到 ") + bs + "–" + be);
+                        }
+                        finishSave(host, target, true, startNow);
                     });
                 }).start();
             } else {
-                toast(ctx, creating
-                        ? (en ? "Added" : "已添加")
-                        : (en ? "Saved" : "已保存"));
-                if (host != null) host.onSaved(target, creating);
+                if (!startNow) {
+                    toast(ctx, creating
+                            ? (en ? "Added" : "已添加")
+                            : (en ? "Saved" : "已保存"));
+                }
+                finishSave(host, target, creating, startNow);
             }
+        };
+        saveBtn.setOnClickListener(v -> {
+            startNowFlag[0] = false;
+            doSave.run();
+        });
+        startNowBtn.setOnClickListener(v -> {
+            startNowFlag[0] = true;
+            doSave.run();
         });
         dlg.show();
+    }
+
+    /** 落盘完成的统一出口：普通保存走 onSaved，立刻开始走 onStartNow，宿主为 null 时静默。 */
+    private static void finishSave(Host host, TaskItem t, boolean created, boolean startNow) {
+        if (host == null) return;
+        if (startNow) host.onStartNow(t, created);
+        else host.onSaved(t, created);
     }
 
     // ---------------- 小部件 ----------------
