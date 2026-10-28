@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.30.0)
+## Features (Android, v1.31.0)
 
-Current version: **v1.30.0**.
+Current version: **v1.31.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -42,7 +42,7 @@ Current version: **v1.30.0**.
 - **Account and realtime sync (Supabase)** — sign in with an email account and tasks sync in realtime between devices; merges align by task id with newest-wins and tombstone deletes, so nothing resurrects and nothing is silently overwritten. There is a **single logical timer across devices**: state lives in the cloud, both ends render it, and either end can control it. A task written with an `autoStart` flag starts its own countdown as soon as it arrives. (The legacy Google Drive file bridge was retired and removed in v1.26.0; Supabase is the only sync path.)
 - **Per-task alarms** — any task can have an alarm time (it rings whether or not a timer is running; a daily task re-arms for the next day) and/or ring when its timer ends, before the end-of-task check-in. The default sound is a clear nature recording that fades in from silence to full volume over 60 seconds, played on the alarm audio stream, so it rings even when the phone is muted.
 - **Start-time reminders** — when a task's planned start time arrives, a full-screen reminder pops up: start now, snooze 10 minutes, or ignore.
-- **Habits and the morning gate** — a Habits tab of self-chosen habits in four goal types (at least N days a week, at most N times, a daily number, or a cumulative total toward a goal), each with its own reminder time, a year grid for back-filling, and progress toward the week on every card; habits feed half of the Zhixing index on the KnowDo tab. The day opens with a fullscreen morning gate: yesterday's habits answered one by one, a short read-only report on yesterday, and a morning diary, all before "Start today" unlocks the day. Since v1.28.0, a cumulative habit can carry a starting number, so a count begun before KnowDo continues from where it actually reached instead of from zero. Since v1.29.0, one global setting (Settings → Habit display window) chooses whether every card's main count reckons by today, this week, last week or this month. Since v1.30.0 the tab also has a compact mode — one line per habit with this week's seven dots and, on the right, how far the habit still is from this week's goal.
+- **Habits and the morning gate** — a Habits tab of self-chosen habits in five goal types (at least N days a week, at most N times, a daily number, a cumulative total toward a goal, or — since v1.31.0 — a daily reminder: a passage you write to yourself), each with its own reminder time, a year grid for back-filling, and progress toward the week on every card; habits feed half of the Zhixing index on the KnowDo tab. The day opens with a fullscreen morning gate: yesterday's habits answered one by one, a short read-only report on yesterday, and a morning diary, all before "Start today" unlocks the day. Since v1.28.0, a cumulative habit can carry a starting number, so a count begun before KnowDo continues from where it actually reached instead of from zero. Since v1.29.0, one global setting (Settings → Habit display window) chooses whether every card's main count reckons by today, this week, last week or this month. Since v1.30.0 the tab also has a compact mode — one line per habit with this week's seven dots and, on the right, how far the habit still is from this week's goal. A daily reminder's full text appears in the morning gate — yesterday's in the must-answer section, today's in a reading section — and tapping "Read" completes it for the day.
 - **Bilingual UI and themes** — Chinese / English interface and light / dark themes, switchable from the drawer or settings. The top bar stays minimal: a drawer (account, language, theme, help, settings) on the left, the calendar on the right.
 - **Self-update (v1.27.0)** — the app checks for new versions itself (at most once a day, switchable), downloads the new build in verified ~5 MB shards from the same private Gitee repository that serves its models, checks every shard and the assembled file by size and MD5, then shows one plain "ready to install" dialog — installing is a single tap on the system installer (with a one-time "install unknown apps" permission walkthrough). Download progress lives only on the Settings → App Updates row; the download network (Wi-Fi only / Wi-Fi & mobile data) is a personal setting synced via the cloud.
 - **Chat unread badge (v1.27.0)** — the Chat tab carries a small vermilion badge counting AI messages you haven't seen yet (above all the proactive distraction-companion messages); opening the tab clears it.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.31.0 — 2026-10-28
+
+**Why:** Some words need to be read again every day, not counted — a reminder is only kept if the passage itself shows up in front of you each morning. Counting alone cannot carry the words. Build commit `4a4dc71` · [compare v1.30.0...v1.31.0](https://github.com/gty3310/knowdo/compare/v1.30.0...v1.31.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A fifth habit type: Daily Reminder.** You write a passage to yourself (any length; the text is required) and the habit is done for the day when you tap "Read". The morning gate shows yesterday's reminder in full in its must-answer section (Read / Not read) and today's full text in a new reading section — reading it there completes today, with no second tap waiting in the Habits tab. Habit cards show the full text (one truncated line in compact mode), and the type counts toward the habit rate like the others (read = 100%, unread = 0%). The KnowDo (Zhixing) page's per-type rows and the in-app help (five types, the gate's two reminder sections) are updated to match.
+
+Not yet verified on a real device: creating a reminder habit, reading it in the morning gate (both yesterday's check and today's reading section), and its effect on the habit rate and Zhixing index on a live account.
+
 ### v1.30.0 — 2026-10-28
 
 **Why:** With habits piling up, the full cards no longer fit on one page. In compact mode — one line per habit, with how far it still is from this week's goal stated plainly on the right — one glance shows which habit is falling behind. Build commit `70d315d` · [compare v1.29.0...v1.30.0](https://github.com/gty3310/knowdo/compare/v1.29.0...v1.30.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the compact rows' look and dot colours (inclu
 - **One display window for all habit cards.** A new Settings row (Habit display window: today / this week / last week / this month, default this week — the previous look) drives every habit card's main count through a new `ZhixingCalc.habitPeriod`. The Zhixing index math is untouched (no existing calculation changed), cumulative cards ignore the setting, and the morning gate never reads it. The choice syncs through cloud `user_state.habit_display` (`{"scope":"week"}`), probed and merged like the other optional cloud keys and silently local-only when the column is unavailable.
 
 Not yet verified on a real device: the four windows rendering on real habit cards, the settings picker interaction, and the setting syncing across devices.
-
-### v1.28.0 — 2026-10-28
-
-**Why:** Some counts did not start with KnowDo — good deeds, above all, were already being done before the app existed, and starting their total at zero erases what was already done. A cumulative habit must be able to continue from the number it had actually reached. Build commit `43c3bd7` · [compare v1.27.1...v1.28.0](https://github.com/gty3310/knowdo/compare/v1.27.1...v1.28.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Cumulative habits get a starting number.** A cumulative habit's definition now carries `startValue`, stored in `habit_data` and synced with it (old data defaults to 0). The one total computation seeds itself with the starting number, so the card's big total, its total-goal progress and its "how far left" all count from it; the create form and the edit dialog both expose the field. No other habit type, the Zhixing index and the morning gate are untouched.
-
-Not yet verified on a real device: entering or editing a starting number and watching the card totals follow, the morning gate adding increments on top of it, and whether the Mac app preserves the new field when it rewrites habit data.
 
 ## Build
 
