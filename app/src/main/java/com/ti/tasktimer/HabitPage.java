@@ -51,8 +51,8 @@ public final class HabitPage {
     private int fStepMin = 0, fStepMax = 7;
     private String fStepUnit = "";
     // 表单输入引用（重画前把内容收进缓存，避免丢失）
-    private EditText fNameInput, fNumTargetInput, fNumUnitInput, fSumTotalInput, fSumUnitInput, fSumWeekInput, fSumStartInput;
-    private String cName = "", cNumTarget = "6000", cNumUnit = "", cSumTotal = "", cSumUnit = "", cSumWeek = "", cSumStart = "";
+    private EditText fNameInput, fNumTargetInput, fNumUnitInput, fSumTotalInput, fSumUnitInput, fSumWeekInput, fSumStartInput, fRemindTextInput;
+    private String cName = "", cNumTarget = "6000", cNumUnit = "", cSumTotal = "", cSumUnit = "", cSumWeek = "", cSumStart = "", cRemindText = "";
     private TextView fStepperVal, fReminderVal, fSumDateVal;
     private LinearLayout fParamBox;
     private final List<TextView> fTypeCards = new ArrayList<>();
@@ -132,10 +132,11 @@ public final class HabitPage {
         List<HabitData.Habit> habits = HabitData.habits(root);
         maybeSuggestion(col, habits);
         if (!habits.isEmpty()) {
-            TextView legend = small(s("习惯按目标分四类：至少型 做到≥目标（达标 100%）· 至多型 发生≤目标（超标扣分）· "
-                    + "数值型 每天填数按比例 · 累积型 一件件攒总数。点习惯名改目标与提醒，点年格补记。",
-                    "Four kinds: At-least (hit the target = 100%) · At-most (over = points off) · "
-                    + "Number (a value a day, scored by ratio) · Accumulating (a growing total). "
+            TextView legend = small(s("习惯按目标分五类：至少型 做到≥目标（达标 100%）· 至多型 发生≤目标（超标扣分）· "
+                    + "数值型 每天填数按比例 · 累积型 一件件攒总数 · 每日提醒 每天读过就算完成。点习惯名改目标与提醒，点年格补记。",
+                    "Five kinds: At-least (hit the target = 100%) · At-most (over = points off) · "
+                    + "Number (a value a day, scored by ratio) · Accumulating (a growing total) · "
+                    + "Daily reminder (read it = done). "
                     + "Tap a habit's name to edit its target/reminder; tap the year grid to backfill."), 11);
             legend.setPadding(dp(10), dp(8), dp(10), dp(8));
             legend.setBackground(round(Ui.muted(act), dp(10)));
@@ -316,6 +317,7 @@ public final class HabitPage {
         Long v = HabitData.logValue(root, date, h.id);
         switch (h.type) {
             case HabitData.TYPE_MIN:
+            case HabitData.TYPE_REMIND:
                 return v != null && v > 0 ? DOT_GOOD : DOT_EMPTY;
             case HabitData.TYPE_MAX:
                 if (v == null) return DOT_EMPTY;
@@ -395,6 +397,17 @@ public final class HabitPage {
                 long remain = target * elapsed - actual;
                 if (remain <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
                 return new CS(s("还差 ", "") + fmtNum(remain) + " " + h.unit, CS_NORMAL);
+            }
+            case HabitData.TYPE_REMIND: {
+                int elapsed = 0;
+                for (String d : DayUtil.weekDates(monday)) {
+                    if (d.compareTo(today) > 0) break;
+                    elapsed++;
+                }
+                long remain = elapsed - w.primary;
+                if (remain <= 0) return new CS(s("已达标", "Goal met"), CS_DONE);
+                return new CS(s("还差 ", "") + remain + (Strings.en()
+                        ? (remain == 1 ? " day to go" : " days to go") : " 天"), CS_NORMAL);
             }
             default: { // sum
                 if (h.totalGoal > 0) {
@@ -500,7 +513,62 @@ public final class HabitPage {
         // 本周行 / 累积大字
         String monday = DayUtil.mondayOf(DayUtil.today());
         ZhixingCalc.HabitWeek w = ZhixingCalc.habitWeek(root, h, monday);
-        if (HabitData.TYPE_SUM.equals(h.type)) {
+        if (HabitData.TYPE_REMIND.equals(h.type)) {
+            // 每日提醒：全文 + 按显示口径的主行 + 今日「读过了」按钮（晨间门里也能点，这里是补点）
+            TextView full = new TextView(act);
+            full.setText(h.remindText == null || h.remindText.isEmpty()
+                    ? s("（还没写提醒的话，点上面的习惯名去补）", "(No reminder text yet — tap the habit name above to add it)")
+                    : h.remindText);
+            full.setTextSize(14.5f);
+            full.setTextColor(Ui.text(act));
+            full.setLineSpacing(0, 1.45f);
+            full.setPadding(0, dp(8), 0, 0);
+            card.addView(full);
+            ZhixingCalc.HabitPeriod rp = ZhixingCalc.habitPeriod(root, h, dispScope);
+            String rwin = HabitDisplay.label(dispScope);
+            String rleft;
+            if (HabitDisplay.SCOPE_TODAY.equals(dispScope)) {
+                rleft = rwin + (rp.recorded
+                        ? (rp.primary > 0 ? s(" 读过了", " read") : s(" 没读", " not read"))
+                        : s(" 还没读", " not read yet"));
+            } else {
+                rleft = rwin + s(" 已读 ", " · read ") + rp.primary + s(" 天", " days");
+            }
+            String rright = rp.rate + "%";
+            if (HabitDisplay.SCOPE_WEEK.equals(dispScope) || HabitDisplay.SCOPE_LAST_WEEK.equals(dispScope)) {
+                int elapsedR = HabitDisplay.SCOPE_WEEK.equals(dispScope)
+                        ? DayUtil.daysBetween(monday, DayUtil.today()) + 1 : 7;
+                if (rp.primary < elapsedR) rright += s(" · 差 ", " · ") + (elapsedR - rp.primary) + s(" 天", " to go");
+            }
+            card.addView(weekLine(rleft, rp.rate, rright, Ui.green(act), false));
+            final String todayStr = DayUtil.today();
+            Long todayV = HabitData.logValue(root, todayStr, h.id);
+            final boolean readToday = todayV != null && todayV > 0;
+            TextView readBtn = new TextView(act);
+            readBtn.setText(readToday ? s("今天已读过了 ✓ · 点一下撤销", "Read today ✓ · tap to undo")
+                    : s("读过了", "I've read it"));
+            readBtn.setTextSize(14);
+            readBtn.setTypeface(readBtn.getTypeface(), Typeface.BOLD);
+            readBtn.setGravity(Gravity.CENTER);
+            readBtn.setPadding(0, dp(10), 0, dp(10));
+            if (readToday) {
+                readBtn.setTextColor(Ui.green(act));
+                readBtn.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(11)));
+            } else {
+                readBtn.setTextColor(Ui.onAccent(act));
+                readBtn.setBackground(round(Ui.accent(act), dp(11)));
+            }
+            LinearLayout.LayoutParams rblp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            rblp.topMargin = dp(10);
+            readBtn.setOnClickListener(v -> {
+                if (readToday) HabitData.removeLog(root, todayStr, h.id);
+                else HabitData.putLog(root, todayStr, h.id, 1);
+                HabitData.save(act, root);
+                refresh();
+            });
+            card.addView(readBtn, rblp);
+        } else if (HabitData.TYPE_SUM.equals(h.type)) {
             long total = sumTotal(h);
             TextView big = new TextView(act);
             big.setText(fmtNum(total));
@@ -625,7 +693,8 @@ public final class HabitPage {
         String jan1 = today.substring(0, 4) + "-01-01";
         boolean en = Strings.en();
         switch (h.type) {
-            case HabitData.TYPE_MIN: {
+            case HabitData.TYPE_MIN:
+            case HabitData.TYPE_REMIND: {
                 int year = 0;
                 String d = jan1;
                 while (d.compareTo(today) <= 0) {
@@ -759,9 +828,13 @@ public final class HabitPage {
     private void logDialog(final HabitData.Habit h, final String date) {
         final Long cur = HabitData.logValue(root, date, h.id);
         String title = h.name + " · " + DayUtil.shortDate(date);
-        if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
+        if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)
+                || HabitData.TYPE_REMIND.equals(h.type)) {
             boolean isMin = HabitData.TYPE_MIN.equals(h.type);
-            String[] items = isMin
+            boolean isRemind = HabitData.TYPE_REMIND.equals(h.type);
+            String[] items = isRemind
+                    ? new String[]{s("读过了", "Read it"), s("没读", "Didn't read"), s("清除记录", "Clear record")}
+                    : isMin
                     ? new String[]{s("做到了", "Done"), s("没做到", "Not done"), s("清除记录", "Clear record")}
                     : new String[]{s("发生了", "It happened"), s("没有发生", "It didn't"), s("清除记录", "Clear record")};
             new AlertDialog.Builder(act)
@@ -818,7 +891,17 @@ public final class HabitPage {
         final EditText targetIn = new EditText(act);
         targetIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         targetIn.setText(String.valueOf(h.target));
-        box.addView(labeled(targetIn, targetLabel(h.type)));
+        if (!HabitData.TYPE_REMIND.equals(h.type)) {
+            box.addView(labeled(targetIn, targetLabel(h.type)));
+        }
+        final EditText remindTextIn = new EditText(act);
+        if (HabitData.TYPE_REMIND.equals(h.type)) {
+            remindTextIn.setText(h.remindText);
+            remindTextIn.setHint(s("写一段提醒自己的话", "Write yourself a reminder"));
+            remindTextIn.setMinLines(3);
+            remindTextIn.setGravity(Gravity.TOP);
+            box.addView(labeled(remindTextIn, s("提醒的话", "Reminder text")));
+        }
         final EditText unitIn = new EditText(act);
         final EditText totalIn = new EditText(act);
         final EditText startIn = new EditText(act);
@@ -881,6 +964,11 @@ public final class HabitPage {
                         h.totalGoal = Math.max(0, parseLong(totalIn.getText().toString(), 0));
                         h.startValue = Math.max(0, parseLong(startIn.getText().toString(), 0));
                     }
+                    if (HabitData.TYPE_REMIND.equals(h.type)) {
+                        // 提醒文本必填：清空不覆盖（同名字留空保留原名的口径），避免存出无文本的提醒习惯
+                        String rt = remindTextIn.getText().toString().trim();
+                        if (!rt.isEmpty()) h.remindText = rt;
+                    }
                     h.reminder = remindHolder[0];
                     List<HabitData.Habit> all = HabitData.habits(root);
                     for (int i = 0; i < all.size(); i++) {
@@ -938,6 +1026,7 @@ public final class HabitPage {
         if (fSumUnitInput != null) cSumUnit = fSumUnitInput.getText().toString();
         if (fSumWeekInput != null) cSumWeek = fSumWeekInput.getText().toString();
         if (fSumStartInput != null) cSumStart = fSumStartInput.getText().toString();
+        if (fRemindTextInput != null) cRemindText = fRemindTextInput.getText().toString();
     }
 
     private View buildForm() {
@@ -1053,6 +1142,14 @@ public final class HabitPage {
                 s("一件件攒，看总数，每天记增量，总量慢慢长", "Adds up bit by bit — log the increment daily, watch the total grow")));
         form.addView(row1);
         form.addView(row2);
+        LinearLayout row3 = new LinearLayout(act);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        row3.addView(typeCard(HabitData.TYPE_REMIND, s("每日提醒", "Daily reminder"),
+                s("写一段提醒自己的话，每天早上读一遍，读过就算完成", "Write yourself a reminder and read it every morning — reading it is the habit")));
+        View spacer3 = new View(act);
+        spacer3.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row3.addView(spacer3);
+        form.addView(row3);
 
         fParamBox = new LinearLayout(act);
         fParamBox.setOrientation(LinearLayout.VERTICAL);
@@ -1172,6 +1269,17 @@ public final class HabitPage {
                 fParamBox.addView(row);
                 break;
             }
+            case HabitData.TYPE_REMIND: {
+                fParamBox.addView(small(s("提醒的话（必填，每天早上在晨间页读一遍）", "Your reminder (required — read it each morning on the morning page)"), 12));
+                fRemindTextInput = new EditText(act);
+                fRemindTextInput.setText(cRemindText);
+                fRemindTextInput.setHint(s("如：少想多做，先把眼前这一件做完", "e.g. Think less, do more — finish the one thing in front of you first"));
+                fRemindTextInput.setTextSize(14);
+                fRemindTextInput.setMinLines(3);
+                fRemindTextInput.setGravity(Gravity.TOP);
+                fParamBox.addView(fRemindTextInput);
+                break;
+            }
             default: { // sum
                 fParamBox.addView(small(s("起始日期", "Start date"), 12));
                 fSumDateVal = new TextView(act);
@@ -1283,6 +1391,13 @@ public final class HabitPage {
                 h.target = Math.max(0, parseLong(cNumTarget, 0));
                 h.unit = cNumUnit.trim();
                 break;
+            case HabitData.TYPE_REMIND:
+                if (cRemindText.trim().isEmpty()) {
+                    toast(s("每日提醒要先写下提醒的话", "Write the reminder text first"));
+                    return;
+                }
+                h.remindText = cRemindText.trim();
+                break;
             default:
                 h.target = Math.max(0, parseLong(cSumWeek, 0));
                 h.totalGoal = Math.max(0, parseLong(cSumTotal, 0));
@@ -1376,6 +1491,7 @@ public final class HabitPage {
             case HabitData.TYPE_MIN: return s("至少型", "At-least");
             case HabitData.TYPE_MAX: return s("至多型", "At-most");
             case HabitData.TYPE_NUM: return s("数值型", "Number");
+            case HabitData.TYPE_REMIND: return s("每日提醒", "Reminder");
             default: return s("累积型", "Sum");
         }
     }
@@ -1385,6 +1501,7 @@ public final class HabitPage {
             case HabitData.TYPE_MIN: return Ui.green(act);
             case HabitData.TYPE_MAX: return Ui.danger(act);
             case HabitData.TYPE_NUM: return Ui.accent(act);
+            case HabitData.TYPE_REMIND: return Ui.dark(act) ? Color.rgb(56, 189, 248) : Color.rgb(2, 132, 199);
             default: return Ui.dark(act) ? Color.rgb(167, 139, 250) : Color.rgb(91, 74, 138);
         }
     }

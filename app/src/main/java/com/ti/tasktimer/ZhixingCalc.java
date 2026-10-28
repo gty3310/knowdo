@@ -15,11 +15,13 @@ import java.util.Set;
  *
  *   指数 ＝ 习惯达成 ×50% ＋ 任务完成 ×35% ＋ 分神控制 ×15%（权重常量见下，改权重只改这里）
  *
- * 四种习惯的周达成率（周＝周一至周日）：
+ * 五种习惯的周达成率（周＝周一至周日）：
  *   至少型 min：做到天数 ÷ 目标天数，封顶 100%（多做还是 100%）
  *   至多型 max：次数 ≤ 目标 → 100%；超出 → 目标 ÷ 实际 ×100 取整
  *   数值型 num：每天 实际÷目标（单日封顶 100%）取一周平均（只算已过去的天数，含今天）
  *   累积型 sum：本周增量 ÷ 周增量目标；未设周目标（0）时，本周有增量记 100%、没有记 0%
+ *   提醒型 remind：无目标，每天读过=100、没读=0；周率＝已读天数 ÷ 本周已过去的天数
+ *     （含今天，与数值型的已过天数口径一致——本周没过完不按整周扣）
  * 习惯达成 ＝ 全部习惯周达成率的平均；没有任何习惯时按 100 起算（冷启动，页面有注明）。
  *
  * 任务完成比例 ＝ 区间内「到期/排期」的任务里已完成数 ÷ 总数，来源三处并集去重：
@@ -32,8 +34,8 @@ import java.util.Set;
  *   控制分 ＝ max(0, 100 − 5×次数)。没有数据时次数为 0、控制分 100（冷启动同口径）。
  *
  * 单日口径（晨间小报）：习惯按单日达成（至少型做了=100/没做=0、至多型没发生=100/发生了=0、
- *   数值型按比例、累积型有增量=100/没有=0；至少/至多/数值型当天没记录则不计入平均，
- *   累积型没记录按 0 计）；任务与分神同上、区间缩成一天。
+ *   数值型按比例、累积型有增量=100/没有=0、提醒型读过=100/没读=0；至少/至多/数值/提醒型
+ *   当天没记录则不计入平均，累积型没记录按 0 计）；任务与分神同上、区间缩成一天。
  */
 public final class ZhixingCalc {
     // ---- 权重（定案：习惯 50% / 任务 35% / 分神 15%） ----
@@ -96,6 +98,19 @@ public final class ZhixingCalc {
                 w.rate = (int) Math.round(w.avgRatio * 100);
                 break;
             }
+            case HabitData.TYPE_REMIND: {
+                int read = 0;
+                int elapsed = 0;
+                for (String d : days) {
+                    if (d.compareTo(today) > 0) break; // 未来天不计（同数值型）
+                    elapsed++;
+                    Long v = HabitData.logValue(root, d, h.id);
+                    if (v != null && v > 0) read++;
+                }
+                w.primary = read;
+                w.rate = elapsed == 0 ? 0 : (int) Math.round(read * 100.0 / elapsed);
+                break;
+            }
             default: { // sum
                 long s = 0;
                 for (String d : days) {
@@ -118,7 +133,9 @@ public final class ZhixingCalc {
      * 本周/上周直接复用 habitWeek（语义与指数完全一致）；今天按单日口径（与 habitDayRate
      * 同义，没记录时 rate=0 仅供卡片进度条）；本月＝本月 1 日至今天：
      *   min 做到天数，rate＝做到天数÷已过天数；max 发生天数，rate＝没发生天数占比；
-     *   num 区间日均（有记录天数平均），rate＝逐日封顶比例对已过天数取平均（同周口径）。
+     *   num 区间日均（有记录天数平均），rate＝逐日封顶比例对已过天数取平均（同周口径）；
+     *   remind 今天＝读过与否（走单日口径），本月同 min（已读天数÷已过天数），
+     *   本周/上周复用 habitWeek（primary=已读天数）。
      * 累积型不走这里（卡片显示累计总数，不受显示口径影响）。
      */
     public static final class HabitPeriod {
@@ -145,7 +162,8 @@ public final class ZhixingCalc {
         if (HabitDisplay.SCOPE_MONTH.equals(scope)) {
             String d = today.substring(0, 7) + "-01";
             int elapsed = 0;
-            if (HabitData.TYPE_MIN.equals(h.type)) {
+            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_REMIND.equals(h.type)) {
+                // remind 本月口径同 min：primary=已读(做到)天数，rate=天数÷已过天数
                 int done = 0;
                 while (d.compareTo(today) <= 0) {
                     Long v = HabitData.logValue(root, d, h.id);
@@ -210,6 +228,7 @@ public final class ZhixingCalc {
         Long v = HabitData.logValue(root, date, h.id);
         switch (h.type) {
             case HabitData.TYPE_MIN:
+            case HabitData.TYPE_REMIND:
                 return v == null ? null : (v > 0 ? 100 : 0);
             case HabitData.TYPE_MAX:
                 return v == null ? null : (v > 0 ? 0 : 100);

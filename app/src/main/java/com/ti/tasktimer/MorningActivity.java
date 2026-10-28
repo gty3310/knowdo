@@ -200,6 +200,8 @@ public class MorningActivity extends Activity {
         }
 
         col.addView(buildSectionA());
+        View remindSec = buildSectionRemind();
+        if (remindSec != null) col.addView(remindSec);
         col.addView(buildSectionB());
         col.addView(buildSectionC());
 
@@ -291,13 +293,141 @@ public class MorningActivity extends Activity {
         }
         for (final HabitData.Habit h : habits) {
             Long existing = HabitData.logValue(root, logDate, h.id);
-            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
+            if (HabitData.TYPE_REMIND.equals(h.type)) {
+                sec.addView(remindYnRow(h, existing));
+            } else if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
                 sec.addView(ynRow(h, existing));
             } else {
                 sec.addView(numRow(h, existing));
             }
         }
         return sec;
+    }
+
+    /** 每日提醒型的昨日必答行：全文先读，再答「读过了/没读」（写 logDate，边答边存，同 ynRow 口径）。 */
+    private View remindYnRow(final HabitData.Habit h, Long existing) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(9), 0, dp(9));
+        LinearLayout nameRow = new LinearLayout(this);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        nameRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = new TextView(this);
+        name.setText(h.name);
+        name.setTextSize(14);
+        name.setTypeface(name.getTypeface(), Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        nameRow.addView(name);
+        TextView tn = small(ZhixingPage.HabitPageTypeName.name(h.type), 10);
+        tn.setPadding(dp(6), 0, 0, 0);
+        nameRow.addView(tn);
+        box.addView(nameRow);
+        TextView full = new TextView(this);
+        full.setText(h.remindText == null || h.remindText.isEmpty()
+                ? s("（还没写提醒的话）", "(No reminder text yet)") : h.remindText);
+        full.setTextSize(14);
+        full.setTextColor(Ui.text(this));
+        full.setLineSpacing(0, 1.45f);
+        full.setPadding(0, dp(4), 0, dp(6));
+        box.addView(full);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        final TextView b1 = ynButton(s("读过了", "Read it"));
+        final TextView b2 = ynButton(s("没读", "Didn't read"));
+        final TextView hint = small(s("还没选", "Pick one"), 10.5f);
+        hint.setLayoutParams(new LinearLayout.LayoutParams(dp(38), LinearLayout.LayoutParams.WRAP_CONTENT));
+        hint.setGravity(Gravity.END);
+        if (existing != null) ynAnswers.put(h.id, existing);
+        Runnable paint = () -> {
+            Long v = ynAnswers.get(h.id);
+            paintYn(b1, v != null && v == 1, Ui.green(this));
+            paintYn(b2, v != null && v == 0, Color.rgb(160, 152, 132));
+            hint.setText(v == null ? s("还没选", "Pick one") : s("已选", "Done"));
+            hint.setTextColor(v == null ? Ui.accent(this) : Ui.green(this));
+        };
+        b1.setOnClickListener(v -> {
+            ynAnswers.put(h.id, 1L);
+            HabitData.putLog(root, logDate, h.id, 1L);
+            HabitData.save(MorningActivity.this, root);
+            paint.run();
+            refreshGate();
+        });
+        b2.setOnClickListener(v -> {
+            ynAnswers.put(h.id, 0L);
+            HabitData.putLog(root, logDate, h.id, 0L);
+            HabitData.save(MorningActivity.this, root);
+            paint.run();
+            refreshGate();
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(b1, blp);
+        LinearLayout.LayoutParams blp2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        blp2.leftMargin = dp(6);
+        row.addView(b2, blp2);
+        row.addView(hint);
+        box.addView(row);
+        paint.run();
+        return box;
+    }
+
+    // ---------------- 今日提醒（当天的阅读区） ----------------
+    /**
+     * 每个每日提醒习惯的全文 + 「读过了」按钮，写的是 session 日（当天）的记录：
+     * 在晨间门流程内读完即完成当天，不必再去习惯页点第二次。没有提醒型习惯时整节不出现。
+     * 这一节不拦「开启今天」（三节门槛 A/B/C 语义不变），读没读由当天的习惯达成率如实记。
+     * 编辑模式下同样出现，写的是记录日当天的记录（可补改）。
+     */
+    private View buildSectionRemind() {
+        List<HabitData.Habit> rems = new ArrayList<>();
+        for (HabitData.Habit h : habits) {
+            if (HabitData.TYPE_REMIND.equals(h.type)) rems.add(h);
+        }
+        if (rems.isEmpty()) return null;
+        LinearLayout sec = section(
+                editMode ? s("今日提醒 · 记录日当天读", "Today's reminders · the record day")
+                        : s("今日提醒 · 先读一读", "Today's reminders · read these first"),
+                s("读完点「读过了」，今天就算完成，不用再去习惯页点一次",
+                        "Tap \"I've read it\" when done — that completes it for today, no need to open the habits page"));
+        for (final HabitData.Habit h : rems) sec.addView(remindTodayBlock(h));
+        return sec;
+    }
+
+    private View remindTodayBlock(final HabitData.Habit h) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(8), 0, dp(6));
+        TextView name = new TextView(this);
+        name.setText(h.name);
+        name.setTextSize(14);
+        name.setTypeface(name.getTypeface(), Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        box.addView(name);
+        TextView full = new TextView(this);
+        full.setText(h.remindText == null || h.remindText.isEmpty()
+                ? s("（还没写提醒的话，去习惯页点习惯名补上）", "(No reminder text yet — add it from the habits page)") : h.remindText);
+        full.setTextSize(14);
+        full.setTextColor(Ui.text(this));
+        full.setLineSpacing(0, 1.45f);
+        full.setPadding(0, dp(3), 0, dp(7));
+        box.addView(full);
+        final TextView btn = ynButton("");
+        Runnable paint = () -> {
+            Long v = HabitData.logValue(root, session, h.id);
+            boolean read = v != null && v > 0;
+            btn.setText(read ? s("已读过了 ✓ · 点一下撤销", "Read ✓ · tap to undo") : s("读过了", "I've read it"));
+            paintYn(btn, read, Ui.green(this));
+        };
+        btn.setOnClickListener(v -> {
+            Long cur = HabitData.logValue(root, session, h.id);
+            if (cur != null && cur > 0) HabitData.removeLog(root, session, h.id);
+            else HabitData.putLog(root, session, h.id, 1L);
+            HabitData.save(MorningActivity.this, root); // 边点边存：暂停/被杀不丢
+            paint.run();
+        });
+        box.addView(btn);
+        paint.run();
+        return box;
     }
 
     private View ynRow(final HabitData.Habit h, Long existing) {
@@ -634,7 +764,8 @@ public class MorningActivity extends Activity {
     // ---------------- 门槛与完成 ----------------
     private boolean aDone() {
         for (HabitData.Habit h : habits) {
-            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
+            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)
+                    || HabitData.TYPE_REMIND.equals(h.type)) {
                 if (!ynAnswers.containsKey(h.id)) return false;
             } else {
                 EditText in = numInputs.get(h.id);
@@ -692,7 +823,8 @@ public class MorningActivity extends Activity {
         if (!aDone() || diaryInput == null || diaryInput.getText().toString().trim().isEmpty()) return;
         flushDraft();
         for (HabitData.Habit h : habits) {
-            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
+            if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)
+                    || HabitData.TYPE_REMIND.equals(h.type)) {
                 Long v = ynAnswers.get(h.id);
                 if (v != null) HabitData.putLog(root, logDate, h.id, v);
             } else {

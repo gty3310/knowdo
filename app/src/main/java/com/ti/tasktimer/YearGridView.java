@@ -17,6 +17,7 @@ import org.json.JSONObject;
  *   至多型：没发生＝深绿（好）；发生了＝红；没记＝空格
  *   数值型：按 实际÷目标 分三档绿；记了 0＝浅灰红；没记＝空格
  *   累积型：按当日增量 1–2/3–5/6+ 分三档绿；没记＝空格
+ *   提醒型：同至少型——读过＝深绿；记了没读＝浅灰红；没记＝空格
  * 点格回调日期（未来日期不回调），供习惯页打开补记/改记。
  */
 public class YearGridView extends View {
@@ -53,6 +54,7 @@ public class YearGridView extends View {
         Long v = HabitData.logValue(root, date, h.id);
         switch (h.type) {
             case HabitData.TYPE_MIN:
+            case HabitData.TYPE_REMIND:
                 if (v == null) return 0;
                 return v > 0 ? 3 : -1;
             case HabitData.TYPE_MAX:

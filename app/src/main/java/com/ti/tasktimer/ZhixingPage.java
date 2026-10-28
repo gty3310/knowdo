@@ -303,6 +303,9 @@ public final class ZhixingPage {
             case HabitData.TYPE_NUM:
                 detail = s("日均达成 本周 ", "Daily avg this wk ") + curRate + "%" + s(" · 上周 ", " · last ") + prevRate + "%";
                 break;
+            case HabitData.TYPE_REMIND:
+                detail = s("本周已读 ", "Read ") + cw.primary + s(" 天 · 上周 ", " d this wk · last ") + pw.primary + s(" 天", " d");
+                break;
             default:
                 detail = s("本周新增 +", "This wk +") + cw.primary + " " + h.unit + s(" · 上周 +", " · last +") + pw.primary + " " + h.unit;
                 break;
@@ -347,6 +350,12 @@ public final class ZhixingPage {
                                 s("至多型超标扣分，本周得分 ", "Over the cap — this week's score is ") + w.rate + "%"});
                     }
                     break;
+                case HabitData.TYPE_REMIND:
+                    if (elapsed > 0 && w.primary < elapsed) {
+                        out.add(new String[]{h.name + s("本周还有 ", " this week: ") + (elapsed - w.primary) + s(" 天没读", " days unread"),
+                                s("每天都读 · 本周已读 ", "A daily read · ") + w.primary + s(" 天", " days read so far")});
+                    }
+                    break;
                 case HabitData.TYPE_NUM:
                     if (w.rate < 80) {
                         out.add(new String[]{h.name + s("本周日均达成只有 ", " daily average this week is only ") + w.rate + "%",
@@ -382,6 +391,25 @@ public final class ZhixingPage {
 
     // ---------------- 下周目标行 ----------------
     private View goalRow(final HabitData.Habit h, final String nextMonday) {
+        if (HabitData.TYPE_REMIND.equals(h.type)) {
+            // 每日提醒没有周目标：只列名与说明，不出步进器（写 weekTargets 对它没有意义）
+            LinearLayout rrow = new LinearLayout(act);
+            rrow.setOrientation(LinearLayout.HORIZONTAL);
+            rrow.setGravity(Gravity.CENTER_VERTICAL);
+            rrow.setPadding(0, dp(8), 0, dp(8));
+            LinearLayout rtexts = new LinearLayout(act);
+            rtexts.setOrientation(LinearLayout.VERTICAL);
+            rtexts.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            TextView rname = new TextView(act);
+            rname.setText(h.name);
+            rname.setTextSize(14);
+            rname.setTypeface(rname.getTypeface(), Typeface.BOLD);
+            rname.setTextColor(Ui.text(act));
+            rtexts.addView(rname);
+            rtexts.addView(small(s("每日提醒 · 每天读一遍，不设周目标", "Daily reminder · read it every day, no weekly target"), 11));
+            rrow.addView(rtexts);
+            return rrow;
+        }
         LinearLayout row = new LinearLayout(act);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -522,6 +550,7 @@ public final class ZhixingPage {
                 case HabitData.TYPE_MIN: return s("至少型", "At-least");
                 case HabitData.TYPE_MAX: return s("至多型", "At-most");
                 case HabitData.TYPE_NUM: return s("数值型", "Number");
+                case HabitData.TYPE_REMIND: return s("每日提醒", "Daily reminder");
                 default: return s("累积型", "Accumulating");
             }
         }

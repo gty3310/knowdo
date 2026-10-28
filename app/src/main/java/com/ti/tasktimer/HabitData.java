@@ -22,15 +22,16 @@ import java.util.TreeMap;
  * 结构（云端与本地同一份 JSON）：
  * {
  *   "v": 1,
- *   "habits": [ {id, name, type: min|max|num|sum,
+ *   "habits": [ {id, name, type: min|max|num|sum|remind,
  *                target: 至少型=天/周 · 至多型=次/周 · 数值型=值/天 · 累积型=增量/周(0=未设),
+ *                remindText: 每日提醒型的提醒文本（必填，其余类型不用）,
  *                unit: 数值型/累积型的单位（如 步/件）,
  *                startDate: 累积型起始日 yyyy-MM-dd,
  *                totalGoal: 累积型总量目标（0=未设）,
  *                startValue: 累积型起始数字（建习惯前已攒下的量，0=无）,
  *                reminder: "HH:mm" 或 null,
  *                createdAtMs} ],
- *   "logs":  { "yyyy-MM-dd": { habitId: 数值 } },   // 至少/至多型：1=是 0=否（记了才有键）
+ *   "logs":  { "yyyy-MM-dd": { habitId: 数值 } },   // 至少/至多/提醒型：1=是(读过) 0=否（记了才有键）
  *   "diary": { "yyyy-MM-dd": "晨间日记文本" },        // 键是写日记那天（新一天的 session 日）
  *   "morning": { "enabled": bool, "dayStartMinutes": int(默认 240=4:00) },
  *   "weekTargets": { "yyyy-MM-dd(该周周一)": { habitId: target 覆盖值 } },
@@ -54,6 +55,7 @@ public final class HabitData {
     public static final String TYPE_MAX = "max"; // 至多型
     public static final String TYPE_NUM = "num"; // 数值型
     public static final String TYPE_SUM = "sum"; // 累积型
+    public static final String TYPE_REMIND = "remind"; // 每日提醒型（v1.28.0）
 
     private HabitData() {}
 
@@ -67,6 +69,7 @@ public final class HabitData {
         public String startDate = "";  // 累积型
         public long totalGoal = 0;     // 累积型（0=未设）
         public long startValue = 0;    // 累积型起始数字（0=无）
+        public String remindText = ""; // 每日提醒型的提醒文本（必填）
         public String reminder;        // "HH:mm"，null=不提醒
         public long createdAtMs = 0;
 
@@ -81,6 +84,7 @@ public final class HabitData {
                 o.put("startDate", startDate == null ? "" : startDate);
                 o.put("totalGoal", totalGoal);
                 o.put("startValue", startValue);
+                o.put("remindText", remindText == null ? "" : remindText);
                 o.put("reminder", reminder == null ? JSONObject.NULL : reminder);
                 o.put("createdAtMs", createdAtMs);
                 return o;
@@ -97,12 +101,14 @@ public final class HabitData {
             h.name = o.optString("name", "");
             h.type = o.optString("type", TYPE_MIN);
             if (!TYPE_MIN.equals(h.type) && !TYPE_MAX.equals(h.type)
-                    && !TYPE_NUM.equals(h.type) && !TYPE_SUM.equals(h.type)) h.type = TYPE_MIN;
+                    && !TYPE_NUM.equals(h.type) && !TYPE_SUM.equals(h.type)
+                    && !TYPE_REMIND.equals(h.type)) h.type = TYPE_MIN;
             h.target = o.optLong("target", 0);
             h.unit = o.optString("unit", "");
             h.startDate = o.optString("startDate", "");
             h.totalGoal = o.optLong("totalGoal", 0);
             h.startValue = o.optLong("startValue", 0);
+            h.remindText = o.optString("remindText", "");
             h.reminder = o.isNull("reminder") ? null : o.optString("reminder", null);
             if (h.reminder != null && h.reminder.isEmpty()) h.reminder = null;
             h.createdAtMs = o.optLong("createdAtMs", 0);
