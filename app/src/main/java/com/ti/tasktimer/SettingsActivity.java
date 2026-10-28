@@ -414,6 +414,35 @@ public class SettingsActivity extends Activity {
                     .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
                     .show();
         });
+        row(Strings.en() ? "Habit display window" : "习惯显示口径",
+                Strings.en() ? "Which window the counts on habit cards use. Your pick, synced via cloud"
+                        : "习惯页卡片上的次数按哪个时段来数。你的个人设置，存云端同步",
+                arrowBtn(HabitDisplay.label(HabitDisplay.scope(this)) + " ›"),
+                v -> pickHabitDisplay());
+    }
+
+
+    /** 习惯显示口径四选一（v1.28.0）：写本地＋回写云端在 HabitDisplay.setScope 里。 */
+    private void pickHabitDisplay() {
+        final String[] vals = {HabitDisplay.SCOPE_TODAY, HabitDisplay.SCOPE_WEEK,
+                HabitDisplay.SCOPE_LAST_WEEK, HabitDisplay.SCOPE_MONTH};
+        String[] items = new String[vals.length];
+        int cur = 1;
+        for (int i = 0; i < vals.length; i++) {
+            items[i] = HabitDisplay.label(vals[i]);
+            if (vals[i].equals(HabitDisplay.scope(this))) cur = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.en() ? "Habit display window" : "习惯显示口径")
+                .setSingleChoiceItems(items, cur, (d, which) -> {
+                    HabitDisplay.setScope(this, vals[which]);
+                    d.dismiss();
+                    toast(Strings.en() ? "Habit cards now count: " + items[which]
+                            : "习惯卡片改按「" + items[which] + "」口径显示");
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
     }
 
     // ---------------- 守卫组 ----------------

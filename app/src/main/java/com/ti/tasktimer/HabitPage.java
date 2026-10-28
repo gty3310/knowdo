@@ -36,6 +36,7 @@ public final class HabitPage {
     private final ViewGroup container;
 
     private JSONObject root;
+    private String dispScope = HabitDisplay.SCOPE_WEEK; // 习惯显示口径（总设置，refresh 时现读）
     // ---- 添加表单状态（整页重画时保留） ----
     private boolean formOpen;
     private int formStep = 1;
@@ -80,6 +81,7 @@ public final class HabitPage {
     public void refresh() {
         captureForm();
         root = HabitData.load(act);
+        dispScope = HabitDisplay.scope(act);
         container.removeAllViews();
         ScrollView scroll = new ScrollView(act);
         scroll.setBackgroundColor(Ui.bg(act));
@@ -282,27 +284,56 @@ public final class HabitPage {
                         w.rate, w.rate + "%", Ui.accent(act), false));
             }
         } else {
+            // 主行按总设置「习惯显示口径」走（v1.28.0，HabitDisplay）：口径=本周时文案与
+            // 从前逐字一致（habitPeriod 本周直接复用 habitWeek）；今天/本月为展示区间，
+            // 率的定义见 ZhixingCalc.habitPeriod，不参与知行指数
+            ZhixingCalc.HabitPeriod p = ZhixingCalc.habitPeriod(root, h, dispScope);
+            String win = HabitDisplay.label(dispScope);
             String left;
             boolean over = false;
             int barColor;
             if (HabitData.TYPE_MIN.equals(h.type)) {
-                left = s("本周 ", "This week ") + w.primary + s(" 天 / 目标 ≥", " days / ≥") + w.target + s(" 天", "");
+                if (HabitDisplay.SCOPE_TODAY.equals(dispScope)) {
+                    left = win + (p.recorded
+                            ? (p.primary > 0 ? s(" 做了", " done") : s(" 没做", " not done"))
+                            : s(" 还没记", " not logged yet"));
+                } else if (p.hasTarget) {
+                    left = win + " " + p.primary + s(" 天 / 目标 ≥", " days / ≥") + p.target + s(" 天", "");
+                } else {
+                    left = win + " " + p.primary + s(" 天", " days");
+                }
                 barColor = Ui.green(act);
             } else if (HabitData.TYPE_MAX.equals(h.type)) {
-                left = s("本周 ", "This week ") + w.primary + s(" 次 / 目标 ≤", " times / ≤") + w.target + s(" 次", "");
-                over = w.primary > w.target;
+                if (HabitDisplay.SCOPE_TODAY.equals(dispScope)) {
+                    left = win + (p.recorded
+                            ? (p.primary > 0 ? s(" 发生了", " happened") : s(" 没发生", " didn't happen"))
+                            : s(" 还没记", " not logged yet"));
+                } else if (p.hasTarget) {
+                    left = win + " " + p.primary + s(" 次 / 目标 ≤", " times / ≤") + p.target + s(" 次", "");
+                    over = p.primary > p.target;
+                } else {
+                    left = win + " " + p.primary + s(" 次", " times");
+                }
                 barColor = over ? Ui.danger(act) : Ui.green(act);
-            } else {
-                left = s("昨日 ", "Yesterday ") + fmtNum(w.primary) + " " + h.unit
-                        + s(" · 本周日均达成 ", " · weekly daily avg ") + w.rate + "%";
+            } else { // num：本周口径保留原「昨日值 · 本周日均达成」文案，其余口径用区间日均
+                if (HabitDisplay.SCOPE_WEEK.equals(dispScope)) {
+                    left = s("昨日 ", "Yesterday ") + fmtNum(w.primary) + " " + h.unit
+                            + s(" · 本周日均达成 ", " · weekly daily avg ") + w.rate + "%";
+                } else if (HabitDisplay.SCOPE_TODAY.equals(dispScope)) {
+                    left = win + (p.recorded ? " " + fmtNum(p.primary) + " " + h.unit
+                            : s(" 还没记", " not logged yet"));
+                } else {
+                    left = win + s("日均 ", " avg ") + fmtNum(p.primary) + " " + h.unit
+                            + s(" · 日均达成 ", " · daily avg ") + p.rate + "%";
+                }
                 barColor = Ui.accent(act);
             }
-            String right2 = w.rate + "%";
-            if (HabitData.TYPE_MIN.equals(h.type) && w.primary < w.target) {
-                right2 += s(" · 差 ", " · ") + (w.target - w.primary) + s(" 天", " to go");
+            String right2 = p.rate + "%";
+            if (HabitData.TYPE_MIN.equals(h.type) && p.hasTarget && p.primary < p.target) {
+                right2 += s(" · 差 ", " · ") + (p.target - p.primary) + s(" 天", " to go");
             }
-            if (over) right2 += s(" · 超标 ", " · over by ") + (w.primary - w.target) + s(" 次", "");
-            card.addView(weekLine(left, w.rate, right2, barColor, over));
+            if (over) right2 += s(" · 超标 ", " · over by ") + (p.primary - p.target) + s(" 次", "");
+            card.addView(weekLine(left, p.rate, right2, barColor, over));
         }
 
         // 年格

@@ -236,6 +236,7 @@ public final class SbSync {
         boolean hasAppLists = probeUserStateCol(c, "app_lists"); // v1.26.0：任务软件名单，列未就绪只用本地、绝不碰此键
         boolean hasRepop = probeUserStateCol(c, "prompt_repop"); // v1.26.3：提示页重弹间隔，列未就绪只用本地、绝不碰此键
         boolean hasUpd = probeUserStateCol(c, "update_prefs"); // v1.27.0：更新下载网络，列未就绪只用本地、绝不碰此键
+        boolean hasDisp = probeUserStateCol(c, "habit_display"); // v1.28.0：习惯显示口径（总设置），列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -324,6 +325,16 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasDisp) {
+                // 习惯显示口径合并（v1.28.0，与 update_prefs 同口径，只动 habit_display 一个键）
+                JSONObject remoteDisp = urow.isNull("habit_display") ? null : urow.optJSONObject("habit_display");
+                if (!HabitDisplay.hasLocal(c) && remoteDisp != null) {
+                    HabitDisplay.adoptCloud(c, remoteDisp);
+                } else if (HabitDisplay.hasLocal(c) && !HabitDisplay.cloudEquals(c, remoteDisp)) {
+                    write.put("habit_display", HabitDisplay.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (hasHabit) {
                 // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
@@ -394,6 +405,10 @@ public final class SbSync {
                 write.put("update_prefs", UpdatePrefs.toCloudJson(c));
                 needWrite = true;
             }
+            if (hasDisp && HabitDisplay.hasLocal(c)) {
+                write.put("habit_display", HabitDisplay.toCloudJson(c));
+                needWrite = true;
+            }
             if (hasHabit && HabitData.hasLocal(c)) {
                 write.put("habit_data", HabitData.load(c));
                 needWrite = true;
@@ -462,6 +477,12 @@ public final class SbSync {
             if (!row.isNull("update_prefs") && !UpdatePrefs.hasLocal(c)) {
                 JSONObject ru = row.optJSONObject("update_prefs");
                 if (ru != null) UpdatePrefs.adoptCloud(c, ru);
+            }
+            // 习惯显示口径（v1.28.0）：本机从未存过时才采用云端推来的值（与 update_prefs 同口径），不在这里回写；
+            // 习惯页每次 refresh 现读本值，采用后下次进习惯页即按新口径显示
+            if (!row.isNull("habit_display") && !HabitDisplay.hasLocal(c)) {
+                JSONObject rd = row.optJSONObject("habit_display");
+                if (rd != null) HabitDisplay.adoptCloud(c, rd);
             }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
             if (!row.isNull("habit_data")) {

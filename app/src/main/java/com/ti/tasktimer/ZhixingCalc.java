@@ -111,6 +111,99 @@ public final class ZhixingCalc {
         return w;
     }
 
+    // ---------------- 单个习惯：显示口径区间（习惯页卡片主行，v1.28.0） ----------------
+    /**
+     * 习惯页卡片主行的「显示口径」区间统计（总设置 HabitDisplay：今天/本周/上周/本月）。
+     * 只服务卡片展示，不参与知行指数（指数仍走 habitWeek 的周口径，本类既有方法不改）。
+     * 本周/上周直接复用 habitWeek（语义与指数完全一致）；今天按单日口径（与 habitDayRate
+     * 同义，没记录时 rate=0 仅供卡片进度条）；本月＝本月 1 日至今天：
+     *   min 做到天数，rate＝做到天数÷已过天数；max 发生天数，rate＝没发生天数占比；
+     *   num 区间日均（有记录天数平均），rate＝逐日封顶比例对已过天数取平均（同周口径）。
+     * 累积型不走这里（卡片显示累计总数，不受显示口径影响）。
+     */
+    public static final class HabitPeriod {
+        public long primary;      // min=做到天数 / max=发生天数 / num=今日值·昨日值(本周)·区间日均
+        public int rate;          // 0..100，卡片进度条用
+        public long target;       // 区间生效目标（周窗口=该周目标）
+        public boolean recorded;  // 今天窗口：今天有没有记
+        public boolean hasTarget; // 左文案是否带目标对比（仅周窗口为 true）
+    }
+
+    public static HabitPeriod habitPeriod(JSONObject root, HabitData.Habit h, String scope) {
+        HabitPeriod p = new HabitPeriod();
+        String today = DayUtil.today();
+        if (HabitDisplay.SCOPE_TODAY.equals(scope)) {
+            Long v = HabitData.logValue(root, today, h.id);
+            p.recorded = v != null;
+            Integer dr = habitDayRate(root, h, today);
+            p.rate = dr == null ? 0 : dr;
+            p.target = HabitData.effectiveTarget(root, h, DayUtil.mondayOf(today));
+            if (HabitData.TYPE_NUM.equals(h.type)) p.primary = v == null ? 0 : v;
+            else p.primary = (v != null && v > 0) ? 1 : 0; // min/max 今天只记「发生与否」
+            return p;
+        }
+        if (HabitDisplay.SCOPE_MONTH.equals(scope)) {
+            String d = today.substring(0, 7) + "-01";
+            int elapsed = 0;
+            if (HabitData.TYPE_MIN.equals(h.type)) {
+                int done = 0;
+                while (d.compareTo(today) <= 0) {
+                    Long v = HabitData.logValue(root, d, h.id);
+                    if (v != null && v > 0) done++;
+                    elapsed++;
+                    d = DayUtil.addDays(d, 1);
+                }
+                p.primary = done;
+                p.rate = elapsed == 0 ? 0 : (int) Math.round(done * 100.0 / elapsed);
+            } else if (HabitData.TYPE_MAX.equals(h.type)) {
+                int happened = 0;
+                while (d.compareTo(today) <= 0) {
+                    Long v = HabitData.logValue(root, d, h.id);
+                    if (v != null && v > 0) happened++;
+                    elapsed++;
+                    d = DayUtil.addDays(d, 1);
+                }
+                p.primary = happened;
+                p.rate = elapsed == 0 ? 0 : (int) Math.round((elapsed - happened) * 100.0 / elapsed);
+            } else { // num
+                long sum = 0;
+                int cnt = 0;
+                double ratioSum = 0;
+                while (d.compareTo(today) <= 0) {
+                    Long v = HabitData.logValue(root, d, h.id);
+                    long t = HabitData.effectiveTarget(root, h, DayUtil.mondayOf(d));
+                    ratioSum += (v == null || t <= 0) ? 0 : Math.min(1.0, v * 1.0 / t);
+                    elapsed++;
+                    if (v != null) { sum += v; cnt++; }
+                    d = DayUtil.addDays(d, 1);
+                }
+                p.primary = cnt == 0 ? 0 : Math.round(sum * 1.0 / cnt);
+                p.rate = elapsed == 0 ? 0 : (int) Math.round(ratioSum * 100.0 / elapsed);
+            }
+            return p;
+        }
+        // 本周 / 上周：与指数同一套 habitWeek
+        String monday = DayUtil.mondayOf(today);
+        if (HabitDisplay.SCOPE_LAST_WEEK.equals(scope)) monday = DayUtil.addDays(monday, -7);
+        HabitWeek w = habitWeek(root, h, monday);
+        p.primary = w.primary;
+        p.rate = w.rate;
+        p.target = w.target;
+        p.hasTarget = true;
+        p.recorded = true;
+        if (HabitData.TYPE_NUM.equals(h.type) && HabitDisplay.SCOPE_LAST_WEEK.equals(scope)) {
+            // num 在 habitWeek 里的 primary 是昨日值，上周口径要的是上周日均，单独算
+            long sum = 0;
+            int cnt = 0;
+            for (String d : DayUtil.weekDates(monday)) {
+                Long v = HabitData.logValue(root, d, h.id);
+                if (v != null) { sum += v; cnt++; }
+            }
+            p.primary = cnt == 0 ? 0 : Math.round(sum * 1.0 / cnt);
+        }
+        return p;
+    }
+
     // ---------------- 单个习惯：单日（晨间小报） ----------------
     /** 返回 null 表示当天没记录、不计入平均（仅累积型没记录按 0 返回）。 */
     public static Integer habitDayRate(JSONObject root, HabitData.Habit h, String date) {
