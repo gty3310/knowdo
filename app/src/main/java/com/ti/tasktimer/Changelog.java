@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1290 = new Entry("v1.29.0", "2026-10-28");
+        e1290.add(new Group(s("新增", "New"),
+                s("设置里多了「习惯显示口径」：一个设置管全部习惯卡的主行数字——按今天、本周、上周或本月显示，不用再一个个习惯去切。默认本周，和你现在看到的一样；累积型习惯的累计总数不受这个设置影响，知行指数的算法也没有动",
+                  "Settings gains a \u201cHabit display window\u201d: one setting governs the main count on every habit card — reckoned by today, this week, last week or this month — instead of switching each habit one by one. The default is this week, just what you see now. Cumulative totals are not affected by it, and the Zhixing index math is untouched")));
+        e1290.why = s("你定的：显示口径要一个总设置管全部，省得每个习惯单独设、还容易设得各不一样",
+                "Your call: one global setting for the display window, instead of a per-habit switch that is fiddly and easy to leave inconsistent");
+        e1290.tryIt = s("打开设置 → 习惯显示口径，切到「本月」，回习惯页看卡片主行的数字是不是按本月算了；再切回「本周」",
+                "Open Settings \u2192 Habit display window, switch to \u201cThis month\u201d, go back to the Habits tab and see the cards' main counts reckoned by the month; then switch back to \u201cThis week\u201d");
+        out.add(e1290);
+
         Entry e1280 = new Entry("v1.28.0", "2026-10-28");
         e1280.add(new Group(s("新增", "New"),
                 s("累积型习惯可以填「起始数字」了：编辑一个累积型习惯（比如「做善事」），填上起始数字，卡片上的累计总数、总量目标的进度和「还差多少」，都从这个数开始往上加；新建累积型习惯时也能直接填。不填就是 0，和以前一样",
