@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1320 = new Entry("v1.32.0", "2026-10-28");
+        e1320.add(new Group(s("新增", "New"),
+                s("知行页的指数圆环可以点了：点开是指数详情页，能看一周、一月、一年的指数和三项构成（习惯、任务、分神）的变化——大数字、构成表和趋势都在一页。详情页的数字全部由习惯记录、任务记录和守卫事件这些原始记录当场回算；某个时段没有记录就写「数据不足」，不拿别的值填",
+                  "The index ring on the KnowDo tab is tappable now: it opens an index detail page showing the index and its three components (habits, tasks, distraction) over the past week, month and year \u2014 the big number, the breakdown table and the trend on one page. Every figure is recomputed on the spot from the raw records (habit logs, task records, guard events); a stretch with no records reads \u201cnot enough data\u201d instead of being filled in")));
+        e1320.why = s("只看今天的指数看不出自己是在变好还是变差，拉长到一周、一月、一年才看得清",
+                "Today's index alone cannot tell you whether you are getting better or worse. Stretch the window to a week, a month, a year, and the direction becomes visible");
+        e1320.tryIt = s("打开知行页，点指数圆环进详情页，切换一周／一月／一年，看表格和趋势怎么变",
+                "Open the KnowDo tab, tap the index ring to enter the detail page, and switch between week, month and year to watch the table and the trend change");
+        out.add(e1320);
+
         Entry e1310 = new Entry("v1.31.0", "2026-10-28");
         e1310.add(new Group(s("新增", "New"),
                 s("新习惯类型「每日提醒」：新建习惯时选它，写一段提醒自己的话，长短不限。每天早上，晨间门里会完整显示这段话，读完点「读过了」就算当天完成；在晨间门的昨日必答里，昨天的这段话也会连全文一起问你读过没有。习惯页的卡片显示全文，精简模式只露一行。它和其它习惯一样计入习惯达成率",
