@@ -323,7 +323,7 @@ public class KnowDoAccessibilityService extends AccessibilityService {
             if (fg == null) fg = foregroundPackage();
             String nodeText = collectVisibleText();
             ContentAnalyzer.Result r = analyzer.analyze(this, bmp, task, fg, nodeText);
-            VerdictEngine.onResult(this, r, task);
+            VerdictEngine.onResult(this, r, task, bmp); // bmp 仍归本方法：分析后在 finally 里照旧 recycle
         } finally {
             bmp.recycle(); // 原图只活在内存里，分析完立刻销毁，从不落盘
         }

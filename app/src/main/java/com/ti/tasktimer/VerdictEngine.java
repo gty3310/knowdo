@@ -2,6 +2,7 @@ package com.ti.tasktimer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -57,7 +58,7 @@ public final class VerdictEngine {
         return prefs(c).getBoolean("inquiry_semantic_degraded", false);
     }
 
-    public static void onResult(Context c, ContentAnalyzer.Result r, TaskItem task) {
+    public static void onResult(Context c, ContentAnalyzer.Result r, TaskItem task, Bitmap frame) {
         SharedPreferences p = prefs(c);
         if (r == null || r.category == null) {
             p.edit().remove("last_cat").remove("streak").apply();
@@ -92,14 +93,22 @@ public final class VerdictEngine {
                 return;
             }
         }
-        trigger(c, r, task, now);
+        trigger(c, r, task, now, frame);
     }
 
-    private static void trigger(Context c, ContentAnalyzer.Result r, TaskItem task, long now) {
+    private static void trigger(Context c, ContentAnalyzer.Result r, TaskItem task, long now, Bitmap frame) {
         // 记下触发这一问询时的前台包名：用户若选宽限，宽限状态连它一起存，
         // 到点复查「是不是还停在当时那个分神应用」就靠它比对
         String fg = currentForeground(c);
         GuardEvents.add(c, task, r.category, r.confidence, r.detail);
+        // 黄图问责邮件的唯一挂点（v1.28.0 feature 7）：只有走到这里才算「终判」
+        // ——连续命中确认或黄色一张即触发，问询确实要弹。仅黄色类、且问责开关
+        // 打开时，AccountabilityMailer 才会把这一帧当场在内存里打码发送；
+        // 开关判断在它内部第一行，关着时不碰截图。宽限到期处理 applyEnforcement
+        // 不是新判定，不在这里；测试模式不走 VerdictEngine，天然不触发。
+        if (ContentAnalyzer.CAT_NSFW.equals(r.category)) {
+            AccountabilityMailer.onNsfwConfirmed(c, frame, task);
+        }
         SharedPreferences.Editor e = prefs(c).edit().remove("last_cat").remove("streak")
                 .putLong("cooldown_until", now + cooldownMs(c))
                 // 本次问询是否「语义判定触发且当时在降级」（v1.21.4）：只供

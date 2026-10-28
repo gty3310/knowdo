@@ -15,6 +15,8 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
+
 /**
  * 设置页（v1.8.0 新设）：按「账号／显示／守卫／通用」四组承接原主页顶栏、权限页的全部设置与入口。
  * 红线：只是搬位置——开关都写回各自原有的存储（SyncManager / ScreenGuardPrefs / FloatingWindow /
@@ -546,8 +548,115 @@ public class SettingsActivity extends Activity {
         });
         row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
         buildIdleNagRows();
+        buildAccountabilityRows();
         row(Strings.rowPerms(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, PermActivity.class)));
+    }
+
+    // ---------------- 黄图问责邮件（v1.28.0 feature 7） ----------------
+    // 守卫「截图从不上传」红线的唯一例外：终判黄图且开关开时，只把端侧打码图
+    // 发给用户自设的问责邮箱（发送链 AccountabilityMailer，服务端防滥发）。
+
+    private void buildAccountabilityRows() {
+        boolean en = Strings.en();
+        Accountability.ensureAuthorPrefill(this);
+        groupTitle(en ? "NSFW accountability mail" : "黄图问责邮件");
+        // 醒目说明（用户亲定原文，一字不改）：朱砂红粗体整行放，谁打开都先看见
+        TextView notice = new TextView(this);
+        notice.setText(Accountability.NOTICE);
+        notice.setTextSize(13);
+        notice.setTextColor(Ui.accent(this));
+        notice.setTypeface(notice.getTypeface(), Typeface.BOLD);
+        notice.setPadding(0, dp(2), 0, dp(6));
+        root.addView(notice);
+        Switch am = mkSwitch(Accountability.enabled(this));
+        am.setOnCheckedChangeListener((b, on) -> {
+            Accountability.setEnabled(this, on);
+            toast(on ? (en ? "Accountability mail on: final NSFW verdicts send a blurred screenshot to your contacts"
+                            : "黄图问责邮件已打开：守卫终判黄图时会把打码截图发给问责邮箱")
+                    : (en ? "Accountability mail off" : "黄图问责邮件已关闭"));
+            buildUi();
+        });
+        row(en ? "Accountability mail" : "黄图问责邮件",
+                en ? "When the screen guard's final verdict is sexual content, the screenshot — "
+                        + "blurred and downscaled on the phone, never the original — goes to your "
+                        + "accountability contacts. At most one mail per 10 minutes, five a day"
+                        : "屏幕内容守卫终判为黄色内容时，把当场在手机上打码（重度模糊＋降分辨率）的截图"
+                        + "发到问责邮箱；原图从不保存、从不上传。同类事件 10 分钟内只发一封、每天最多 5 封",
+                am, null);
+        final List<String> recips = Accountability.recipients(this);
+        StringBuilder recipText = new StringBuilder();
+        for (String r : recips) {
+            if (recipText.length() > 0) recipText.append("、");
+            recipText.append(r);
+        }
+        row(en ? "Accountability contacts" : "问责邮箱",
+                recips.isEmpty() ? (en ? "Not set yet" : "还没填") : recipText.toString(),
+                arrowBtn("›"), v -> editRecipients());
+        row(en ? "Mail subject" : "邮件标题", Accountability.subject(this),
+                arrowBtn("›"), v -> editMailSubject());
+        row(en ? "Mail body" : "邮件正文",
+                en ? "{time} and {task} in the text are replaced when sending"
+                        : "正文里的 {时间}、{任务} 会在发送时换成实际时间和任务名",
+                arrowBtn("›"), v -> editMailBody());
+    }
+
+    private void editRecipients() {
+        final EditText input = new EditText(this);
+        input.setText(Accountability.recipientsText(this));
+        input.setHint(Strings.en() ? "One email per line" : "一行一个邮箱");
+        input.setMinLines(3);
+        input.setGravity(Gravity.TOP);
+        input.setTextSize(16);
+        input.setTextColor(Ui.text(this));
+        input.setHintTextColor(Ui.sub(this));
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.en() ? "Accountability contacts" : "问责邮箱")
+                .setView(input)
+                .setPositiveButton(Strings.en() ? "Save" : "保存", (d, w) -> {
+                    Accountability.setRecipients(this, input.getText().toString());
+                    toast(Strings.en() ? "Saved" : "已保存");
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    private void editMailSubject() {
+        final EditText input = new EditText(this);
+        input.setText(Accountability.subject(this));
+        input.setSingleLine(true);
+        input.setTextSize(16);
+        input.setTextColor(Ui.text(this));
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.en() ? "Mail subject" : "邮件标题")
+                .setView(input)
+                .setPositiveButton(Strings.en() ? "Save" : "保存", (d, w) -> {
+                    Accountability.setSubject(this, input.getText().toString());
+                    toast(Strings.en() ? "Saved" : "已保存");
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    private void editMailBody() {
+        final EditText input = new EditText(this);
+        input.setText(Accountability.body(this));
+        input.setMinLines(5);
+        input.setGravity(Gravity.TOP);
+        input.setTextSize(16);
+        input.setTextColor(Ui.text(this));
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.en() ? "Mail body" : "邮件正文")
+                .setView(input)
+                .setPositiveButton(Strings.en() ? "Save" : "保存", (d, w) -> {
+                    Accountability.setBody(this, input.getText().toString());
+                    toast(Strings.en() ? "Saved" : "已保存");
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
     }
 
     // ---------------- 空档催促（v1.14.0）：个人设置，存本地＋云端 user_state.idle_nag 同步 ----------------

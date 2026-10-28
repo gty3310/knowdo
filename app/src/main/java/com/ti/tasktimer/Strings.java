@@ -425,10 +425,14 @@ public final class Strings {
          + "防误判：同一类连续命中 2 张才弹问询页（黄色类可在设置里改成 1 张即触发）；"
          + "问询页和专注守卫是同一页：立即回到任务 / 30 秒 / 60 秒（宽限到期再命中同类会直接跳回）/ 误判放行（本次计时内不再判这一类）。"
          + "每次判定都会进记录，并以事件形式同步到云端（只有时间、类别、置信度、一句证据文字）。\n"
-         + "隐私红线：截图只在内存里分析、分析完立刻销毁——不保存、不上传、不发给任何人。\n"
+         + "隐私红线：截图只在内存里分析、分析完立刻销毁——不保存、不上传、不发给任何人（唯一例外是下面这段的黄图问责邮件，也只发打码图）。\n"
          + "已知盲区：银行类应用、部分付费视频、浏览器无痕模式的界面受系统保护，截出来是纯黑图，"
          + "只能记一次“不可见”、判不了；游泳、健身等画面小模型可能误报；"
-         + "“跟 AI 聊的是不是正题”是最难判的，本版只靠关键词，判不了就放过，不硬判。"},
+         + "“跟 AI 聊的是不是正题”是最难判的，本版只靠关键词，判不了就放过，不硬判。\n"
+         + "黄图问责邮件（默认关，在设置页「守卫」组里开）：这是上面隐私红线的唯一例外。打开后，守卫终判为黄色内容时，"
+         + "会把那一张截图当场在手机内存里重度模糊＋降分辨率打码，只把打码图发到你自己填的问责邮箱，让对方督促你；"
+         + "原图照旧立刻销毁、从不保存、从不上传。同类事件 10 分钟内只发一封、每天最多 5 封，超限就不发但会记下来。"
+         + "现在是测试版，这些邮件借用作者郭天宇的邮箱通道发送，发送内容作者可以看得见。"},
         {"八、权限页的项目都是干什么的",
          "• 通知权限：常驻倒计时与提醒的基础；\n"
          + "• 全屏通知（熄屏弹出）：把检查页顶到锁屏上靠它；\n"
@@ -745,9 +749,10 @@ public final class Strings {
          + "False-positive care: two consecutive hits of the same category raise the question page (adult content can be set to trigger on the first in Settings). "
          + "The question page is the same as the focus guard's: back now / 30 s / 60 s (a repeat hit after grace jumps straight back) / false alarm (that category is not judged again this run). "
          + "Every verdict goes to the log and syncs to the cloud as an event (time, category, confidence, one line of evidence text only).\n"
-         + "Privacy red line: screenshots are analyzed in memory and destroyed immediately — never saved, never uploaded, never sent to anyone.\n"
+         + "Privacy red line: screenshots are analyzed in memory and destroyed immediately — never saved, never uploaded, never sent to anyone (the only exception is the accountability mail below, and it sends a blurred image only).\n"
          + "Known blind spots: banking apps, some paid video, and browser incognito are system-protected and come out pure black — logged once as \"not visible\", never judged; "
-         + "swimming/fitness imagery may false-positive the small model; \"is this AI chat on-topic\" is the hardest call — this version uses keywords only and lets uncertain cases pass."},
+         + "swimming/fitness imagery may false-positive the small model; \"is this AI chat on-topic\" is the hardest call — this version uses keywords only and lets uncertain cases pass.\n"
+         + "Accountability mail (default off; turn it on under Settings → Guards) is the single exception to the red line above: when the guard's final verdict is sexual content, that screenshot is heavily blurred and downscaled in memory on the phone, and only the blurred image is emailed to accountability contacts you set yourself. The original is destroyed as always — never saved, never uploaded. Repeated events merge into one mail per 10 minutes, at most five a day; anything beyond that is logged, not sent. This is a test build: these mails go out through the author's (Ti Guo's) mail channel, and the author can see what is sent."},
         {"8. What the Permissions page items are for",
          "• Notifications: the basis of the persistent countdown and reminders;\n"
          + "• Full-screen notifications (pop over the lock screen): what puts the check page on a locked screen;\n"

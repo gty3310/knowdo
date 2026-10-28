@@ -237,6 +237,7 @@ public final class SbSync {
         boolean hasRepop = probeUserStateCol(c, "prompt_repop"); // v1.26.3：提示页重弹间隔，列未就绪只用本地、绝不碰此键
         boolean hasUpd = probeUserStateCol(c, "update_prefs"); // v1.27.0：更新下载网络，列未就绪只用本地、绝不碰此键
         boolean hasDisp = probeUserStateCol(c, "habit_display"); // v1.28.0：习惯显示口径（总设置），列未就绪只用本地、绝不碰此键
+        boolean hasAcc = probeUserStateCol(c, "accountability"); // v1.28.0：黄图问责邮件设置，列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -335,6 +336,16 @@ public final class SbSync {
                     needWrite = true;
                 }
             }
+            if (hasAcc) {
+                // 黄图问责设置合并（v1.28.0，与 habit_display 同口径，只动 accountability 一个键）
+                JSONObject remoteAcc = urow.isNull("accountability") ? null : urow.optJSONObject("accountability");
+                if (!Accountability.hasLocal(c) && remoteAcc != null) {
+                    Accountability.adoptCloud(c, remoteAcc);
+                } else if (Accountability.hasLocal(c) && !Accountability.cloudEquals(c, remoteAcc)) {
+                    write.put("accountability", Accountability.toCloudJson(c));
+                    needWrite = true;
+                }
+            }
             if (hasHabit) {
                 // 习惯数据合并（v1.16.0，与 idle_nag 同一套探测纪律，只动 habit_data 一个键）：
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
@@ -407,6 +418,10 @@ public final class SbSync {
             }
             if (hasDisp && HabitDisplay.hasLocal(c)) {
                 write.put("habit_display", HabitDisplay.toCloudJson(c));
+                needWrite = true;
+            }
+            if (hasAcc && Accountability.hasLocal(c)) {
+                write.put("accountability", Accountability.toCloudJson(c));
                 needWrite = true;
             }
             if (hasHabit && HabitData.hasLocal(c)) {
@@ -483,6 +498,11 @@ public final class SbSync {
             if (!row.isNull("habit_display") && !HabitDisplay.hasLocal(c)) {
                 JSONObject rd = row.optJSONObject("habit_display");
                 if (rd != null) HabitDisplay.adoptCloud(c, rd);
+            }
+            // 黄图问责设置（v1.28.0）：本机从未存过时才采用云端推来的值（与 habit_display 同口径），不在这里回写
+            if (!row.isNull("accountability") && !Accountability.hasLocal(c)) {
+                JSONObject ra = row.optJSONObject("accountability");
+                if (ra != null) Accountability.adoptCloud(c, ra);
             }
             // 习惯数据（v1.16.0）：推来时合并进本地（本机优先的并集，记录不丢），不在这里回写
             if (!row.isNull("habit_data")) {
