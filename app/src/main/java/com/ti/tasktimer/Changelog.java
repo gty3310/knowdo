@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1350 = new Entry("v1.35.0", "2026-10-29");
+        e1350.add(new Group(s("新增", "New"),
+                s("新建/编辑任务页底部变成三个按钮——取消（左）／立刻开始（中）／保存（右）。「立刻开始」＝先按和保存完全一样的规则存好（名字为空照样拦），然后当场开始给这个任务计时：在主页新建、主页编辑、日历里新建、日历里改任务，四个入口都一样；如果这个任务正在计时，不会重启它；正暂停着，就接着剩下的时间继续；是别的任务在计时，就直接切换过来",
+                  "The bottom of the create/edit task sheet is now three buttons: Cancel (left) / Start now (centre) / Save (right). Start now first saves under exactly the same rules as Save (an empty name is still blocked), then immediately starts timing that task. It works the same from all four entry points: create or edit on the home page, create or edit in the calendar. If that task is already timing, it is not restarted; if it is paused, it resumes with its remaining time; if another task is timing, it switches straight over")));
+        e1350.why = s("想做一件事的时候就该立刻开始——先保存、再回列表找任务、再点开始，中间这几步最容易拖掉、岔掉",
+                "When you want to do something, you should start it right away: save, go back to the list, find the task, tap start - those steps in between are exactly where things get delayed and dropped");
+        e1350.tryIt = s("打开任意一个任务的编辑页，点「立刻开始」，看它是不是保存好并马上进入计时",
+                "Open any task edit sheet, tap Start now, and check it saves and goes straight into timing");
+        out.add(e1350);
+
         Entry e1340 = new Entry("v1.34.0", "2026-10-29");
         e1340.add(new Group(s("新增", "New"),
                 s("设置 → 守卫新增「黄图问责」块（测试版），开关默认关。打开后，守卫确认截到黄图时，会把图只在内存里打码模糊（原图从不保存、不上传），经邮件发给预先填好的问责朋友邮箱（可多个；只有作者账号会预填母亲的两个有效地址，别人不预填），标题和正文模板都能改。防滥发：同类事件 10 分钟内合并成一封，每天上限 5 封。设置里有醒目说明：「现在是测试版，这些邮件借用作者郭天宇的邮箱通道发送，发送内容作者可以看得见」。发信还差作者补最后一把 Resend Key（用户决定后补），补好并验通投递之前，邮件不会真正发出——本版先把 App 侧全部环节备好",
