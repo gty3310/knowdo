@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1370 = new Entry("v1.37.0", "2026-10-29");
+        e1370.add(new Group(s("改进", "Improved"),
+                s("开机后的头 3 分钟，知行先不启动屏幕守卫的采样，几个本地 AI 模型（算屏幕内容与任务搭不搭的向量模型、看图的黄图模型、认字的 OCR）也就不会在这段时间里第一次加载；计时、提醒、悬浮窗、晨间门全都照常。开机时自动拉起的云端同步改到开机 2 分钟后再启动；你自己打开知行时，同步照常立刻走",
+                  "For the first 3 minutes after the phone boots, KnowDo no longer starts screen-guard sampling, so the local AI models (the embedding model that matches screen content to your task, the image model, and OCR) are not first-loaded in that window either; timers, reminders, the floating window and the morning gate all work as usual. The cloud sync that used to start by itself at boot now starts 2 minutes after boot; opening KnowDo yourself still syncs right away")));
+        e1370.why = s("刚开机的几分钟手机本来就忙，你又正好在这个时点打开知行输入今天的任务，而守卫模型偏偏在开始第一个任务时才第一次加载，几件事撞在一起，手机和键盘就一起卡住。把 AI 的重活往后挪几分钟，先让你顺畅把任务输完；代价是开机后 3 分钟内开始的任务，这一段时间没有屏幕守卫采样，3 分钟一到守卫自己开始",
+                "In the first minutes after boot the phone is busy anyway, and that is exactly when you open KnowDo to type in today's tasks - while the guard models happened to first-load the moment the first task started. Everything collided, and the phone and keyboard stalled together. Moving the AI heavy lifting a few minutes later lets you finish entering tasks smoothly first; the cost is that a task started within 3 minutes of boot has no screen-guard sampling for that stretch - the guard starts by itself once the 3 minutes are up");
+        e1370.tryIt = s("重启手机，开机后立刻打开知行，新建一个任务并开始计时，输入应该顺畅不卡；运行日志里先会有一行「刚开机，先等一会儿再开始采样」，3 分钟后守卫开始采样，日志里出现「开始随机采样」一行。再重启一次、开机后先别打开知行：等两三分钟，同步的常驻通知会自己出现",
+                "Restart the phone and, right after boot, open KnowDo, create a task and start the timer - typing should stay smooth. The run log first shows a line saying the guard waits because the phone just booted; after 3 minutes sampling starts and the usual sampling line appears. On another restart, do not open KnowDo at all: after two to three minutes the sync notification shows up by itself");
+        out.add(e1370);
+
         Entry e1360 = new Entry("v1.36.0", "2026-10-29");
         e1360.add(new Group(s("新增", "New"),
                 s("新增「今天安排」页：晨间门里把日记和习惯都填完、点「开启今天」之后，会先进这一页。页顶吸着一条时间账：还剩多少＝你填的可支配时间减去已经安排掉的，安排超了「还剩」会变红。每张任务小卡写着名字、已用时间、还剩时间（点一下能改）、截止的两个快捷钮「改到今天」「取消截止日期」、重要性四档当场选，展开能改全部字段。上面有一条从今早起床到明早起床的时段横条：睡眠段长期保存；白天被占住的时段可以拖出来命名为「锁时」，也能展开成数字时间条精细改；不想逐段设就直接填「今天可支配 X 小时」。自动排、快速重排、AI 重排和聊天排程都会躲开睡眠和锁时，日历页上也会把这两段画出来",
