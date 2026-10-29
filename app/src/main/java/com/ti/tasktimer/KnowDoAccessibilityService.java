@@ -48,6 +48,7 @@ public class KnowDoAccessibilityService extends AccessibilityService {
     private final Random random = new Random();
     private final PipelineAnalyzer analyzer = new PipelineAnalyzer();
     private volatile boolean guardActive;
+    private boolean graceStartPending; // 开机宽限延后首发待发标记（v1.37.0）：首发到点时补记「开始采样」
     private boolean guardRetryUsed;
     private long lastHash;
     private boolean hasLastHash;
@@ -276,18 +277,35 @@ public class KnowDoAccessibilityService extends AccessibilityService {
         guardActive = true;
         hasLastHash = false;
         noAccessLogged = false;
-        handler.postDelayed(guardLoop, 6_000L); // 首张稍等几秒，让用户先切到要用的应用
-        TimerState.logEvent(this, "屏幕内容守卫：开始随机采样（无障碍通道，15–45 秒一张）");
+        // 开机宽限（v1.37.0）：刚开机头 3 分钟先不采样、不加载本地 AI 模型，
+        // 首发延到宽限结束（且不早于原有 6 秒）；计时本身不受影响。
+        // 延后期间停表走 stopLoop 的 removeCallbacks(guardLoop) 撤掉待发首发，
+        // 且 guardLoop 首行有 guardActive 检查，不会在宽限后误启动。
+        long grace = BootGrace.remainingGraceMs();
+        if (grace > 0) {
+            graceStartPending = true;
+            handler.postDelayed(guardLoop, Math.max(6_000L, grace));
+            TimerState.logEvent(this, "屏幕内容守卫：刚开机，先等一会儿再开始采样");
+        } else {
+            handler.postDelayed(guardLoop, 6_000L); // 首张稍等几秒，让用户先切到要用的应用
+            TimerState.logEvent(this, "屏幕内容守卫：开始随机采样（无障碍通道，15–45 秒一张）");
+        }
     }
 
     private void stopLoop() {
         guardActive = false;
+        graceStartPending = false;
         if (handler != null) handler.removeCallbacks(guardLoop);
     }
 
     private final Runnable guardLoop = new Runnable() {
         @Override public void run() {
             if (!guardActive) return;
+            if (graceStartPending) {
+                graceStartPending = false;
+                TimerState.logEvent(KnowDoAccessibilityService.this,
+                        "屏幕内容守卫：开始随机采样（无障碍通道，15–45 秒一张）");
+            }
             try { sampleOnce(false); } catch (Exception ignored) { }
             if (guardActive) handler.postDelayed(this, 15_000L + random.nextInt(30_001));
         }

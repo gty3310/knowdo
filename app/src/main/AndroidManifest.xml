@@ -104,6 +104,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- 开机同步延后到点接收器（v1.37.0）：开机 2 分钟到点启动实时同步 -->
+        <receiver
+            android:name=".BootSyncReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".CurrentTaskActivity"
             android:exported="false" />
