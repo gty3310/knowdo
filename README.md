@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.36.0)
+## Features (Android, v1.37.0)
 
-Current version: **v1.36.0**.
+Current version: **v1.37.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.37.0 — 2026-10-29
+
+**Why:** In the first minutes after boot the phone is busy anyway, and that is exactly when you open KnowDo to type in today's tasks - while the guard models happened to first-load the moment the first task started. Everything collided, and the phone and keyboard stalled together. Moving the AI heavy lifting a few minutes later lets you finish entering tasks smoothly first. Build commit `ccf0f3e` · [compare v1.36.0...v1.37.0](https://github.com/gty3310/knowdo/compare/v1.36.0...v1.37.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Boot grace.** One shared ruler (`BootGrace`, from `SystemClock.elapsedRealtime()`, so process restarts do not reset it): for the first 3 minutes after boot, screen-guard sampling does not start - so the embedding model, the image model and OCR are not first-loaded in that window either - and a line in the run log says the guard is waiting; sampling then starts by itself, and the usual "sampling started" line is logged when it does. Stopping the timer during the wait cancels the pending start. The cloud sync that used to start by itself at boot is now scheduled for 2 minutes after boot via a one-shot alarm (exact when permitted, inexact otherwise) and a small receiver that re-checks the same conditions; if the alarm cannot be scheduled, sync starts immediately as before. Opening KnowDo yourself never waits. Timers, reminders, the floating window, the morning gate, the manually triggered guard test mode, cloud fields and sync semantics are unchanged.
+
+Not yet verified on a real device: typing smoothness right after a reboot, the guard starting by itself at the 3-minute mark, the delayed sync actually firing, the changelog popup on first open, and the in-app self-update chain.
+
 ### v1.36.0 — 2026-10-29
 
 **Why:** There is only so much time in a day that can really be planned. Spending a few minutes in the morning fixing the plan - with the total kept inside your disposable time - beats overfilling the day and carrying the debt forward. Sleep and locked time are fenced off first, so what remains planned is what can actually be done. Build commit `6110f56` · [compare v1.35.0...v1.36.0](https://github.com/gty3310/knowdo/compare/v1.35.0...v1.36.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the morning-gate handoff into this page, the 
 - **Start-now button on the task edit sheet.** The sheet's bottom row is now Cancel (left) / Start now (centre) / Save (right). Start now saves under exactly the same rules as Save (an empty name is still blocked), then immediately starts timing that task - from all four entry points (home create/edit, calendar create/edit). If that task is already timing it is not restarted; if it is paused it resumes with its remaining time; if another task is timing it switches straight over.
 
 Not yet verified on a real device: tapping through all four entry points, start-now behaviour for an already-running/paused task, and the three-button row on a narrow screen.
-
-### v1.34.0 — 2026-10-29
-
-**Why:** Some lines cannot be held by reminding yourself alone; a real person needs to know and be present. Accountability gives distraction a real cost, and helps you keep the rule you set for yourself. Build commit `e7f69fa` · [compare v1.33.0...v1.34.0](https://github.com/gty3310/knowdo/compare/v1.33.0...v1.34.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **NSFW accountability mail (beta).** Settings → Guards gains an accountability block, off by default. When it is on and the guard confirms an explicit image, the frame is blurred in memory only (the original is never saved or uploaded) and emailed to the accountability contacts filled in beforehand (several allowed; only the author's account is prefilled, with his mother's two valid addresses — an older address that bounces is never used (addresses are not spelled out in repo docs)). Subject and body templates are editable, and anti-abuse is built in: same-kind events within 10 minutes merge into one mail, capped at 5 a day. A prominent note in Settings says this beta sends through the author's own mail channel and the author can see what is sent. One piece is still missing: the author has yet to add the final Resend key — until it is added and delivery is verified, no mail will actually be sent; this release readies everything on the app side first.
-
-Not yet verified on a real device: the accountability block rendering in Settings, the blur timing and effect on a live guard catch, and — pending the Resend key — actual mail delivery (the first delivery test will go to the author's own mailbox only, never to his mother).
 
 ## Build
 
