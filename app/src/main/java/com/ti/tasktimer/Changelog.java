@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1380 = new Entry("v1.38.0", "2026-10-29");
+        e1380.add(new Group(s("新增", "New"),
+                s("日程页任务列表上方多了一个「安排今日任务」按钮，点它随时进「今天安排」页，不用再等晨间门；在里面排好今天之后返回，过一会儿想改，再点一次还能进去",
+                  "The schedule page gains a permanent \"Plan today's tasks\" button above the task table: tap it any time to open the Plan Today page, no need to wait for the morning gate. Plan your day, go back, and tap it again later to adjust - it can be opened as often as you like")));
+        e1380.why = s("这页原来只有晨间门填完那一个入口，错过就一整天进不去；你说记得任务列表里该有个这样的按钮，那就把它补在这里",
+                "That page used to have exactly one entrance - finishing the morning gate - and missing it meant no way back in for the whole day. You remembered there should be a button like this in the task list, so now there is");
+        e1380.tryIt = s("打开知行，在日程页点任务列表上方的「安排今日任务」，看是不是直接进了今天安排页；在里面排好后返回，再点一次还能再进",
+                "Open KnowDo, and on the schedule page tap \"Plan today's tasks\" above the task table - it should take you straight to the Plan Today page. Go back after planning, then tap it once more to re-enter");
+        out.add(e1380);
+
         Entry e1370 = new Entry("v1.37.0", "2026-10-29");
         e1370.add(new Group(s("改进", "Improved"),
                 s("开机后的头 3 分钟，知行先不启动屏幕守卫的采样，几个本地 AI 模型（算屏幕内容与任务搭不搭的向量模型、看图的黄图模型、认字的 OCR）也就不会在这段时间里第一次加载；计时、提醒、悬浮窗、晨间门全都照常。开机时自动拉起的云端同步改到开机 2 分钟后再启动；你自己打开知行时，同步照常立刻走",
