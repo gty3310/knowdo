@@ -450,6 +450,19 @@ public class MainActivity extends Activity {
         accountBox.addView(overflowView);
         content.addView(accountBox);
 
+        // 「安排今日任务」常驻入口（v1.38.0）：「今天安排」页此前只有晨间门完成一条入口，
+        // 错过当天就再也进不去；这里在任务表上方加一行常驻文字钮，随时可进、反复可进。
+        // 防重复：本段只在 buildUi() 内构建，而 buildUi() 仅由 onCreate 调用一次；
+        // 切 Tab 只切 scheduleWrap 可见性，onResume / renderTable 都不重建此钮。
+        TextView planEntry = new TextView(this);
+        planEntry.setText(Strings.en() ? "Plan today's tasks  ›" : "安排今日任务  ›");
+        planEntry.setTextSize(14);
+        planEntry.setTextColor(Ui.accent(this));
+        planEntry.setGravity(Gravity.CENTER_VERTICAL);
+        planEntry.setPadding(dp(16), dp(10), dp(16), dp(10));
+        planEntry.setOnClickListener(v -> startActivity(new Intent(this, TodayPlanActivity.class)));
+        content.addView(planEntry);
+
         // 内容区分屏行（v1.18.0）：左＝表格区（权重 1），右＝日历容器（默认藏）。
         // 日历不再盖在 root 上：它只占日程页内容区、永远在底部三 Tab 之上；
         // 展开时左边就是这张任务表本体，任务行可以直接拖进右侧日历。
