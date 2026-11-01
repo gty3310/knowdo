@@ -2,6 +2,37 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.40.0] - 2026-11-01（versionCode 79）
+
+为什么：用户 2026-11-01 定——编辑任务时按钮埋在页面最底、键盘一弹就盖住，内容长还滚不到，必须先收键盘才能保存。本版做全局键盘适配：所有承载输入的窗口声明 adjustResize（键盘弹起时窗口自动压缩而不是盖住内容），五个核心页面的关键按钮再从滚动内容里移出来、钉在页面最底部，稳停在键盘上方。纯布局改造：按钮的行为、文案、校验与落盘口径一律不动。
+
+发布提交：`0e649b4`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.39.0...v1.40.0 比较](https://github.com/gty3310/knowdo/compare/v1.39.0...v1.40.0)
+
+### 改进
+
+**adjustResize 全覆盖（`AndroidManifest.xml`）**
+
+此前只有 NextTaskActivity、MorningActivity、TodayPlanActivity、ChatActivity 声明了 `windowSoftInputMode="adjustResize"`。本版给其余承载输入的 8 个 Activity 补上：MainActivity（任务列表与四个主页签、行内笔记、各类输入对话框的宿主）、SettingsActivity（输入全在对话框里）、CalendarActivity（经 CalendarPanel 的对话框承载输入）、CurrentTaskActivity（页内大块笔记输入）、CheckActivity、ResumeRemindActivity（自定义时长对话框）、FloatCloseActivity（关闭原因对话框）、GuardTestPickActivity（临时任务标题/备注）。无任何输入的 Activity（PermActivity、LogActivity、HelpActivity、ZhixingDetailActivity、GuardActivity、StartRemindActivity、TaskAlarmActivity、AiLaunchActivity、IdleAlarmActivity、ThanksActivity、SuggestedSettingsActivity、ModelActivity、AppListActivity）不加，保持原样。
+
+**固定底栏（按钮移出滚动区）**
+
+- 任务编辑弹层（`TaskEditSheet`）：取消/立刻开始/保存三钮从 sheet 的 ScrollView 里移出，钉在弹层根布局底部；弹层窗口显式设 SOFT_INPUT_ADJUST_RESIZE；86% 高度封顶改为按根布局总高判断、超出时只压缩滚动区。三个入口（主页新建、日历点空白新建、任务行编辑）共用同一实现（全仓唯一的任务编辑 Dialog），全覆盖。对话框类输入（子任务名/分钟、各选择器）走系统对话框，按钮天然在键盘上方，未动。
+- 晨间页（`MorningActivity.buildUi`）：「开启今天/保存」＋提示语＋暂停区整块移出滚动区、钉进页面底部固定栏；内容（习惯作答、日记、提醒）在上方滚动。v1.38.1 的暂停区成果原样保留：面板仍在按钮正下方展开（按钮、面板、说明的先后不变）、展开仍先收键盘、两态视觉反馈、最小高度 52dp、任何填写状态下都不禁用；`scrollPauseIntoView` 加了结构保险（暂停区已不在滚动区内时恒可见、直接跳过滚动），判定与行为口径不变。晨间门逻辑（必填校验、doSnooze 推后、complete 开启今天）未动。
+- 检查页（`CheckActivity`）：新增固定底栏，各阶段的主行动按钮钉入：过半第一阶段「能做完」「做不完」两钮、写办法页「想好了，继续」、子任务页「下一个」、结束页「做完了」。加时按钮行、整个任务完成/跳过、结束页内嵌聊聊区留在内容里滚动；子任务加时阶段无主行动按钮、底栏保持隐藏。`primaryAction`（回车主钮）与 Q/W/E 加时键位映射未动。
+- 下一个任务页（`NextTaskActivity`）：新建态「开始」、休息态「开始休息」钉进底部固定栏；默认态三入口（其他任务/新建任务/休息一会）原本就被权重空格锚在滚动区底部、且该态无文字输入，未动。新建态打开自动聚焦任务名并弹键盘的既有行为不变。
+- 守卫测试选尺子页（`GuardTestPickActivity`）：临时任务的标题/备注输入与「用这个临时任务开始测试」「不选任务」两钮移出任务列表滚动区、钉进底部固定栏；点现有任务行的选择方式不变。
+
+**核查通过、未改的面**
+
+- 今天安排页（`TodayPlanActivity`）：本来就是「吸顶时间账＋中间滚动＋固定底『排进今天的日程』」结构且已有 adjustResize，达标未动；数字条输入在滚动区内，靠窗口压缩后滚动可达。
+- 聊聊（`ChatPanel`）：输入行本来就在滚动区之外、钉在面板底部（ChatActivity 已有 adjustResize，本版给另一宿主 MainActivity 补上）；结束页内嵌的紧凑模式未动。
+- 当前任务页（`CurrentTaskActivity`）：笔记区本就是弹性高度、两钮在笔记区之下的固定行，本版只补 adjustResize——键盘弹起时笔记区自动变矮、两钮稳停键盘上方，不需要再改结构。
+- 习惯页内联新建表单（`HabitPage`，宿主 MainActivity）：表单在页面滚动列内，补 adjustResize 后窗口压缩、聚焦字段与表单末尾的保存/取消靠滚动可达；对话框类习惯输入（补记、编辑）走系统对话框。
+- 登录/注册（`AccountUi`）：全是系统对话框，未动。
+- 悬浮窗内输入（`FloatingWindow` 的展开态笔记/改名改分钟、`PauseCard` 的自定义目的与时长）：是 TYPE_APPLICATION_OVERLAY 悬浮窗，不是普通窗口，adjustResize 机制对它不适用（键盘只压缩获得焦点的普通窗口）；输入区就在可拖动的悬浮窗本体内部，本版不改，属平台限制、单独记录。
+
+未真机验证：逐页在真机上键盘弹起时按钮可见可点、长页面滚动时底栏不动、晨间页新动线（底栏暂停展开/开启今天）、编辑弹层三钮位置与 86% 封顶、过半/结束页底栏、选尺子页底栏、聊聊输入行、自更新全链、更新日志弹框。
+
 ## [1.39.0] - 2026-11-01（versionCode 78）
 
 为什么：用户 2026-11-01 亲定——过半检查点「做不完」进到「我如何做才能做完？」写办法页时，办法想出来了、时间往往还是差一截，而这一页以前只能写字、不能加时，加时只能等任务到点后的结束页。本版在写办法页补上加时间，当场把时间加上。（选项里的百分比由用户当场纠正为 50%，不是 52%。）

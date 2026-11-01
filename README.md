@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.39.0)
+## Features (Android, v1.40.0)
 
-Current version: **v1.39.0**.
+Current version: **v1.40.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.40.0 — 2026-11-01
+
+**Why:** The buttons you need while typing sat at the very bottom of the content: the keyboard covered them, and with long content you had to dismiss the keyboard and scroll all the way down just to save. This release is a global keyboard pass — every window that carries input now resizes around the keyboard, and the key buttons on the five core pages are pinned to the bottom of the page. Build commit `0e649b4` · [compare v1.39.0...v1.40.0](https://github.com/gty3310/knowdo/compare/v1.39.0...v1.40.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **adjustResize everywhere input lives.** Eight more activities declare it (main, settings, calendar, current-task, check, resume-remind, float-close, guard-test picker), joining the four that already had it; activities with no text input are untouched.
+- **Pinned bottom bars.** The task edit sheet's Cancel / Start now / Save row leaves the sheet's scroll area and sits at the sheet's bottom (the sheet window now explicitly requests adjust-resize, and its 86%-of-screen cap compresses only the scroll area); the morning page's Start-the-day/Save button, its hint line and the whole pause area move into a fixed footer — the v1.38.1 pause behaviour (panel opening right under the button, keyboard dismissed first, two-state button, never disabled) is unchanged; on the check pages each stage's primary action (Can finish / Can't finish, Got it keep going, Next subtask, Done) is pinned while extend rows and the embedded chat stay in the scrolling content; the next-task page pins Start and Start resting; the guard-test picker pins the temporary-task inputs and its two buttons. Pure layout: no button behaviour, wording, validation or saving semantics changed. Already compliant and untouched: the today-plan page, the chat input row, and the current-task page's note layout; overlay-window editors (floating window / pause card) sit outside the resize mechanism by platform design and are unchanged.
+
+Not yet verified on a real device: buttons visible and tappable above the keyboard page by page, footers holding still while long content scrolls, the morning-page flow, the edit sheet's pinned row and height cap, the check pages' footers, the changelog popup, and the full self-update chain.
+
 ### v1.39.0 — 2026-11-01
 
 **Why:** At the halfway check, tapping "Not enough time" lands on the method page — and the method alone was often not enough: the time was still short, yet that page offered no way to add any. Extending had to wait for the end page. Build commit `94dc403` · [compare v1.38.2...v1.39.0](https://github.com/gty3310/knowdo/compare/v1.38.2...v1.39.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +89,6 @@ Not yet verified on a real device: each amount actually landing in the running t
 - **Free time can no longer exceed today's remaining wall time.** When the Today Plan page saves the free-time input, the value is capped at the wall-clock time left today — from now until the earlier of 22:30 and the saved sleep start, minus locked segments in between (a new pure `DayAvail.wallCapMin`, cross-checked on four worked examples including the user's own: at 10:07 the cap is exactly 743 minutes, the 12 h 23 min he cited). Typing more stores the capped value to the exact minute and shows a short hint that free time cannot exceed the time left on today's wall; typing within the limit behaves exactly as before, with no hint, and an already-stored value never shrinks on its own as time passes. A capped value echoes back with at most two decimals (12 h 23 min shows as 12.38) while the ledger keeps full minute precision. Nothing else moved: the arranged-time total, all schedulers and their 22:30 line, the ledger formula, sleep/lock editing, and the synced day_avail JSON shape are unchanged.
 
 Not yet verified on a real device: an over-limit entry being capped with the hint shown, an in-limit entry showing no hint, ledger and scheduler agreeing afterwards, the full self-update chain, and the morning / Today Plan flow as a regression check.
-
-### v1.38.1 — 2026-11-01
-
-**Why:** On a real device the morning gate's "Pause for a bit" button looked completely dead: the minutes panel opened below the note text and off the bottom of the screen, the page never scrolled, and the button itself gave no sign anything had happened. The user's rule: this button must work no matter what has or hasn't been filled in on the page. Build commit `3210943` · [compare v1.38.0...v1.38.1](https://github.com/gty3310/knowdo/compare/v1.38.0...v1.38.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **The morning gate's "Pause for a bit" button now visibly works.** The pause area is reordered — button, then the minutes panel directly beneath it, then the note — and expanding the panel smooth-scrolls the pause area to the top of the viewport (the target is clamped by the scroll view, so it cannot overshoot). The button shows its state: a quiet outline with "▾" when closed, the accent colour with "▴" when open. It is never disabled by anything on the page (no fill-state gating anywhere, and the gate-refresh logic does not touch it), it is at least 52dp tall and explicitly clickable/focusable, and tapping it first folds the soft keyboard away so a half-written diary cannot block the panel. Snooze durations and semantics, the gate's re-pop loop, the "Start today" requirements, edit/test modes and all cloud fields are unchanged.
-
-Not yet verified on a real device: tapping in the four scenarios (nothing filled in, half filled in, keyboard open, button at the bottom of the viewport), the keyboard folding away, the auto-scroll feel, the full self-update chain, and the morning flow as a regression check.
 
 ## Build
 
