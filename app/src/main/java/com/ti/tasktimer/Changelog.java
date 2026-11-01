@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1410 = new Entry("v1.41.0", "2026-11-01");
+        e1410.add(new Group(s("新增", "New"),
+                s("今天安排页底部多了「开始今天」按钮：排没排满都由你说了算，点它就结束安排、直接进入今天，不会被「还没排完」拦住",
+                  "The today-plan page gains a Start today button at the bottom: whether the plan is full or not is entirely your call — tapping it ends planning and takes you straight into today, with nothing blocking the way out")));
+        e1410.why = s("你说安排页缺一个明确的收尾出口：排满没排满该由你决定，之前只能靠返回键离开",
+                "The planning page had no clear way to be done: whether the plan was full was for you to decide, yet the only way out was the back key");
+        e1410.tryIt = s("进今天安排页，什么都不排，直接点底部「开始今天」，应当立刻回到今天的日程页",
+                "Open the today-plan page, plan nothing at all, and tap Start today at the bottom: you should land right back on today's schedule page");
+        out.add(e1410);
+
         Entry e1400 = new Entry("v1.40.0", "2026-11-01");
         e1400.add(new Group(s("改进", "Improved"),
                 s("所有要打字的页面都改了：键盘一弹出来，页面会自动变矮，保存、开始、取消这些按钮停在键盘上方、钉在页面最底部，页面再长也不会被滚走——任务编辑、晨间页、过半与结束检查页、下一个任务页、聊聊都包括",
