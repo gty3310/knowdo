@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.38.1)
+## Features (Android, v1.38.2)
 
-Current version: **v1.38.1**.
+Current version: **v1.38.2**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.38.2 — 2026-11-01
+
+**Why:** The Today Plan page contradicted itself: with free time typed in as 13 hours while only 12 hours 23 minutes remained on the wall, the ledger claimed 37 minutes left while the scheduler — which had filled every remaining minute — named tasks that could not fit. The budget simply took whatever number was typed, inventing time the wall does not hold. The user's rule: disposable time can never exceed the time available on today's wall, and the limit belongs where the number is entered. Build commit `52781c0` · [compare v1.38.1...v1.38.2](https://github.com/gty3310/knowdo/compare/v1.38.1...v1.38.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Free time can no longer exceed today's remaining wall time.** When the Today Plan page saves the free-time input, the value is capped at the wall-clock time left today — from now until the earlier of 22:30 and the saved sleep start, minus locked segments in between (a new pure `DayAvail.wallCapMin`, cross-checked on four worked examples including the user's own: at 10:07 the cap is exactly 743 minutes, the 12 h 23 min he cited). Typing more stores the capped value to the exact minute and shows a short hint that free time cannot exceed the time left on today's wall; typing within the limit behaves exactly as before, with no hint, and an already-stored value never shrinks on its own as time passes. A capped value echoes back with at most two decimals (12 h 23 min shows as 12.38) while the ledger keeps full minute precision. Nothing else moved: the arranged-time total, all schedulers and their 22:30 line, the ledger formula, sleep/lock editing, and the synced day_avail JSON shape are unchanged.
+
+Not yet verified on a real device: an over-limit entry being capped with the hint shown, an in-limit entry showing no hint, ledger and scheduler agreeing afterwards, the full self-update chain, and the morning / Today Plan flow as a regression check.
+
 ### v1.38.1 — 2026-11-01
 
 **Why:** On a real device the morning gate's "Pause for a bit" button looked completely dead: the minutes panel opened below the note text and off the bottom of the screen, the page never scrolled, and the button itself gave no sign anything had happened. The user's rule: this button must work no matter what has or hasn't been filled in on the page. Build commit `3210943` · [compare v1.38.0...v1.38.1](https://github.com/gty3310/knowdo/compare/v1.38.0...v1.38.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: tapping in the four scenarios (nothing filled
 - **A permanent "Plan today's tasks" entry on the schedule page.** A quiet text button now sits above the task table on the schedule page (below the top bar, the current-task strip and the day account), always visible and never scrolled away with the table. Tapping it opens the Plan Today page directly - any time, as often as you like; nothing greys it out after a first visit. It lives inside the schedule page only (the Habits, KnowDo and Chat tabs do not show it) and is built exactly once when the page is created, so tab switches never stack duplicates. The Plan Today page itself, the morning gate's finish path into it, day-availability data, calendar rendering, scheduling logic and all cloud fields are unchanged.
 
 Not yet verified on a real device: the button's placement and feel, tapping through and re-entering repeatedly, the morning-gate path as a regression check, the changelog popup on first open, and the in-app self-update chain.
-
-### v1.37.0 — 2026-10-29
-
-**Why:** In the first minutes after boot the phone is busy anyway, and that is exactly when you open KnowDo to type in today's tasks - while the guard models happened to first-load the moment the first task started. Everything collided, and the phone and keyboard stalled together. Moving the AI heavy lifting a few minutes later lets you finish entering tasks smoothly first. Build commit `ccf0f3e` · [compare v1.36.0...v1.37.0](https://github.com/gty3310/knowdo/compare/v1.36.0...v1.37.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **Boot grace.** One shared ruler (`BootGrace`, from `SystemClock.elapsedRealtime()`, so process restarts do not reset it): for the first 3 minutes after boot, screen-guard sampling does not start - so the embedding model, the image model and OCR are not first-loaded in that window either - and a line in the run log says the guard is waiting; sampling then starts by itself, and the usual "sampling started" line is logged when it does. Stopping the timer during the wait cancels the pending start. The cloud sync that used to start by itself at boot is now scheduled for 2 minutes after boot via a one-shot alarm (exact when permitted, inexact otherwise) and a small receiver that re-checks the same conditions; if the alarm cannot be scheduled, sync starts immediately as before. Opening KnowDo yourself never waits. Timers, reminders, the floating window, the morning gate, the manually triggered guard test mode, cloud fields and sync semantics are unchanged.
-
-Not yet verified on a real device: typing smoothness right after a reboot, the guard starting by itself at the 3-minute mark, the delayed sync actually firing, the changelog popup on first open, and the in-app self-update chain.
 
 ## Build
 
