@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.38.0)
+## Features (Android, v1.38.1)
 
-Current version: **v1.38.0**.
+Current version: **v1.38.1**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.38.1 — 2026-11-01
+
+**Why:** On a real device the morning gate's "Pause for a bit" button looked completely dead: the minutes panel opened below the note text and off the bottom of the screen, the page never scrolled, and the button itself gave no sign anything had happened. The user's rule: this button must work no matter what has or hasn't been filled in on the page. Build commit `3210943` · [compare v1.38.0...v1.38.1](https://github.com/gty3310/knowdo/compare/v1.38.0...v1.38.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **The morning gate's "Pause for a bit" button now visibly works.** The pause area is reordered — button, then the minutes panel directly beneath it, then the note — and expanding the panel smooth-scrolls the pause area to the top of the viewport (the target is clamped by the scroll view, so it cannot overshoot). The button shows its state: a quiet outline with "▾" when closed, the accent colour with "▴" when open. It is never disabled by anything on the page (no fill-state gating anywhere, and the gate-refresh logic does not touch it), it is at least 52dp tall and explicitly clickable/focusable, and tapping it first folds the soft keyboard away so a half-written diary cannot block the panel. Snooze durations and semantics, the gate's re-pop loop, the "Start today" requirements, edit/test modes and all cloud fields are unchanged.
+
+Not yet verified on a real device: tapping in the four scenarios (nothing filled in, half filled in, keyboard open, button at the bottom of the viewport), the keyboard folding away, the auto-scroll feel, the full self-update chain, and the morning flow as a regression check.
+
 ### v1.38.0 — 2026-10-29
 
 **Why:** The Plan Today page used to have exactly one entrance - finishing the morning gate - and missing it meant no way back in for the whole day. The user remembered there should be a button like this in the task list, so now there is. Build commit `6c7f914` · [compare v1.37.0...v1.38.0](https://github.com/gty3310/knowdo/compare/v1.37.0...v1.38.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the button's placement and feel, tapping thro
 - **Boot grace.** One shared ruler (`BootGrace`, from `SystemClock.elapsedRealtime()`, so process restarts do not reset it): for the first 3 minutes after boot, screen-guard sampling does not start - so the embedding model, the image model and OCR are not first-loaded in that window either - and a line in the run log says the guard is waiting; sampling then starts by itself, and the usual "sampling started" line is logged when it does. Stopping the timer during the wait cancels the pending start. The cloud sync that used to start by itself at boot is now scheduled for 2 minutes after boot via a one-shot alarm (exact when permitted, inexact otherwise) and a small receiver that re-checks the same conditions; if the alarm cannot be scheduled, sync starts immediately as before. Opening KnowDo yourself never waits. Timers, reminders, the floating window, the morning gate, the manually triggered guard test mode, cloud fields and sync semantics are unchanged.
 
 Not yet verified on a real device: typing smoothness right after a reboot, the guard starting by itself at the 3-minute mark, the delayed sync actually firing, the changelog popup on first open, and the in-app self-update chain.
-
-### v1.36.0 — 2026-10-29
-
-**Why:** There is only so much time in a day that can really be planned. Spending a few minutes in the morning fixing the plan - with the total kept inside your disposable time - beats overfilling the day and carrying the debt forward. Sleep and locked time are fenced off first, so what remains planned is what can actually be done. Build commit `6110f56` · [compare v1.35.0...v1.36.0](https://github.com/gty3310/knowdo/compare/v1.35.0...v1.36.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Today Plan page.** Finishing the morning gate (diary and habits done, tap "Start today") now opens a plan-today page. A sticky time account shows what is left - your disposable time minus what is already planned - and turns red when you over-plan. Task cards are compact: name, time used, time left (tap to edit), deadline shortcuts ("Move to today" / "Clear deadline"), the four importance levels on the spot, and full editing when expanded. A strip from this morning's wake-up to tomorrow morning's carries a long-term sleep segment and draggable, nameable locked segments (plus a numeric strip editor), or you can simply enter today's disposable hours. Local auto-scheduling, quick reschedule, AI reschedule and chat schedule cards all avoid sleep and locked segments, and the calendar draws both segments.
-
-Not yet verified on a real device: the morning-gate handoff into this page, the drag feel for locked segments, the lock/sleep bands on the calendar, and day_avail syncing across devices.
 
 ## Build
 
