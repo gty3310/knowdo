@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1390 = new Entry("v1.39.0", "2026-11-01");
+        e1390.add(new Group(s("新增", "New"),
+                s("过半检查点了「做不完」后的写办法页，多了一排加时间：+1、+3、+5、+10 分钟、+50% 和自定义，点一下当场加进当前计时，可以连着点、越加越多，加了多少页面上有一行累计显示；不加也能照常写完办法继续",
+                  "The method page after \u201cNot enough time\u201d at the halfway check gains an add-time row: +1, +3, +5, +10 minutes, +50% and a custom amount. Each tap adds straight into the running timer and taps accumulate; a line on the page keeps the running total of what you added. Adding nothing and just writing your method works exactly as before")));
+        e1390.why = s("你发现写办法时其实还差一点时间，光写办法、不加时间不够用；以前在这一页没法加时，只能等任务到点后的结束页才能加",
+                "Writing the method is only half of it — you were still short on time, and this page offered no way to add any. Extending used to have to wait for the end page");
+        e1390.tryIt = s("任意任务计时到过半页，点「做不完」，在写办法页点 +5 分钟：计时应当当场多出 5 分钟、页面出现「已加 5 分钟」；再试试 +50% 与自定义输入",
+                "Let any task reach its halfway page and tap \u201cNot enough time\u201d. On the method page tap +5 min: the timer should gain 5 minutes on the spot and the page should show the added total. Then try +50% and a custom amount");
+        out.add(e1390);
+
         Entry e1382 = new Entry("v1.38.2", "2026-11-01");
         e1382.add(new Group(s("修复", "Fixed"),
                 s("今天安排页填「今天可支配」时多了个上限：填得比今天墙上剩下的时间（从现在到今天结束、再扣掉锁时段）还多，会自动按墙上剩下的时间算，并弹一句提示；填在上限以内和以前完全一样、不弹提示，被卡住的值回显也只留两位小数",
