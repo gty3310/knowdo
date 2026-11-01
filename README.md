@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.41.0)
+## Features (Android, v1.42.0)
 
-Current version: **v1.41.0**.
+Current version: **v1.42.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.42.0 — 2026-11-01
+
+**Why:** Planning today is exactly when stray tasks get spotted — one is already done, another should not exist — and going back to hunt it down in the task list broke the flow. The plan page's cards now handle it on the spot, through the very same code paths as the list. Build commit `ec8f7e3` · [compare v1.41.0...v1.42.0](https://github.com/gty3310/knowdo/compare/v1.41.0...v1.42.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Done / Delete on today-plan task cards, plus subtasks inline.** Done runs the task list's exact completion path (`markDone` + start-baseline record + save + the done-state's targeted cloud push); Delete shows the list's identical confirmation dialog and then takes the same tombstone soft-delete (`TaskStore.remove`). The buttons are their own tap targets — they never trigger the card's tap-to-edit. Subtasks render read-only inside the card (title + minutes, at most three, the rest tailed with "…"; no section when there are none). As in the list, completing or deleting never rewrites blocks already sitting in today's schedule; the ledger simply re-reads them.
+
+Not yet verified on a real device: card Done/Delete matching the list's outcomes, subtask rendering and truncation, list and ledger refresh after either action, the changelog popup, and the full self-update chain.
+
 ### v1.41.0 — 2026-11-01
 
 **Why:** The today-plan page had no clear way to say "I'm done planning" — whether the plan is full is the user's call, yet the only way out was the system back key. This release adds the one missing exit. Build commit `be61d14` · [compare v1.40.0...v1.41.0](https://github.com/gty3310/knowdo/compare/v1.40.0...v1.41.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -80,15 +89,6 @@ Not yet verified on a real device: the landing point from both entry paths, tapp
 - **Pinned bottom bars.** The task edit sheet's Cancel / Start now / Save row leaves the sheet's scroll area and sits at the sheet's bottom (the sheet window now explicitly requests adjust-resize, and its 86%-of-screen cap compresses only the scroll area); the morning page's Start-the-day/Save button, its hint line and the whole pause area move into a fixed footer — the v1.38.1 pause behaviour (panel opening right under the button, keyboard dismissed first, two-state button, never disabled) is unchanged; on the check pages each stage's primary action (Can finish / Can't finish, Got it keep going, Next subtask, Done) is pinned while extend rows and the embedded chat stay in the scrolling content; the next-task page pins Start and Start resting; the guard-test picker pins the temporary-task inputs and its two buttons. Pure layout: no button behaviour, wording, validation or saving semantics changed. Already compliant and untouched: the today-plan page, the chat input row, and the current-task page's note layout; overlay-window editors (floating window / pause card) sit outside the resize mechanism by platform design and are unchanged.
 
 Not yet verified on a real device: buttons visible and tappable above the keyboard page by page, footers holding still while long content scrolls, the morning-page flow, the edit sheet's pinned row and height cap, the check pages' footers, the changelog popup, and the full self-update chain.
-
-### v1.39.0 — 2026-11-01
-
-**Why:** At the halfway check, tapping "Not enough time" lands on the method page — and the method alone was often not enough: the time was still short, yet that page offered no way to add any. Extending had to wait for the end page. Build commit `94dc403` · [compare v1.38.2...v1.39.0](https://github.com/gty3310/knowdo/compare/v1.38.2...v1.39.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Add time right on the method page.** Between the method field and "Got it, keep going" there is now an add-time section: +1, +3, +5, +10 minutes, +50% and a custom amount. Fixed amounts go through the very same `TimerService.extendTimer` the end page uses — no second mechanism — except the page stays open: taps accumulate, a line on the page keeps the running added total, the method text and its focus are untouched, and adding nothing still works. The +50% amount uses the end page's exact basis (half the current segment's total length, `TimerState.totalSec`, at least one minute), and a custom amount follows the end page's rule too (a positive whole number of minutes). The method log line notes the added minutes when any were added. Untouched: the "Yes, I can" branch, when the halfway check appears, the end and subtask pages' own extend options, and the timer/extend semantics themselves.
-
-Not yet verified on a real device: each amount actually landing in the running timer from the method page, the +50% basis in feel, custom entry, the method text surviving an extension, the changelog popup, and the full self-update chain.
 
 ## Build
 
