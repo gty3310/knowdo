@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.43.0)
+## Features (Android, v1.44.0)
 
-Current version: **v1.43.0**.
+Current version: **v1.44.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.44.0 — 2026-11-01
+
+**Why:** On a phone still running 1.38.0, tapping "Check for updates" only ever offered to install 1.38.0 itself: a stale pending package — downloaded while on an older version, then overtaken by installing the same version from Drive — sat in the updater's records, and the settings row went straight to installing it instead of ever checking the server, whose manifest was correct all along (1.43.0). Build commit `49ad833` · [compare v1.43.0...v1.44.0](https://github.com/gty3310/knowdo/compare/v1.43.0...v1.44.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **A stale pending package no longer blocks self-update.** A downloaded pending package counts only when its versionCode is strictly newer than the running version; at or below, it is void. That one rule now sits inside `pendingReady()`, so every entrance follows it — the settings row (a stale tap clears the record and runs a real check instead of installing), the install entry, the "new version downloaded" prompt, and failure handling (a failed check no longer revives a stale READY; it lands on the error state with its message kept, while a genuinely newer pending package is still preserved). Stale records are also cleared at startup — a local, offline cleanup deliberately placed ahead of the 20-hour auto-check throttle — before the install prompt, and in the row tap; the settings row stops advertising a stale package as a downloaded new version. Manifest, download channels, shard verification and the install flow are untouched.
+
+Not yet verified on a real device: a 1.38.0 phone carrying the stale 1.38.0 pending package no longer offering the old install and successfully checking/downloading a later version once the fix is in; a still-valid pending package installing directly as before; the changelog popup; and the full self-update chain.
+
 ### v1.43.0 — 2026-11-01
 
 **Why:** Deleting a task meant backing out of the editor to the task list and long-pressing it — a pointless detour when you are already looking at the task. The editor now carries the delete itself, through the very same confirmation and soft-delete path as the list. Build commit `d6d8df7` · [compare v1.42.0...v1.43.0](https://github.com/gty3310/knowdo/compare/v1.42.0...v1.43.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: the full delete flow from the editor, no dele
 - **Done / Delete on today-plan task cards, plus subtasks inline.** Done runs the task list's exact completion path (`markDone` + start-baseline record + save + the done-state's targeted cloud push); Delete shows the list's identical confirmation dialog and then takes the same tombstone soft-delete (`TaskStore.remove`). The buttons are their own tap targets — they never trigger the card's tap-to-edit. Subtasks render read-only inside the card (title + minutes, at most three, the rest tailed with "…"; no section when there are none). As in the list, completing or deleting never rewrites blocks already sitting in today's schedule; the ledger simply re-reads them.
 
 Not yet verified on a real device: card Done/Delete matching the list's outcomes, subtask rendering and truncation, list and ledger refresh after either action, the changelog popup, and the full self-update chain.
-
-### v1.41.0 — 2026-11-01
-
-**Why:** The today-plan page had no clear way to say "I'm done planning" — whether the plan is full is the user's call, yet the only way out was the system back key. This release adds the one missing exit. Build commit `be61d14` · [compare v1.40.0...v1.41.0](https://github.com/gty3310/knowdo/compare/v1.40.0...v1.41.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Start today button on the today-plan page.** It sits in the fixed footer under "Plan into today", in the same primary style. Tapping it simply finishes the page back to today's schedule — from either entry path (the morning gate, which finishes itself after handing over, and the schedule page's standing entry) — in any planning state: nothing planned, partly planned, tasks left over, or fully planned. No confirmation, no "doesn't fit yet" blocking, and the plan already made is untouched. The page holds no unsaved state (planning and edits save as you go); the one in-flight field, the free-time input, is first committed through the exact same path as its normal focus-loss save if it is still focused.
-
-Not yet verified on a real device: the landing point from both entry paths, tapping with an overflow present, commit-before-exit while the free-time field is focused, the changelog popup, and the full self-update chain.
 
 ## Build
 

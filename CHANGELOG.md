@@ -2,6 +2,22 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.44.0] - 2026-11-01（versionCode 83）
+
+为什么：用户 2026-11-01 真机发现并批准——在 1.38.0 上点「检查更新」，设置行只反复让安装一个 1.38.0：手机里存着一个 pendingCode=75 的陈旧待安装包（旧版时下好、后来从 Drive 装上同版，App 内记录没清），而 onSettingsRowTapped 只要 pendingReady 就直接安装、永不联网检查。云端清单经 Jarvis 回读无误（1.43.0/vc82），问题全在 App 侧 pending 有效性。本版只修这一件。
+
+发布提交：`49ad833`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.43.0...v1.44.0 比较](https://github.com/gty3310/knowdo/compare/v1.43.0...v1.44.0)
+
+### 修复
+
+**自更新被陈旧待安装包卡住（`AppUpdate`）**
+
+建立全类单一陈旧口径（`pendingStale`）：待安装包只有 pendingCode > 当前版本才算有效新版，pendingCode <= 当前版本一律陈旧作废。`pendingReady()` 先问陈旧、陈旧永远 false——于是设置行安装分流、安装入口 `launchInstall`、「已下载好」弹窗 `maybePromptInstall`、失败恢复 `fail()`（只在 pendingReady 为真时才恢复 READY）全部经此一门自动达标：陈旧包点设置行不再安装、检查失败不再被恢复成 READY，而是落 ST_ERROR 并保留 last_error，用户能看到「更新没成：…」。新增 `clearStalePending()`（只清 pending_code/pending_name 记录、不删文件，与 doCheck 既有清理口径一致；state 为 READY 时落回 ST_NONE），在三个入口先行调用：设置行点击（清完 pendingReady 自然为假，落到 checkManual 联网检查；查到云端新版后按既有流程替换 pending 并下载）、启动 `checkOnStartup`（置于自动检查开关与 20 小时节流之前——清理是纯本地动作、不联网，不受开关与节流约束；自动检查本身仍按既有节流，手动入口本来就不节流）、弹窗入口 `maybePromptInstall`（陈旧不弹窗）。`statusText` 对 state=READY 但包已陈旧的按未查态呈现，不再显示「新版 X 已下载好」；SettingsActivity 读的也是同一个 pendingReady，行尾「安装 ›」随之消失，不用改设置页。
+
+有效待安装包（pendingCode > 当前版本、文件在且大小对）行为零回归：设置行点行直接安装、下载完成/回主界面的弹窗仍每版只弹一次、一次失败的检查不抹掉它。更新清单地址与格式、Gitee contents/release 下载通道、分片校验/拼合/md5、下载网络策略（UpdatePrefs）、安装 Intent/FileProvider、当前版本读取、doCheck 的替换与清理逻辑、更新日志机制，一律未动。
+
+未真机验证：在装着 1.38.0 且带陈旧 1.38.0 待安装包的手机上装入含修复的版本后，设置行不再提供旧包安装、点检查能查到并下载后续版本；有效待安装包直接安装不回归；更新日志弹框；自更新全链。
+
 ## [1.43.0] - 2026-11-01（versionCode 82）
 
 为什么：用户 2026-11-01 亲定——在任务的编辑弹层里就能直接删掉这个任务，不用退回列表去长按；删除口径与任务列表长按删除完全一致（同款确认弹窗＋墓碑软删），删的正是正在计时/暂停中的任务时先停表再删。本版只含这一件。
