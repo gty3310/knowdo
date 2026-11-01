@@ -87,11 +87,19 @@ public class SyncService extends Service {
             sendBroadcast(new Intent(ACTION_SYNC_UPDATED).setPackage(getPackageName()));
         }
 
+        @Override public void onAppRelease(org.json.JSONObject record) {
+            // 新版信号（v1.45.0）：app_release 被 bump 到新版本时扳动一次更新检查。
+            // 这里只传版本号，查不查/下不下由 AppUpdate 按版本、开关、网络策略决定
+            AppUpdate.onReleaseSignal(SyncService.this, record.optInt("version_code", 0));
+        }
+
         @Override public void onJoined() {
             // (重)连成功：跑一次全量对账，补上断线期间漏掉的变更/autoStart/计时状态
             if (handler != null) handler.post(() -> {
                 try { sbReconcile("实时推送已连接"); } catch (Exception ignored) { }
             });
+            // 断线期间新版信号同样到不了：重连成功顺手补查一次更新（内部 15 分钟节流，v1.45.0）
+            AppUpdate.checkOnReconnect(SyncService.this);
         }
     };
 

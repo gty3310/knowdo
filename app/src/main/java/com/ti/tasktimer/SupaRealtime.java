@@ -15,7 +15,9 @@ import java.util.Map;
 
 /**
  * Supabase Realtime 最小客户端（v1.7.0）：Phoenix 协议 over WebSocket（org.java-websocket）。
- * 一个频道 realtime:knowdo 绑 tasks 与 user_state 两张表的 postgres_changes 全事件，
+ * 一个频道 realtime:knowdo 绑 tasks、user_state 与 app_release 三张表的
+ * postgres_changes 全事件（app_release 是新版信号，v1.45.0 起：单行表被 bump
+ * 即有新版发布，App 侧只订不写），
  * 25 秒心跳，断线指数退避重连，重连成功后由监听方跑一次全量对账补漏。
  * access_token 放在 join 包里，令牌刷新后用 access_token 事件更新（RLS 按人隔离靠它）。
  */
@@ -23,6 +25,7 @@ public final class SupaRealtime {
     public interface Listener {
         void onTaskRow(JSONObject record, String type);
         void onUserStateRow(JSONObject record);
+        void onAppRelease(JSONObject record);
         void onJoined();
     }
 
@@ -111,6 +114,7 @@ public final class SupaRealtime {
             JSONArray pcs = new JSONArray();
             pcs.put(new JSONObject().put("event", "*").put("schema", "public").put("table", "tasks"));
             pcs.put(new JSONObject().put("event", "*").put("schema", "public").put("table", "user_state"));
+            pcs.put(new JSONObject().put("event", "*").put("schema", "public").put("table", "app_release"));
             config.put("postgres_changes", pcs);
             config.put("broadcast", new JSONObject().put("ack", false).put("self", false));
             config.put("presence", new JSONObject().put("key", ""));
@@ -254,6 +258,8 @@ public final class SupaRealtime {
                         listener.onTaskRow(record, type);
                     } else if ("user_state".equals(table) && record != null) {
                         listener.onUserStateRow(record);
+                    } else if ("app_release".equals(table) && record != null) {
+                        listener.onAppRelease(record);
                     }
                 } else if ("phx_error".equals(event) || "phx_close".equals(event)) {
                     joined = false;

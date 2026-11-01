@@ -140,7 +140,7 @@ public class MainActivity extends Activity {
         // 升级时建议设置每次抢先全屏、弹框被跳过，返回走 onResume 又没人补，经常不弹。
         // 本轮若呈现了建议设置页，onResume 第一轮先让行，用户返回主界面后再补弹。
         suggestedJustShown = SuggestedSettingsActivity.maybeShow(this);
-        // 软件更新（v1.27.0）：启动自动检查（内部节流：每天至多一次、开关可关）
+        // 软件更新（v1.27.0；节流 v1.45.0 改版）：启动自动检查（距上次检查超 30 分钟才查、开关可关；实时新版信号是主路）
         AppUpdate.checkOnStartup(this);
         // 聊聊未读红点：主线变更时刷新角标，进聊聊页签即清零
         ChatStore.addChangeListener(chatListener);
@@ -250,6 +250,8 @@ public class MainActivity extends Activity {
         // 安装提示补弹（v1.27.0，每版只弹一次，AppUpdate 内有标记）
         refreshChatBadge();
         AppUpdate.maybePromptInstall(this);
+        // 新版即时达兜底（v1.45.0）：回前台距上次检查超 15 分钟，顺手查一次更新
+        AppUpdate.checkOnResume(this);
         // 任务衔接守卫（v1.10.0）：冷启动/回到主页时若处于空档，全屏问「下一个任务」
         IdleGuard.checkAndFire(this);
     }

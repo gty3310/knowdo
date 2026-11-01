@@ -49,7 +49,8 @@ import java.util.List;
  * size＋md5（已下好的分片校验通过就跳过，断了能续），拼合后验整件
  * size＋md5，全对才进入「待安装」。令牌与模型下载共用（ModelManager.token）。
  *
- * 呈现纪律（用户 UI 定案：安静）：自动检查在启动时节流（每天至多一次）；
+ * 呈现纪律（用户 UI 定案：安静）：自动检查以实时新版信号为主路（v1.45.0），
+ * 冷启动 30 分钟、回前台/重连 15 分钟节流兜底；
  * 下载只在设置页的更新行显示进度，不弹全屏、不出声；下好后一个普通对话框
  * 「新版 X 已下载好」＋安装按钮（每版只弹一次），或在设置页直接点安装。
  * 是否自动下载由 UpdatePrefs 决定：下载网络＝仅 Wi-Fi 时，流量下只记下
@@ -63,7 +64,8 @@ public final class AppUpdate {
     private static final String API = "https://gitee.com/api/v5/repos/" + OWNER + "/" + REPO;
     private static final String MANIFEST_PATH = "update/update.json";
     private static final String PREF = "app_update";
-    private static final long CHECK_THROTTLE_MS = 20L * 3600 * 1000; // 每天至多自动查一次
+    private static final long STARTUP_THROTTLE_MS = 30L * 60 * 1000; // 冷启动兜底：距上次检查超 30 分钟才查（v1.45.0，原 20 小时）
+    private static final long RESUME_THROTTLE_MS = 15L * 60 * 1000;  // 回前台/重连兜底：距上次检查超 15 分钟才查（v1.45.0）
 
     public static final int ST_NONE = 0;        // 没查过/已是最新
     public static final int ST_CHECKING = 1;
@@ -203,15 +205,49 @@ public final class AppUpdate {
 
     // ---------------- 触发点 ----------------
 
-    /** 启动时自动检查（MainActivity.onCreate 调）：开关开 + 距上次自动查 ≥20 小时才查。 */
+    /** 启动时自动检查（MainActivity.onCreate 调）：开关开 + 距上次检查超 30 分钟才查（v1.45.0 节流改版，原 20 小时）。 */
     public static void checkOnStartup(Context c) {
         // 先清陈旧待安装记录（v1.44.0）：纯本地清理、不联网，不受自动检查
-        // 开关与 20 小时节流约束——不清除，设置行的假「已下载好」会一直挂着；
-        // 自动检查本身仍按既有节流走，手动入口本来就不节流。
+        // 开关与节流约束——不清除，设置行的假「已下载好」会一直挂着；
+        // 自动检查本身仍按节流走，手动入口本来就不节流。
         clearStalePending(c);
         if (!UpdatePrefs.autoCheck(c)) return;
         if (working) return;
-        if (System.currentTimeMillis() - lastCheckMs(c) < CHECK_THROTTLE_MS) return;
+        if (System.currentTimeMillis() - lastCheckMs(c) < STARTUP_THROTTLE_MS) return;
+        startCheck(c.getApplicationContext(), false);
+    }
+
+    /** 回前台兜底检查（MainActivity.onResume 调，v1.45.0）：实时信号是主路，
+     * 这里补信号没到（没登录、断线漏掉）的情况：距上次检查超 15 分钟才查。 */
+    public static void checkOnResume(Context c) {
+        clearStalePending(c);
+        if (!UpdatePrefs.autoCheck(c)) return;
+        if (working) return;
+        if (System.currentTimeMillis() - lastCheckMs(c) < RESUME_THROTTLE_MS) return;
+        startCheck(c.getApplicationContext(), false);
+    }
+
+    /** Realtime（重）连成功后的补查（SyncService 的 onJoined 调，v1.45.0）：
+     * 断线期间新版信号同样到不了，重连后按回前台同一节流补一次，防连接抖动反复查。 */
+    public static void checkOnReconnect(Context c) {
+        if (!UpdatePrefs.autoCheck(c)) return;
+        if (working) return;
+        if (System.currentTimeMillis() - lastCheckMs(c) < RESUME_THROTTLE_MS) return;
+        startCheck(c.getApplicationContext(), false);
+    }
+
+    /**
+     * 新版信号（v1.45.0）：app_release 单行被 bump 到新版本时，由 SupaRealtime
+     * 订阅经 SyncService 回调到这里。信号只是「去查一眼」的扳机：查与下都走
+     * 既有 doCheck、以 Gitee 清单为准，绝不凭信号里的版本号拼下载地址。
+     * 信号不比当前版本新 → 忽略；自动检查开关关着 → 不查不下不弹（用户之后
+     * 手动点「检查更新」照常）。信号路不设时间节流（即时是它的本分），防并发
+     * 靠 working 标记；doCheck 落的 last_check_ms 戳也让紧随其后的兜底检查跳过。
+     */
+    public static void onReleaseSignal(Context c, int signalCode) {
+        if (signalCode <= currentCode(c)) return;
+        if (!UpdatePrefs.autoCheck(c)) return;
+        if (working) return;
         startCheck(c.getApplicationContext(), false);
     }
 
