@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1420 = new Entry("v1.42.0", "2026-11-01");
+        e1420.add(new Group(s("新增", "New"),
+                s("今天安排页的任务卡上多了「完成」和「删除」两个操作，口径和任务列表里一模一样；卡里还能直接看到这个任务的子任务——名字和分钟数，最多列三个，其余用省略号收尾",
+                  "Task cards on the today-plan page gain Done and Delete actions, working exactly as they do in the task list, and a card now shows the task's subtasks inline — name and minutes, up to three, the rest tailed off with an ellipsis")));
+        e1420.why = s("你在安排今天的时候，经常顺手就想把某个任务办掉或删掉，之前还得退回任务列表里翻找——在安排页里就该能当场处理",
+                "While planning today you often want to finish or drop a task on the spot, and having to go back and hunt it down in the task list broke the flow — the planning page should handle it right there");
+        e1420.tryIt = s("进今天安排页，在任意一张任务卡上点「完成」或「删除」；再找一张带子任务的卡，看看它卡里列出的子任务",
+                "Open the today-plan page and tap Done or Delete on any task card; then find a card with subtasks and see them listed inside it");
+        out.add(e1420);
+
         Entry e1410 = new Entry("v1.41.0", "2026-11-01");
         e1410.add(new Group(s("新增", "New"),
                 s("今天安排页底部多了「开始今天」按钮：排没排满都由你说了算，点它就结束安排、直接进入今天，不会被「还没排完」拦住",
