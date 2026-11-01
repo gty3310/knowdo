@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.44.0)
+## Features (Android, v1.45.0)
 
-Current version: **v1.44.0**.
+Current version: **v1.45.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.45.0 — 2026-11-01
+
+**Why:** You want your phone to update the moment a new version is published. Until now the automatic check was throttled to once in 20 hours, so a release could sit unnoticed for the better part of a day — or wait for a manual check. Build commit `4da9a43` · [compare v1.44.0...v1.45.0](https://github.com/gty3310/knowdo/compare/v1.44.0...v1.45.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **New versions arrive instantly.** A one-row signal table in Supabase (`app_release`) is bumped by the release pipeline right after the Gitee manifest switches. The app subscribes to that row over its existing Realtime connection: a newer signal triggers the ordinary update check (the Gitee manifest stays authoritative — the signal never carries a download address), the download runs under the existing network policy, and the familiar "new version downloaded" dialog asks for the one tap Android reserves for the user. Fallbacks tightened at the same time: the startup check throttle drops from 20 hours to 30 minutes, returning to the app re-checks after 15 minutes, and a Realtime reconnect re-checks too, so a signal missed while offline is still caught. With the auto-check switch off, a signal does nothing. The v1.44.0 stale-pending rule is untouched, as are the manifest, shard download/verification and install flow.
+
+Not yet verified on a real device: bumping the signal with KnowDo open and watching it download and prompt end to end; a download finishing in the background prompting on next foreground; the startup/resume fallback checks; no action when auto-check is off; the changelog popup; and the full self-update chain.
+
 ### v1.44.0 — 2026-11-01
 
 **Why:** On a phone still running 1.38.0, tapping "Check for updates" only ever offered to install 1.38.0 itself: a stale pending package — downloaded while on an older version, then overtaken by installing the same version from Drive — sat in the updater's records, and the settings row went straight to installing it instead of ever checking the server, whose manifest was correct all along (1.43.0). Build commit `49ad833` · [compare v1.43.0...v1.44.0](https://github.com/gty3310/knowdo/compare/v1.43.0...v1.44.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: a 1.38.0 phone carrying the stale 1.38.0 pend
 - **Delete task inside the editor.** A quiet vermilion "Delete task" line sits in the editor's fixed footer under the Cancel / Start now / Save row — only when editing an existing task, never when creating one. It shows the task list's identical confirmation dialog, then takes the same tombstone soft-delete (`TaskStore.remove`), and the list underneath refreshes through the host's usual path. One deliberate addition over the list (which never touches the timer when deleting): if the task being deleted is the one currently timing, it is stopped through the regular stop path first, its current segment closed and saved; if it is the paused one, its pause slot is cleared and its call-back reminder cancelled first.
 
 Not yet verified on a real device: the full delete flow from the editor, no delete row when creating a task, the timer stopping when the running/paused task is deleted, the list refreshing underneath, the changelog popup, and the full self-update chain.
-
-### v1.42.0 — 2026-11-01
-
-**Why:** Planning today is exactly when stray tasks get spotted — one is already done, another should not exist — and going back to hunt it down in the task list broke the flow. The plan page's cards now handle it on the spot, through the very same code paths as the list. Build commit `ec8f7e3` · [compare v1.41.0...v1.42.0](https://github.com/gty3310/knowdo/compare/v1.41.0...v1.42.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Done / Delete on today-plan task cards, plus subtasks inline.** Done runs the task list's exact completion path (`markDone` + start-baseline record + save + the done-state's targeted cloud push); Delete shows the list's identical confirmation dialog and then takes the same tombstone soft-delete (`TaskStore.remove`). The buttons are their own tap targets — they never trigger the card's tap-to-edit. Subtasks render read-only inside the card (title + minutes, at most three, the rest tailed with "…"; no section when there are none). As in the list, completing or deleting never rewrites blocks already sitting in today's schedule; the ledger simply re-reads them.
-
-Not yet verified on a real device: card Done/Delete matching the list's outcomes, subtask rendering and truncation, list and ledger refresh after either action, the changelog popup, and the full self-update chain.
 
 ## Build
 

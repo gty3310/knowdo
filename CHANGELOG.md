@@ -2,6 +2,28 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.45.0] - 2026-11-01（versionCode 84）
+
+为什么：用户 2026-11-01 13:49 拍板——每发一个新版本，App 要立刻检测到、自动下载、下好弹窗让用户点安装。此前自动检查是启动时节流 20 小时，发版后最长大半天 App 才知道；安卓硬边界已与用户说明：普通安装方式下最后一下系统安装确认必须用户本人点，本版做到检测秒级＋下载全自动＋下好弹窗。
+
+发布提交：`4da9a43`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.44.0...v1.45.0 比较](https://github.com/gty3310/knowdo/compare/v1.44.0...v1.45.0)
+
+### 新增
+
+**新版即时达（`AppUpdate`／`SupaRealtime`／`SyncService`／`MainActivity`）**
+
+发版侧前置（Jarvis 已上线）：Supabase 单行信号表 `app_release`（id=1，字段 version_code／version_name／updated_at；RLS 开、anon 与 authenticated 可读、已入 realtime publication），发版流程从本版起在 Gitee update.json 切换并回读之后多一步：用 `signal_release.py` 把信号 bump 到新版本号并回读留痕。
+
+App 侧复用既有 Realtime 连接（频道 realtime:knowdo、同一条 websocket、心跳与指数退避重连都不变）在原 tasks／user_state 两条 postgres_changes 绑定之外加订 `app_release` 全事件；事件经 SyncService 的 Listener 新回调 `onAppRelease` 把 version_code 交给 `AppUpdate.onReleaseSignal`。信号只是扳机：信号版本不比当前新 → 忽略；自动检查开关（UpdatePrefs.autoCheck）关着 → 不查不下不弹；开关开着 → 走既有 doCheck 全流程（拉 Gitee 清单、按清单下载/校验/拼合，绝不凭信号版本号拼下载地址），下载网络按既有 UpdatePrefs 策略（作者账号 wifi_only=false，流量也可下）。信号路不设时间节流，防并发靠既有 working 标记，doCheck 落的 last_check_ms 戳让紧随其后的兜底检查自动跳过。
+
+节流改版：checkOnStartup 的 20 小时节流改为冷启动 30 分钟；新增 MainActivity.onResume 兜底 `checkOnResume`（距上次检查超 15 分钟查一次）与重连兜底 `checkOnReconnect`（Realtime onJoined 时调、同一 15 分钟节流，补断线期间漏掉的信号）；两者与启动检查共用 last_check_ms 与 working，不并发重复查。下好后的提醒沿用既有机制零新增：下载完成时有前台页面就弹「新版已下载好」（每版只弹一次），完成时在后台则下次回主界面由既有 maybePromptInstall 补弹；不出声、不全屏、不新增通知渠道。
+
+登录前/后：Realtime 连接由 SyncService 在已登录时建立（既有 ensure 口径不变），故信号订阅只在已登录时存在——这是 App 的常态；未登录时没有信号，但启动/回前台兜底检查不依赖 Supabase 登录（Gitee 令牌通道），照样能发现新版。v1.44.0 的陈旧 pending 口径（pendingCode <= 当前版本一律作废）原样保留：三个新检查入口里 checkOnStartup/checkOnResume 沿用先 clearStalePending 的既有纪律，信号路进 doCheck 后由既有替换/清理逻辑处理 pending，不复活陈旧包。
+
+未动：Gitee 清单/分片下载/拼合/md5 校验、安装 Intent 与 FileProvider、UpdatePrefs 网络策略语义、手动「检查更新」入口语义、信号表结构。
+
+未真机验证：知行开着时 bump 信号→自动下载→弹窗全链；后台完成下次前台补弹；冷启动/回前台兜底检查；autoCheck 关时无动作；更新日志弹框；自更新全链。
+
 ## [1.44.0] - 2026-11-01（versionCode 83）
 
 为什么：用户 2026-11-01 真机发现并批准——在 1.38.0 上点「检查更新」，设置行只反复让安装一个 1.38.0：手机里存着一个 pendingCode=75 的陈旧待安装包（旧版时下好、后来从 Drive 装上同版，App 内记录没清），而 onSettingsRowTapped 只要 pendingReady 就直接安装、永不联网检查。云端清单经 Jarvis 回读无误（1.43.0/vc82），问题全在 App 侧 pending 有效性。本版只修这一件。
