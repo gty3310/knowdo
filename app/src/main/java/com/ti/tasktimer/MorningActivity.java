@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.content.Context;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.EditText;
@@ -16,6 +17,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 
 import org.json.JSONObject;
@@ -68,6 +70,9 @@ public class MorningActivity extends Activity {
     private TextView startBtn;
     private TextView startNote;
     private LinearLayout pausePanel;
+    private ScrollView morningScroll;
+    private LinearLayout pauseArea;
+    private TextView pauseBtn;
     private final List<View> dots = new ArrayList<>();
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
@@ -153,6 +158,7 @@ public class MorningActivity extends Activity {
 
     private void buildUi() {
         ScrollView scroll = new ScrollView(this);
+        morningScroll = scroll;
         scroll.setBackgroundColor(Ui.bg(this));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -669,22 +675,18 @@ public class MorningActivity extends Activity {
     private View buildPauseArea() {
         LinearLayout area = new LinearLayout(this);
         area.setOrientation(LinearLayout.VERTICAL);
-        TextView pauseBtn = new TextView(this);
-        pauseBtn.setText(s("暂停一会儿", "Pause for a bit"));
+        pauseArea = area;
+        pauseBtn = new TextView(this);
         pauseBtn.setTextSize(14.5f);
         pauseBtn.setGravity(Gravity.CENTER);
         pauseBtn.setPadding(0, dp(12), 0, dp(12));
-        pauseBtn.setTextColor(Ui.sub(this));
-        pauseBtn.setBackground(roundStroke(Ui.surface(this), Ui.line(this), dp(15)));
+        pauseBtn.setMinimumHeight(dp(52));
+        pauseBtn.setClickable(true);
+        pauseBtn.setFocusable(true);
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         plp.topMargin = dp(14);
         area.addView(pauseBtn, plp);
-        TextView note = small(s("有急事（关闹钟、回紧急消息、接电话）先去处理：选个分钟数，这一页会退下，到点自己回来。可以反复暂停。",
-                "Something urgent (an alarm to silence, a message, a call)? Pick how long — this page steps aside and comes back on its own when the time is up. You can pause again and again."), 11);
-        note.setGravity(Gravity.CENTER);
-        note.setPadding(0, dp(7), 0, 0);
-        area.addView(note);
 
         pausePanel = new LinearLayout(this);
         pausePanel.setOrientation(LinearLayout.VERTICAL);
@@ -707,13 +709,13 @@ public class MorningActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setPadding(0, dp(8), 0, 0);
-            for (int i = r * 3; i < r * 3 + 3; i++) {
-                final long minutes = opts[i];
-                TextView chip = ynButton(labels[i]);
+            for (int k = r * 3; k < r * 3 + 3; k++) {
+                final long minutes = opts[k];
+                TextView chip = ynButton(labels[k]);
                 chip.setOnClickListener(v -> doSnooze(minutes * 60_000L,
                         minutes >= 60 ? s("1 小时", "1 hour") : (minutes + s(" 分钟", " min"))));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-                if (i % 3 > 0) lp.leftMargin = dp(6);
+                if (k % 3 > 0) lp.leftMargin = dp(6);
                 row.addView(chip, lp);
             }
             pausePanel.addView(row);
@@ -728,9 +730,59 @@ public class MorningActivity extends Activity {
         pausePanel.addView(customRow);
         pausePanel.setVisibility(View.GONE);
         area.addView(pausePanel);
-        pauseBtn.setOnClickListener(v -> pausePanel.setVisibility(
-                pausePanel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
+
+        TextView note = small(s("有急事（关闹钟、回紧急消息、接电话）先去处理：选个分钟数，这一页会退下，到点自己回来。可以反复暂停。",
+                "Something urgent (an alarm to silence, a message, a call)? Pick how long — this page steps aside and comes back on its own when the time is up. You can pause again and again."), 11);
+        note.setGravity(Gravity.CENTER);
+        note.setPadding(0, dp(7), 0, 0);
+        area.addView(note);
+
+        paintPauseBtn(false);
+        pauseBtn.setOnClickListener(v -> {
+            hideKeyboard();
+            boolean expand = pausePanel.getVisibility() != View.VISIBLE;
+            pausePanel.setVisibility(expand ? View.VISIBLE : View.GONE);
+            paintPauseBtn(expand);
+            if (expand) scrollPauseIntoView();
+        });
         return area;
+    }
+
+    /** 暂停按钮两态：收起＝低饱和描边＋「▾」；展开＝主色描边与文字＋「▴」。与填写状态无关，永不禁用。 */
+    private void paintPauseBtn(boolean expanded) {
+        if (pauseBtn == null) return;
+        pauseBtn.setText(expanded ? s("暂停一会儿 ▴", "Pause for a bit ▴")
+                : s("暂停一会儿 ▾", "Pause for a bit ▾"));
+        pauseBtn.setTextColor(expanded ? Ui.accent(this) : Ui.sub(this));
+        pauseBtn.setBackground(roundStroke(Ui.surface(this),
+                expanded ? Ui.accent(this) : Ui.line(this), dp(15)));
+    }
+
+    /** 点暂停先收键盘：刚在日记/数值框打完字也能立刻展开面板，不被键盘挡住。 */
+    private void hideKeyboard() {
+        try {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            View focus = getCurrentFocus();
+            if (imm != null && focus != null) {
+                imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+            } else if (imm != null && diaryField != null) {
+                imm.hideSoftInputFromWindow(diaryField.getWindowToken(), 0);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * 展开后把暂停区滚进视口：目标＝pauseArea 在滚动内容中的顶部（getTop 相对父列即内容坐标），
+     * 再留 8dp 余量。area 的顶部不随面板展开改变，故布局完成前后目标一致；
+     * smoothScrollTo 本身会把目标钳制在 [0, 内容高−视口高]，滚不到内容之外、不会过头；
+     * 按钮（52dp）＋面板紧随其下，滚到 area 顶部即整块进入视口。收起时不调用。
+     */
+    private void scrollPauseIntoView() {
+        if (morningScroll == null || pauseArea == null) return;
+        morningScroll.post(() -> {
+            int y = Math.max(0, pauseArea.getTop() - dp(8));
+            morningScroll.smoothScrollTo(0, y);
+        });
     }
 
     private void askCustomSnooze() {
