@@ -316,6 +316,18 @@ public class TodayPlanActivity extends Activity {
         btn.setBackground(round(Ui.text(this), 10));
         btn.setOnClickListener(v -> onPlanIntoToday());
         foot.addView(btn);
+        View footGap = new View(this);
+        foot.addView(footGap, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
+        TextView startBtn = new TextView(this);
+        startBtn.setText(s("开始今天", "Start today"));
+        startBtn.setTextSize(13);
+        startBtn.setGravity(Gravity.CENTER);
+        startBtn.setTextColor(Color.WHITE);
+        startBtn.setPadding(0, dp(7), 0, dp(7));
+        startBtn.setBackground(round(Ui.text(this), 10));
+        startBtn.setOnClickListener(v -> onStartToday());
+        foot.addView(startBtn);
         root.addView(foot);
 
         setContentView(root);
@@ -1172,6 +1184,19 @@ public class TodayPlanActivity extends Activity {
                             : s("排好了，点名的这几件实在排不下", "Planned — the named ones just don't fit"),
                     Toast.LENGTH_SHORT).show();
         });
+    }
+
+    /**
+     * 「开始今天」（v1.41.0，用户亲定）：排满没排满由用户说了算，点它直接结束
+     * 安排、进入今天，不弹窗、不拦截、不动已有排程一字。本页其余编辑都是点按
+     * 即落盘；唯一在途的是可支配输入框（仅失焦/回车时保存）：正聚焦时先走同一
+     * 落盘路径 applyFreeInput 按现状存下，再退出。两条进入路径栈底都是日程主页
+     * （晨间门 complete() 启动本页后已 finish 自身；日程页常驻入口从主页启动），
+     * finish() 即回到今天的日程主页。
+     */
+    private void onStartToday() {
+        if (freeInput != null && freeInput.hasFocus()) applyFreeInput();
+        finish();
     }
 
     private void showOverflow(List<LocalAutoScheduler.Candidate> overflow) {
