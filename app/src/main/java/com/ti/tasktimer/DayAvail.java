@@ -255,6 +255,45 @@ public final class DayAvail {
         return Math.max(0, 1440 - sleepDurMin(c) - lockSum);
     }
 
+    /**
+     * 时间墙上限（分钟，静态纯函数，v1.38.2）：[nowMin, dayEndMin) 的墙钟时长，
+     * 扣掉与该区间重叠的锁时段（墙钟分钟 {start,end} 段，先钳制到区间内、再合并
+     * 重叠后合计）。dayEndMin 不晚于 nowMin 时为 0，结果不为负。
+     */
+    public static int wallCapMin(int nowMin, int dayEndMin, List<int[]> lockWallSegs) {
+        if (dayEndMin <= nowMin) return 0;
+        List<int[]> segs = new ArrayList<>();
+        if (lockWallSegs != null) {
+            for (int[] g : lockWallSegs) {
+                if (g == null || g.length < 2) continue;
+                int s = Math.max(g[0], nowMin), e = Math.min(g[1], dayEndMin);
+                if (e > s) segs.add(new int[]{s, e});
+            }
+        }
+        segs.sort((a, b) -> Integer.compare(a[0], b[0]));
+        int locked = 0, cs = -1, ce = -1;
+        for (int[] g : segs) {
+            if (cs < 0) { cs = g[0]; ce = g[1]; }
+            else if (g[0] <= ce) { ce = Math.max(ce, g[1]); }
+            else { locked += ce - cs; cs = g[0]; ce = g[1]; }
+        }
+        if (cs >= 0) locked += ce - cs;
+        return Math.max(0, (dayEndMin - nowMin) - locked);
+    }
+
+    /**
+     * 今天可支配的上限（分钟）：今天结束＝22:30（DayAccount.DAY_END_MIN）与已保存
+     * 的睡眠开始取更早者（睡眠不重复扣，已体现在结束点里）；锁时按该日期已存的
+     * 锁时段（轴分钟＋起床时刻换算成墙钟）。现在取 DayAccount.nowMinutes 口径。
+     */
+    public static int wallCapMinToday(Context c, String date) {
+        int dayEnd = Math.min(DayAccount.DAY_END_MIN, sleepStartMin(c));
+        int wake = wakeMin(c);
+        List<int[]> locks = new ArrayList<>();
+        for (Seg g : locksFor(c, date)) locks.add(new int[]{wake + g.s, wake + g.e});
+        return wallCapMin(DayAccount.nowMinutes(), dayEnd, locks);
+    }
+
     // ---------------- 云端 JSON（user_state.day_avail，整份对象） ----------------
 
     public static JSONObject toCloudJson(Context c) { return load(c); }

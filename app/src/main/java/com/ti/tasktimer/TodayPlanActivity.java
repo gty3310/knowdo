@@ -359,7 +359,14 @@ public class TodayPlanActivity extends Activity {
     }
 
     private static String trimNum(double v) {
-        return v == Math.floor(v) ? String.valueOf((long) v) : String.valueOf(v);
+        if (v == Math.floor(v)) return String.valueOf((long) v);
+        // 非整数（如被时间墙上限卡到分钟精度的值）：最多两位小数并去尾零，
+        // 不许回显一长串 double 小数；账面计算走分钟精度、不受此显示影响。
+        String t = String.format(java.util.Locale.US, "%.2f", v);
+        while (t.indexOf('.') >= 0 && (t.endsWith("0") || t.endsWith("."))) {
+            t = t.substring(0, t.length() - 1);
+        }
+        return t;
     }
 
     /** 时间账：已安排＝今日 schedule 块时长合计；还剩＝预算−已安排，负数变红。 */
@@ -409,7 +416,17 @@ public class TodayPlanActivity extends Activity {
         try {
             double h = Double.parseDouble(raw);
             if (h < 0 || h > 24) throw new NumberFormatException();
-            DayAvail.setFreeHours(this, logicToday, h);
+            // 时间墙上限（v1.38.2，用户亲定口径）：可支配不许多于时间墙上可用的
+            // 时间；填超了按上限以分钟精度存，并给一句两秒提示；上限内与原来一致。
+            int capMin = DayAvail.wallCapMinToday(this, logicToday);
+            if ((int) Math.round(h * 60) > capMin) {
+                DayAvail.setFreeHours(this, logicToday, capMin / 60.0);
+                Toast.makeText(this, s("可支配时间不可以多于时间墙上可用的时间",
+                        "Free time cannot exceed the time left on today's wall"),
+                        Toast.LENGTH_SHORT).show();
+            } else {
+                DayAvail.setFreeHours(this, logicToday, h);
+            }
             refreshLedger();
         } catch (Exception e) {
             Toast.makeText(this, s("可支配填 0 到 24 的小时数", "Enter hours between 0 and 24"),
