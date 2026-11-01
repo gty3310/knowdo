@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1400 = new Entry("v1.40.0", "2026-11-01");
+        e1400.add(new Group(s("改进", "Improved"),
+                s("所有要打字的页面都改了：键盘一弹出来，页面会自动变矮，保存、开始、取消这些按钮停在键盘上方、钉在页面最底部，页面再长也不会被滚走——任务编辑、晨间页、过半与结束检查页、下一个任务页、聊聊都包括",
+                  "Every page with typing is reworked: when the keyboard opens, the page shrinks to fit, and Save / Start / Cancel hold right above the keyboard, pinned to the bottom of the page — task editing, the morning page, the halfway and end check pages, the next-task page and chat are all covered. Long content scrolls above the buttons; the buttons never scroll away")));
+        e1400.why = s("以前编辑任务时，按钮埋在内容最底下，键盘一弹出来就盖住，内容一长还得先收起键盘、滚到底才能保存",
+                "Editing a task used to bury the buttons at the very bottom of the content: the keyboard covered them, and with long content you had to dismiss the keyboard and scroll all the way down before you could save");
+        e1400.tryIt = s("打开任意一个任务的编辑页，点任务名打几个字，看底部三个按钮稳稳停在键盘上方；再把内容拉到最长，确认按钮不随内容滚动",
+                "Open any task's edit page and tap the task name to type: the three buttons at the bottom should hold steady above the keyboard. Then make the content as long as it gets and check the buttons do not scroll with it");
+        out.add(e1400);
+
         Entry e1390 = new Entry("v1.39.0", "2026-11-01");
         e1390.add(new Group(s("新增", "New"),
                 s("过半检查点了「做不完」后的写办法页，多了一排加时间：+1、+3、+5、+10 分钟、+50% 和自定义，点一下当场加进当前计时，可以连着点、越加越多，加了多少页面上有一行累计显示；不加也能照常写完办法继续",
