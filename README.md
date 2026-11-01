@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.45.0)
+## Features (Android, v1.46.0)
 
-Current version: **v1.45.0**.
+Current version: **v1.46.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.46.0 — 2026-11-01
+
+**Why:** The Today Plan page reckoned by the whole day: Arranged included schedule blocks already past and the budget assumed a full day, so by afternoon its numbers no longer matched the time actually left — and the period bar had no mark for "now". Build commit `971af79` · [compare v1.45.0...v1.46.0](https://github.com/gty3310/knowdo/compare/v1.45.0...v1.46.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Today Plan reckons from this moment.** Arranged now counts only the part of today's schedule still ahead (a block in progress counts only its remaining stretch), and the budget is the smaller of the free time you entered and the usable wall time from now to the end of today, so Time left is honest at any hour. The period bar keeps its full-day axis, but everything before now is greyed under a translucent veil and a thin vermilion line marks the present moment; the veil never intercepts touches, so locked-period dragging works exactly as before. First thing in the morning the new reckoning matches the old one, and the scheduler itself — which already only ever planned into the future — is untouched.
+
+Not yet verified on a real device: afternoon numbers counting only the future, a block straddling now counting only its later part, the greyed past and the red line sitting at the current time, morning numbers matching the old reckoning, the veil not blocking locked-period dragging, the changelog popup, and the 1.45.0 → 1.46.0 instant-update chain end to end.
+
 ### v1.45.0 — 2026-11-01
 
 **Why:** You want your phone to update the moment a new version is published. Until now the automatic check was throttled to once in 20 hours, so a release could sit unnoticed for the better part of a day — or wait for a manual check. Build commit `4da9a43` · [compare v1.44.0...v1.45.0](https://github.com/gty3310/knowdo/compare/v1.44.0...v1.45.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: bumping the signal with KnowDo open and watch
 - **A stale pending package no longer blocks self-update.** A downloaded pending package counts only when its versionCode is strictly newer than the running version; at or below, it is void. That one rule now sits inside `pendingReady()`, so every entrance follows it — the settings row (a stale tap clears the record and runs a real check instead of installing), the install entry, the "new version downloaded" prompt, and failure handling (a failed check no longer revives a stale READY; it lands on the error state with its message kept, while a genuinely newer pending package is still preserved). Stale records are also cleared at startup — a local, offline cleanup deliberately placed ahead of the 20-hour auto-check throttle — before the install prompt, and in the row tap; the settings row stops advertising a stale package as a downloaded new version. Manifest, download channels, shard verification and the install flow are untouched.
 
 Not yet verified on a real device: a 1.38.0 phone carrying the stale 1.38.0 pending package no longer offering the old install and successfully checking/downloading a later version once the fix is in; a still-valid pending package installing directly as before; the changelog popup; and the full self-update chain.
-
-### v1.43.0 — 2026-11-01
-
-**Why:** Deleting a task meant backing out of the editor to the task list and long-pressing it — a pointless detour when you are already looking at the task. The editor now carries the delete itself, through the very same confirmation and soft-delete path as the list. Build commit `d6d8df7` · [compare v1.42.0...v1.43.0](https://github.com/gty3310/knowdo/compare/v1.42.0...v1.43.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Delete task inside the editor.** A quiet vermilion "Delete task" line sits in the editor's fixed footer under the Cancel / Start now / Save row — only when editing an existing task, never when creating one. It shows the task list's identical confirmation dialog, then takes the same tombstone soft-delete (`TaskStore.remove`), and the list underneath refreshes through the host's usual path. One deliberate addition over the list (which never touches the timer when deleting): if the task being deleted is the one currently timing, it is stopped through the regular stop path first, its current segment closed and saved; if it is the paused one, its pause slot is cleared and its call-back reminder cancelled first.
-
-Not yet verified on a real device: the full delete flow from the editor, no delete row when creating a task, the timer stopping when the running/paused task is deleted, the list refreshing underneath, the changelog popup, and the full self-update chain.
 
 ## Build
 
