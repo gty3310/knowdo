@@ -107,6 +107,26 @@ public final class AppUpdate {
 
     public static String pendingName(Context c) { return sp(c).getString("pending_name", ""); }
     public static int pendingCode(Context c) { return sp(c).getInt("pending_code", 0); }
+
+    /**
+     * 陈旧口径（v1.44.0，全类单一出处）：待安装包只有 pendingCode 大于当前
+     * 版本才算有效新版；小于等于当前版本的一律陈旧——多半是人在旧版时下好、
+     * 后来从 Drive 等外部渠道装上了同版或更高版，App 内的待安装记录没人清。
+     * 陈旧包不得显示可安装、不得拦住检查入口、不得弹窗、不得被失败检查
+     * 恢复成 READY：所有入口统一先过 pendingReady()／clearStalePending()，
+     * 不许各处自己判断。
+     */
+    private static boolean pendingStale(Context c) {
+        int pc = pendingCode(c);
+        return pc > 0 && pc <= currentCode(c);
+    }
+
+    /** 清掉陈旧待安装记录（只清记录不删文件，与 doCheck 既有清理口径一致）。 */
+    private static void clearStalePending(Context c) {
+        if (!pendingStale(c)) return;
+        sp(c).edit().remove("pending_code").remove("pending_name").apply();
+        if (state(c) == ST_READY) setState(c, ST_NONE);
+    }
     public static long dlDone(Context c) { return sp(c).getLong("dl_done", 0); }
     public static long dlTotal(Context c) { return sp(c).getLong("dl_total", 0); }
     public static String lastError(Context c) { return sp(c).getString("last_error", ""); }
@@ -145,6 +165,7 @@ public final class AppUpdate {
 
     /** 待安装的新版是否就绪（文件在且大小对得上；md5 在下载完成时已验并落状态，这里不重算大文件）。 */
     public static boolean pendingReady(Context c) {
+        if (pendingStale(c)) return false;
         if (state(c) != ST_READY) return false;
         File f = pendingApk(c);
         return f != null && f.exists() && f.length() == sp(c).getLong("pending_size", -1);
@@ -154,6 +175,8 @@ public final class AppUpdate {
     public static String statusText(Context c) {
         boolean en = Strings.en();
         int st = state(c);
+        // 陈旧待安装包不显示「已下载好」（v1.44.0）：按未查态呈现，等入口清理/检查接管
+        if (st == ST_READY && pendingStale(c)) st = ST_NONE;
         String name = pendingName(c);
         switch (st) {
             case ST_CHECKING: return en ? "Checking…" : "正在检查…";
@@ -182,6 +205,10 @@ public final class AppUpdate {
 
     /** 启动时自动检查（MainActivity.onCreate 调）：开关开 + 距上次自动查 ≥20 小时才查。 */
     public static void checkOnStartup(Context c) {
+        // 先清陈旧待安装记录（v1.44.0）：纯本地清理、不联网，不受自动检查
+        // 开关与 20 小时节流约束——不清除，设置行的假「已下载好」会一直挂着；
+        // 自动检查本身仍按既有节流走，手动入口本来就不节流。
+        clearStalePending(c);
         if (!UpdatePrefs.autoCheck(c)) return;
         if (working) return;
         if (System.currentTimeMillis() - lastCheckMs(c) < CHECK_THROTTLE_MS) return;
@@ -196,6 +223,8 @@ public final class AppUpdate {
 
     /** 设置行在「待安装」态被点：直接走安装（包含无授权时的一次性引导）。 */
     public static void onSettingsRowTapped(Activity a) {
+        // 陈旧包先清掉再分流（v1.44.0）：不清，它会永远冒充新版拦住真正的检查
+        clearStalePending(a);
         if (pendingReady(a)) {
             launchInstall(a);
         } else {
@@ -495,6 +524,7 @@ public final class AppUpdate {
      */
     public static void maybePromptInstall(final Activity a) {
         if (a.isFinishing()) return;
+        clearStalePending(a); // 陈旧包不弹窗（v1.44.0），顺手清掉记录
         if (!pendingReady(a)) return;
         int vc = pendingCode(a);
         if (sp(a).getInt("prompted_vc", 0) >= vc) return;
