@@ -1087,6 +1087,41 @@ public class TodayPlanActivity extends Activity {
         }
         card.addView(prow);
 
+        if (t.hasSubtasks()) {
+            LinearLayout subs = new LinearLayout(this);
+            subs.setOrientation(LinearLayout.VERTICAL);
+            subs.setPadding(0, dp(3), 0, 0);
+            int showN = Math.min(3, t.subtasks.size());
+            for (int i = 0; i < showN; i++) {
+                Subtask st = t.subtasks.get(i);
+                TextView sv = new TextView(this);
+                sv.setText("· " + st.title + s("（", " (") + Math.max(1, st.minutes) + s(" 分）", " min)"));
+                sv.setTextSize(11);
+                sv.setTextColor(Ui.sub(this));
+                sv.setSingleLine(true);
+                sv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                subs.addView(sv);
+            }
+            if (t.subtasks.size() > showN) {
+                TextView more = new TextView(this);
+                more.setText("…");
+                more.setTextSize(11);
+                more.setTextColor(Ui.sub(this));
+                subs.addView(more);
+            }
+            card.addView(subs);
+        }
+
+        LinearLayout acts = new LinearLayout(this);
+        acts.setOrientation(LinearLayout.HORIZONTAL);
+        acts.setGravity(Gravity.END);
+        acts.setPadding(0, dp(5), 0, 0);
+        acts.addView(chip(s("完成", "Done"), false, v -> completeFromCard(t)));
+        TextView delChip = chip(s("删除", "Delete"), false, v -> confirmDeleteFromCard(t));
+        delChip.setTextColor(Ui.accent(this));
+        acts.addView(delChip);
+        card.addView(acts);
+
         card.setOnClickListener(v -> TaskEditSheet.showEdit(this, store, t, editHost));
         return card;
     }
@@ -1163,6 +1198,42 @@ public class TodayPlanActivity extends Activity {
         store.save();
         GuardRules.kickSync(this);
         refreshAll();
+    }
+
+    /**
+     * 卡上「完成」（v1.42.0）：与任务列表完成完全同一条路径——markDone（一次性
+     * 置 done、每日重复记今日完成）＋StartBaseline.markCompleted＋store.save 落盘
+     * ＋SbSync.pushDoneAsync 完成状态定向推云，四步与列表三处完成入口
+     * （MainActivity 复选框／展开 chip／长按菜单）逐一相同。列表侧完成后额外
+     * 的 fireGuardAfterManualDone 是主页执行流的衔接守卫，不属于完成口径本身，
+     * 安排页不在执行流里，不带。完成后 refreshAll——该任务 isDoneToday 后不再
+     * 入候选，卡消失、时间账重算；与列表一样，完成动作本身不动日程里已有的
+     * 计划块。
+     */
+    private void completeFromCard(final TaskItem t) {
+        t.markDone();
+        StartBaseline.markCompleted(this, t.id);
+        store.save();
+        SbSync.pushDoneAsync(this, t.id);
+        refreshAll();
+    }
+
+    /**
+     * 卡上「删除」（v1.42.0）：与任务列表长按删除同款确认弹窗（标题／文案／
+     * 按钮逐字一致），确认后走同一个 store.remove 墓碑软删（deleted=true＋
+     * touch＋save，随同步上云）；删后 refreshAll，卡消失、时间账重算。与列表
+     * 一样，删除动作本身不动日程里已有的计划块。
+     */
+    private void confirmDeleteFromCard(final TaskItem t) {
+        new AlertDialog.Builder(this)
+                .setTitle(s("删除任务", "Delete task"))
+                .setMessage(s("确定删除「", "Delete “") + t.title + s("」吗？", "”?"))
+                .setPositiveButton(s("删除", "Delete"), (d, w) -> {
+                    store.remove(t);
+                    refreshAll();
+                })
+                .setNegativeButton(s("取消", "Cancel"), null)
+                .show();
     }
 
     // ---------------- 底部排程 ----------------
