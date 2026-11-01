@@ -267,6 +267,10 @@ public final class Strings {
     public static String chkPlus5() { return s("+5 分钟", "+5 min"); }
     public static String chkPlus10() { return s("+10 分钟", "+10 min"); }
     public static String chkPlus15() { return s("+15 分钟", "+15 min"); }
+    public static String chkPlus1() { return s("+1 分钟", "+1 min"); }
+    public static String chkPlus3() { return s("+3 分钟", "+3 min"); }
+    public static String chkHalfAddLabel() { return s("加时间：", "Add time:"); }
+    public static String chkAddedTotal(int mins) { return en ? "Added " + mins + " min in total" : "已加 " + mins + " 分钟"; }
     public static String chkCustomHint() { return s("或输入想加的分钟数", "Or type minutes to add"); }
     public static String chkCustomBtn() { return s("按输入加时", "Add typed minutes"); }
 

@@ -159,12 +159,94 @@ public class CheckActivity extends Activity {
         input.setHintTextColor(Ui.sub(this));
         root.addView(input);
         spacer();
+        // 加时间（v1.39.0）：与结束页同一套 extendTimer 机制；点完不关页、可连点
+        // 累加，累计分钟显示在本区下方；不加也能照常点「想好了，继续」。
+        final int[] addedMin = {0};
+        final TextView addedLine = new TextView(this);
+        addedLine.setTextSize(15);
+        addedLine.setTextColor(Ui.sub(this));
+        addedLine.setGravity(Gravity.CENTER);
+        addedLine.setVisibility(View.GONE);
+        TextView addLabel = new TextView(this);
+        addLabel.setText(Strings.chkHalfAddLabel());
+        addLabel.setTextSize(16);
+        addLabel.setTextColor(Ui.sub(this));
+        addLabel.setGravity(Gravity.CENTER);
+        root.addView(addLabel);
+        spacerSmall();
+        // +50% 与结束页同一基数：当前段总时长（TimerState.totalSec）的一半，
+        // 整数分钟除、至少 1 分钟（与 showEnd 的 halfSec 完全同式）。
+        int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
+        final int halfAddMin = Math.max(1, totalMin / 2);
+        LinearLayout row1 = halfAddRow();
+        row1.addView(halfAddButton(Strings.chkPlus1(), 60, addedMin, addedLine));
+        row1.addView(halfAddButton(Strings.chkPlus3(), 180, addedMin, addedLine));
+        row1.addView(halfAddButton(Strings.chkPlus5(), 300, addedMin, addedLine));
+        root.addView(row1);
+        spacerSmall();
+        LinearLayout row2 = halfAddRow();
+        row2.addView(halfAddButton(Strings.chkPlus10(), 600, addedMin, addedLine));
+        row2.addView(halfAddButton(Strings.chkPlus50(halfAddMin), halfAddMin * 60, addedMin, addedLine));
+        root.addView(row2);
+        spacerSmall();
+        final EditText custom = new EditText(this);
+        custom.setHint(Strings.chkCustomHint());
+        custom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        custom.setTextSize(17);
+        custom.setTextColor(Ui.text(this));
+        custom.setHintTextColor(Ui.sub(this));
+        custom.setGravity(Gravity.CENTER);
+        root.addView(custom);
+        Button customBtn = bigButton(Strings.chkCustomBtn(), false, null);
+        customBtn.setOnClickListener(v -> {
+            try {
+                int min = Integer.parseInt(custom.getText().toString().trim());
+                if (min > 0) {
+                    doHalfAdd(min * 60, addedMin, addedLine);
+                    custom.setText("");
+                }
+            } catch (NumberFormatException ignored) { }
+        });
+        root.addView(customBtn);
+        spacerSmall();
+        root.addView(addedLine);
+        spacer();
         Button go = bigButton(Strings.chkGo(), true, null);
         go.setOnClickListener(v -> {
-            TimerState.logEvent(this, "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim());
+            String ev = "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim();
+            if (addedMin[0] > 0) ev += "，加时 " + addedMin[0] + " 分钟";
+            TimerState.logEvent(this, ev);
             finish();
         });
         root.addView(go);
+    }
+
+    /** 写办法页加时按钮行（一行并排，与本页大按钮同一视觉语言、格内字号略收）。 */
+    private LinearLayout halfAddRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    private Button halfAddButton(String text, final int addSec, final int[] addedMin,
+                                 final TextView addedLine) {
+        Button b = bigButton(text, false, null);
+        b.setTextSize(17);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(56), 1f);
+        lp.setMargins(dp(3), 0, dp(3), 0);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(v -> doHalfAdd(addSec, addedMin, addedLine));
+        return b;
+    }
+
+    /** 写办法页加时动作：走结束页同一 extendTimer 机制，只是不关页、累计就地更新。 */
+    private void doHalfAdd(int addSec, int[] addedMin, TextView addedLine) {
+        TimerService.extendTimer(this, addSec);
+        addedMin[0] += addSec / 60;
+        addedLine.setText(Strings.chkAddedTotal(addedMin[0]));
+        addedLine.setVisibility(View.VISIBLE);
     }
 
     /** 整个任务完成：回写完成状态＋停表＋衔接守卫（结束页与子任务页共用）。 */
