@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.38.2)
+## Features (Android, v1.39.0)
 
-Current version: **v1.38.2**.
+Current version: **v1.39.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.39.0 — 2026-11-01
+
+**Why:** At the halfway check, tapping "Not enough time" lands on the method page — and the method alone was often not enough: the time was still short, yet that page offered no way to add any. Extending had to wait for the end page. Build commit `94dc403` · [compare v1.38.2...v1.39.0](https://github.com/gty3310/knowdo/compare/v1.38.2...v1.39.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Add time right on the method page.** Between the method field and "Got it, keep going" there is now an add-time section: +1, +3, +5, +10 minutes, +50% and a custom amount. Fixed amounts go through the very same `TimerService.extendTimer` the end page uses — no second mechanism — except the page stays open: taps accumulate, a line on the page keeps the running added total, the method text and its focus are untouched, and adding nothing still works. The +50% amount uses the end page's exact basis (half the current segment's total length, `TimerState.totalSec`, at least one minute), and a custom amount follows the end page's rule too (a positive whole number of minutes). The method log line notes the added minutes when any were added. Untouched: the "Yes, I can" branch, when the halfway check appears, the end and subtask pages' own extend options, and the timer/extend semantics themselves.
+
+Not yet verified on a real device: each amount actually landing in the running timer from the method page, the +50% basis in feel, custom entry, the method text surviving an extension, the changelog popup, and the full self-update chain.
+
 ### v1.38.2 — 2026-11-01
 
 **Why:** The Today Plan page contradicted itself: with free time typed in as 13 hours while only 12 hours 23 minutes remained on the wall, the ledger claimed 37 minutes left while the scheduler — which had filled every remaining minute — named tasks that could not fit. The budget simply took whatever number was typed, inventing time the wall does not hold. The user's rule: disposable time can never exceed the time available on today's wall, and the limit belongs where the number is entered. Build commit `52781c0` · [compare v1.38.1...v1.38.2](https://github.com/gty3310/knowdo/compare/v1.38.1...v1.38.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: an over-limit entry being capped with the hin
 - **The morning gate's "Pause for a bit" button now visibly works.** The pause area is reordered — button, then the minutes panel directly beneath it, then the note — and expanding the panel smooth-scrolls the pause area to the top of the viewport (the target is clamped by the scroll view, so it cannot overshoot). The button shows its state: a quiet outline with "▾" when closed, the accent colour with "▴" when open. It is never disabled by anything on the page (no fill-state gating anywhere, and the gate-refresh logic does not touch it), it is at least 52dp tall and explicitly clickable/focusable, and tapping it first folds the soft keyboard away so a half-written diary cannot block the panel. Snooze durations and semantics, the gate's re-pop loop, the "Start today" requirements, edit/test modes and all cloud fields are unchanged.
 
 Not yet verified on a real device: tapping in the four scenarios (nothing filled in, half filled in, keyboard open, button at the bottom of the viewport), the keyboard folding away, the auto-scroll feel, the full self-update chain, and the morning flow as a regression check.
-
-### v1.38.0 — 2026-10-29
-
-**Why:** The Plan Today page used to have exactly one entrance - finishing the morning gate - and missing it meant no way back in for the whole day. The user remembered there should be a button like this in the task list, so now there is. Build commit `6c7f914` · [compare v1.37.0...v1.38.0](https://github.com/gty3310/knowdo/compare/v1.37.0...v1.38.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A permanent "Plan today's tasks" entry on the schedule page.** A quiet text button now sits above the task table on the schedule page (below the top bar, the current-task strip and the day account), always visible and never scrolled away with the table. Tapping it opens the Plan Today page directly - any time, as often as you like; nothing greys it out after a first visit. It lives inside the schedule page only (the Habits, KnowDo and Chat tabs do not show it) and is built exactly once when the page is created, so tab switches never stack duplicates. The Plan Today page itself, the morning gate's finish path into it, day-availability data, calendar rendering, scheduling logic and all cloud fields are unchanged.
-
-Not yet verified on a real device: the button's placement and feel, tapping through and re-entering repeatedly, the morning-gate path as a regression check, the changelog popup on first open, and the in-app self-update chain.
 
 ## Build
 
