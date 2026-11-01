@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1450 = new Entry("v1.45.0", "2026-11-01");
+        e1450.add(new Group(s("新增", "New"),
+                s("新版一发布，知行会立刻自己发现、自己下载，下好后弹窗提醒你安装；打开知行、切回知行时也会顺手查一次更新，不再只靠手动检查",
+                  "The moment a new version is published, KnowDo now notices on its own, downloads it by itself, and pops up a prompt asking you to install; opening KnowDo or coming back to it also checks for updates in passing, instead of relying on a manual check")));
+        e1450.why = s("你希望我一发新版你手机马上就能更新；之前自动检查最长要等大半天，或者得手动去点检查，还可能被旧包卡住",
+                "You want your phone to update the moment I publish a new version. Before, the automatic check could take the better part of a day to notice, or you had to check manually — and a stale package could block even that");
+        e1450.tryIt = s("这版装上后不用专门试；等下一版发布时留意，知行开着的情况下应该很快自己下好并弹窗喊你安装",
+                "Nothing to try once this version is on; watch for the next release — with KnowDo open it should download itself within moments and pop up asking you to install");
+        out.add(e1450);
+
         Entry e1440 = new Entry("v1.44.0", "2026-11-01");
         e1440.add(new Group(s("修复", "Fixed"),
                 s("修复软件更新被旧待安装包卡住的问题：如果手机里存着一个不比当前版本新的待安装包（比如还在旧版时下好的、后来又从别处装上了同版），它现在会自动作废——设置页不再拿它冒充新版让你反复安装，点「检查更新」会重新联网查真正的最新版。比当前版本新的待安装包不受影响，下好照样一点就装",
