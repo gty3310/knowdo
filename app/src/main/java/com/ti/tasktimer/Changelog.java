@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1381 = new Entry("v1.38.1", "2026-11-01");
+        e1381.add(new Group(s("修复", "Fixed"),
+                s("修好晨间页「暂停一会儿」点了没反应的问题：现在点它，选分钟的面板会直接在按钮下面展开，并自动滚到你眼前，按钮也会变色、箭头翻上来示意已经展开；不管这一页填没填、填了多少，这个按钮都随时能用",
+                  "Fixed the morning page's \"Pause for a bit\" button appearing dead: tapping it now opens the minutes panel directly beneath the button and scrolls it into view, and the button changes colour with its arrow flipped up to show it is open. Whatever you have or haven't filled in on this page, the button always works")));
+        e1381.why = s("之前选分钟的面板展开在说明文字的下面、屏幕之外，点了画面一点变化都没有，看着就像按钮坏了；你说这个按钮无论填没填东西都必须能用，就按这个标准修",
+                "The minutes panel used to open below the note text, off the bottom of the screen, so tapping changed nothing on screen and the button looked broken. You said this button must work no matter what has been filled in, so that is the standard it was fixed to");
+        e1381.tryIt = s("早上晨间页弹出时，什么都不填先点「暂停一会儿」，看面板是不是在按钮下面展开、选 5 分钟后页面是不是退下并到点自己回来；再试填一半日记、键盘还开着时点它，应该同样能展开，键盘会先收起",
+                "When the morning page pops up, tap \"Pause for a bit\" before filling in anything: the panel should open right under the button, and choosing 5 minutes should step the page aside and bring it back on time. Then try it with a half-written diary and the keyboard still open - it should open just the same, with the keyboard folding away first");
+        out.add(e1381);
+
         Entry e1380 = new Entry("v1.38.0", "2026-10-29");
         e1380.add(new Group(s("新增", "New"),
                 s("日程页任务列表上方多了一个「安排今日任务」按钮，点它随时进「今天安排」页，不用再等晨间门；在里面排好今天之后返回，过一会儿想改，再点一次还能进去",
