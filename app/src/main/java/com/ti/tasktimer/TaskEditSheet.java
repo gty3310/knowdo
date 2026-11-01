@@ -392,6 +392,22 @@ public final class TaskEditSheet {
         sheetRoot.addView(scroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         sheetRoot.addView(btnRow);
+        // 删除任务（v1.43.0，用户 2026-11-01 亲定）：仅编辑已有任务时构建，
+        // 固定底栏内三钮行下方的单独一行——朱砂红（Ui.accent）小字、低调不抢
+        // 主按钮；新建态 deleteBtn=null，不显示也不占位。点击走与任务列表
+        // 长按删除同款确认弹窗＋同一个 TaskStore.remove 墓碑软删（见下方接线）。
+        final TextView deleteBtn;
+        if (!creating) {
+            deleteBtn = new TextView(ctx);
+            deleteBtn.setText(en ? "Delete task" : "删除任务");
+            deleteBtn.setTextSize(14);
+            deleteBtn.setTextColor(Ui.accent(ctx));
+            deleteBtn.setGravity(Gravity.CENTER);
+            deleteBtn.setPadding(dp(ctx, 20), dp(ctx, 2), dp(ctx, 20), dp(ctx, 16));
+            sheetRoot.addView(deleteBtn);
+        } else {
+            deleteBtn = null;
+        }
 
         final Dialog dlg = new Dialog(act);
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -409,12 +425,54 @@ public final class TaskEditSheet {
             int maxH = (int) (act.getResources().getDisplayMetrics().heightPixels * 0.86);
             if (sheetRoot.getHeight() > maxH) {
                 android.view.ViewGroup.LayoutParams lp = scroll.getLayoutParams();
-                lp.height = Math.max(0, maxH - btnRow.getHeight());
+                int footerH = btnRow.getHeight()
+                        + (deleteBtn != null ? deleteBtn.getHeight() : 0);
+                lp.height = Math.max(0, maxH - footerH);
                 scroll.setLayoutParams(lp);
                 scroll.requestLayout();
             }
         });
         cancelBtn.setOnClickListener(v -> dlg.dismiss());
+        if (deleteBtn != null) {
+            deleteBtn.setOnClickListener(v -> {
+                // 与任务列表长按删除同款确认弹窗：标题／文案／按钮逐字一致
+                // （列表原文在 MainActivity.dialogRowMenu；双语包裹同安排页口径）
+                new AlertDialog.Builder(act)
+                        .setTitle(en ? "Delete task" : "删除任务")
+                        .setMessage((en ? "Delete \u201C" : "确定删除「") + src.title
+                                + (en ? "\u201D?" : "」吗？"))
+                        .setPositiveButton(en ? "Delete" : "删除", (d2, w2) -> {
+                            // 删的正是正在计时/暂停中的任务：先停表再删（列表侧
+                            // 删除对计时零处理，本版按用户口径补）。计时中走既有
+                            // 正规停表 TimerService.stopTimer——ACTION_STOP 里
+                            // SessionLog 关段落盘＋TimerState.stop＋timer_state
+                            // 同步，与结束页手动完成停表同一入口；暂停中当前段
+                            // 在暂停落槽时已关段落盘，只清暂停槽＋取消叫回闹钟
+                            // ＋推一次 timer_state 同步（与 SbTimerSync 远端 idle
+                            // 跟随停止同口径）。
+                            if (TimerState.isRunning(ctx)
+                                    && src.id.equals(TimerState.taskId(ctx))) {
+                                TimerService.stopTimer(ctx);
+                            } else if (TimerState.isPaused(ctx)
+                                    && src.id.equals(TimerState.pausedTaskId(ctx))) {
+                                ResumeReminder.cancel(ctx);
+                                TimerState.clearPaused(ctx);
+                                SbTimerSync.onLocalTimerChanged(ctx);
+                            }
+                            // 与列表同一墓碑路径：按 id 重取最新副本再 remove
+                            store.load();
+                            TaskItem fresh = store.byId(src.id);
+                            store.remove(fresh != null ? fresh : src);
+                            dlg.dismiss();
+                            // 底层列表按既有刷新路径更新：三个宿主的 onSaved
+                            // 都是纯刷新（列表 notify＋状态栏／日历重渲／安排页
+                            // refreshAll），删后被删任务消失
+                            if (host != null) host.onSaved(src, false);
+                        })
+                        .setNegativeButton(en ? "Cancel" : "取消", null)
+                        .show();
+            });
+        }
         if (!creating && col.getTag() instanceof TextView[]) {
             for (TextView b : (TextView[]) col.getTag()) b.setTag(dlg);
         }
