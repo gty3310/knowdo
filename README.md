@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.42.0)
+## Features (Android, v1.43.0)
 
-Current version: **v1.42.0**.
+Current version: **v1.43.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.43.0 — 2026-11-01
+
+**Why:** Deleting a task meant backing out of the editor to the task list and long-pressing it — a pointless detour when you are already looking at the task. The editor now carries the delete itself, through the very same confirmation and soft-delete path as the list. Build commit `d6d8df7` · [compare v1.42.0...v1.43.0](https://github.com/gty3310/knowdo/compare/v1.42.0...v1.43.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Delete task inside the editor.** A quiet vermilion "Delete task" line sits in the editor's fixed footer under the Cancel / Start now / Save row — only when editing an existing task, never when creating one. It shows the task list's identical confirmation dialog, then takes the same tombstone soft-delete (`TaskStore.remove`), and the list underneath refreshes through the host's usual path. One deliberate addition over the list (which never touches the timer when deleting): if the task being deleted is the one currently timing, it is stopped through the regular stop path first, its current segment closed and saved; if it is the paused one, its pause slot is cleared and its call-back reminder cancelled first.
+
+Not yet verified on a real device: the full delete flow from the editor, no delete row when creating a task, the timer stopping when the running/paused task is deleted, the list refreshing underneath, the changelog popup, and the full self-update chain.
+
 ### v1.42.0 — 2026-11-01
 
 **Why:** Planning today is exactly when stray tasks get spotted — one is already done, another should not exist — and going back to hunt it down in the task list broke the flow. The plan page's cards now handle it on the spot, through the very same code paths as the list. Build commit `ec8f7e3` · [compare v1.41.0...v1.42.0](https://github.com/gty3310/knowdo/compare/v1.41.0...v1.42.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,16 +88,6 @@ Not yet verified on a real device: card Done/Delete matching the list's outcomes
 - **Start today button on the today-plan page.** It sits in the fixed footer under "Plan into today", in the same primary style. Tapping it simply finishes the page back to today's schedule — from either entry path (the morning gate, which finishes itself after handing over, and the schedule page's standing entry) — in any planning state: nothing planned, partly planned, tasks left over, or fully planned. No confirmation, no "doesn't fit yet" blocking, and the plan already made is untouched. The page holds no unsaved state (planning and edits save as you go); the one in-flight field, the free-time input, is first committed through the exact same path as its normal focus-loss save if it is still focused.
 
 Not yet verified on a real device: the landing point from both entry paths, tapping with an overflow present, commit-before-exit while the free-time field is focused, the changelog popup, and the full self-update chain.
-
-### v1.40.0 — 2026-11-01
-
-**Why:** The buttons you need while typing sat at the very bottom of the content: the keyboard covered them, and with long content you had to dismiss the keyboard and scroll all the way down just to save. This release is a global keyboard pass — every window that carries input now resizes around the keyboard, and the key buttons on the five core pages are pinned to the bottom of the page. Build commit `0e649b4` · [compare v1.39.0...v1.40.0](https://github.com/gty3310/knowdo/compare/v1.39.0...v1.40.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **adjustResize everywhere input lives.** Eight more activities declare it (main, settings, calendar, current-task, check, resume-remind, float-close, guard-test picker), joining the four that already had it; activities with no text input are untouched.
-- **Pinned bottom bars.** The task edit sheet's Cancel / Start now / Save row leaves the sheet's scroll area and sits at the sheet's bottom (the sheet window now explicitly requests adjust-resize, and its 86%-of-screen cap compresses only the scroll area); the morning page's Start-the-day/Save button, its hint line and the whole pause area move into a fixed footer — the v1.38.1 pause behaviour (panel opening right under the button, keyboard dismissed first, two-state button, never disabled) is unchanged; on the check pages each stage's primary action (Can finish / Can't finish, Got it keep going, Next subtask, Done) is pinned while extend rows and the embedded chat stay in the scrolling content; the next-task page pins Start and Start resting; the guard-test picker pins the temporary-task inputs and its two buttons. Pure layout: no button behaviour, wording, validation or saving semantics changed. Already compliant and untouched: the today-plan page, the chat input row, and the current-task page's note layout; overlay-window editors (floating window / pause card) sit outside the resize mechanism by platform design and are unchanged.
-
-Not yet verified on a real device: buttons visible and tappable above the keyboard page by page, footers holding still while long content scrolls, the morning-page flow, the edit sheet's pinned row and height cap, the check pages' footers, the changelog popup, and the full self-update chain.
 
 ## Build
 
