@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.40.0)
+## Features (Android, v1.41.0)
 
-Current version: **v1.40.0**.
+Current version: **v1.41.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.41.0 — 2026-11-01
+
+**Why:** The today-plan page had no clear way to say "I'm done planning" — whether the plan is full is the user's call, yet the only way out was the system back key. This release adds the one missing exit. Build commit `be61d14` · [compare v1.40.0...v1.41.0](https://github.com/gty3310/knowdo/compare/v1.40.0...v1.41.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Start today button on the today-plan page.** It sits in the fixed footer under "Plan into today", in the same primary style. Tapping it simply finishes the page back to today's schedule — from either entry path (the morning gate, which finishes itself after handing over, and the schedule page's standing entry) — in any planning state: nothing planned, partly planned, tasks left over, or fully planned. No confirmation, no "doesn't fit yet" blocking, and the plan already made is untouched. The page holds no unsaved state (planning and edits save as you go); the one in-flight field, the free-time input, is first committed through the exact same path as its normal focus-loss save if it is still focused.
+
+Not yet verified on a real device: the landing point from both entry paths, tapping with an overflow present, commit-before-exit while the free-time field is focused, the changelog popup, and the full self-update chain.
+
 ### v1.40.0 — 2026-11-01
 
 **Why:** The buttons you need while typing sat at the very bottom of the content: the keyboard covered them, and with long content you had to dismiss the keyboard and scroll all the way down just to save. This release is a global keyboard pass — every window that carries input now resizes around the keyboard, and the key buttons on the five core pages are pinned to the bottom of the page. Build commit `0e649b4` · [compare v1.39.0...v1.40.0](https://github.com/gty3310/knowdo/compare/v1.39.0...v1.40.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -80,15 +89,6 @@ Not yet verified on a real device: buttons visible and tappable above the keyboa
 - **Add time right on the method page.** Between the method field and "Got it, keep going" there is now an add-time section: +1, +3, +5, +10 minutes, +50% and a custom amount. Fixed amounts go through the very same `TimerService.extendTimer` the end page uses — no second mechanism — except the page stays open: taps accumulate, a line on the page keeps the running added total, the method text and its focus are untouched, and adding nothing still works. The +50% amount uses the end page's exact basis (half the current segment's total length, `TimerState.totalSec`, at least one minute), and a custom amount follows the end page's rule too (a positive whole number of minutes). The method log line notes the added minutes when any were added. Untouched: the "Yes, I can" branch, when the halfway check appears, the end and subtask pages' own extend options, and the timer/extend semantics themselves.
 
 Not yet verified on a real device: each amount actually landing in the running timer from the method page, the +50% basis in feel, custom entry, the method text surviving an extension, the changelog popup, and the full self-update chain.
-
-### v1.38.2 — 2026-11-01
-
-**Why:** The Today Plan page contradicted itself: with free time typed in as 13 hours while only 12 hours 23 minutes remained on the wall, the ledger claimed 37 minutes left while the scheduler — which had filled every remaining minute — named tasks that could not fit. The budget simply took whatever number was typed, inventing time the wall does not hold. The user's rule: disposable time can never exceed the time available on today's wall, and the limit belongs where the number is entered. Build commit `52781c0` · [compare v1.38.1...v1.38.2](https://github.com/gty3310/knowdo/compare/v1.38.1...v1.38.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Free time can no longer exceed today's remaining wall time.** When the Today Plan page saves the free-time input, the value is capped at the wall-clock time left today — from now until the earlier of 22:30 and the saved sleep start, minus locked segments in between (a new pure `DayAvail.wallCapMin`, cross-checked on four worked examples including the user's own: at 10:07 the cap is exactly 743 minutes, the 12 h 23 min he cited). Typing more stores the capped value to the exact minute and shows a short hint that free time cannot exceed the time left on today's wall; typing within the limit behaves exactly as before, with no hint, and an already-stored value never shrinks on its own as time passes. A capped value echoes back with at most two decimals (12 h 23 min shows as 12.38) while the ledger keeps full minute precision. Nothing else moved: the arranged-time total, all schedulers and their 22:30 line, the ledger formula, sleep/lock editing, and the synced day_avail JSON shape are unchanged.
-
-Not yet verified on a real device: an over-limit entry being capped with the hint shown, an in-limit entry showing no hint, ledger and scheduler agreeing afterwards, the full self-update chain, and the morning / Today Plan flow as a regression check.
 
 ## Build
 
