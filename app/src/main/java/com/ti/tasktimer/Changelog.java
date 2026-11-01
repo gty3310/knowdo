@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1382 = new Entry("v1.38.2", "2026-11-01");
+        e1382.add(new Group(s("修复", "Fixed"),
+                s("今天安排页填「今天可支配」时多了个上限：填得比今天墙上剩下的时间（从现在到今天结束、再扣掉锁时段）还多，会自动按墙上剩下的时间算，并弹一句提示；填在上限以内和以前完全一样、不弹提示，被卡住的值回显也只留两位小数",
+                  "The Today Plan page's free-time field gains a ceiling: enter more than the wall-clock time actually left today (from now until the day ends, minus locked segments) and it is automatically counted as the time left, with a short hint saying so. Anything within the limit behaves exactly as before with no hint, and a capped value echoes back with at most two decimals")));
+        e1382.why = s("你发现填 13 小时、墙上其实只剩 12 小时 23 分时，页面一边显示「还剩 37 分钟」、一边又说有任务排不下，自相矛盾；可支配本来就不该比墙上有的时间多，所以从填进去的那一刻就把上限卡住",
+                "You spotted the contradiction: free time set to 13 hours while only 12 hours 23 minutes remained on the wall made the page claim 37 minutes left while also saying tasks could not fit. Free time can never exceed the time the wall actually holds, so the limit is enforced at the moment the number is entered");
+        e1382.tryIt = s("打开今天安排页，把「今天可支配」改成一个明显偏大的数（比如 20）：它应该自动变小（按今天剩下的时间算），并弹出「可支配时间不可以多于时间墙上可用的时间」；再填一个小数字（比如 2），应该没有任何提示",
+                "Open the Today Plan page and set free time to something plainly too big (20, say): it should shrink on its own to the time left today and show the hint that free time cannot exceed the time left on today's wall. Then enter a small number (2, say) - no hint should appear");
+        out.add(e1382);
+
         Entry e1381 = new Entry("v1.38.1", "2026-11-01");
         e1381.add(new Group(s("修复", "Fixed"),
                 s("修好晨间页「暂停一会儿」点了没反应的问题：现在点它，选分钟的面板会直接在按钮下面展开，并自动滚到你眼前，按钮也会变色、箭头翻上来示意已经展开；不管这一页填没填、填了多少，这个按钮都随时能用",
