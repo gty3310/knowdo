@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1460 = new Entry("v1.46.0", "2026-11-01");
+        e1460.add(new Group(s("改进", "Improved"),
+                s("今天安排页的时间账改成从现在算起：已安排只算现在还没到的日程（正进行中的只算剩下的那截），还剩可用按从现在到今天结束的可用时间算；顶部时段条上现在之前的时间变灰，现在的位置有一条朱砂红线",
+                  "The Today Plan page now reckons from this moment: Arranged counts only the schedule still ahead (a block in progress counts only its remaining part), and Time left is reckoned against the usable time from now to the end of today. On the period bar at the top, everything before now is greyed and a vermilion line marks the present moment")));
+        e1460.why = s("之前按一整天算，半天过去了还显示一整天的账，数字和实际剩下的时间对不上",
+                "It used to reckon by the whole day, so with half the day gone the page still showed a full day's accounts, and the numbers did not match the time actually left");
+        e1460.tryIt = s("下午打开「安排今日任务」，看已安排是不是只算后面的日程、还剩可用是不是变小了；时段条上现在之前是灰的，红线对着当前时间",
+                "Open Plan Today's Tasks in the afternoon and check: Arranged should count only the schedule still ahead and Time left should be smaller; on the period bar, everything before now is grey and the red line sits at the current time");
+        out.add(e1460);
+
         Entry e1450 = new Entry("v1.45.0", "2026-11-01");
         e1450.add(new Group(s("新增", "New"),
                 s("新版一发布，知行会立刻自己发现、自己下载，下好后弹窗提醒你安装；打开知行、切回知行时也会顺手查一次更新，不再只靠手动检查",
