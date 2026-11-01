@@ -381,13 +381,19 @@ public class TodayPlanActivity extends Activity {
         return t;
     }
 
-    /** 时间账：已安排＝今日 schedule 块时长合计；还剩＝预算−已安排，负数变红。 */
+    /** 时间账（v1.46.0 起从此刻算）：已安排＝现在之后的日程块时长（横跨此刻的
+     * 块只算现在之后那截）；预算＝填的可支配与从现在到今天结束的墙上可用两者
+     * 取小；还剩＝预算−已安排，负数变红。 */
     private void refreshLedger() {
         List<LocalAutoScheduler.Block> blocks = LocalAutoScheduler.blocksOf(
                 SyncManager.latestSchedule(this), TaskItem.today());
+        int nowMin = DayAccount.nowMinutes();
         int arranged = 0;
-        for (LocalAutoScheduler.Block b : blocks) arranged += b.endMin - b.startMin;
-        int budget = DayAvail.budgetMin(this, logicToday);
+        for (LocalAutoScheduler.Block b : blocks) {
+            arranged += Math.max(0, b.endMin - Math.max(b.startMin, nowMin));
+        }
+        int budget = Math.min(DayAvail.budgetMin(this, logicToday),
+                DayAvail.wallCapMinToday(this, logicToday));
         int remain = budget - arranged;
         arrangedVal.setText(DayAccount.fmtDur(arranged));
         remainVal.setText(remain < 0 ? "−" + DayAccount.fmtDur(-remain) : DayAccount.fmtDur(remain));
@@ -402,7 +408,7 @@ public class TodayPlanActivity extends Activity {
             ledgerNote.setText(s("已经排超了，减一点或把可支配填大些", "Over budget — trim tasks or raise free time"));
             ledgerNote.setTextColor(Ui.accent(this));
         } else if (DayAvail.freeHours(this, logicToday) < 0) {
-            ledgerNote.setText(s("可支配还没填，按全天可用估算", "Free time not set — estimated from the whole day"));
+            ledgerNote.setText(s("可支配还没填，按现在到今天结束估算", "Free time not set — estimated from now to day end"));
             ledgerNote.setTextColor(Ui.sub(this));
         } else {
             ledgerNote.setText("");
@@ -505,6 +511,30 @@ public class TodayPlanActivity extends Activity {
                 seg.setBackground(d);
             }
             strip.addView(seg, lp);
+        }
+        // 现在标记（v1.46.0，用户点选提案①）：整日轴保留，轴上现在之前压一层
+        // 半透明灰，现在位置画一条朱砂红竖线。两层都不可点击/不可聚焦——触摸
+        // 挂在 strip 容器上，既有锁时拖拽/点击命中不受影响。
+        int nowAxis = Math.max(0, Math.min(1440,
+                DayAccount.nowMinutes() - DayAvail.wakeMin(this)));
+        if (nowAxis > 0) {
+            View past = new View(this);
+            past.setBackgroundColor(Color.argb(150, 128, 128, 128));
+            past.setClickable(false);
+            past.setFocusable(false);
+            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
+                    (int) (nowAxis * (long) w / 1440),
+                    ViewGroup.LayoutParams.MATCH_PARENT);
+            plp.leftMargin = 0;
+            strip.addView(past, plp);
+            View mark = new View(this);
+            mark.setBackgroundColor(Ui.accent(this));
+            mark.setClickable(false);
+            mark.setFocusable(false);
+            FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(
+                    dp(2), ViewGroup.LayoutParams.MATCH_PARENT);
+            mlp.leftMargin = Math.max(0, (int) (nowAxis * (long) w / 1440) - dp(1));
+            strip.addView(mark, mlp);
         }
         int wake = DayAvail.wakeMin(this);
         scaleWake.setText(s("起床 ", "Up ") + LocalAutoScheduler.hhmm(wake));
