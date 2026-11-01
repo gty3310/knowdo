@@ -39,7 +39,8 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -60,11 +61,13 @@
 
         <activity
             android:name=".SettingsActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".CalendarActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ZhixingDetailActivity"
@@ -111,7 +114,8 @@
 
         <activity
             android:name=".CurrentTaskActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 专注守卫问询页：与全屏检查页同样的展示属性 -->
         <activity
@@ -131,7 +135,8 @@
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:showWhenLocked="true"
-            android:turnScreenOn="true" />
+            android:turnScreenOn="true"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".TimerService"
@@ -178,7 +183,8 @@
             android:launchMode="singleInstance"
             android:taskAffinity=""
             android:showWhenLocked="true"
-            android:turnScreenOn="true" />
+            android:turnScreenOn="true"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 「下一个任务」全屏页（任务衔接守卫 v1.10.0）：空档时全屏问下一个 -->
         <activity
@@ -246,7 +252,8 @@
             android:name=".FloatCloseActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 晨间页（v1.16.0；v1.17.0 起三种模式＋首触全屏）：晨间首填开启后每天先到
              这里，填完才开启今天；不进最近任务。showWhenLocked/turnScreenOn 与其他
@@ -305,7 +312,8 @@
         <!-- 守卫测试选尺子页（v1.21.3）：开测试前选判定对照的任务／临时任务 -->
         <activity
             android:name=".GuardTestPickActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 模型下载页（v1.21.4）：守卫模型按需下载、校验、删除 -->
         <activity

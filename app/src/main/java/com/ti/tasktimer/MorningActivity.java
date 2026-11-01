@@ -71,6 +71,7 @@ public class MorningActivity extends Activity {
     private TextView startNote;
     private LinearLayout pausePanel;
     private ScrollView morningScroll;
+    private LinearLayout morningFoot;
     private LinearLayout pauseArea;
     private TextView pauseBtn;
     private final List<View> dots = new ArrayList<>();
@@ -164,7 +165,19 @@ public class MorningActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(24), dp(18), dp(26));
         scroll.addView(col);
-        setContentView(scroll);
+        // v1.40.0 固定底栏：开启今天/保存＋提示语＋暂停区钉在页面最底部、不随
+        // 内容滚动；键盘弹起时窗口压缩、底栏稳停在键盘上方。
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(Ui.bg(this));
+        page.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        morningFoot = new LinearLayout(this);
+        morningFoot.setOrientation(LinearLayout.VERTICAL);
+        morningFoot.setBackgroundColor(Ui.bg(this));
+        morningFoot.setPadding(dp(18), dp(2), dp(18), dp(18));
+        page.addView(morningFoot);
+        setContentView(page);
 
         TextView hello = new TextView(this);
         hello.setText(editMode ? s("晨间记录", "Morning records") : s("早上好", "Good morning"));
@@ -223,13 +236,13 @@ public class MorningActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         slp.topMargin = dp(18);
         startBtn.setOnClickListener(v -> { if (editMode) saveEdit(); else complete(); });
-        col.addView(startBtn, slp);
+        morningFoot.addView(startBtn, slp);
         startNote = small("", 11);
         startNote.setGravity(Gravity.CENTER);
         startNote.setPadding(0, dp(8), 0, 0);
-        col.addView(startNote);
+        morningFoot.addView(startNote);
 
-        if (!editMode) col.addView(buildPauseArea());
+        if (!editMode) morningFoot.addView(buildPauseArea());
         refreshGate();
     }
 
@@ -779,6 +792,16 @@ public class MorningActivity extends Activity {
      */
     private void scrollPauseIntoView() {
         if (morningScroll == null || pauseArea == null) return;
+        // v1.40.0：暂停区已随固定底栏移出滚动区、恒可见，无需滚动定位；仅当它
+        // 仍在滚动区内时才按原逻辑滚过去（结构保险，判定与行为口径不变）。
+        View p = pauseArea;
+        boolean inScroll = false;
+        while (p != null) {
+            if (p == morningScroll) { inScroll = true; break; }
+            android.view.ViewParent par = p.getParent();
+            p = par instanceof View ? (View) par : null;
+        }
+        if (!inScroll) return;
         morningScroll.post(() -> {
             int y = Math.max(0, pauseArea.getTop() - dp(8));
             morningScroll.smoothScrollTo(0, y);

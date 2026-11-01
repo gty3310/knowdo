@@ -32,6 +32,7 @@ public class CheckActivity extends Activity {
 
     private int type;
     private LinearLayout root;
+    private LinearLayout footer;
     private Runnable primaryAction; // 回车触发的主按钮动作（当前阶段的主按钮）
     private Runnable keyQ, keyW, keyE; // 结束页前三个加时选项
     private ChatPanel endChatPanel; // 结束页内嵌聊天区（v1.24.0，只在 showEnd 里建）
@@ -78,7 +79,20 @@ public class CheckActivity extends Activity {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         sv.addView(root);
-        setContentView(sv);
+        // v1.40.0 固定底栏：各阶段的主行动按钮钉在页面最底部、不随内容滚动；
+        // 键盘弹起时窗口压缩、底栏稳停在键盘上方。
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(Ui.bg(this));
+        page.addView(sv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.VERTICAL);
+        footer.setBackgroundColor(Ui.bg(this));
+        footer.setPadding(pad, dp(8), pad, pad);
+        footer.setVisibility(View.GONE);
+        page.addView(footer);
+        setContentView(page);
 
         if (type == AlertHelper.TYPE_HALF) showHalfStage1();
         else if (type == AlertHelper.TYPE_SUB) showSub();
@@ -138,11 +152,11 @@ public class CheckActivity extends Activity {
         Button ok = bigButton(Strings.chkCan(), true, "Enter");
         ok.setOnClickListener(v -> okAct.run());
         primaryAction = okAct;
-        root.addView(ok);
-        spacer();
+        pinFooter(ok);
+        footerSpacer();
         Button no = bigButton(Strings.chkCannot(), false, null);
         no.setOnClickListener(v -> showHalfStage2());
-        root.addView(no);
+        pinFooter(no);
     }
 
     private void showHalfStage2() {
@@ -218,7 +232,7 @@ public class CheckActivity extends Activity {
             TimerState.logEvent(this, ev);
             finish();
         });
-        root.addView(go);
+        pinFooter(go);
     }
 
     /** 写办法页加时按钮行（一行并排，与本页大按钮同一视觉语言、格内字号略收）。 */
@@ -287,7 +301,7 @@ public class CheckActivity extends Activity {
         Button next = bigButton(Strings.subNext(), true, "Enter");
         next.setOnClickListener(v -> nextAct.run());
         primaryAction = nextAct;
-        root.addView(next);
+        pinFooter(next);
         spacer();
         Button extend = bigButton(Strings.subExtend(), false, null);
         extend.setOnClickListener(v -> showSubExtend());
@@ -383,7 +397,7 @@ public class CheckActivity extends Activity {
         Button done = bigButton(Strings.chkDone(), true, "Enter");
         done.setOnClickListener(v -> doneAct.run());
         primaryAction = doneAct;
-        root.addView(done);
+        pinFooter(done);
         spacer();
         TextView label = new TextView(this);
         label.setText(Strings.chkExtendLabel());
@@ -474,7 +488,25 @@ public class CheckActivity extends Activity {
     }
 
     // ---------- 小件 ----------
-    private void clear() { root.removeAllViews(); }
+    private void clear() {
+        root.removeAllViews();
+        if (footer != null) {
+            footer.removeAllViews();
+            footer.setVisibility(View.GONE);
+        }
+    }
+
+    /** 主行动按钮钉进固定底栏（v1.40.0）：内容再长、键盘弹起都稳停页面最底部。 */
+    private void pinFooter(View v) {
+        footer.setVisibility(View.VISIBLE);
+        footer.addView(v);
+    }
+
+    private void footerSpacer() {
+        View v = new View(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(14)));
+        footer.addView(v);
+    }
 
     private void title(String s) {
         TextView t = new TextView(this);

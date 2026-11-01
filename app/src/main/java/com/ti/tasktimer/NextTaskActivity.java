@@ -61,6 +61,7 @@ public class NextTaskActivity extends Activity {
 
     private TaskStore store;
     private LinearLayout root;
+    private LinearLayout footerBar;
     private int state = STATE_DEFAULT;
 
     // 新建态控件
@@ -127,14 +128,25 @@ public class NextTaskActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
         root.setPadding(dp(34), dp(56), dp(34), dp(30));
+        // v1.40.0 固定底栏：「开始／开始休息」钉在页面最底部、不随内容滚动
+        footerBar = new LinearLayout(this);
+        footerBar.setOrientation(LinearLayout.VERTICAL);
+        footerBar.setBackgroundColor(BG);
+        footerBar.setPadding(dp(34), dp(8), dp(34), dp(30));
+        footerBar.setVisibility(View.GONE);
         if (s == STATE_NEW) buildNew();
         else if (s == STATE_REST) buildRest();
         else buildDefault();
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(BG);
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(BG);
         sv.setFillViewport(true);
         sv.addView(root);
-        setContentView(sv);
+        page.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        page.addView(footerBar);
+        setContentView(page);
         if (s == STATE_NEW && nameBox != null) {
             nameBox.requestFocus();
             nameBox.postDelayed(() -> {
@@ -401,7 +413,9 @@ public class NextTaskActivity extends Activity {
 
         startBtn = serifButton(Strings.nextStart());
         startBtn.setOnClickListener(v -> startNew());
-        root.addView(startBtn);
+        ((LinearLayout.LayoutParams) startBtn.getLayoutParams()).topMargin = dp(10);
+        footerBar.addView(startBtn);
+        footerBar.setVisibility(View.VISIBLE);
         refresh();
     }
 
@@ -501,7 +515,9 @@ public class NextTaskActivity extends Activity {
             TimerState.logEvent(this, "选任务页开始休息：" + restMinutes + " 分钟（占位计时）");
             startTiming(t);
         });
-        root.addView(start);
+        ((LinearLayout.LayoutParams) start.getLayoutParams()).topMargin = dp(10);
+        footerBar.addView(start);
+        footerBar.setVisibility(View.VISIBLE);
     }
 
     private void refreshRestChips() {

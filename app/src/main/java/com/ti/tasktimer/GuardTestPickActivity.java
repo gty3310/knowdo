@@ -78,22 +78,28 @@ public class GuardTestPickActivity extends Activity {
             spacer(list, 8);
         }
 
+        // v1.40.0 固定底栏：临时任务输入区＋开始测试/不选任务两钮移出滚动区，
+        // 任务列表再长也不用滚到底才够得着；键盘弹起时稳停在键盘上方。
+        LinearLayout foot = new LinearLayout(this);
+        foot.setOrientation(LinearLayout.VERTICAL);
+        root.addView(foot);
+
         TextView tempLabel = new TextView(this);
         tempLabel.setText("临时任务（只在这次测试里用，不会进你的任务列表）");
         tempLabel.setTextSize(15);
         tempLabel.setTextColor(Color.rgb(31, 47, 42));
         tempLabel.setPadding(0, dp(10), 0, dp(6));
-        list.addView(tempLabel);
+        foot.addView(tempLabel);
 
         final EditText tempTitle = new EditText(this);
         tempTitle.setHint("标题，如：回微信消息");
         tempTitle.setTextSize(16);
-        list.addView(tempTitle);
+        foot.addView(tempTitle);
 
         final EditText tempNote = new EditText(this);
         tempNote.setHint("备注（可选），如：只回肖诗婷的");
         tempNote.setTextSize(16);
-        list.addView(tempNote);
+        foot.addView(tempNote);
 
         Button tempGo = rowButton("用这个临时任务开始测试");
         tempGo.setOnClickListener(v -> {
@@ -106,8 +112,8 @@ public class GuardTestPickActivity extends Activity {
                     tt, tempNote.getText().toString().trim());
             beginTest();
         });
-        list.addView(tempGo);
-        spacer(list, 8);
+        foot.addView(tempGo);
+        spacer(foot, 8);
 
         Button none = rowButton("不选任务（只按内容类别判）");
         none.setBackgroundColor(Color.rgb(117, 117, 117));
@@ -115,7 +121,7 @@ public class GuardTestPickActivity extends Activity {
             ScreenGuardPrefs.clearTestTask(this);
             beginTest();
         });
-        list.addView(none);
+        foot.addView(none);
     }
 
     /** 构建失败时的兜底界面（v1.24.2）：一句说明＋返回按钮，绝不静默白屏。 */

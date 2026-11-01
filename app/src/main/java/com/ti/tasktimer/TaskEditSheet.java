@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -122,12 +123,12 @@ public final class TaskEditSheet {
         // ---- 视图 ----
         LinearLayout col = new LinearLayout(ctx);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(ctx, 20), dp(ctx, 16), dp(ctx, 20), dp(ctx, 20));
+        col.setPadding(dp(ctx, 20), dp(ctx, 16), dp(ctx, 20), dp(ctx, 4));
         GradientDrawable sheetBg = new GradientDrawable();
         sheetBg.setColor(Ui.surface(ctx));
         sheetBg.setCornerRadii(new float[]{dp(ctx, 18), dp(ctx, 18), dp(ctx, 18), dp(ctx, 18),
                 0, 0, 0, 0});
-        col.setBackground(sheetBg);
+        // v1.40.0：sheet 背景改挂到下面的定高根布局（滚动区＋固定按钮栏共用一张底）
 
         TextView head = new TextView(ctx);
         head.setText(creating ? (en ? "New task" : "新建任务") : (en ? "Edit task" : "编辑任务"));
@@ -364,7 +365,7 @@ public final class TaskEditSheet {
         // 底部按钮（三钮等分，v1.28.0 feature 8 用户亲定）：取消最左、立刻开始居中、保存最右
         LinearLayout btnRow = new LinearLayout(ctx);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
-        btnRow.setPadding(0, dp(ctx, 18), 0, 0);
+        btnRow.setPadding(dp(ctx, 20), dp(ctx, 18), dp(ctx, 20), dp(ctx, 20));
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         Button cancelBtn = new Button(ctx);
@@ -381,26 +382,35 @@ public final class TaskEditSheet {
         saveBtn.setLayoutParams(new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         btnRow.addView(saveBtn);
-        col.addView(btnRow);
-
+        // v1.40.0 固定底栏：按钮行移出滚动区、钉在弹层最底部；键盘弹起时
+        // 窗口压缩（adjustResize），按钮稳停在键盘上方，内容再长也不滚走。
+        LinearLayout sheetRoot = new LinearLayout(ctx);
+        sheetRoot.setOrientation(LinearLayout.VERTICAL);
+        sheetRoot.setBackground(sheetBg);
         ScrollView scroll = new ScrollView(ctx);
         scroll.addView(col);
+        sheetRoot.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        sheetRoot.addView(btnRow);
 
         final Dialog dlg = new Dialog(act);
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dlg.setContentView(scroll);
+        dlg.setContentView(sheetRoot);
         Window w = dlg.getWindow();
         if (w != null) {
             w.setGravity(Gravity.BOTTOM);
             w.setLayout(LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
         // 内容过高时封顶到屏幕 86%，层内滚动，别让 sheet 顶出屏幕够不着上面的字段
         dlg.setOnShowListener(d -> {
             int maxH = (int) (act.getResources().getDisplayMetrics().heightPixels * 0.86);
-            if (scroll.getHeight() > maxH) {
-                scroll.getLayoutParams().height = maxH;
+            if (sheetRoot.getHeight() > maxH) {
+                android.view.ViewGroup.LayoutParams lp = scroll.getLayoutParams();
+                lp.height = Math.max(0, maxH - btnRow.getHeight());
+                scroll.setLayoutParams(lp);
                 scroll.requestLayout();
             }
         });
