@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1430 = new Entry("v1.43.0", "2026-11-01");
+        e1430.add(new Group(s("新增", "New"),
+                s("任务编辑页的固定底栏里多了「删除任务」：编辑一个已有任务时，三钮下方有一行朱砂红小字，点它先弹确认，确认后就删——和在任务列表里长按删除是同一个确认弹窗、同一种删除方式。删的正是正在计时或暂停中的那个任务时，会先把表停好再删。新建任务时没有这一行",
+                  "The task editor's fixed footer gains a Delete task row: when editing an existing task, a quiet vermilion line under the three buttons asks for the same confirmation as the task list's long-press delete, then deletes the same way. If the task being deleted is the one currently timing or paused, the timer is stopped properly first. The row never appears when creating a task")));
+        e1430.why = s("你之前删任务得退回任务列表去长按，编辑到一半想删很绕——在编辑页里就该能当场删掉",
+                "Deleting used to mean backing out to the task list and long-pressing; midway through editing a task you no longer want, that detour made no sense — the editor itself should offer the delete");
+        e1430.tryIt = s("打开任意一个已有任务的编辑页，点底部的「删除任务」，看是不是先弹确认；再新建一个任务，看底部没有这一行",
+                "Open any existing task's editor and tap Delete task at the bottom — a confirmation should appear first; then create a new task and check the row is not there");
+        out.add(e1430);
+
         Entry e1420 = new Entry("v1.42.0", "2026-11-01");
         e1420.add(new Group(s("新增", "New"),
                 s("今天安排页的任务卡上多了「完成」和「删除」两个操作，口径和任务列表里一模一样；卡里还能直接看到这个任务的子任务——名字和分钟数，最多列三个，其余用省略号收尾",
