@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1440 = new Entry("v1.44.0", "2026-11-01");
+        e1440.add(new Group(s("修复", "Fixed"),
+                s("修复软件更新被旧待安装包卡住的问题：如果手机里存着一个不比当前版本新的待安装包（比如还在旧版时下好的、后来又从别处装上了同版），它现在会自动作废——设置页不再拿它冒充新版让你反复安装，点「检查更新」会重新联网查真正的最新版。比当前版本新的待安装包不受影响，下好照样一点就装",
+                  "Fixed the updater getting stuck behind a stale downloaded package: if the phone holds a pending install that is no newer than the version already running (downloaded while on an older release, say, then overtaken by installing the same version from elsewhere), it now voids itself — Settings stops presenting it as a new version to install over and over, and tapping Check for updates goes back to the server for the real latest. A pending package that is genuinely newer is unaffected: once downloaded it still installs in one tap")));
+        e1440.why = s("你在 1.38.0 上点检查更新时，它只让你反复安装同一个 1.38.0——旧待安装记录一直没被清掉，又正好挡在真正的检查入口前面",
+                "On 1.38.0, tapping Check for updates only offered to install 1.38.0 itself, over and over: the stale pending record was never cleared, and it sat exactly where the real check needed to go");
+        e1440.tryIt = s("已经装到 1.43.0 的不用专门试；还停在旧版的，升到这一版以后去设置 → 软件更新点「检查更新」，应该能正常查到并下载后面的新版，不再被旧包拦住",
+                "If you are already on 1.43.0 there is nothing special to try; if you are still on an older version, after updating to this one go to Settings, Software update, and tap Check for updates — it should find and download later versions normally, no longer blocked by the old package");
+        out.add(e1440);
+
         Entry e1430 = new Entry("v1.43.0", "2026-11-01");
         e1430.add(new Group(s("新增", "New"),
                 s("任务编辑页的固定底栏里多了「删除任务」：编辑一个已有任务时，三钮下方有一行朱砂红小字，点它先弹确认，确认后就删——和在任务列表里长按删除是同一个确认弹窗、同一种删除方式。删的正是正在计时或暂停中的那个任务时，会先把表停好再删。新建任务时没有这一行",
