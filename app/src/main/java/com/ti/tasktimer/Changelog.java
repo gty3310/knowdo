@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1480 = new Entry("v1.48.0", "2026-11-03");
+        e1480.add(new Group(s("新增", "New"),
+                s("「写日记」升级成文字型习惯——在习惯页点它，直接进日记页：写今天的日记、翻看和补改过去的日记，都在一个地方",
+                  "Journaling becomes a text habit: tap it on the Habits page and you land on the diary page — write today's entry, read back and amend past ones, all in one place")));
+        e1480.why = s("以前打卡和写字是分开的两件事，历史日记也没地方好好看。现在写日记、看日记、补日记是一件事",
+                "Checking in and writing used to be two separate things, and past entries had no good place to be read. Now writing, reading and amending the diary are one thing");
+        e1480.tryIt = s("习惯页点「写日记」那一行；写了字当天就算完成，没有字数要求。晨间页的日记框照旧保留，两边写的是同一份日记",
+                "Tap the Journaling row on the Habits page; any entry written counts the day as done, with no length requirement. The morning page's diary box stays as it was — both places write into the same diary");
+        out.add(e1480);
+
         Entry e1470 = new Entry("v1.47.0", "2026-11-03");
         e1470.add(new Group(s("新增", "New"),
                 s("习惯多了一个新类型「每周目标反思」。它有一个每周目标，每天写一句反省；到周日晚上 8 点，如果下周目标还没填，App 会先请你填好才放行",
