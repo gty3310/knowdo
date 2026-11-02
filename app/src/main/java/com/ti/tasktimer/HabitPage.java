@@ -146,7 +146,8 @@ public final class HabitPage {
             col.addView(legend, llp);
         }
         for (HabitData.Habit h : habits) {
-            if (HabitData.TYPE_WEEKLY.equals(h.type)) col.addView(weeklyRow(h));
+            if (HabitData.TYPE_DIARY.equals(h.type)) col.addView(diaryRow(h));
+            else if (HabitData.TYPE_WEEKLY.equals(h.type)) col.addView(weeklyRow(h));
             else col.addView(compactMode ? compactRow(h) : habitCard(h));
         }
         if (habits.isEmpty()) {
@@ -468,6 +469,56 @@ public final class HabitPage {
     }
 
     // ---------------- 习惯卡 ----------------
+    // ---------------- 记日记行（v1.48.0） ----------------
+    /**
+     * diary 型在习惯页只是一行：习惯名＋今日日记状态（已写带字数/还没写），不带打卡格；
+     * 点行进日记页（写今天、翻看和补改过去都在那里），长按走既有编辑（改名/提醒/删除）。
+     * 日记文本是全局一份（HabitData.diary，与晨间页共用），不按习惯分仓；
+     * 完成位由 HabitData.putDiary 与文本同步维护，本行只读展示。
+     */
+    private View diaryRow(final HabitData.Habit h) {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(11), dp(12), dp(11));
+        row.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(8);
+
+        TextView name = new TextView(act);
+        name.setText(h.name);
+        name.setTextSize(14.5f);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(act));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        String text = "";
+        try { text = HabitData.diary(HabitData.load(act), DayUtil.today()); }
+        catch (Exception ignored) { }
+        boolean done = !text.trim().isEmpty();
+        TextView right = new TextView(act);
+        right.setText(done ? s("今天已写 · ", "Written today · ") + text.trim().length() + s(" 字", " chars")
+                : s("今天还没写", "Not written today"));
+        right.setTextSize(12);
+        right.setTextColor(done ? Ui.sub(act) : Ui.accent(act));
+        right.setSingleLine(true);
+        right.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f);
+        tlp.leftMargin = dp(10);
+        row.addView(right, tlp);
+
+        row.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(act, DiaryActivity.class);
+            i.putExtra(DiaryActivity.EXTRA_HABIT_ID, h.id);
+            act.startActivity(i);
+        });
+        row.setOnLongClickListener(v -> { editHabitDialog(h); return true; });
+        return wrapWithMargin(row, rlp);
+    }
+
     // ---------------- 每周目标反思行（v1.47.0） ----------------
     /**
      * weekly 型在习惯页只是一行：习惯名＋本周目标（小字），不带普通习惯的打卡格/计数控件；
@@ -940,7 +991,8 @@ public final class HabitPage {
         final EditText targetIn = new EditText(act);
         targetIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         targetIn.setText(String.valueOf(h.target));
-        if (!HabitData.TYPE_REMIND.equals(h.type) && !HabitData.TYPE_WEEKLY.equals(h.type)) {
+        if (!HabitData.TYPE_REMIND.equals(h.type) && !HabitData.TYPE_WEEKLY.equals(h.type)
+                && !HabitData.TYPE_DIARY.equals(h.type)) {
             box.addView(labeled(targetIn, targetLabel(h.type)));
         }
         final EditText remindTextIn = new EditText(act);
@@ -1058,6 +1110,7 @@ public final class HabitPage {
                             }
                         }
                     } catch (Exception ignored) { }
+                    // diary 型的日记文本是全局一份（与晨间页共用），删习惯不删日记，无连带清理
                     if (HabitData.TYPE_WEEKLY.equals(h.type)) {
                         // weekly 的专属数据（周目标/反省）在 WeeklyData，随习惯删除一并清掉
                         try {
@@ -1206,6 +1259,11 @@ public final class HabitPage {
         row3.addView(typeCard(HabitData.TYPE_WEEKLY, s("每周目标反思", "Weekly goal"),
                 s("每周定一个目标，每天写一句反省；周日晚上没填下周目标会先请你填", "One goal a week and a line of reflection a day — on Sunday evening an unfilled next-week goal asks to be set first")));
         form.addView(row3);
+        LinearLayout row4 = new LinearLayout(act);
+        row4.setOrientation(LinearLayout.HORIZONTAL);
+        row4.addView(typeCard(HabitData.TYPE_DIARY, s("记日记", "Diary"),
+                s("每天写日记，写了就算完成、没有字数要求；点开习惯能翻看和补改过去的日记", "A diary entry a day — writing it is completing it, no length required; open the habit to read and amend past entries")));
+        form.addView(row4);
 
         fParamBox = new LinearLayout(act);
         fParamBox.setOrientation(LinearLayout.VERTICAL);
@@ -1336,6 +1394,10 @@ public final class HabitPage {
                 fParamBox.addView(fRemindTextInput);
                 break;
             }
+            case HabitData.TYPE_DIARY: {
+                fParamBox.addView(small(s("不用先填参数——保存后点开这个习惯，在日记页里写今天的日记、翻看和补改过去", "No settings needed here — after saving, open the habit to write today's entry and read or amend past ones"), 12));
+                break;
+            }
             case HabitData.TYPE_WEEKLY: {
                 fParamBox.addView(small(s("不用先填参数——保存后点开这个习惯，在详情页里填本周目标、写每天的反省", "No settings needed here — after saving, open the habit to set this week's goal and write daily reflections"), 12));
                 break;
@@ -1460,6 +1522,8 @@ public final class HabitPage {
                 break;
             case HabitData.TYPE_WEEKLY:
                 break; // 无参数：目标与反省都在详情页填（数据在 WeeklyData）
+            case HabitData.TYPE_DIARY:
+                break; // 无参数：日记写在日记页（文本在 HabitData.diary，与晨间页共用一份）
             default:
                 h.target = Math.max(0, parseLong(cSumWeek, 0));
                 h.totalGoal = Math.max(0, parseLong(cSumTotal, 0));
@@ -1555,6 +1619,7 @@ public final class HabitPage {
             case HabitData.TYPE_NUM: return s("数值型", "Number");
             case HabitData.TYPE_REMIND: return s("每日提醒", "Reminder");
             case HabitData.TYPE_WEEKLY: return s("每周目标反思", "Weekly goal");
+            case HabitData.TYPE_DIARY: return s("记日记", "Diary");
             default: return s("累积型", "Sum");
         }
     }
@@ -1566,6 +1631,7 @@ public final class HabitPage {
             case HabitData.TYPE_NUM: return Ui.accent(act);
             case HabitData.TYPE_REMIND: return Ui.dark(act) ? Color.rgb(56, 189, 248) : Color.rgb(2, 132, 199);
             case HabitData.TYPE_WEEKLY: return Ui.text(act);
+            case HabitData.TYPE_DIARY: return Ui.accent(act);
             default: return Ui.dark(act) ? Color.rgb(167, 139, 250) : Color.rgb(91, 74, 138);
         }
     }

@@ -279,6 +279,12 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 日记页（v1.48.0）：记日记型习惯的专属页，写今天、翻看和补改过去的日记 -->
+        <activity
+            android:name=".DiaryActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 周门页（v1.47.0）：周日 20:00 起下周目标未填时拦在主界面之前，填完才放行 -->
         <activity
             android:name=".WeeklyGateActivity"

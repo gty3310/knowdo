@@ -314,6 +314,8 @@ public class MorningActivity extends Activity {
             Long existing = HabitData.logValue(root, logDate, h.id);
             if (HabitData.TYPE_WEEKLY.equals(h.type)) {
                 sec.addView(weeklyInfoRow(h));
+            } else if (HabitData.TYPE_DIARY.equals(h.type)) {
+                sec.addView(diaryInfoRow(h));
             } else if (HabitData.TYPE_REMIND.equals(h.type)) {
                 sec.addView(remindYnRow(h, existing));
             } else if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
@@ -347,6 +349,31 @@ public class MorningActivity extends Activity {
         TextView st = small(done
                 ? s("昨天的反省已写（在习惯页点开这个习惯看）", "Yesterday's reflection is written (open the habit on the Habits page)")
                 : s("昨天的反省还没写——在习惯页点开这个习惯补", "Yesterday's reflection isn't written yet — open the habit on the Habits page to add it"), 12);
+        if (done) st.setTextColor(Ui.green(this));
+        box.addView(st);
+        return box;
+    }
+
+    /**
+     * 记日记型的昨日行（v1.48.0）：日记在日记页按天写、晨间 C 节写的也是同一份，这里
+     * 只读展示昨日写没写；不进 A 节必答——晨间门的完成条件不因新类型改变（同 weekly 先例）。
+     * 写没写看 HabitData.diary 的昨日文本（完成位 logs 由 putDiary 与文本同步维护）。
+     */
+    private View diaryInfoRow(final HabitData.Habit h) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(9), 0, dp(9));
+        TextView name = new TextView(this);
+        name.setText(h.name);
+        name.setTextSize(14);
+        name.setTypeface(name.getTypeface(), Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        box.addView(name);
+        box.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
+        boolean done = !HabitData.diary(root, logDate).trim().isEmpty();
+        TextView st = small(done
+                ? s("昨天的日记已写（在习惯页点开这个习惯看）", "Yesterday's diary is written (open the habit on the Habits page)")
+                : s("昨天的日记还没写——在习惯页点开这个习惯补", "Yesterday's diary isn't written yet — open the habit on the Habits page to add it"), 12);
         if (done) st.setTextColor(Ui.green(this));
         box.addView(st);
         return box;
@@ -869,6 +896,7 @@ public class MorningActivity extends Activity {
     private boolean aDone() {
         for (HabitData.Habit h : habits) {
             if (HabitData.TYPE_WEEKLY.equals(h.type)) continue; // v1.47.0：反省在详情页写，不进晨间必答
+            if (HabitData.TYPE_DIARY.equals(h.type)) continue; // v1.48.0：日记在日记页写，不进晨间必答
             if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)
                     || HabitData.TYPE_REMIND.equals(h.type)) {
                 if (!ynAnswers.containsKey(h.id)) return false;
