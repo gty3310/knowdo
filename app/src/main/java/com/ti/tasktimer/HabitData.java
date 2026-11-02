@@ -58,6 +58,7 @@ public final class HabitData {
     public static final String TYPE_REMIND = "remind"; // 每日提醒型（v1.28.0）
     public static final String TYPE_WEEKLY = "weekly"; // 每周目标反思（v1.47.0，专属数据在 WeeklyData）
     public static final String TYPE_DIARY = "diary"; // 记日记（v1.48.0，文本就是本类 diary 全局日记，与晨间页共用）
+    public static final String TYPE_READ = "read"; // 自读（v1.49.0，全文存 remindText，点开朗读页读、点「读过了」记完成）
 
     private HabitData() {}
 
@@ -105,7 +106,7 @@ public final class HabitData {
             if (!TYPE_MIN.equals(h.type) && !TYPE_MAX.equals(h.type)
                     && !TYPE_NUM.equals(h.type) && !TYPE_SUM.equals(h.type)
                     && !TYPE_REMIND.equals(h.type) && !TYPE_WEEKLY.equals(h.type)
-                    && !TYPE_DIARY.equals(h.type)) h.type = TYPE_MIN;
+                    && !TYPE_DIARY.equals(h.type) && !TYPE_READ.equals(h.type)) h.type = TYPE_MIN;
             h.target = o.optLong("target", 0);
             h.unit = o.optString("unit", "");
             h.startDate = o.optString("startDate", "");

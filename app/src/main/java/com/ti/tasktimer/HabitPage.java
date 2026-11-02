@@ -146,7 +146,8 @@ public final class HabitPage {
             col.addView(legend, llp);
         }
         for (HabitData.Habit h : habits) {
-            if (HabitData.TYPE_DIARY.equals(h.type)) col.addView(diaryRow(h));
+            if (HabitData.TYPE_READ.equals(h.type)) col.addView(readRow(h));
+            else if (HabitData.TYPE_DIARY.equals(h.type)) col.addView(diaryRow(h));
             else if (HabitData.TYPE_WEEKLY.equals(h.type)) col.addView(weeklyRow(h));
             else col.addView(compactMode ? compactRow(h) : habitCard(h));
         }
@@ -469,6 +470,50 @@ public final class HabitPage {
     }
 
     // ---------------- 习惯卡 ----------------
+    // ---------------- 自读行（v1.49.0） ----------------
+    /**
+     * read 型在习惯页只是一行：习惯名＋类型小字，**不显示任何完成状态**、不带打卡格；
+     * 点行进朗读页读全文，长按走既有编辑（改名/全文/提醒/删除，编辑里跳过 target）。
+     * 完成只记在 logs 里（朗读页点「读过了」写），本行不读 logs、天然无状态。
+     */
+    private View readRow(final HabitData.Habit h) {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(11), dp(12), dp(11));
+        row.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(8);
+
+        TextView name = new TextView(act);
+        name.setText(h.name);
+        name.setTextSize(14.5f);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(act));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView kind = new TextView(act);
+        kind.setText(s("自读", "Reading"));
+        kind.setTextSize(11);
+        kind.setTextColor(Ui.sub(act));
+        kind.setSingleLine(true);
+        LinearLayout.LayoutParams klp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        klp.leftMargin = dp(10);
+        row.addView(kind, klp);
+
+        row.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(act, ReadActivity.class);
+            i.putExtra(ReadActivity.EXTRA_HABIT_ID, h.id);
+            act.startActivity(i);
+        });
+        row.setOnLongClickListener(v -> { editHabitDialog(h); return true; });
+        return wrapWithMargin(row, rlp);
+    }
+
     // ---------------- 记日记行（v1.48.0） ----------------
     /**
      * diary 型在习惯页只是一行：习惯名＋今日日记状态（已写带字数/还没写），不带打卡格；
@@ -992,7 +1037,7 @@ public final class HabitPage {
         targetIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         targetIn.setText(String.valueOf(h.target));
         if (!HabitData.TYPE_REMIND.equals(h.type) && !HabitData.TYPE_WEEKLY.equals(h.type)
-                && !HabitData.TYPE_DIARY.equals(h.type)) {
+                && !HabitData.TYPE_DIARY.equals(h.type) && !HabitData.TYPE_READ.equals(h.type)) {
             box.addView(labeled(targetIn, targetLabel(h.type)));
         }
         final EditText remindTextIn = new EditText(act);
@@ -1002,6 +1047,12 @@ public final class HabitPage {
             remindTextIn.setMinLines(3);
             remindTextIn.setGravity(Gravity.TOP);
             box.addView(labeled(remindTextIn, s("提醒的话", "Reminder text")));
+        } else if (HabitData.TYPE_READ.equals(h.type)) {
+            remindTextIn.setText(h.remindText);
+            remindTextIn.setHint(s("把要读的全文写在这里", "Put the full passage to read here"));
+            remindTextIn.setMinLines(6);
+            remindTextIn.setGravity(Gravity.TOP);
+            box.addView(labeled(remindTextIn, s("要读的全文", "Text to read")));
         }
         final EditText unitIn = new EditText(act);
         final EditText totalIn = new EditText(act);
@@ -1067,6 +1118,11 @@ public final class HabitPage {
                     }
                     if (HabitData.TYPE_REMIND.equals(h.type)) {
                         // 提醒文本必填：清空不覆盖（同名字留空保留原名的口径），避免存出无文本的提醒习惯
+                        String rt = remindTextIn.getText().toString().trim();
+                        if (!rt.isEmpty()) h.remindText = rt;
+                    }
+                    if (HabitData.TYPE_READ.equals(h.type)) {
+                        // 自读全文：同 remind 的口径，清空不覆盖，避免手滑把全文删没
                         String rt = remindTextIn.getText().toString().trim();
                         if (!rt.isEmpty()) h.remindText = rt;
                     }
@@ -1263,6 +1319,8 @@ public final class HabitPage {
         row4.setOrientation(LinearLayout.HORIZONTAL);
         row4.addView(typeCard(HabitData.TYPE_DIARY, s("记日记", "Diary"),
                 s("每天写日记，写了就算完成、没有字数要求；点开习惯能翻看和补改过去的日记", "A diary entry a day — writing it is completing it, no length required; open the habit to read and amend past entries")));
+        row4.addView(typeCard(HabitData.TYPE_READ, s("自读", "Reading"),
+                s("填一段要读的全文（如自警文），每天点开读一遍，读完点「读过了」——不打卡，只读", "A passage to read, e.g. your morning admonition — open it daily, read it through, tap Read. No check-in, just reading")));
         form.addView(row4);
 
         fParamBox = new LinearLayout(act);
@@ -1394,6 +1452,17 @@ public final class HabitPage {
                 fParamBox.addView(fRemindTextInput);
                 break;
             }
+            case HabitData.TYPE_READ: {
+                fParamBox.addView(small(s("要读的全文（每天点开这个习惯读一遍，读完点「读过了」；可先空着，之后在编辑里补）", "The full text to read (open the habit daily, read it, tap Read — may be left empty and filled in later via Edit)"), 12));
+                fRemindTextInput = new EditText(act);
+                fRemindTextInput.setText(cRemindText);
+                fRemindTextInput.setHint(s("如：自警文……", "e.g. your morning admonition…"));
+                fRemindTextInput.setTextSize(14);
+                fRemindTextInput.setMinLines(6);
+                fRemindTextInput.setGravity(Gravity.TOP);
+                fParamBox.addView(fRemindTextInput);
+                break;
+            }
             case HabitData.TYPE_DIARY: {
                 fParamBox.addView(small(s("不用先填参数——保存后点开这个习惯，在日记页里写今天的日记、翻看和补改过去", "No settings needed here — after saving, open the habit to write today's entry and read or amend past ones"), 12));
                 break;
@@ -1520,6 +1589,9 @@ public final class HabitPage {
                 }
                 h.remindText = cRemindText.trim();
                 break;
+            case HabitData.TYPE_READ:
+                h.remindText = cRemindText.trim(); // 全文可先空着：朗读页有占位提示，之后在编辑里也能补
+                break;
             case HabitData.TYPE_WEEKLY:
                 break; // 无参数：目标与反省都在详情页填（数据在 WeeklyData）
             case HabitData.TYPE_DIARY:
@@ -1620,6 +1692,7 @@ public final class HabitPage {
             case HabitData.TYPE_REMIND: return s("每日提醒", "Reminder");
             case HabitData.TYPE_WEEKLY: return s("每周目标反思", "Weekly goal");
             case HabitData.TYPE_DIARY: return s("记日记", "Diary");
+            case HabitData.TYPE_READ: return s("自读", "Reading");
             default: return s("累积型", "Sum");
         }
     }
@@ -1632,6 +1705,7 @@ public final class HabitPage {
             case HabitData.TYPE_REMIND: return Ui.dark(act) ? Color.rgb(56, 189, 248) : Color.rgb(2, 132, 199);
             case HabitData.TYPE_WEEKLY: return Ui.text(act);
             case HabitData.TYPE_DIARY: return Ui.accent(act);
+            case HabitData.TYPE_READ: return Ui.sub(act);
             default: return Ui.dark(act) ? Color.rgb(167, 139, 250) : Color.rgb(91, 74, 138);
         }
     }

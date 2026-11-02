@@ -285,6 +285,11 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 朗读页（v1.49.0）：自读型习惯的专属页，全屏展示全文，读完点「读过了」记完成 -->
+        <activity
+            android:name=".ReadActivity"
+            android:exported="false" />
+
         <!-- 周门页（v1.47.0）：周日 20:00 起下周目标未填时拦在主界面之前，填完才放行 -->
         <activity
             android:name=".WeeklyGateActivity"
