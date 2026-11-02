@@ -145,7 +145,10 @@ public final class HabitPage {
             llp.topMargin = dp(10);
             col.addView(legend, llp);
         }
-        for (HabitData.Habit h : habits) col.addView(compactMode ? compactRow(h) : habitCard(h));
+        for (HabitData.Habit h : habits) {
+            if (HabitData.TYPE_WEEKLY.equals(h.type)) col.addView(weeklyRow(h));
+            else col.addView(compactMode ? compactRow(h) : habitCard(h));
+        }
         if (habits.isEmpty()) {
             TextView empty = small(s("还没有习惯。点下面「＋ 添加习惯」，从默认习惯库里选一个开始记。",
                     "No habits yet. Tap \"+ Add a habit\" below and pick one from the library."), 13);
@@ -465,6 +468,52 @@ public final class HabitPage {
     }
 
     // ---------------- 习惯卡 ----------------
+    // ---------------- 每周目标反思行（v1.47.0） ----------------
+    /**
+     * weekly 型在习惯页只是一行：习惯名＋本周目标（小字），不带普通习惯的打卡格/计数控件；
+     * 点行进详情页（改目标、写反省、看历史都在那里），长按走既有编辑（改名/提醒/删除）。
+     */
+    private View weeklyRow(final HabitData.Habit h) {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(11), dp(12), dp(11));
+        row.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(8);
+
+        TextView name = new TextView(act);
+        name.setText(h.name);
+        name.setTextSize(14.5f);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(act));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        String goal = "";
+        try { goal = WeeklyData.goal(WeeklyData.load(act), h.id, WeeklyData.thisMonday()); }
+        catch (Exception ignored) { }
+        TextView right = new TextView(act);
+        right.setText(goal.isEmpty() ? s("本周目标未设", "No goal this week") : goal);
+        right.setTextSize(12);
+        right.setTextColor(goal.isEmpty() ? Ui.accent(act) : Ui.sub(act));
+        right.setSingleLine(true);
+        right.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f);
+        tlp.leftMargin = dp(10);
+        row.addView(right, tlp);
+
+        row.setOnClickListener(v -> {
+            android.content.Intent i = new android.content.Intent(act, WeeklyHabitActivity.class);
+            i.putExtra(WeeklyHabitActivity.EXTRA_HABIT_ID, h.id);
+            act.startActivity(i);
+        });
+        row.setOnLongClickListener(v -> { editHabitDialog(h); return true; });
+        return wrapWithMargin(row, rlp);
+    }
+
     private View habitCard(final HabitData.Habit h) {
         LinearLayout card = new LinearLayout(act);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -891,7 +940,7 @@ public final class HabitPage {
         final EditText targetIn = new EditText(act);
         targetIn.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         targetIn.setText(String.valueOf(h.target));
-        if (!HabitData.TYPE_REMIND.equals(h.type)) {
+        if (!HabitData.TYPE_REMIND.equals(h.type) && !HabitData.TYPE_WEEKLY.equals(h.type)) {
             box.addView(labeled(targetIn, targetLabel(h.type)));
         }
         final EditText remindTextIn = new EditText(act);
@@ -1009,6 +1058,14 @@ public final class HabitPage {
                             }
                         }
                     } catch (Exception ignored) { }
+                    if (HabitData.TYPE_WEEKLY.equals(h.type)) {
+                        // weekly 的专属数据（周目标/反省）在 WeeklyData，随习惯删除一并清掉
+                        try {
+                            JSONObject wd = WeeklyData.load(act);
+                            WeeklyData.removeHabit(wd, h.id);
+                            WeeklyData.save(act, wd);
+                        } catch (Exception ignored) { }
+                    }
                     HabitData.save(act, root);
                     HabitReminder.rescheduleAll(act);
                     refresh();
@@ -1146,9 +1203,8 @@ public final class HabitPage {
         row3.setOrientation(LinearLayout.HORIZONTAL);
         row3.addView(typeCard(HabitData.TYPE_REMIND, s("每日提醒", "Daily reminder"),
                 s("写一段提醒自己的话，每天早上读一遍，读过就算完成", "Write yourself a reminder and read it every morning — reading it is the habit")));
-        View spacer3 = new View(act);
-        spacer3.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row3.addView(spacer3);
+        row3.addView(typeCard(HabitData.TYPE_WEEKLY, s("每周目标反思", "Weekly goal"),
+                s("每周定一个目标，每天写一句反省；周日晚上没填下周目标会先请你填", "One goal a week and a line of reflection a day — on Sunday evening an unfilled next-week goal asks to be set first")));
         form.addView(row3);
 
         fParamBox = new LinearLayout(act);
@@ -1280,6 +1336,10 @@ public final class HabitPage {
                 fParamBox.addView(fRemindTextInput);
                 break;
             }
+            case HabitData.TYPE_WEEKLY: {
+                fParamBox.addView(small(s("不用先填参数——保存后点开这个习惯，在详情页里填本周目标、写每天的反省", "No settings needed here — after saving, open the habit to set this week's goal and write daily reflections"), 12));
+                break;
+            }
             default: { // sum
                 fParamBox.addView(small(s("起始日期", "Start date"), 12));
                 fSumDateVal = new TextView(act);
@@ -1398,6 +1458,8 @@ public final class HabitPage {
                 }
                 h.remindText = cRemindText.trim();
                 break;
+            case HabitData.TYPE_WEEKLY:
+                break; // 无参数：目标与反省都在详情页填（数据在 WeeklyData）
             default:
                 h.target = Math.max(0, parseLong(cSumWeek, 0));
                 h.totalGoal = Math.max(0, parseLong(cSumTotal, 0));
@@ -1492,6 +1554,7 @@ public final class HabitPage {
             case HabitData.TYPE_MAX: return s("至多型", "At-most");
             case HabitData.TYPE_NUM: return s("数值型", "Number");
             case HabitData.TYPE_REMIND: return s("每日提醒", "Reminder");
+            case HabitData.TYPE_WEEKLY: return s("每周目标反思", "Weekly goal");
             default: return s("累积型", "Sum");
         }
     }
@@ -1502,6 +1565,7 @@ public final class HabitPage {
             case HabitData.TYPE_MAX: return Ui.danger(act);
             case HabitData.TYPE_NUM: return Ui.accent(act);
             case HabitData.TYPE_REMIND: return Ui.dark(act) ? Color.rgb(56, 189, 248) : Color.rgb(2, 132, 199);
+            case HabitData.TYPE_WEEKLY: return Ui.text(act);
             default: return Ui.dark(act) ? Color.rgb(167, 139, 250) : Color.rgb(91, 74, 138);
         }
     }

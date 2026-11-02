@@ -239,6 +239,7 @@ public final class SbSync {
         boolean hasDisp = probeUserStateCol(c, "habit_display"); // v1.28.0：习惯显示口径（总设置），列未就绪只用本地、绝不碰此键
         boolean hasAcc = probeUserStateCol(c, "accountability"); // v1.28.0：黄图问责邮件设置，列未就绪只用本地、绝不碰此键
         boolean hasDayAvail = probeUserStateCol(c, "day_avail"); // v1.28.0 feature 9：今天安排时段（睡眠/锁时/可支配），列未就绪只用本地、绝不碰此键
+        boolean hasWeekly = probeUserStateCol(c, "weekly_data"); // v1.47.0：每周目标反思专属数据（周目标＋每日反省），列未就绪只用本地、绝不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -378,6 +379,25 @@ public final class SbSync {
                     }
                 }
             }
+            if (hasWeekly) {
+                // 每周目标反思数据合并（v1.47.0，与 habit_data 同一套探测纪律，只动 weekly_data 一个键）：
+                // 本机从未存过且云端有值→整份采用；本机有值→WeeklyData.merge 并集（本机优先），
+                // 合并结果变了先落本地、与云端不同才回写。
+                JSONObject remoteW = urow.isNull("weekly_data") ? null : urow.optJSONObject("weekly_data");
+                if (!WeeklyData.hasLocal(c) && remoteW != null) {
+                    WeeklyData.adopt(c, remoteW);
+                } else if (WeeklyData.hasLocal(c)) {
+                    JSONObject localW = WeeklyData.load(c);
+                    JSONObject mergedW = WeeklyData.merge(localW, remoteW);
+                    if (!HabitData.contentEquals(mergedW, localW)) {
+                        WeeklyData.saveQuiet(c, mergedW);
+                    }
+                    if (!HabitData.contentEquals(mergedW, remoteW)) {
+                        write.put("weekly_data", mergedW);
+                        needWrite = true;
+                    }
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -441,6 +461,10 @@ public final class SbSync {
             }
             if (hasHabit && HabitData.hasLocal(c)) {
                 write.put("habit_data", HabitData.load(c));
+                needWrite = true;
+            }
+            if (hasWeekly && WeeklyData.hasLocal(c)) {
+                write.put("weekly_data", WeeklyData.load(c));
                 needWrite = true;
             }
         }
@@ -537,6 +561,20 @@ public final class SbSync {
                         }
                     }
                     try { HabitReminder.rescheduleAll(c); } catch (Exception ignored) { }
+                }
+            }
+            // 每周目标反思数据（v1.47.0）：推来时合并进本地（本机优先的并集，文本不丢），不在这里回写
+            if (!row.isNull("weekly_data")) {
+                JSONObject rw = row.optJSONObject("weekly_data");
+                if (rw != null) {
+                    if (!WeeklyData.hasLocal(c)) {
+                        WeeklyData.adopt(c, rw);
+                    } else {
+                        JSONObject mergedW = WeeklyData.merge(WeeklyData.load(c), rw);
+                        if (!HabitData.contentEquals(mergedW, WeeklyData.load(c))) {
+                            WeeklyData.saveQuiet(c, mergedW);
+                        }
+                    }
                 }
             }
             if (!row.isNull("timer_state")) {

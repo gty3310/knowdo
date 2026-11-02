@@ -474,6 +474,7 @@ public final class ZhixingPage {
             case HabitData.TYPE_MIN: return s("至少型 · 本周目标 ≥", "At-least · this week ≥") + thisWeekTarget + s(" 天/周", " days/wk");
             case HabitData.TYPE_MAX: return s("至多型 · 本周目标 ≤", "At-most · this week ≤") + thisWeekTarget + s(" 次/周", " times/wk");
             case HabitData.TYPE_NUM: return s("数值型 · 本周目标 ", "Number · this week ") + HabitPage.fmtNum(thisWeekTarget) + " " + h.unit + s("/天", "/day");
+            case HabitData.TYPE_WEEKLY: return s("每周目标反思 · 每周一个目标，每天写反省", "Weekly goal & reflection · one goal a week, a reflection a day");
             default: return s("累积型 · 本周增量目标 ", "Accumulating · this week's increment goal ") + thisWeekTarget + " " + h.unit
                     + (h.totalGoal > 0 ? s(" · 总量目标 ", " · total goal ") + HabitPage.fmtNum(h.totalGoal) : "");
         }
@@ -557,6 +558,7 @@ public final class ZhixingPage {
                 case HabitData.TYPE_MAX: return s("至多型", "At-most");
                 case HabitData.TYPE_NUM: return s("数值型", "Number");
                 case HabitData.TYPE_REMIND: return s("每日提醒", "Daily reminder");
+                case HabitData.TYPE_WEEKLY: return s("每周目标反思", "Weekly goal");
                 default: return s("累积型", "Accumulating");
             }
         }

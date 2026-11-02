@@ -273,6 +273,19 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 每周目标反思详情页（v1.47.0）：改本周/下周目标、写今日反省、看过去各周 -->
+        <activity
+            android:name=".WeeklyHabitActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 周门页（v1.47.0）：周日 20:00 起下周目标未填时拦在主界面之前，填完才放行 -->
+        <activity
+            android:name=".WeeklyGateActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 习惯提醒接收器（v1.16.0）：每习惯独立提醒时间到点发通知 -->
         <receiver
             android:name=".HabitReceiver"

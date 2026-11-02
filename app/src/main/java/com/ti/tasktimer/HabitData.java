@@ -56,6 +56,7 @@ public final class HabitData {
     public static final String TYPE_NUM = "num"; // 数值型
     public static final String TYPE_SUM = "sum"; // 累积型
     public static final String TYPE_REMIND = "remind"; // 每日提醒型（v1.28.0）
+    public static final String TYPE_WEEKLY = "weekly"; // 每周目标反思（v1.47.0，专属数据在 WeeklyData）
 
     private HabitData() {}
 
@@ -102,7 +103,7 @@ public final class HabitData {
             h.type = o.optString("type", TYPE_MIN);
             if (!TYPE_MIN.equals(h.type) && !TYPE_MAX.equals(h.type)
                     && !TYPE_NUM.equals(h.type) && !TYPE_SUM.equals(h.type)
-                    && !TYPE_REMIND.equals(h.type)) h.type = TYPE_MIN;
+                    && !TYPE_REMIND.equals(h.type) && !TYPE_WEEKLY.equals(h.type)) h.type = TYPE_MIN;
             h.target = o.optLong("target", 0);
             h.unit = o.optString("unit", "");
             h.startDate = o.optString("startDate", "");

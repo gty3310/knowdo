@@ -312,7 +312,9 @@ public class MorningActivity extends Activity {
         }
         for (final HabitData.Habit h : habits) {
             Long existing = HabitData.logValue(root, logDate, h.id);
-            if (HabitData.TYPE_REMIND.equals(h.type)) {
+            if (HabitData.TYPE_WEEKLY.equals(h.type)) {
+                sec.addView(weeklyInfoRow(h));
+            } else if (HabitData.TYPE_REMIND.equals(h.type)) {
                 sec.addView(remindYnRow(h, existing));
             } else if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
                 sec.addView(ynRow(h, existing));
@@ -321,6 +323,33 @@ public class MorningActivity extends Activity {
             }
         }
         return sec;
+    }
+
+    /**
+     * 每周目标反思的昨日行（v1.47.0）：反省在习惯详情页按天写，这里只读展示昨日写没写；
+     * 不进 A 节必答——晨间门的完成条件不因新类型改变。写没写看 WeeklyData 里昨日的反省。
+     */
+    private View weeklyInfoRow(final HabitData.Habit h) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(9), 0, dp(9));
+        TextView name = new TextView(this);
+        name.setText(h.name);
+        name.setTextSize(14);
+        name.setTypeface(name.getTypeface(), Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        box.addView(name);
+        box.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
+        String ref = "";
+        try { ref = WeeklyData.reflection(WeeklyData.load(this), h.id, logDate); }
+        catch (Exception ignored) { }
+        boolean done = !ref.trim().isEmpty();
+        TextView st = small(done
+                ? s("昨天的反省已写（在习惯页点开这个习惯看）", "Yesterday's reflection is written (open the habit on the Habits page)")
+                : s("昨天的反省还没写——在习惯页点开这个习惯补", "Yesterday's reflection isn't written yet — open the habit on the Habits page to add it"), 12);
+        if (done) st.setTextColor(Ui.green(this));
+        box.addView(st);
+        return box;
     }
 
     /** 每日提醒型的昨日必答行：全文先读，再答「读过了/没读」（写 logDate，边答边存，同 ynRow 口径）。 */
@@ -839,6 +868,7 @@ public class MorningActivity extends Activity {
     // ---------------- 门槛与完成 ----------------
     private boolean aDone() {
         for (HabitData.Habit h : habits) {
+            if (HabitData.TYPE_WEEKLY.equals(h.type)) continue; // v1.47.0：反省在详情页写，不进晨间必答
             if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)
                     || HabitData.TYPE_REMIND.equals(h.type)) {
                 if (!ynAnswers.containsKey(h.id)) return false;

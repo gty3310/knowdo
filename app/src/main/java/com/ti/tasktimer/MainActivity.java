@@ -217,6 +217,14 @@ public class MainActivity extends Activity {
                 return;
             }
         } catch (Exception ignored) { }
+        // 周门（v1.47.0，排在晨间门之后）：周日 20:00 起，有 weekly 型习惯的下周目标
+        // 还空着 → 先去周门页填好才进主界面；拖过周一早上仍拦（WeeklyData.requiredMondays）
+        try {
+            if (WeeklyData.gatePending(this)) {
+                startActivity(new Intent(this, WeeklyGateActivity.class));
+                return;
+            }
+        } catch (Exception ignored) { }
         adapter.notifyDataSetChanged();
         StartReminder.reschedule(this, store);
         AlarmScheduler.rescheduleAll(this, store);
