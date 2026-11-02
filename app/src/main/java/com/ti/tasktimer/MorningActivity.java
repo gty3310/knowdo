@@ -21,6 +21,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -764,8 +765,161 @@ public class MorningActivity extends Activity {
         // 预填已存的日记（暂停回来/编辑版先填过/门模式接着填，都读同一处）
         String saved = HabitData.diary(root, session);
         if (!saved.isEmpty()) diaryField.setText(saved);
+        // 晨间卡区（v1.51.0）：插在日记框上方；编辑模式不拉卡、此区恒空，页面与改前一致
+        cardZone = new LinearLayout(this);
+        cardZone.setOrientation(LinearLayout.VERTICAL);
+        sec.addView(cardZone);
         sec.addView(diaryField);
+        if (!editMode) loadMorningCard();
         return sec;
+    }
+
+    // ---------------- 晨间卡（v1.51.0） ----------------
+    // 昨夜由作者的 AI 助手生成的卡片（云端 morning_cards 表，一行一天）：门/测试
+    // 模式打开晨间页时拉今天 session 日的那一张。无行/拉失败/无网/未登录/已读
+    // → 整区不渲染，日记段与晨间流程保持原样；有未读卡 → 玻璃框列在日记框上方，
+    // 日记框先藏起来，点「读过了」才展开（与「自读」同一口径）。卡不进任何完成条件。
+    private static final String CARD_PREF = "morning_cards";
+    private LinearLayout cardZone;
+    private String cardRowId = "";
+
+    private boolean cardReadLocally(String date) {
+        return getSharedPreferences(CARD_PREF, MODE_PRIVATE).getBoolean("read_" + date, false);
+    }
+
+    private void markCardReadLocally(String date) {
+        getSharedPreferences(CARD_PREF, MODE_PRIVATE).edit()
+                .putBoolean("read_" + date, true).apply();
+    }
+
+    private void loadMorningCard() {
+        if (cardReadLocally(session)) return; // 本机已读：不拉、不显示、不再拦
+        if (!Supa.isLoggedIn(this)) return;
+        final String date = session;
+        new Thread(() -> {
+            try {
+                JSONArray rows = Supa.restGet(MorningActivity.this,
+                        "morning_cards?date=eq." + date + "&select=*");
+                if (rows == null || rows.length() == 0) return;
+                JSONObject card = rows.optJSONObject(0);
+                if (card == null) return;
+                if (!card.isNull("read_at")) { markCardReadLocally(date); return; }
+                final String id = card.optString("id", "");
+                final String summary = card.optString("summary", "").trim();
+                final JSONArray items = card.optJSONArray("items");
+                boolean hasItems = false;
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject it = items.optJSONObject(i);
+                        if (it != null && (!it.optString("title", "").trim().isEmpty()
+                                || !it.optString("body", "").trim().isEmpty())) { hasItems = true; break; }
+                    }
+                }
+                if (summary.isEmpty() && !hasItems) return; // 空卡不当卡：不拦日记
+                runOnUiThread(() -> showMorningCard(id, summary, items));
+            } catch (Exception ignored) { }
+        }).start();
+    }
+
+    private void showMorningCard(final String id, String summary, JSONArray items) {
+        if (cardZone == null || diaryField == null) return;
+        cardRowId = id == null ? "" : id;
+        cardZone.removeAllViews();
+        if (!summary.isEmpty()) {
+            cardZone.addView(glassCard(s("昨天的状态", "Yesterday, in short"), "", summary, true));
+        }
+        if (items != null) {
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject it = items.optJSONObject(i);
+                if (it == null) continue;
+                String title = it.optString("title", "").trim();
+                String body = it.optString("body", "").trim();
+                if (title.isEmpty() && body.isEmpty()) continue;
+                cardZone.addView(glassCard(cardKindLabel(it.optString("kind", "")), title, body, false));
+            }
+        }
+        TextView readBtn = new TextView(this);
+        readBtn.setText(s("读过了", "Read it"));
+        readBtn.setTextSize(15.5f);
+        readBtn.setTypeface(readBtn.getTypeface(), Typeface.BOLD);
+        readBtn.setGravity(Gravity.CENTER);
+        readBtn.setPadding(0, dp(13), 0, dp(13));
+        readBtn.setTextColor(Color.WHITE);
+        readBtn.setBackground(round(Ui.accent(this), dp(15)));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(12);
+        readBtn.setLayoutParams(blp);
+        readBtn.setOnClickListener(v -> {
+            // 先在本机记已读并展开日记框；云端回写异步进行，失败也不回滚、不拦人
+            markCardReadLocally(session);
+            cardZone.setVisibility(View.GONE);
+            diaryField.setVisibility(View.VISIBLE);
+            patchCardRead(cardRowId);
+        });
+        cardZone.addView(readBtn);
+        // 本版选择：未读期间日记框不显示（隐藏式），点「读过了」才展开
+        diaryField.setVisibility(View.GONE);
+    }
+
+    private String cardKindLabel(String kind) {
+        if ("think".equals(kind)) return s("思维原则", "Thinking principle");
+        if ("act".equals(kind)) return s("行为原则", "Principle for action");
+        if ("question".equals(kind)) return s("待问的问题", "A question to ask");
+        return s("晨间卡", "Morning card");
+    }
+
+    /** 玻璃框：半透明米白底＋细线边＋轻微抬起，近似毛玻璃；类别小字朱砂、标题宋体墨色。 */
+    private View glassCard(String label, String title, String body, boolean isSummary) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(14), dp(12), dp(14), dp(13));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(Ui.dark(this) ? Color.argb(190, 52, 72, 62) : Color.argb(205, 255, 254, 249));
+        g.setCornerRadius(dp(14));
+        g.setStroke(dp(1), Ui.line(this));
+        box.setBackground(g);
+        box.setElevation(dp(2));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = cardZone.getChildCount() == 0 ? 0 : dp(10);
+        box.setLayoutParams(lp);
+        TextView lab = small(label, 11);
+        lab.setTextColor(Ui.accent(this));
+        box.addView(lab);
+        if (!title.isEmpty()) {
+            TextView t = new TextView(this);
+            t.setText(title);
+            t.setTextSize(15.5f);
+            t.setTypeface(Typeface.SERIF, Typeface.BOLD);
+            t.setTextColor(Ui.text(this));
+            t.setPadding(0, dp(4), 0, 0);
+            box.addView(t);
+        }
+        if (!body.isEmpty()) {
+            TextView b = new TextView(this);
+            b.setText(body);
+            b.setTextSize(isSummary ? 14.5f : 14);
+            b.setTextColor(Ui.text(this));
+            b.setLineSpacing(0, 1.5f);
+            b.setPadding(0, dp(title.isEmpty() ? 4 : 3), 0, 0);
+            box.addView(b);
+        }
+        return box;
+    }
+
+    /** 已读回写云端（upsert 只补 read_at 一列，其余列不动）：失败静默，本机标记已保证不再拦。 */
+    private void patchCardRead(final String id) {
+        if (id == null || id.isEmpty()) return;
+        new Thread(() -> {
+            try {
+                JSONObject row = new JSONObject();
+                row.put("id", id);
+                row.put("read_at", new java.text.SimpleDateFormat(
+                        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US).format(new java.util.Date()));
+                Supa.restUpsertOne(MorningActivity.this, "morning_cards", "id", row);
+            } catch (Exception ignored) { }
+        }).start();
     }
 
     // ---------------- 暂停一会儿（门/测试模式） ----------------
