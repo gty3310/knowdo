@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1490 = new Entry("v1.49.0", "2026-11-03");
+        e1490.add(new Group(s("新增", "New"),
+                s("习惯多了一个新类型「自读」——点开就是要读的全文，读完点「读过了」就记完成；习惯页那一行不显示做了没做，干干净净",
+                  "Habits gain a new type, Reading: tap it and the passage opens in full; finish reading and tap Read to log the day. Its row on the Habits page shows no done-or-not state at all — just the name")));
+        e1490.why = s("自警文这类东西，要的是每天打开读一遍，不是打卡。把打卡的样子拿掉，只留下读本身",
+                "A morning admonition is meant to be opened and read every day, not checked off. The check-in shape is removed; only the reading remains");
+        e1490.tryIt = s("习惯页点「每日自读」那一行，全文打开，读完点底部「读过了」。全文可以在编辑习惯里改",
+                "On the Habits page tap the Daily Reading row; the passage opens in full — read it, then tap Read at the bottom. The text can be changed in Edit habit");
+        out.add(e1490);
+
         Entry e1480 = new Entry("v1.48.0", "2026-11-03");
         e1480.add(new Group(s("新增", "New"),
                 s("「写日记」升级成文字型习惯——在习惯页点它，直接进日记页：写今天的日记、翻看和补改过去的日记，都在一个地方",
