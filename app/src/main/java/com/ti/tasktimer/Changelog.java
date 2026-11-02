@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1470 = new Entry("v1.47.0", "2026-11-03");
+        e1470.add(new Group(s("新增", "New"),
+                s("习惯多了一个新类型「每周目标反思」。它有一个每周目标，每天写一句反省；到周日晚上 8 点，如果下周目标还没填，App 会先请你填好才放行",
+                  "Habits gain a new kind: Weekly Goal & Reflection. It carries one goal per week and a short reflection each day; come Sunday 8 pm, if next week's goal is still empty, the app asks you to fill it in before letting you through")));
+        e1470.why = s("目标如果只躺在清单里，很快就忘了。把每周目标和每天反省绑在一起，每周日晚还有一道门提醒你先想清楚下周往哪走",
+                "A goal that only sits in a list is soon forgotten. Tying the weekly goal to a daily reflection — with a Sunday-evening gate that makes you think through where next week is heading — keeps it in front of you");
+        e1470.tryIt = s("习惯页添加习惯时选「每周目标反思」，或点开这类习惯进详情页——改本周目标、提前填下周目标、写今天反省、翻看过去各周都在那里",
+                "When adding a habit on the Habits page choose Weekly Goal & Reflection, or tap one to open its page — change this week's goal, set next week's early, write today's reflection and browse past weeks, all in one place");
+        out.add(e1470);
+
         Entry e1460 = new Entry("v1.46.0", "2026-11-01");
         e1460.add(new Group(s("改进", "Improved"),
                 s("今天安排页的时间账改成从现在算起：已安排只算现在还没到的日程（正进行中的只算剩下的那截），还剩可用按从现在到今天结束的可用时间算；顶部时段条上现在之前的时间变灰，现在的位置有一条朱砂红线",
