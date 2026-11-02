@@ -330,7 +330,8 @@ public final class Strings {
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }
 
     // ---------------- 底部三 Tab + 习惯/知行/晨间（v1.16.0） ----------------
-    public static String tabSchedule() { return s("日程", "Schedule"); }
+    public static String tabSchedule() { return s("行", "Act"); }
+    public static String tabZhi() { return s("知", "Know"); }
     public static String tabHabits() { return s("习惯", "Habits"); }
     public static String tabZhixing() { return s("知行", "Zhixing"); }
     public static String tabChat() { return s("聊聊", "Chat"); }

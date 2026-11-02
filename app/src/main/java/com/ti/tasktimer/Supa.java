@@ -180,6 +180,12 @@ public final class Supa {
         return restUpsert(c, table, onConflict, arr);
     }
 
+    /** DELETE，path 例：zhi_entries?id=eq.<uuid>（RLS 保证只删得到自己的行）。 */
+    public static void restDelete(Context c, String path) throws Exception {
+        Resp r = rest(c, "DELETE", path, null, null);
+        if (r.status >= 400) throw new Err(r.status, r.body);
+    }
+
     private static Resp rest(Context c, String method, String path, Object bodyJson, String prefer) throws Exception {
         String at = accessToken(c);
         HttpURLConnection con = open(REST + "/" + path, method);

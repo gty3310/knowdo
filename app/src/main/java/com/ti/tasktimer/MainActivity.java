@@ -79,22 +79,26 @@ public class MainActivity extends Activity {
     private TextView fabView;
     private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
     private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
-    // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」 ----
+    // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」；
+    // v1.50.0 五签：第一签改名「行」，第二签新增「知」，其余顺延 ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
     /** 守卫问询页「和 AI 聊聊」带过来的上下文任务 id（配合 EXTRA_OPEN_TAB=TAB_CHAT 用）。 */
     public static final String EXTRA_CHAT_TASK = "chat_task_id";
     public static final int TAB_SCHEDULE = 0;
-    public static final int TAB_HABITS = 1;
-    public static final int TAB_ZHIXING = 2;
-    public static final int TAB_CHAT = 3;
+    public static final int TAB_ZHI = 1;
+    public static final int TAB_HABITS = 2;
+    public static final int TAB_ZHIXING = 3;
+    public static final int TAB_CHAT = 4;
     private int currentTab = TAB_SCHEDULE;
     private FrameLayout scheduleWrap;
+    private FrameLayout zhiContainer;
     private FrameLayout habitContainer;
     private FrameLayout zhixingContainer;
     private FrameLayout chatContainer;
-    private final View[] tabCells = new View[4];
-    private final TextView[] tabLabels = new TextView[4];
-    private final View[] tabMarks = new View[4];
+    private final View[] tabCells = new View[5];
+    private final TextView[] tabLabels = new TextView[5];
+    private final View[] tabMarks = new View[5];
+    private ZhiPage zhiPage;
     private HabitPage habitPage;
     private ZhixingPage zhixingPage;
     private ChatPanel chatPanel;
@@ -357,6 +361,10 @@ public class MainActivity extends Activity {
         scheduleWrap = new FrameLayout(this);
         pages.addView(scheduleWrap, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        zhiContainer = new FrameLayout(this);
+        zhiContainer.setVisibility(View.GONE);
+        pages.addView(zhiContainer, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         habitContainer = new FrameLayout(this);
         habitContainer.setVisibility(View.GONE);
         pages.addView(habitContainer, new FrameLayout.LayoutParams(
@@ -593,10 +601,10 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Ui.surface(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
-        String[] icons = {"🗓️", "🌱", "◎", "💬"};
-        String[] labels = {Strings.tabSchedule(), Strings.tabHabits(), Strings.tabZhixing(),
-                Strings.tabChat()};
-        for (int i = 0; i < 4; i++) {
+        String[] icons = {"🗓️", "知", "🌱", "◎", "💬"};
+        String[] labels = {Strings.tabSchedule(), Strings.tabZhi(), Strings.tabHabits(),
+                Strings.tabZhixing(), Strings.tabChat()};
+        for (int i = 0; i < 5; i++) {
             final int idx = i;
             // 外层 FrameLayout 是为了给「聊聊」页签留一个右上角角标位（v1.27.0），
             // 内层仍是原来的竖排（图标/文字/选中标记），排版不变。
@@ -677,6 +685,7 @@ public class MainActivity extends Activity {
             refreshChatBadge();
         }
         if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
+        if (zhiContainer != null) zhiContainer.setVisibility(tab == TAB_ZHI ? View.VISIBLE : View.GONE);
         if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
         if (chatContainer != null) chatContainer.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
@@ -686,7 +695,10 @@ public class MainActivity extends Activity {
             if (tab != TAB_SCHEDULE) calendarPanel.panelStop();
             else calendarPanel.panelStart();
         }
-        if (tab == TAB_HABITS) {
+        if (tab == TAB_ZHI) {
+            if (zhiPage == null) zhiPage = new ZhiPage(this, zhiContainer);
+            zhiPage.refresh();
+        } else if (tab == TAB_HABITS) {
             if (habitPage == null) habitPage = new HabitPage(this, habitContainer);
             habitPage.refresh();
         } else if (tab == TAB_ZHIXING) {
