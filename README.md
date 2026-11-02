@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.51.0)
+## Features (Android, v1.52.0)
 
-Current version: **v1.51.0**.
+Current version: **v1.52.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.52.0 — 2026-11-03
+
+**Why:** Habit merging is local-first by design — for the same habit id, and for the same diary date, the phone's copy wins. Edits made from the cloud side to an existing habit's type, or a continuation appended to an existing day's diary, were therefore rolled back by the phone's next sync merge (three habit types and one diary continuation, all lost and since restored as a patch). This release changes no merging rule; it adds a narrow road in: a cloud patch, applied on the phone right after the merge, so the merged result that lands on-device already carries the edit — after which local-first keeps it. Build commit `5f4097c` · [compare v1.51.0...v1.52.0](https://github.com/gty3310/knowdo/compare/v1.51.0...v1.52.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Cloud patch for habit data (`user_state.cloud_patch`).** An optional jsonb column holding `{habit_types: {habitId: type}, diary_appends: [{date, marker, text}]}`. During sync the app probes for the column like every other optional key and, when present, applies it to the freshly merged `habit_data` before the usual save-locally / write-back-if-different step: a habit whose id is listed gets its `type` set (no other field touched), and a diary append is joined onto that date's text with a blank line unless its marker is already there — idempotent, so repeated syncs never duplicate it. The adopt-whole-copy path for a device with no local habit data goes through the same patch first. Any failure to parse or apply is swallowed silently and never blocks sync; the column is read-only to the app, and accounts or servers without it behave exactly as before. The patch contents are the account's own cloud data; the code reads only the generic structure.
+
+Not yet verified on a real device: the three rolled-back habit types returning on the author's phone after one sync (with the diary habit's morning sharing, the reading page and the weekly gate following), the 2026-11-02 diary continuation being joined back exactly once across repeated syncs, the patched values reading back from the cloud, accounts without the column syncing unchanged, the changelog popup, and the 1.51.0 → 1.52.0 instant-update chain.
+
 ### v1.51.0 — 2026-11-03
 
 **Why:** Before the morning diary, one look at where yesterday's self stood — knowing and doing, reconciled at dawn. Each night at 04:00 the author's AI assistant reads yesterday's tasks and diary, writes a short note on the user's state, and picks matching principles and questions from the Know ledger into a morning card. This release is the app side of that second Know instalment: the card's place on the morning page. (The nightly generation itself is a scheduled job on the assistant's side, not part of the app.) Build commit `d9826b0` · [compare v1.50.0...v1.51.0](https://github.com/gty3310/knowdo/compare/v1.50.0...v1.51.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,15 +92,6 @@ Not yet verified on a real device: an unread card's presentation and card order,
 - **Backed by the `zhi_entries` table.** Entries live in Supabase and are read and written through the app's existing Supa channel with the signed-in user's JWT, so the table's owner-only row-level security applies. The page caches the last successful fetch on-device: offline it shows the cache with a small "Offline — showing the last copy" note, with no cache it shows an empty state with retry, and signed out it simply asks for sign-in. Every create, edit and delete lands on the server first and only then refreshes the page and cache, so a failed save never leaves the page showing something the database does not have. `Supa` gains one small public `restDelete` helper for this; nothing else in the sync layer changed.
 
 Not yet verified on a real device: the five-tab order and renaming, tab switching and state retention (including notification/guard deep links landing on the right tab), the Know page's first fetch and three sections, creating/editing/deleting entries and reading them back from the cloud, the "for: X" addressee display, the offline cache and its note, the no-cache failure state with retry, the signed-out hint, the changelog popup, and the 1.49.0 → 1.50.0 instant-update chain.
-
-### v1.49.0 — 2026-11-03
-
-**Why:** Some texts — a morning admonition above all — are not tasks to check off; they are passages to open and read every day. The user made that a habit type of its own: the passage lives inside the habit, one tap opens it in full, and a single "Read" button at the bottom is the whole completion ritual. Build commit `35b0616` · [compare v1.48.0...v1.49.0](https://github.com/gty3310/knowdo/compare/v1.48.0...v1.49.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **An eighth habit type: Reading.** On the Habits page it is a single row — the habit's name and a small "Reading" label, with no done-or-not state and no check-in controls (the row never even looks at the log). Tapping it opens the reading page: the habit's full text (stored in the standard reminder-text field), set large with roomy line spacing under a serif title, and one fixed button at the bottom — "Read it", or "Read today" once today's tap is recorded. Tapping it writes the day's habit log through the same putLog path every other type uses, so the Zhixing index counts it exactly like the weekly and diary types; tapping again is harmless. The passage can be set when creating the habit (a multi-line field in the form; it may be left empty and filled later) and changed any time in Edit habit, which shows the full-text field for this type and skips the target field. An empty passage shows a placeholder on the reading page and the button still works. In the morning page's yesterday section the type appears as a read-only status line, like the weekly and diary types, and it never blocks the morning gate; the Daily Reminder type's existing behavior is untouched. Switching the user's own "Daily Reading" habit over to the new type happens in the cloud after this release, not in code.
-
-Not yet verified on a real device: creating a reading habit end to end, the stateless habit-page row and opening the reading page, the full-text and empty-text states, tapping Read and its log/Zhixing-index effect, editing the passage afterwards, the morning page's read-only row and gate completing as before, the changelog popup, and the 1.48.0 → 1.49.0 instant-update chain.
 
 ## Build
 
