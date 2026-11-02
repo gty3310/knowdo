@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1520 = new Entry("v1.52.0", "2026-11-03");
+        e1520.add(new Group(s("修复", "Fixed"),
+                s("修了一个同步口径的问题——在云端改过的习惯类型和日记续写，会被手机本地的旧数据覆盖。这版加了一条「云端补丁」通道，改动能在手机上真正落地",
+                  "Fixed a sync-semantics problem: habit types and diary continuations edited from the cloud side were being overwritten by the phone's older local data. This release adds a cloud-patch channel, so such edits actually land on the phone")));
+        e1520.why = s("知行的数据以手机为准是定案口径，但云端协助整理也得有路可走——补丁就是那条路",
+                "KnowDo's data answers to the phone first - that ruling stands. But help from the cloud side needs a road in, too; the patch is that road");
+        e1520.tryIt = s("更新后打开一次 App、等它同步完；被覆盖回的习惯类型会自己改回来，日记续写也会接回去",
+                "After updating, open the app once and let it finish syncing: the habit types that were rolled back will set themselves right, and the diary continuation will be joined back on");
+        out.add(e1520);
+
         Entry e1510 = new Entry("v1.51.0", "2026-11-03");
         e1510.add(new Group(s("新增", "New"),
                 s("每天凌晨，作者的 AI 助手会看你昨天的任务和日记，写一小段状态总结，再挑几条对得上的原则和问题，做成晨间卡，放在晨间页写日记的上方",
