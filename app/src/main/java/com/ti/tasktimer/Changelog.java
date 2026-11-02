@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1510 = new Entry("v1.51.0", "2026-11-03");
+        e1510.add(new Group(s("新增", "New"),
+                s("每天凌晨，作者的 AI 助手会看你昨天的任务和日记，写一小段状态总结，再挑几条对得上的原则和问题，做成晨间卡，放在晨间页写日记的上方",
+                  "Every night, the author's AI assistant reads yesterday's tasks and diary, writes a short note on where you stand, and picks a few matching principles and questions - a morning card, set above the diary on the morning page")));
+        e1510.why = s("写日记之前，先看一眼昨天的自己站在哪里——知与行，在清晨对一次账",
+                "Before the diary, one look at where yesterday's self stood - knowing and doing, reconciled at dawn");
+        e1510.tryIt = s("早上打开晨间页，有卡时先读卡、点「读过了」，日记框才会展开；没有卡的日子，日记照常写，不拦",
+                "Open the morning page in the morning: when a card is there, read it and tap Read - only then does the diary box open. On days without a card, the diary works exactly as before");
+        out.add(e1510);
+
         Entry e1500 = new Entry("v1.50.0", "2026-11-03");
         e1500.add(new Group(s("新增", "New"),
                 s("底部第一个 tab 改名「行」，新增第二个 tab「知」。知页里安放三类东西：思维原则、行为原则、待问的问题",
