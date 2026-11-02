@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.50.0)
+## Features (Android, v1.51.0)
 
-Current version: **v1.50.0**.
+Current version: **v1.51.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,17 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.51.0 — 2026-11-03
+
+**Why:** Before the morning diary, one look at where yesterday's self stood — knowing and doing, reconciled at dawn. Each night at 04:00 the author's AI assistant reads yesterday's tasks and diary, writes a short note on the user's state, and picks matching principles and questions from the Know ledger into a morning card. This release is the app side of that second Know instalment: the card's place on the morning page. (The nightly generation itself is a scheduled job on the assistant's side, not part of the app.) Build commit `d9826b0` · [compare v1.50.0...v1.51.0](https://github.com/gty3310/knowdo/compare/v1.50.0...v1.51.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Morning cards on the morning page.** In gate/test mode the page fetches today's card (one row per day in `morning_cards`, owner-only RLS, read through the existing Supa channel with the user's JWT) and, when an unread card exists, shows it in section C above the diary box: the state summary first (small heading "Yesterday, in short"), then one frosted-glass card per picked entry — thinking principles, principles for action, questions to ask — rendered from the text snapshot stored on the card, never re-queried from the Know table. The glass look is a translucent warm-white fill, a hairline border and a slight lift, inside the app's usual quiet palette.
+- **Read first, then write.** While the card is unread the diary box stays hidden; tapping "Read it" marks the card read on-device at once, opens the diary box, and writes `read_at` back in the background via the existing upsert path (only that column). A failed write-back never blocks anything: the on-device mark, kept per day, is enough for the card never to gate twice.
+- **No card, no change.** No row, a failed fetch, no network, signed out, an already-read card (in the cloud, or marked on-device), or an empty card — the card area simply never renders and the morning page is exactly what it was. The edit/back-fill mode never fetches or shows cards, and the morning gate's completion rules are untouched: cards are part of no condition, sections A and B are unchanged, and the only app file changed is `MorningActivity.java` (pure additions).
+
+Not yet verified on a real device: an unread card's presentation and card order, the hidden diary box and the read-first flow, tapping Read (the diary opens, read_at lands in the cloud, a killed-and-reopened page does not gate again), an already-read card staying away, no-card/offline/signed-out mornings looking exactly as before, back-fill mode showing no card, cards not affecting gate completion or the progress dots, the glass look in dark mode, the changelog popup, and the 1.50.0 → 1.51.0 instant-update chain.
+
 ### v1.50.0 — 2026-11-03
 
 **Why:** Knowing and doing are two ledgers. Tasks have always been the doing side; this release stands up the knowing side — a place for the principles he thinks by, the principles he acts by, and the questions he still means to ask. Build commit `f43a9a3` · [compare v1.49.0...v1.50.0](https://github.com/gty3310/knowdo/compare/v1.49.0...v1.50.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -81,15 +92,6 @@ Not yet verified on a real device: the five-tab order and renaming, tab switchin
 - **An eighth habit type: Reading.** On the Habits page it is a single row — the habit's name and a small "Reading" label, with no done-or-not state and no check-in controls (the row never even looks at the log). Tapping it opens the reading page: the habit's full text (stored in the standard reminder-text field), set large with roomy line spacing under a serif title, and one fixed button at the bottom — "Read it", or "Read today" once today's tap is recorded. Tapping it writes the day's habit log through the same putLog path every other type uses, so the Zhixing index counts it exactly like the weekly and diary types; tapping again is harmless. The passage can be set when creating the habit (a multi-line field in the form; it may be left empty and filled later) and changed any time in Edit habit, which shows the full-text field for this type and skips the target field. An empty passage shows a placeholder on the reading page and the button still works. In the morning page's yesterday section the type appears as a read-only status line, like the weekly and diary types, and it never blocks the morning gate; the Daily Reminder type's existing behavior is untouched. Switching the user's own "Daily Reading" habit over to the new type happens in the cloud after this release, not in code.
 
 Not yet verified on a real device: creating a reading habit end to end, the stateless habit-page row and opening the reading page, the full-text and empty-text states, tapping Read and its log/Zhixing-index effect, editing the passage afterwards, the morning page's read-only row and gate completing as before, the changelog popup, and the 1.48.0 → 1.49.0 instant-update chain.
-
-### v1.48.0 — 2026-11-03
-
-**Why:** Checking off "journaling" and actually writing the diary used to be two separate things, and past entries had no good place to be read back. The user folded them into one text-type habit: open it and you are in the diary. Build commit `574b506` · [compare v1.47.0...v1.48.0](https://github.com/gty3310/knowdo/compare/v1.47.0...v1.48.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A seventh habit type: Diary.** On the Habits page it is a single row — the habit's name and today's state ("written · N chars" or "not yet") — and tapping it opens the diary page: today's entry editor on top (saved as you type; writing anything marks the day done through the same habit log every other type uses, with no length requirement), and below it the full history in reverse date order, each day showing its date, weekday, length and first line. Tapping a past day amends it, and the amendment keeps that day's completion mark in sync. The diary text is the app's one existing diary — the same text the morning page writes — not a new store; the morning page's diary box and its completion rules for the existing types are unchanged (in the morning page's yesterday section the new type appears as a read-only status line, like the weekly type). Deleting a diary habit removes only the habit, never the diary text.
-
-Not yet verified on a real device: creating a diary habit end to end, the habit-page row in both states, writing today's entry and its completion/Zhixing-index effect, the morning page writing the same diary and the habit row agreeing, browsing history and amending a past day (with its log following), the morning page's read-only row and gate completing as before, deleting a diary habit leaving the diary intact, the changelog popup, and the 1.47.0 → 1.48.0 instant-update chain.
 
 ## Build
 
