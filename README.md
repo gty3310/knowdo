@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.49.0)
+## Features (Android, v1.50.0)
 
-Current version: **v1.49.0**.
+Current version: **v1.50.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,17 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.50.0 — 2026-11-03
+
+**Why:** Knowing and doing are two ledgers. Tasks have always been the doing side; this release stands up the knowing side — a place for the principles he thinks by, the principles he acts by, and the questions he still means to ask. Build commit `f43a9a3` · [compare v1.49.0...v1.50.0](https://github.com/gty3310/knowdo/compare/v1.49.0...v1.50.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Five bottom tabs: Act / Know / Habits / Zhixing / Chat.** The first tab is the same schedule page, renamed from Schedule to Act; Know is inserted second and the rest shift down one place, their pages untouched. Tab indices moved with named constants, so existing deep links (the guard page and habit reminders opening a specific tab) follow automatically. The Know tab's icon is simply the character 知.
+- **The Know page.** Three sections — thinking principles, principles for action, questions to ask — each with its entries and an "Add one" row. An entry shows its title (or the first line of its body) plus a one-line preview; a question with a named addressee shows a small "for: X" beside the title. Tapping an entry opens the editor (title, body, and "who to ask" for questions); deleting asks for confirmation first, in the app's usual wording.
+- **Backed by the `zhi_entries` table.** Entries live in Supabase and are read and written through the app's existing Supa channel with the signed-in user's JWT, so the table's owner-only row-level security applies. The page caches the last successful fetch on-device: offline it shows the cache with a small "Offline — showing the last copy" note, with no cache it shows an empty state with retry, and signed out it simply asks for sign-in. Every create, edit and delete lands on the server first and only then refreshes the page and cache, so a failed save never leaves the page showing something the database does not have. `Supa` gains one small public `restDelete` helper for this; nothing else in the sync layer changed.
+
+Not yet verified on a real device: the five-tab order and renaming, tab switching and state retention (including notification/guard deep links landing on the right tab), the Know page's first fetch and three sections, creating/editing/deleting entries and reading them back from the cloud, the "for: X" addressee display, the offline cache and its note, the no-cache failure state with retry, the signed-out hint, the changelog popup, and the 1.49.0 → 1.50.0 instant-update chain.
+
 ### v1.49.0 — 2026-11-03
 
 **Why:** Some texts — a morning admonition above all — are not tasks to check off; they are passages to open and read every day. The user made that a habit type of its own: the passage lives inside the habit, one tap opens it in full, and a single "Read" button at the bottom is the whole completion ritual. Build commit `35b0616` · [compare v1.48.0...v1.49.0](https://github.com/gty3310/knowdo/compare/v1.48.0...v1.49.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +90,6 @@ Not yet verified on a real device: creating a reading habit end to end, the stat
 - **A seventh habit type: Diary.** On the Habits page it is a single row — the habit's name and today's state ("written · N chars" or "not yet") — and tapping it opens the diary page: today's entry editor on top (saved as you type; writing anything marks the day done through the same habit log every other type uses, with no length requirement), and below it the full history in reverse date order, each day showing its date, weekday, length and first line. Tapping a past day amends it, and the amendment keeps that day's completion mark in sync. The diary text is the app's one existing diary — the same text the morning page writes — not a new store; the morning page's diary box and its completion rules for the existing types are unchanged (in the morning page's yesterday section the new type appears as a read-only status line, like the weekly type). Deleting a diary habit removes only the habit, never the diary text.
 
 Not yet verified on a real device: creating a diary habit end to end, the habit-page row in both states, writing today's entry and its completion/Zhixing-index effect, the morning page writing the same diary and the habit row agreeing, browsing history and amending a past day (with its log following), the morning page's read-only row and gate completing as before, deleting a diary habit leaving the diary intact, the changelog popup, and the 1.47.0 → 1.48.0 instant-update chain.
-
-### v1.47.0 — 2026-11-03
-
-**Why:** The user designed a habit that is not a daily count but a weekly compass: one goal per week, a line of reflection every day, and — if next week's goal is still empty at 8 pm on Sunday — a gate that asks you to set it before the app lets you through. Build commit `e4b0987` · [compare v1.46.0...v1.47.0](https://github.com/gty3310/knowdo/compare/v1.46.0...v1.47.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A sixth habit type: Weekly Goal & Reflection.** On the Habits page it is a single row — the habit's name and this week's goal, no check-in grid — and tapping it opens its page: edit this week's goal, set next week's goal early, write today's reflection (writing it is what marks the day done, through the same habit log every other type uses), and browse past weeks, whose daily reflections can still be amended. Its goals and reflections live in a new synced `weekly_data` store merged with the same local-first discipline as the habit data itself. From Sunday 8 pm, if a coming week's goal is still empty, a full-screen weekly gate opens after the morning gate, shows last week's goal and reflections for review, and lets you through once the missing goal is filled; filling it early in the detail page means the gate never appears. The morning page treats the new type as a read-only status line and its completion rules for the existing five types are unchanged.
-
-Not yet verified on a real device: creating a weekly habit end to end, the habit-page row and detail page, goal edits syncing and reading back, today's reflection toggling the day's completion and the Zhixing index, amending a past week's reflection, the Sunday 8 pm gate firing (and yielding to the morning gate first), no gate when the goal was filled early, the gate still holding on Monday morning, deleting a weekly habit clearing its data, the changelog popup, and the 1.46.0 → 1.47.0 instant-update chain.
 
 ## Build
 
