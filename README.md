@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.48.0)
+## Features (Android, v1.49.0)
 
-Current version: **v1.48.0**.
+Current version: **v1.49.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.49.0 — 2026-11-03
+
+**Why:** Some texts — a morning admonition above all — are not tasks to check off; they are passages to open and read every day. The user made that a habit type of its own: the passage lives inside the habit, one tap opens it in full, and a single "Read" button at the bottom is the whole completion ritual. Build commit `35b0616` · [compare v1.48.0...v1.49.0](https://github.com/gty3310/knowdo/compare/v1.48.0...v1.49.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **An eighth habit type: Reading.** On the Habits page it is a single row — the habit's name and a small "Reading" label, with no done-or-not state and no check-in controls (the row never even looks at the log). Tapping it opens the reading page: the habit's full text (stored in the standard reminder-text field), set large with roomy line spacing under a serif title, and one fixed button at the bottom — "Read it", or "Read today" once today's tap is recorded. Tapping it writes the day's habit log through the same putLog path every other type uses, so the Zhixing index counts it exactly like the weekly and diary types; tapping again is harmless. The passage can be set when creating the habit (a multi-line field in the form; it may be left empty and filled later) and changed any time in Edit habit, which shows the full-text field for this type and skips the target field. An empty passage shows a placeholder on the reading page and the button still works. In the morning page's yesterday section the type appears as a read-only status line, like the weekly and diary types, and it never blocks the morning gate; the Daily Reminder type's existing behavior is untouched. Switching the user's own "Daily Reading" habit over to the new type happens in the cloud after this release, not in code.
+
+Not yet verified on a real device: creating a reading habit end to end, the stateless habit-page row and opening the reading page, the full-text and empty-text states, tapping Read and its log/Zhixing-index effect, editing the passage afterwards, the morning page's read-only row and gate completing as before, the changelog popup, and the 1.48.0 → 1.49.0 instant-update chain.
+
 ### v1.48.0 — 2026-11-03
 
 **Why:** Checking off "journaling" and actually writing the diary used to be two separate things, and past entries had no good place to be read back. The user folded them into one text-type habit: open it and you are in the diary. Build commit `574b506` · [compare v1.47.0...v1.48.0](https://github.com/gty3310/knowdo/compare/v1.47.0...v1.48.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: creating a diary habit end to end, the habit-
 - **A sixth habit type: Weekly Goal & Reflection.** On the Habits page it is a single row — the habit's name and this week's goal, no check-in grid — and tapping it opens its page: edit this week's goal, set next week's goal early, write today's reflection (writing it is what marks the day done, through the same habit log every other type uses), and browse past weeks, whose daily reflections can still be amended. Its goals and reflections live in a new synced `weekly_data` store merged with the same local-first discipline as the habit data itself. From Sunday 8 pm, if a coming week's goal is still empty, a full-screen weekly gate opens after the morning gate, shows last week's goal and reflections for review, and lets you through once the missing goal is filled; filling it early in the detail page means the gate never appears. The morning page treats the new type as a read-only status line and its completion rules for the existing five types are unchanged.
 
 Not yet verified on a real device: creating a weekly habit end to end, the habit-page row and detail page, goal edits syncing and reading back, today's reflection toggling the day's completion and the Zhixing index, amending a past week's reflection, the Sunday 8 pm gate firing (and yielding to the morning gate first), no gate when the goal was filled early, the gate still holding on Monday morning, deleting a weekly habit clearing its data, the changelog popup, and the 1.46.0 → 1.47.0 instant-update chain.
-
-### v1.46.0 — 2026-11-01
-
-**Why:** The Today Plan page reckoned by the whole day: Arranged included schedule blocks already past and the budget assumed a full day, so by afternoon its numbers no longer matched the time actually left — and the period bar had no mark for "now". Build commit `971af79` · [compare v1.45.0...v1.46.0](https://github.com/gty3310/knowdo/compare/v1.45.0...v1.46.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **Today Plan reckons from this moment.** Arranged now counts only the part of today's schedule still ahead (a block in progress counts only its remaining stretch), and the budget is the smaller of the free time you entered and the usable wall time from now to the end of today, so Time left is honest at any hour. The period bar keeps its full-day axis, but everything before now is greyed under a translucent veil and a thin vermilion line marks the present moment; the veil never intercepts touches, so locked-period dragging works exactly as before. First thing in the morning the new reckoning matches the old one, and the scheduler itself — which already only ever planned into the future — is untouched.
-
-Not yet verified on a real device: afternoon numbers counting only the future, a block straddling now counting only its later part, the greyed past and the red line sitting at the current time, morning numbers matching the old reckoning, the veil not blocking locked-period dragging, the changelog popup, and the 1.45.0 → 1.46.0 instant-update chain end to end.
 
 ## Build
 
