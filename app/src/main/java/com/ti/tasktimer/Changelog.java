@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1500 = new Entry("v1.50.0", "2026-11-03");
+        e1500.add(new Group(s("新增", "New"),
+                s("底部第一个 tab 改名「行」，新增第二个 tab「知」。知页里安放三类东西：思维原则、行为原则、待问的问题",
+                  "The first bottom tab is renamed Act, and a new second tab, Know, is added. The Know page keeps three kinds of entries: thinking principles, principles for action, and questions still to ask")));
+        e1500.why = s("知行要合一，先把「知」立起来。任务是行，原则与问题是知——两本账，从此都在手边",
+                "Knowing and doing belong together, so Know gets its own ledger first. Tasks are the doing; principles and questions are the knowing — both books, now at hand");
+        e1500.tryIt = s("点底部「知」，每一类底下点「加一条」就能写；点已有条目可以改、可以删；问题还能记下是问谁的",
+                "Tap Know at the bottom: under each kind, tap Add one to write; tap an existing entry to edit or delete it; a question can also record who it is for");
+        out.add(e1500);
+
         Entry e1490 = new Entry("v1.49.0", "2026-11-03");
         e1490.add(new Group(s("新增", "New"),
                 s("习惯多了一个新类型「自读」——点开就是要读的全文，读完点「读过了」就记完成；习惯页那一行不显示做了没做，干干净净",
