@@ -240,6 +240,7 @@ public final class SbSync {
         boolean hasAcc = probeUserStateCol(c, "accountability"); // v1.28.0：黄图问责邮件设置，列未就绪只用本地、绝不碰此键
         boolean hasDayAvail = probeUserStateCol(c, "day_avail"); // v1.28.0 feature 9：今天安排时段（睡眠/锁时/可支配），列未就绪只用本地、绝不碰此键
         boolean hasWeekly = probeUserStateCol(c, "weekly_data"); // v1.47.0：每周目标反思专属数据（周目标＋每日反省），列未就绪只用本地、绝不碰此键
+        boolean hasPatch = probeUserStateCol(c, "cloud_patch"); // v1.52.0：云端补丁（云端协助整理的数据改动落地用），列未就绪不读、行为与旧版一字不差
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -363,12 +364,16 @@ public final class SbSync {
                 // 本机从未存过且云端有值→整份采用；本机有值→HabitData.merge 并集（本机优先），
                 // 合并结果变了先落本地、与云端不同才回写。
                 JSONObject remoteHabit = urow.isNull("habit_data") ? null : urow.optJSONObject("habit_data");
+                // 云端补丁（v1.52.0）：随行读出，只读不写；列未就绪/为 null 时为 null，下面两处应用自动跳过
+                JSONObject cloudPatch = (hasPatch && !urow.isNull("cloud_patch"))
+                        ? urow.optJSONObject("cloud_patch") : null;
                 if (!HabitData.hasLocal(c) && remoteHabit != null) {
-                    HabitData.adopt(c, remoteHabit);
+                    HabitData.adopt(c, applyCloudPatch(new JSONObject(remoteHabit.toString()), cloudPatch));
                     HabitReminder.rescheduleAll(c);
                 } else if (HabitData.hasLocal(c)) {
                     JSONObject localHabit = HabitData.load(c);
                     JSONObject mergedHabit = HabitData.merge(localHabit, remoteHabit);
+                    mergedHabit = applyCloudPatch(mergedHabit, cloudPatch); // 合并后、落本地/回写前应用补丁（v1.52.0）
                     if (!HabitData.contentEquals(mergedHabit, localHabit)) {
                         HabitData.saveQuiet(c, mergedHabit);
                         HabitReminder.rescheduleAll(c);
@@ -477,6 +482,54 @@ public final class SbSync {
             Supa.restUpsertOne(c, "user_state", "user_id", write);
             if (pendingTimer != null) SbTimerSync.clearPending(c, pendingTimer.optLong("updated_at", 0));
         }
+    }
+
+    /**
+     * 云端补丁（v1.52.0）：把 user_state.cloud_patch 应用到刚合并出的 habit_data 上，
+     * 随后走既有路径（变了先落本地、与云端不同才回写），不新增写通道。
+     * 背景：HabitData.merge 是定案的本机优先——同 id 习惯定义、同日期日记都以本机为准，
+     * 所以从云端直改的习惯 type、往已有日期续写的日记都会被下一次合并覆盖回滚；补丁在
+     * 合并之后改 merged，merged 一落本机即成本机新值，此后合并天然保持。
+     * 结构：{habit_types:{habitId:type}, diary_appends:[{date,marker,text}]}。
+     * 幂等：type 是赋值、重复应用无副作用；日记续写以 marker 子串判重，已含则跳过。
+     * 任何异常静默跳过（返回原 merged），绝不阻断正常同步；cloud_patch 列只读不写。
+     */
+    private static JSONObject applyCloudPatch(JSONObject merged, JSONObject patch) {
+        if (merged == null || patch == null) return merged;
+        try {
+            JSONObject types = patch.optJSONObject("habit_types");
+            if (types != null && types.length() > 0) {
+                JSONArray habits = merged.optJSONArray("habits");
+                if (habits != null) {
+                    for (int i = 0; i < habits.length(); i++) {
+                        JSONObject h = habits.optJSONObject(i);
+                        if (h == null) continue;
+                        String want = types.optString(h.optString("id", ""), "");
+                        if (!want.isEmpty() && !want.equals(h.optString("type", ""))) {
+                            h.put("type", want); // 只改 type 一个字段，其余（名/目标/全文等）一律不动
+                        }
+                    }
+                }
+            }
+            JSONArray appends = patch.optJSONArray("diary_appends");
+            if (appends != null && appends.length() > 0) {
+                JSONObject diary = merged.optJSONObject("diary");
+                for (int i = 0; i < appends.length(); i++) {
+                    JSONObject a = appends.optJSONObject(i);
+                    if (a == null) continue;
+                    String date = a.optString("date", "");
+                    String text = a.optString("text", "");
+                    if (date.isEmpty() || text.isEmpty()) continue;
+                    if (diary == null) { diary = new JSONObject(); merged.put("diary", diary); }
+                    String cur = diary.optString(date, "");
+                    String marker = a.optString("marker", "");
+                    boolean already = marker.isEmpty() ? cur.contains(text) : cur.contains(marker);
+                    if (already) continue;
+                    diary.put(date, cur.isEmpty() ? text : cur + "\n\n" + text);
+                }
+            }
+        } catch (Exception ignored) { }
+        return merged;
     }
 
     /** Realtime 推来的 user_state 行：缓存 schedule/gcal、合并守卫事件、应用计时状态。不在这里回写。 */
