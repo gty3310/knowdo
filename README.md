@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.47.0)
+## Features (Android, v1.48.0)
 
-Current version: **v1.47.0**.
+Current version: **v1.48.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.48.0 — 2026-11-03
+
+**Why:** Checking off "journaling" and actually writing the diary used to be two separate things, and past entries had no good place to be read back. The user folded them into one text-type habit: open it and you are in the diary. Build commit `574b506` · [compare v1.47.0...v1.48.0](https://github.com/gty3310/knowdo/compare/v1.47.0...v1.48.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A seventh habit type: Diary.** On the Habits page it is a single row — the habit's name and today's state ("written · N chars" or "not yet") — and tapping it opens the diary page: today's entry editor on top (saved as you type; writing anything marks the day done through the same habit log every other type uses, with no length requirement), and below it the full history in reverse date order, each day showing its date, weekday, length and first line. Tapping a past day amends it, and the amendment keeps that day's completion mark in sync. The diary text is the app's one existing diary — the same text the morning page writes — not a new store; the morning page's diary box and its completion rules for the existing types are unchanged (in the morning page's yesterday section the new type appears as a read-only status line, like the weekly type). Deleting a diary habit removes only the habit, never the diary text.
+
+Not yet verified on a real device: creating a diary habit end to end, the habit-page row in both states, writing today's entry and its completion/Zhixing-index effect, the morning page writing the same diary and the habit row agreeing, browsing history and amending a past day (with its log following), the morning page's read-only row and gate completing as before, deleting a diary habit leaving the diary intact, the changelog popup, and the 1.47.0 → 1.48.0 instant-update chain.
+
 ### v1.47.0 — 2026-11-03
 
 **Why:** The user designed a habit that is not a daily count but a weekly compass: one goal per week, a line of reflection every day, and — if next week's goal is still empty at 8 pm on Sunday — a gate that asks you to set it before the app lets you through. Build commit `e4b0987` · [compare v1.46.0...v1.47.0](https://github.com/gty3310/knowdo/compare/v1.46.0...v1.47.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: creating a weekly habit end to end, the habit
 - **Today Plan reckons from this moment.** Arranged now counts only the part of today's schedule still ahead (a block in progress counts only its remaining stretch), and the budget is the smaller of the free time you entered and the usable wall time from now to the end of today, so Time left is honest at any hour. The period bar keeps its full-day axis, but everything before now is greyed under a translucent veil and a thin vermilion line marks the present moment; the veil never intercepts touches, so locked-period dragging works exactly as before. First thing in the morning the new reckoning matches the old one, and the scheduler itself — which already only ever planned into the future — is untouched.
 
 Not yet verified on a real device: afternoon numbers counting only the future, a block straddling now counting only its later part, the greyed past and the red line sitting at the current time, morning numbers matching the old reckoning, the veil not blocking locked-period dragging, the changelog popup, and the 1.45.0 → 1.46.0 instant-update chain end to end.
-
-### v1.45.0 — 2026-11-01
-
-**Why:** You want your phone to update the moment a new version is published. Until now the automatic check was throttled to once in 20 hours, so a release could sit unnoticed for the better part of a day — or wait for a manual check. Build commit `4da9a43` · [compare v1.44.0...v1.45.0](https://github.com/gty3310/knowdo/compare/v1.44.0...v1.45.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **New versions arrive instantly.** A one-row signal table in Supabase (`app_release`) is bumped by the release pipeline right after the Gitee manifest switches. The app subscribes to that row over its existing Realtime connection: a newer signal triggers the ordinary update check (the Gitee manifest stays authoritative — the signal never carries a download address), the download runs under the existing network policy, and the familiar "new version downloaded" dialog asks for the one tap Android reserves for the user. Fallbacks tightened at the same time: the startup check throttle drops from 20 hours to 30 minutes, returning to the app re-checks after 15 minutes, and a Realtime reconnect re-checks too, so a signal missed while offline is still caught. With the auto-check switch off, a signal does nothing. The v1.44.0 stale-pending rule is untouched, as are the manifest, shard download/verification and install flow.
-
-Not yet verified on a real device: bumping the signal with KnowDo open and watching it download and prompt end to end; a download finishing in the background prompting on next foreground; the startup/resume fallback checks; no action when auto-check is off; the changelog popup; and the full self-update chain.
 
 ## Build
 
