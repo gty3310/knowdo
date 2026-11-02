@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.46.0)
+## Features (Android, v1.47.0)
 
-Current version: **v1.46.0**.
+Current version: **v1.47.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.47.0 — 2026-11-03
+
+**Why:** The user designed a habit that is not a daily count but a weekly compass: one goal per week, a line of reflection every day, and — if next week's goal is still empty at 8 pm on Sunday — a gate that asks you to set it before the app lets you through. Build commit `e4b0987` · [compare v1.46.0...v1.47.0](https://github.com/gty3310/knowdo/compare/v1.46.0...v1.47.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A sixth habit type: Weekly Goal & Reflection.** On the Habits page it is a single row — the habit's name and this week's goal, no check-in grid — and tapping it opens its page: edit this week's goal, set next week's goal early, write today's reflection (writing it is what marks the day done, through the same habit log every other type uses), and browse past weeks, whose daily reflections can still be amended. Its goals and reflections live in a new synced `weekly_data` store merged with the same local-first discipline as the habit data itself. From Sunday 8 pm, if a coming week's goal is still empty, a full-screen weekly gate opens after the morning gate, shows last week's goal and reflections for review, and lets you through once the missing goal is filled; filling it early in the detail page means the gate never appears. The morning page treats the new type as a read-only status line and its completion rules for the existing five types are unchanged.
+
+Not yet verified on a real device: creating a weekly habit end to end, the habit-page row and detail page, goal edits syncing and reading back, today's reflection toggling the day's completion and the Zhixing index, amending a past week's reflection, the Sunday 8 pm gate firing (and yielding to the morning gate first), no gate when the goal was filled early, the gate still holding on Monday morning, deleting a weekly habit clearing its data, the changelog popup, and the 1.46.0 → 1.47.0 instant-update chain.
+
 ### v1.46.0 — 2026-11-01
 
 **Why:** The Today Plan page reckoned by the whole day: Arranged included schedule blocks already past and the budget assumed a full day, so by afternoon its numbers no longer matched the time actually left — and the period bar had no mark for "now". Build commit `971af79` · [compare v1.45.0...v1.46.0](https://github.com/gty3310/knowdo/compare/v1.45.0...v1.46.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -79,15 +88,6 @@ Not yet verified on a real device: afternoon numbers counting only the future, a
 - **New versions arrive instantly.** A one-row signal table in Supabase (`app_release`) is bumped by the release pipeline right after the Gitee manifest switches. The app subscribes to that row over its existing Realtime connection: a newer signal triggers the ordinary update check (the Gitee manifest stays authoritative — the signal never carries a download address), the download runs under the existing network policy, and the familiar "new version downloaded" dialog asks for the one tap Android reserves for the user. Fallbacks tightened at the same time: the startup check throttle drops from 20 hours to 30 minutes, returning to the app re-checks after 15 minutes, and a Realtime reconnect re-checks too, so a signal missed while offline is still caught. With the auto-check switch off, a signal does nothing. The v1.44.0 stale-pending rule is untouched, as are the manifest, shard download/verification and install flow.
 
 Not yet verified on a real device: bumping the signal with KnowDo open and watching it download and prompt end to end; a download finishing in the background prompting on next foreground; the startup/resume fallback checks; no action when auto-check is off; the changelog popup; and the full self-update chain.
-
-### v1.44.0 — 2026-11-01
-
-**Why:** On a phone still running 1.38.0, tapping "Check for updates" only ever offered to install 1.38.0 itself: a stale pending package — downloaded while on an older version, then overtaken by installing the same version from Drive — sat in the updater's records, and the settings row went straight to installing it instead of ever checking the server, whose manifest was correct all along (1.43.0). Build commit `49ad833` · [compare v1.43.0...v1.44.0](https://github.com/gty3310/knowdo/compare/v1.43.0...v1.44.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **A stale pending package no longer blocks self-update.** A downloaded pending package counts only when its versionCode is strictly newer than the running version; at or below, it is void. That one rule now sits inside `pendingReady()`, so every entrance follows it — the settings row (a stale tap clears the record and runs a real check instead of installing), the install entry, the "new version downloaded" prompt, and failure handling (a failed check no longer revives a stale READY; it lands on the error state with its message kept, while a genuinely newer pending package is still preserved). Stale records are also cleared at startup — a local, offline cleanup deliberately placed ahead of the 20-hour auto-check throttle — before the install prompt, and in the row tap; the settings row stops advertising a stale package as a downloaded new version. Manifest, download channels, shard verification and the install flow are untouched.
-
-Not yet verified on a real device: a 1.38.0 phone carrying the stale 1.38.0 pending package no longer offering the old install and successfully checking/downloading a later version once the fix is in; a still-valid pending package installing directly as before; the changelog popup; and the full self-update chain.
 
 ## Build
 
