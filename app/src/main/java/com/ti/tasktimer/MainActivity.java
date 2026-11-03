@@ -345,6 +345,47 @@ public class MainActivity extends Activity {
     // 表格：表头与主体两个横向滚动区镜像同步；日历面板从右侧滑出（左缘拉手拖动定宽）；
     // 抽屉从左侧滑出（账号/语言/外观/帮助/设置）。旧顶栏按钮的去向：账号→抽屉与设置页，
     // 同步/实时→设置页账号组，帮助→抽屉与设置页，记录→设置页通用组，新增→右下 FAB。
+    // ---------------- 行页新皮令牌（v1.58.0，只本页呈现层用） ----------------
+    // 全软件 UI 升级第一页（设计稿 mockup-app-ui-v1）：纸面 #F7F3EC／卡底 #FFFDF7／
+    // 墨青黑 #1F2F2A／次字 #5A6A63／弱字 #9AA79F／朱砂 #D94B3A／细线 #E3DCCB／浅洗 #EFE9DA。
+    // 暗版沿用 Ui 既有暗色口径；不动全局 Ui，其他页面不在本版范围。
+    private int skinCard() { return Ui.dark(this) ? Ui.surface(this) : android.graphics.Color.rgb(255, 253, 247); }
+    private int skinSub()  { return Ui.dark(this) ? Ui.sub(this) : android.graphics.Color.rgb(90, 106, 99); }
+    private int skinWeak() { return Ui.dark(this) ? Ui.sub(this) : android.graphics.Color.rgb(154, 167, 159); }
+    private int skinLine() { return Ui.dark(this) ? Ui.line(this) : android.graphics.Color.rgb(227, 220, 203); }
+    private int skinWash() { return Ui.dark(this) ? Ui.muted(this) : android.graphics.Color.rgb(239, 233, 218); }
+
+    /** 卡片底：圆角 10dp＋细线边。InsetDrawable 只缩进绘制、不改行的布局几何
+     *  （行宽仍是 curTableW，与表头/拖拽/分屏的坐标口径完全一致）。 */
+    private android.graphics.drawable.Drawable cardBgInset(int fill, int stroke) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(10));
+        g.setStroke(1, stroke);
+        return new android.graphics.drawable.InsetDrawable(g, dp(6), dp(3), dp(6), dp(3));
+    }
+
+    /** 优先级圆点（全软件统一标记）：必做＝朱砂实心 9dp、重要＝墨色空心 9dp、
+     *  次要＝灰实心 7dp、休息＝灰空心 7dp。纯展示 View，不接管触摸。 */
+    private View prioDot(String priority) {
+        boolean must = "must".equals(priority), imp = "important".equals(priority),
+                lei = "leisure".equals(priority);
+        int size = (must || imp) ? dp(9) : dp(7);
+        View dot = new View(this);
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        if (must) g.setColor(Ui.accent(this));
+        else if (imp) g.setStroke(dp(2), Ui.text(this));
+        else if (lei) g.setStroke(1, skinWeak());
+        else g.setColor(android.graphics.Color.rgb(201, 194, 172));
+        dot.setBackground(g);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size,
+                Gravity.START | Gravity.CENTER_VERTICAL);
+        lp.setMarginStart(dp(7));
+        dot.setLayoutParams(lp);
+        return dot;
+    }
+
     private void buildUi() {
         adapter = new TaskAdapter();
         FrameLayout root = new FrameLayout(this);
@@ -404,7 +445,7 @@ public class MainActivity extends Activity {
         wordmark.setText(Strings.appWordmark());
         wordmark.setTextSize(19);
         wordmark.setTextColor(Ui.text(this));
-        wordmark.setTypeface(wordmark.getTypeface(), android.graphics.Typeface.BOLD);
+        wordmark.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD);
         topbar.addView(wordmark);
         View tsp = new View(this);
         tsp.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
@@ -417,7 +458,7 @@ public class MainActivity extends Activity {
         calBtn.setPadding(dp(14), dp(6), dp(14), dp(6));
         android.graphics.drawable.GradientDrawable calBg = new android.graphics.drawable.GradientDrawable();
         calBg.setCornerRadius(dp(9));
-        calBg.setColor(Ui.muted(this));
+        calBg.setColor(skinWash());
         calBtn.setBackground(calBg);
         calBtn.setOnClickListener(v -> toggleCalendar());
         topbar.addView(calBtn);
@@ -443,7 +484,7 @@ public class MainActivity extends Activity {
         strip.addView(nowRemainView);
         content.addView(strip);
         View stripLine = new View(this);
-        stripLine.setBackgroundColor(Ui.line(this));
+        stripLine.setBackgroundColor(skinLine());
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
         // 今日时间账（v1.23.0，任务页最上方，学 Sunsama）：三个数——今日还剩、必干占、空余。
@@ -457,7 +498,7 @@ public class MainActivity extends Activity {
         accountBox.addView(accountView);
         dueView = new TextView(this);
         dueView.setTextSize(12);
-        dueView.setTextColor(Ui.sub(this));
+        dueView.setTextColor(skinSub());
         dueView.setPadding(0, dp(4), 0, 0);
         dueView.setVisibility(View.GONE);
         accountBox.addView(dueView);
@@ -509,13 +550,14 @@ public class MainActivity extends Activity {
         headerScroll.setHorizontalScrollBarEnabled(false);
         headerInner = new LinearLayout(this);
         headerInner.setOrientation(LinearLayout.HORIZONTAL);
-        headerInner.setBackgroundColor(Ui.surface(this));
+        headerInner.setBackgroundColor(Ui.dark(this) ? Ui.surface(this) : Ui.bg(this));
+        headerInner.setPadding(dp(6), 0, dp(6), 0); // 与任务卡横向缩进对齐，列位不移
         headerScroll.addView(headerInner, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         tableCol.addView(headerScroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(38)));
         View headLine = new View(this);
-        headLine.setBackgroundColor(Ui.line(this));
+        headLine.setBackgroundColor(skinLine());
         tableCol.addView(headLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
         ScrollView bodyScroll = new ScrollView(this);
         bodyScrollV = bodyScroll;
@@ -524,6 +566,7 @@ public class MainActivity extends Activity {
         bodyHScroll.setHorizontalScrollBarEnabled(false);
         bodyInner = new LinearLayout(this);
         bodyInner.setOrientation(LinearLayout.VERTICAL);
+        bodyInner.setPadding(0, dp(5), 0, dp(8));
         bodyHScroll.addView(bodyInner, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         bodyScroll.addView(bodyHScroll, new ViewGroup.LayoutParams(
@@ -596,12 +639,12 @@ public class MainActivity extends Activity {
 
     private void buildTabBar(LinearLayout mainCol) {
         View line = new View(this);
-        line.setBackgroundColor(Ui.line(this));
+        line.setBackgroundColor(skinLine());
         mainCol.addView(line, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1));
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(Ui.surface(this));
+        bar.setBackgroundColor(Ui.dark(this) ? Ui.surface(this) : Ui.bg(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
         String[] icons = {"🗓️", "知", "🌱", "◎", "💬"};
@@ -628,12 +671,17 @@ public class MainActivity extends Activity {
             inner.addView(lab);
             View mark = new View(this);
             android.graphics.drawable.GradientDrawable mg = new android.graphics.drawable.GradientDrawable();
+            mg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
             mg.setColor(Ui.accent(this));
-            mg.setCornerRadius(dp(2));
             mark.setBackground(mg);
-            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(18), dp(3));
-            mlp.topMargin = dp(3);
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(6), dp(6));
+            mlp.topMargin = dp(1);
+            mlp.bottomMargin = dp(2);
             inner.addView(mark, mlp);
+            // v1.58.0：选中标记改朱砂小点并移到页签上方（设计稿口径）；
+            // 只是视图顺序调整，paintTabs 的显隐逻辑一字不变。
+            inner.removeView(mark);
+            inner.addView(mark, 0);
             cell.addView(inner, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
             if (i == TAB_CHAT) {
@@ -672,7 +720,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < tabLabels.length; i++) {
             if (tabLabels[i] == null) continue;
             boolean on = i == currentTab;
-            tabLabels[i].setTextColor(on ? Ui.text(this) : Ui.sub(this));
+            tabLabels[i].setTextColor(on ? Ui.text(this) : skinWeak());
             tabLabels[i].setTypeface(tabLabels[i].getTypeface(),
                     on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             tabMarks[i].setVisibility(on ? View.VISIBLE : View.INVISIBLE);
@@ -1529,14 +1577,15 @@ public class MainActivity extends Activity {
         TextView lab = new TextView(this);
         lab.setText(colTitle(c.id));
         lab.setTextSize(12);
-        lab.setTextColor(Ui.sub(this));
+        lab.setTextColor(skinSub());
+        lab.setLetterSpacing(0.08f);
         lab.setGravity(Gravity.CENTER_VERTICAL);
         lab.setPadding(dp(6), 0, dp(12), 0);
         lab.setSingleLine(true);
         cell.addView(lab, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         View line = new View(this);
-        line.setBackgroundColor(Ui.line(this));
+        line.setBackgroundColor(skinLine());
         cell.addView(line, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, 1, Gravity.BOTTOM));
         // 右缘拖拽区：按住横拖改本列宽度
@@ -1576,10 +1625,10 @@ public class MainActivity extends Activity {
         h.setText((open ? "▼ " : "▶ ") + r.date + (Strings.en()
                 ? " · " + r.count + " done (tap to open)"
                 : " · 完成 " + r.count + " 个（点开看那天做了什么）"));
-        h.setTextSize(14);
-        h.setTextColor(Ui.sub(this));
-        h.setBackgroundColor(Ui.muted(this));
-        h.setPadding(dp(12), dp(10), dp(12), dp(10));
+        h.setTextSize(12.5f);
+        h.setTextColor(skinSub());
+        h.setLetterSpacing(0.06f);
+        h.setPadding(dp(12), dp(14), dp(12), dp(6));
         h.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
         h.setOnClickListener(v -> {
             if (expandedDays.contains(r.date)) expandedDays.remove(r.date);
@@ -1596,7 +1645,7 @@ public class MainActivity extends Activity {
                 ? " (" + r.t.durationMinutes + " min)"
                 : "（" + r.t.durationMinutes + " 分）"));
         h.setTextSize(14);
-        h.setTextColor(Ui.sub(this));
+        h.setTextColor(skinSub());
         h.setPadding(dp(28), dp(8), dp(12), dp(8));
         h.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
         h.setOnClickListener(v -> dialogNote(r.t));
@@ -1642,14 +1691,17 @@ public class MainActivity extends Activity {
         LinearLayout rowRoot = new LinearLayout(this);
         rowRoot.setOrientation(LinearLayout.HORIZONTAL);
         rowRoot.setLayoutParams(new LinearLayout.LayoutParams(curTableW, LinearLayout.LayoutParams.WRAP_CONTENT));
-        rowRoot.setBackgroundColor(done ? Ui.doneBg(this) : isRunningThis ? Ui.runningBg(this) : Ui.bg(this));
+        rowRoot.setBackground(cardBgInset(
+                done ? Ui.doneBg(this) : isRunningThis ? Ui.runningBg(this) : skinCard(),
+                isRunningThis ? Ui.accent(this) : skinLine()));
         rowRoot.setTag(t.id); // 日历点块时按 id 定位滚动（expandTaskFromCalendar）
         fullViews.add(rowRoot);
         View bar = new View(this);
-        bar.setBackgroundColor(isRunningThis ? Ui.accent(this) : android.graphics.Color.TRANSPARENT);
+        bar.setBackgroundColor(android.graphics.Color.TRANSPARENT); // v1.58.0：计时中改由卡片朱砂描边＋底色示意，此条仅占位保几何
         rowRoot.addView(bar, new LinearLayout.LayoutParams(dp(3), LinearLayout.LayoutParams.MATCH_PARENT));
         LinearLayout colV = new LinearLayout(this);
         colV.setOrientation(LinearLayout.VERTICAL);
+        colV.setPadding(dp(6), 0, dp(6), 0); // 与卡片横向缩进对齐，内容落在卡内（表头已同步加同宽内边距）
         rowRoot.addView(colV, new LinearLayout.LayoutParams(curTableW - dp(3),
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -1666,10 +1718,18 @@ public class MainActivity extends Activity {
         if (calOpen) {
             playBtn = new TextView(this);
             playBtn.setText(isRunningThis ? "⏸" : "▶");
-            playBtn.setTextSize(17);
+            playBtn.setTextSize(14);
             playBtn.setGravity(Gravity.CENTER);
-            playBtn.setTextColor(isRunningThis || isPausedThis ? Ui.accent(this) : Ui.sub(this));
-            playBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(38), dp(44)));
+            boolean playActive = isRunningThis || isPausedThis;
+            playBtn.setTextColor(playActive ? android.graphics.Color.WHITE : Ui.sub(this));
+            android.graphics.drawable.GradientDrawable pbg = new android.graphics.drawable.GradientDrawable();
+            pbg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            if (playActive) pbg.setColor(Ui.accent(this));
+            else pbg.setStroke(dp(1), Ui.sub(this));
+            playBtn.setBackground(pbg);
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(34), dp(34));
+            plp.setMargins(dp(2), 0, dp(2), 0);
+            playBtn.setLayoutParams(plp);
             final TextView pb = playBtn;
             pb.setOnClickListener(v -> onPlay(t));
             row.addView(playBtn);
@@ -1693,7 +1753,7 @@ public class MainActivity extends Activity {
         for (ColDef c : visibleCols()) row.addView(cellView(c, t, done, isRunningThis, isPausedThis, expanded));
 
         View line = new View(this);
-        line.setBackgroundColor(Ui.line(this));
+        line.setBackgroundColor(android.graphics.Color.TRANSPARENT); // v1.58.0：分隔改由卡片边线承担
         colV.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
         if (expanded) colV.addView(expansionView(t, done, isRunningThis, isPausedThis));
@@ -1721,7 +1781,7 @@ public class MainActivity extends Activity {
                         LinearLayout.LayoutParams.WRAP_CONTENT));
                 v.setLayoutParams(new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
-                String titleText = ("must".equals(t.priority) ? "★ " : "") + t.title
+                String titleText = t.title
                         + (isPausedThis ? Strings.pausedTag() : "");
                 Integer plannedMin = (calOpen && !done) ? splitScheduled.get(t.id) : null;
                 boolean rolledMark = Rollover.isRolled(this, t.id);
@@ -1746,6 +1806,8 @@ public class MainActivity extends Activity {
                     v.setText(done ? titleText + " ✓" : titleText);
                 }
                 v.setTextSize(15);
+                v.setTypeface(android.graphics.Typeface.SERIF,
+                        isRunningThis ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
                 // 任务名行内至多两行（v1.22.0）：太长先换行到第二行，两行还放不下才省略号；
                 // 展开这一行时完整显示、不截断——认任务靠第一眼，展开就是要看全。
                 if (expanded) {
@@ -1755,8 +1817,8 @@ public class MainActivity extends Activity {
                     v.setMaxLines(2);
                     v.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 }
-                v.setPadding(dp(6), 0, dp(16), 0);
-                v.setTextColor(done ? Ui.sub(this) : Ui.text(this));
+                v.setPadding(dp(21), 0, dp(16), 0);
+                v.setTextColor(done ? skinSub() : Ui.text(this));
                 if (isRunningThis) v.setTypeface(v.getTypeface(), android.graphics.Typeface.BOLD);
                 if (done) v.setPaintFlags(v.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
                 v.setOnClickListener(x -> {
@@ -1764,6 +1826,7 @@ public class MainActivity extends Activity {
                     renderTable();
                 });
                 cell.addView(v);
+                cell.addView(prioDot(t.priority)); // v1.58.0：优先级圆点（替代原 ★ 前缀，四档全标）
                 TextView chev = new TextView(this);
                 chev.setText("›");
                 chev.setTextSize(15);
@@ -1830,7 +1893,7 @@ public class MainActivity extends Activity {
             case "pri":
                 if ("must".equals(t.priority)) {
                     v.setText(Strings.priMust());
-                    v.setTextColor(Ui.danger(this));
+                    v.setTextColor(Ui.accent(this));
                 } else if ("important".equals(t.priority)) {
                     v.setText(Strings.priImportant());
                     v.setTextColor(Ui.text(this));
