@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1590 = new Entry("v1.59.0", "2026-11-03");
+        e1590.add(new Group(s("新增", "New"),
+                s("「知」改版：原则、问题、人名三页，互相打通／每条原则分思维与行为／问题可标待问、已问／人名页可按拼音首字母找人／三页都有搜索、标签筛选、复制整表、卡片与列表两种看法",
+                  "The Know tab is rebuilt: Principles, Questions and People on three pages, all linked together / every principle is marked thinking or action / questions carry a to-ask or asked state / People can be found by the pinyin initial of a name / all three pages have search, tag filters, copy-the-whole-table, and card or list views")));
+        e1590.why = s("知要沉淀成能互相牵引的网，不是一堆散条目／找人、找问题、找原则都该一步到位",
+                "What you know should settle into a web that pulls itself together, not a pile of loose entries / finding a person, a question or a principle should take one step");
+        e1590.tryIt = s("点开「知」，在人名里点开一个人看他的问题／在问题里打几个字试试搜索／长按或点开一条给它加一条关联",
+                "Open Know and tap a person under People to see their questions / type a few characters under Questions to try search / open any entry and add a link to it");
+        out.add(e1590);
+
         Entry e1580 = new Entry("v1.58.0", "2026-11-03");
         e1580.add(new Group(s("改进", "Improved"),
                 s("行页换上新样子：「行」页按新的全软件设计换了外观：米白纸面、宋体标题、任务是一张张细线卡片；优先级标记全软件统一（必做朱砂实心点、重要墨色空心点、次要灰点）；开始按钮改成圆形描边",
