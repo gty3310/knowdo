@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.59.0)
+## Features (Android, v1.60.0)
 
-Current version: **v1.59.0**.
+Current version: **v1.60.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.60.0 — 2026-11-03
+
+**Why:** The Know tab's three pages (Principles, Questions, People) were linked, but the diary still lived over in Habits — and most principles grow out of one particular day's diary, with the source left dangling. This release adds the fourth page, Diary, and links days to principles and people both ways, so when you look back you can see why you thought what you thought. The diary itself does not move: its text stays in the habit data, exactly where the morning gate and the diary screen already write it. Build commit `9841160` · [compare v1.59.0...v1.60.0](https://github.com/gty3310/knowdo/compare/v1.59.0...v1.60.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A Diary page inside Know.** The segmented switcher grows to four (Principles / Questions / People / Diary; the first three are untouched). The diary list runs newest first and lists only days that have text; each row shows the date in large type, a two-line excerpt of the first paragraph, and a small link count (principles n · people n). Search is the same literal-substring box as the other pages, over the diary text. There is no card/list switch, no tag filter and no ＋ button here — new diary text is still written in the morning gate or the Habits tab.
+- **One write path, respected.** Diary text is read through the habit data layer and written only through its existing unified `putDiary` path — the same one the morning page and the diary activity use — so the diary habit's done state keeps following the text exactly as before. The habit data layer itself gains only a read-only date listing; its merge and sync logic are byte-identical.
+- **Diary detail and two-way links.** Opening a day shows the full text in an editor (the date itself is fixed) with a Save button, and below it two link sections — Principles and People. Linked entries can be opened (the editor returns to the diary day afterwards), unlinked with ✕, or added through the same type-ahead panel as the other pages (literal substring, already-linked entries excluded, no create-and-link on this side). In reverse, the Principle and Person editors gain a Diary section listing linked dates, with the same type-ahead over days that have text, filterable by date or by words from the entry.
+- **Dangling links are kept, and say so.** If a linked day's text is later cleared, the date still shows in the principle's and person's Diary sections with a small "nothing written" note; opening it gives an empty editor to write into, and the link is never deleted on its own. The day simply does not appear in the Diary page list, which only lists days with text.
+
+Not yet verified on a real device: the Diary page's look (date rows, two-line excerpts, link counts), saving from the detail page and the diary habit's done state following, the full linking flow on both sides (type-ahead, link, unlink, jump-to-edit and back), the "nothing written" dangling-date rendering, the Diary page offline, the changelog popup, and the 1.59.0 to 1.60.0 in-app update chain.
+
 ### v1.59.0 — 2026-11-03
 
 **Why:** The Know tab was a single mixed list (the old `zhi_entries` table) where what you have figured out, what you still want to ask, and the people in your life could not pull on each other. This release rebuilds it as a small web: three pages — Principles, Questions, People — with every entry able to link to the others, so finding a person, a question or a principle takes one step. Build commit `68d3c21` · [compare v1.58.0...v1.59.0](https://github.com/gty3310/knowdo/compare/v1.58.0...v1.59.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -85,16 +97,6 @@ Not yet verified on a real device: the three pages' look and feel (cards, list r
 - **Circular play button in split view** (outline when idle, vermilion fill while timing or paused, same 38dp footprint), and the shared bottom tab bar got the same tokens: paper background, a small vermilion dot above the selected tab, weak-grey unselected labels. Tab switching logic and the chat badge are untouched.
 
 Not yet verified on a real device: the card look on a real list (including horizontal scrolling and split view), dot legibility across the four tiers, serif titles with two-line truncation, the round play button's feel, the tab dot next to the chat badge, dark-mode card layering, the changelog popup, and the 1.57.0 to 1.58.0 in-app update chain.
-
-### v1.57.0 — 2026-11-03
-
-**Why:** The Act list was ordered priority-first, so a must-do due next week sat above a minor task due today — not the way the calendar sees the day. The user ruled: the list should run by date first, one day after another, and a task due today that has not been given a time yet should say so in its row. Build commit `4e74106` · [compare v1.56.0...v1.57.0](https://github.com/gty3310/knowdo/compare/v1.56.0...v1.57.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **The Act list runs by day now.** Inside the unchanged split (unfinished first, today's finished below, history groups after), tasks are ordered by their effective date: overdue first, then today, then the coming days, with daily repeats counting as today and no-deadline tasks in their own group at the end. Within a day, the established priority order holds (must, important, secondary, leisure), then creation order — the same tiers the calendar planner uses, so a day holds the same tasks in the same order in both views. The shared `visibleSorted` ordering used by the floating window, the next-task page and the chat task pickers is deliberately untouched.
-- **An "Unscheduled" tag for today.** A task that is unfinished, due today (logical day), not leisure and not a daily repeat, and that has no block in today's schedule gets a small vermilion tag under its date in the deadline column. The check is read-only against the local schedule and re-runs on every redraw, so the tag disappears the moment the task is planned. Daily repeats are excluded on purpose: their due date is virtual, and tagging them would cry wolf every day.
-
-Not yet verified on a real device: the by-day reading order on a real list (overdue on top, no-deadline group last, same-day priority order), finished tasks and history groups unchanged, the tag appearing for due-today unplanned tasks and vanishing once planned, leisure and daily-repeat tasks never tagged, the tag hiding with a hidden deadline column, split view with the planned chips intact, the changelog popup, and the 1.56.0 to 1.57.0 in-app update chain.
 
 ## Build
 
