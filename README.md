@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.56.0)
+## Features (Android, v1.57.0)
 
-Current version: **v1.56.0**.
+Current version: **v1.57.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.57.0 — 2026-11-03
+
+**Why:** The Act list was ordered priority-first, so a must-do due next week sat above a minor task due today — not the way the calendar sees the day. The user ruled: the list should run by date first, one day after another, and a task due today that has not been given a time yet should say so in its row. Build commit `4e74106` · [compare v1.56.0...v1.57.0](https://github.com/gty3310/knowdo/compare/v1.56.0...v1.57.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **The Act list runs by day now.** Inside the unchanged split (unfinished first, today's finished below, history groups after), tasks are ordered by their effective date: overdue first, then today, then the coming days, with daily repeats counting as today and no-deadline tasks in their own group at the end. Within a day, the established priority order holds (must, important, secondary, leisure), then creation order — the same tiers the calendar planner uses, so a day holds the same tasks in the same order in both views. The shared `visibleSorted` ordering used by the floating window, the next-task page and the chat task pickers is deliberately untouched.
+- **An "Unscheduled" tag for today.** A task that is unfinished, due today (logical day), not leisure and not a daily repeat, and that has no block in today's schedule gets a small vermilion tag under its date in the deadline column. The check is read-only against the local schedule and re-runs on every redraw, so the tag disappears the moment the task is planned. Daily repeats are excluded on purpose: their due date is virtual, and tagging them would cry wolf every day.
+
+Not yet verified on a real device: the by-day reading order on a real list (overdue on top, no-deadline group last, same-day priority order), finished tasks and history groups unchanged, the tag appearing for due-today unplanned tasks and vanishing once planned, leisure and daily-repeat tasks never tagged, the tag hiding with a hidden deadline column, split view with the planned chips intact, the changelog popup, and the 1.56.0 to 1.57.0 in-app update chain.
+
 ### v1.56.0 — 2026-11-03
 
 **Why:** While planning today, the big tasks due later in the week were invisible — easy to discover only when their deadline was already on top of you. The user asked for a quiet place on the Plan today page that shows them, without disturbing today's list. Build commit `6c70c6b` · [compare v1.55.0...v1.56.0](https://github.com/gty3310/knowdo/compare/v1.55.0...v1.56.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -82,18 +92,6 @@ Not yet verified on a real device: the section opening collapsed with the right 
 - **Proposal first, always.** When the list is complete the AI ends its reply with a `knowdo-addtasks` JSON block; the app validates and normalizes it (non-empty titles, minutes clamped 1–480, priority whitelisted) and renders a proposal card — Add them / Keep editing. Only Add them creates the tasks (deadline = today, normal store path, sync kicked), the card locks against double-taps, and a chat line confirms the count. Unparseable replies simply render as plain chat; when the AI or network is down, a plain-language line lands in the chat and manual adding is unaffected.
 
 Not yet verified on a real device: the two-button row's look, the prefilled deadline and append/ledger behaviour after manual add, panel height and page-state preservation, keyboard behaviour in the panel, multi-turn AI collecting with estimated lengths, the proposal card's two buttons (creation + sync, no double-apply, edit-again flow), unparseable replies rendering as plain chat, offline behaviour, the changelog popup, and the 1.54.0 to 1.55.0 in-app update chain.
-
-### v1.54.0 — 2026-11-03
-
-**Why:** Four changes the user dictated on the Plan-today page on the morning of 2026-11-03: a postponed task vanished from the page with no way back; every in-page edit of a deadline or priority re-sorted the whole list, so the board never sat still; the red no-room line also named future and undated tasks that are not today's business; and re-sorting should happen only on demand, from a Re-sort button using the calendar's Quick Re-plan order. Build commit `a982f8e` · [compare v1.53.0...v1.54.0](https://github.com/gty3310/knowdo/compare/v1.53.0...v1.54.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **More deadline buttons.** A non-daily card's Due row grows from two buttons to six, in order across two rows: Move to today, Tomorrow, Saturday (the coming one; today if today is Saturday), Next Mon (next week's if today is Monday), Pick a date (system date picker, starting at the current deadline), and Clear due date. All set the deadline through the existing save+sync path and highlight when the deadline equals their date.
-- **Postponed tasks stay, greyed.** The page's card order is frozen when the page opens, so editing a deadline no longer removes the card. A card whose deadline is now in the future renders greyed (whole-card alpha 0.55 — dimmed but readable and tappable) and is excluded from the page's time ledger, from this page's Plan-into-today input, and from the red no-room list; Move to today restores it everywhere. Overdue rolled-in tasks and undated tasks are never greyed.
-- **Frozen order, Re-sort on demand.** In-page edits (deadline, priority, remaining minutes) never reorder the list; newly synced candidates append at the end. A new Re-sort button at the top right of the Tasks section re-orders the cards once with the very comparator the calendar's Quick Re-plan uses (`LocalAutoScheduler.candidateOrder`, shared by the packing code), and that order becomes the new frozen order. Grey cards take part and stay grey.
-- **Planning input excludes grey cards, red line names only today.** `LocalAutoScheduler` gains `computeLocalExcluding`/`runAsyncExcluding` — same plan, same wall constraints, same write path, with the grey ids removed from the candidate pool; `plan()` itself is untouched. The bottom red line now names only overflow that belongs to today (deadline on or before today, or an undated must-do); before, it named everything the planner could not fit, future tasks included.
-
-Not yet verified on a real device: the six-button two-row layout and per-date highlighting, the date picker's initial date and saving, grey-stays-put with ledger/planning/red-line exclusion and full restore via Move to today, order holding under priority/minutes edits with new tasks appending, Re-sort changing the order while grey cards stay grey, the red line naming only today's tasks, daily cards keeping no deadline row and overdue cards never greying, the changelog popup, and the 1.53.0 to 1.54.0 in-app update chain.
 
 ## Build
 
