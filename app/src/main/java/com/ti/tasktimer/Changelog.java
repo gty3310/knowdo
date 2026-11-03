@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1570 = new Entry("v1.57.0", "2026-11-03");
+        e1570.add(new Group(s("改进", "Improved"),
+                s("行页按日子排，未排期的标出来：「行」页的任务改成以日期为主轴排序：逾期的在最前，然后今天、明天，一天一天往后，跟日历的看法一致；截止是今天、却还没被排进今日日程的任务，行里会挂一个「未排期」小标",
+                  "The Act list now runs by day, and unscheduled tasks are marked: tasks on the Act tab are sorted by date first - overdue at the very top, then today, tomorrow and onwards, the way the calendar sees them; a task due today that has no block in today's schedule yet carries a small Unscheduled tag in its row")));
+        e1570.why = s("列表和日历看法一致，排今天时一眼就知道哪些任务还没落位",
+                "The list and the calendar should see the day the same way, so when you plan today you can spot at a glance which tasks have not been given a place yet");
+        e1570.tryIt = s("打开「行」页从上往下看，任务应该按日子排下来；今天要做又还没排时间的任务，旁边有「未排期」",
+                "Open the Act tab and read down: tasks should be ordered by day; a task due today with no time planned yet shows Unscheduled next to it");
+        out.add(e1570);
+
         Entry e1560 = new Entry("v1.56.0", "2026-11-03");
         e1560.add(new Group(s("新增", "New"),
                 s("其他重要任务也看得见了：今天安排页底部多了一个可以展开的区域，装着必做和重要、但截止日不是今天的任务，按截止日从近到远排；看中哪件，点它旁边的「改到今天」就拉进今天",
