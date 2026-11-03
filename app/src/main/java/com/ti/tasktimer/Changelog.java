@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1580 = new Entry("v1.58.0", "2026-11-03");
+        e1580.add(new Group(s("改进", "Improved"),
+                s("行页换上新样子：「行」页按新的全软件设计换了外观：米白纸面、宋体标题、任务是一张张细线卡片；优先级标记全软件统一（必做朱砂实心点、重要墨色空心点、次要灰点）；开始按钮改成圆形描边",
+                  "The Act tab has a new face: it now follows the new app-wide design - rice-paper background, serif titles, and tasks as thin-bordered cards; priority marks are unified app-wide (a solid vermilion dot for must-do, a hollow ink dot for important, a small grey dot for the rest); the start button is a circular outline")));
+        e1580.why = s("全软件的 UI 要统一成一套，这是第一页，后面几页会陆续跟上",
+                "The whole app is moving to one design system; this is the first page, the others will follow");
+        e1580.tryIt = s("打开「行」页看一眼就知道，功能和用法跟原来完全一样，只是长相变了",
+                "Just open the Act tab: everything works exactly as before, it only looks different");
+        out.add(e1580);
+
         Entry e1570 = new Entry("v1.57.0", "2026-11-03");
         e1570.add(new Group(s("改进", "Improved"),
                 s("行页按日子排，未排期的标出来：「行」页的任务改成以日期为主轴排序：逾期的在最前，然后今天、明天，一天一天往后，跟日历的看法一致；截止是今天、却还没被排进今日日程的任务，行里会挂一个「未排期」小标",
