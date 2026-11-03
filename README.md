@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.58.0)
+## Features (Android, v1.59.0)
 
-Current version: **v1.58.0**.
+Current version: **v1.59.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.59.0 — 2026-11-03
+
+**Why:** The Know tab was a single mixed list (the old `zhi_entries` table) where what you have figured out, what you still want to ask, and the people in your life could not pull on each other. This release rebuilds it as a small web: three pages — Principles, Questions, People — with every entry able to link to the others, so finding a person, a question or a principle takes one step. Build commit `68d3c21` · [compare v1.58.0...v1.59.0](https://github.com/gty3310/knowdo/compare/v1.58.0...v1.59.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Three linked pages on four new tables.** `zhi_principles` (each marked thinking or action), `zhi_questions` (a to-ask / asked state), `zhi_people` (name, tags, a memo line) and `zhi_links`, which stores each link once in canonical type order. The tables and the migration (one person, one question, one link) were prepared beforehand and read back verified; the app reads and writes them through the existing Supabase REST channel under the user's JWT, caches all four tables locally, and shows the cache with an offline note when the network fails. The legacy `zhi_entries` table is no longer read or written by the app and is left in place.
+- **The same toolbox on every page:** a segmented switcher (Principles / Questions / People), live literal-substring search, multi-select tag chips (OR), a result count, a Copy button that copies the whole filtered table as plain text (one entry per line, fields separated by ｜), a card/list view switch remembered per page, and a red round ＋ button for new entries. Principle cards group by kind and show linked people and question counts; question cards show who to ask and the ask state; people cards carry a vermilion seal with the surname character.
+- **People by initial.** In list view, people are grouped by the pinyin initial of their name (ICU Han-Latin transliteration, falling back to '#' when no letter can be derived), with a letter rail on the right edge that scrolls to a group.
+- **One editor for all three kinds.** Fields on top (kind or status as a two-way switch, title, body, tags picked from the shared tag pool or created inline), links below: each link section lists current links (tap one to jump into its editor, ✕ to unlink) and its ＋ Add opens a type-ahead panel — type a few characters and existing entries filter by literal substring; tapping one writes the link immediately, and a create-and-link row at the bottom makes a new entry from the typed text. Links take effect at once and never wait for the field Save; deleting an entry also deletes all of its links.
+- The bottom tab bar is unchanged in this release (text labels with the vermilion dot, as in v1.58.0); tab icons were postponed by decision on 2026-11-03 and will ship separately once the artwork is final.
+
+Not yet verified on a real device: the three pages' look and feel (cards, list rows, letter-rail scrolling), search and tag filtering in hand, the full linking flow in the editor (type-ahead, create-and-link, unlink, jump-to-edit, delete with link cleanup), the migrated entries (one person and their question) as rendered in the app, the offline cache note, the changelog popup, and the 1.58.0 to 1.59.0 in-app update chain.
+
 ### v1.58.0 — 2026-11-03
 
 **Why:** The app's pages grew one by one and never shared one look. The user approved a full UI upgrade: keep the established Eastern-minimal skin (rice paper, ink green-black, one vermilion accent, serif titles) and adopt Notion-style structural discipline - one component set for the whole app. This release reskins the first page, the Act tab, and changes no behavior at all. Build commit `647a1db` · [compare v1.57.0...v1.58.0](https://github.com/gty3310/knowdo/compare/v1.57.0...v1.58.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -82,16 +95,6 @@ Not yet verified on a real device: the card look on a real list (including horiz
 - **An "Unscheduled" tag for today.** A task that is unfinished, due today (logical day), not leisure and not a daily repeat, and that has no block in today's schedule gets a small vermilion tag under its date in the deadline column. The check is read-only against the local schedule and re-runs on every redraw, so the tag disappears the moment the task is planned. Daily repeats are excluded on purpose: their due date is virtual, and tagging them would cry wolf every day.
 
 Not yet verified on a real device: the by-day reading order on a real list (overdue on top, no-deadline group last, same-day priority order), finished tasks and history groups unchanged, the tag appearing for due-today unplanned tasks and vanishing once planned, leisure and daily-repeat tasks never tagged, the tag hiding with a hidden deadline column, split view with the planned chips intact, the changelog popup, and the 1.56.0 to 1.57.0 in-app update chain.
-
-### v1.56.0 — 2026-11-03
-
-**Why:** While planning today, the big tasks due later in the week were invisible — easy to discover only when their deadline was already on top of you. The user asked for a quiet place on the Plan today page that shows them, without disturbing today's list. Build commit `6c70c6b` · [compare v1.55.0...v1.56.0](https://github.com/gty3310/knowdo/compare/v1.55.0...v1.56.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Other important tasks, collapsed by default.** At the very end of the Plan today content sits a collapsible section, "Other important tasks (N)". It collects unfinished must/important tasks whose deadline is not today (a future date, or no date at all), sorted nearest deadline first with no-date tasks last and must ahead of important on the same day. Daily repeats and anything already on today's list (including greyed postponed cards) never appear; overdue tasks stay on today's list where they belong. When nothing qualifies, the section does not render at all. Expanded state is memory-only — the page always opens collapsed.
-- **Pull one into today with one tap.** Each item is a compact row — title, its priority marker, and a plain-language deadline (Tomorrow, a month/day date, or No date set) — with a single action, Move to today. It goes through the existing persist path (deadline = the page's logical today, saved and synced); the item leaves the section and joins today's list at the end of the frozen order in normal colour, and the time ledger recomputes. The rows themselves do not open the editor.
-
-Not yet verified on a real device: the section opening collapsed with the right count, nothing rendering when the section is empty, the inclusion boundaries (postponed grey cards not duplicated, overdue and daily tasks excluded, no-date tasks last), the ordering, the deadline labels, Move to today moving the row into today's list with the ledger recomputed, rows not opening the editor, the changelog popup, and the 1.55.0 to 1.56.0 in-app update chain.
 
 ## Build
 
