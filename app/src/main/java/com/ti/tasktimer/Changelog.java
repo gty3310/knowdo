@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1530 = new Entry("v1.53.0", "2026-11-03");
+        e1530.add(new Group(s("修复", "Fixed"),
+                s("更新下载修好了：以前下新版时一切到别的软件，下载就会断、还报一句英文错。现在下载会在后台接着下，切走、锁屏都不怕；断了也能从断点接着下，不用从头来",
+                  "Update downloads are fixed: starting a download and switching to another app used to kill it and leave a raw English error behind. Downloads now keep going in the background - switch away, lock the screen, it does not matter - and a broken download resumes from where it stopped instead of starting over")));
+        e1530.why = s("新版是所有新功能的入口，这条路必须稳——你不该坐着等它下载",
+                "A new version is the doorway to every new feature, so this road has to be solid - you should not have to sit and watch it download");
+        e1530.tryIt = s("有新版时点下载，然后切去用别的软件；下好后会有一条通知告诉你，点通知就能安装；回到软件里也会弹安装提示",
+                "When a new version shows up, tap download, then go use other apps. A notification tells you when it is ready - tap it to install. Coming back to KnowDo also pops the install prompt");
+        out.add(e1530);
+
         Entry e1520 = new Entry("v1.52.0", "2026-11-03");
         e1520.add(new Group(s("修复", "Fixed"),
                 s("修了一个同步口径的问题——在云端改过的习惯类型和日记续写，会被手机本地的旧数据覆盖。这版加了一条「云端补丁」通道，改动能在手机上真正落地",
