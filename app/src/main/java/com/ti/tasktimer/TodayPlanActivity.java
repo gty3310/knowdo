@@ -54,6 +54,13 @@ import java.util.Set;
  * （本页内展开近全屏聊天面板：临时会话只存内存、绝不写「聊聊」主线；
  * 传输复用 ChatClient 同一 chat-proxy 通道；AI 整理出清单必须先出
  * knowdo-addtasks 提案卡、用户点「就这样添加」才经 TaskStore 建任务）。
+ *
+ * v1.56.0（用户亲定）：内容区末尾加「其他重要任务」可展开区——默认收起、
+ * 展开态只存内存；收必做/重要两档、未完成、非每日重复、截止不在今天
+ * （晚于逻辑今天或没定日期）、且不在本页主清单里的任务，按截止近的在前
+ * （没定日期最后、同截止必做在前）排；每件一张紧凑小卡，只带「改到今天」
+ * 一个动作（走 persistTask 设 deadline＝逻辑今天，任务按冻结口径追加主
+ * 清单末尾）；区内为空时整区不渲染。
  */
 public class TodayPlanActivity extends Activity {
     private TaskStore store;
@@ -67,6 +74,9 @@ public class TodayPlanActivity extends Activity {
     private TextView digitsToggle, overflowNote;
     private EditText freeInput;
     private boolean digitsOpen = false;
+    /** 「其他重要任务」区容器（v1.56.0）；展开态只存内存、每次开页默认收起。 */
+    private LinearLayout otherBox;
+    private boolean otherExpanded = false;
     private TextView resortBtn;
     /** 本页卡序（v1.54.0）：页面打开时按既有口径（todayCandidates）定下并冻住；
      * 此后页内编辑不重排、同步新到的候选追加末尾并入冻结序；完成/删除的摘掉。
@@ -351,6 +361,13 @@ public class TodayPlanActivity extends Activity {
         overflowNote.setPadding(0, dp(8), 0, 0);
         overflowNote.setVisibility(View.GONE);
         col.addView(overflowNote);
+
+        // 「其他重要任务」可展开区（v1.56.0）：内容区末尾（任务卡与红字之下、
+        // 固定底之上）；内容由 refreshOtherSection 填，空时整区不渲染。
+        otherBox = new LinearLayout(this);
+        otherBox.setOrientation(LinearLayout.VERTICAL);
+        otherBox.setVisibility(View.GONE);
+        col.addView(otherBox);
 
         // ---- 固定底 ----
         LinearLayout foot = new LinearLayout(this);
@@ -1237,9 +1254,141 @@ public class TodayPlanActivity extends Activity {
             none.setTextColor(Ui.sub(this));
             none.setPadding(0, dp(10), 0, 0);
             cardsBox.addView(none);
+            refreshOtherSection();
             return;
         }
         for (TaskItem t : list) cardsBox.addView(buildCard(t));
+        refreshOtherSection();
+    }
+
+    /**
+     * 「其他重要任务」候选（v1.56.0）：必做/重要、未完成未删、非每日重复、
+     * 截止不在今天（晚于逻辑今天或没定日期），且不在本页主清单里（按 id
+     * 排除——推迟出去的灰卡已在主清单，不重复出现）；逾期（deadline＜今天）
+     * 的已在主清单当今日正事，本判定也一并挡下。排序：截止近的在前、没定
+     * 日期的最后；同截止必做在重要前；再同沿用 store 原序（稳定排序）。
+     */
+    private List<TaskItem> otherImportantTasks() {
+        Set<String> mainIds = new HashSet<>();
+        for (TaskItem t : currentTasks()) mainIds.add(t.id);
+        List<TaskItem> out = new ArrayList<>();
+        for (TaskItem t : store.tasks) {
+            if (t.deleted || t.isDoneToday()) continue;
+            if ("daily".equals(t.repeat)) continue;
+            if (TaskItem.priorityRank(t.priority) > TaskItem.priorityRank("important")) continue;
+            if (mainIds.contains(t.id)) continue;
+            if (t.deadline != null && logicToday != null
+                    && t.deadline.compareTo(logicToday) <= 0) continue;
+            out.add(t);
+        }
+        out.sort((a, b) -> {
+            if (a.deadline != null || b.deadline != null) {
+                if (a.deadline == null) return 1;
+                if (b.deadline == null) return -1;
+                int c = a.deadline.compareTo(b.deadline);
+                if (c != 0) return c;
+            }
+            return Integer.compare(TaskItem.priorityRank(a.priority),
+                    TaskItem.priorityRank(b.priority));
+        });
+        return out;
+    }
+
+    /** 区内截止标注人话：没定日期／明天／M月d日（英文 MMM d）；解析不了回退原串。 */
+    private String otherDeadlineLabel(TaskItem t) {
+        if (t.deadline == null) return s("没定日期", "No date set");
+        if (logicToday != null && DayUtil.addDays(logicToday, 1).equals(t.deadline)) {
+            return s("明天", "Tomorrow");
+        }
+        Calendar cal = DayUtil.parse(t.deadline);
+        if (cal == null) return t.deadline;
+        if (en()) {
+            return new java.text.SimpleDateFormat("MMM d", java.util.Locale.US)
+                    .format(cal.getTime());
+        }
+        return (cal.get(Calendar.MONTH) + 1) + "月" + cal.get(Calendar.DAY_OF_MONTH) + "日";
+    }
+
+    /**
+     * 「其他重要任务」区渲染（v1.56.0）：随 refreshCards 一同刷新；标题行带
+     * 件数与展开/收起箭头，点整行切换（只重渲染本区）；区内为空时整区不
+     * 渲染（标题行也不显示）。「改到今天」走 persistTask → refreshAll，本区
+     * 件数与主清单、时间账随之重算。
+     */
+    private void refreshOtherSection() {
+        if (otherBox == null) return;
+        List<TaskItem> others = otherImportantTasks();
+        otherBox.removeAllViews();
+        if (others.isEmpty()) {
+            otherBox.setVisibility(View.GONE);
+            return;
+        }
+        otherBox.setVisibility(View.VISIBLE);
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(0, dp(12), 0, dp(2));
+        TextView ht = new TextView(this);
+        ht.setText(s("其他重要任务", "Other important tasks")
+                + (en() ? " (" + others.size() + ")" : "（" + others.size() + "）"));
+        ht.setTextSize(12);
+        ht.setTextColor(Ui.text(this));
+        head.addView(ht, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView arrow = new TextView(this);
+        arrow.setText(otherExpanded ? "▴" : "▾");
+        arrow.setTextSize(12);
+        arrow.setTextColor(Ui.sub(this));
+        head.addView(arrow);
+        head.setOnClickListener(v -> {
+            otherExpanded = !otherExpanded;
+            refreshOtherSection();
+        });
+        otherBox.addView(head);
+        if (otherExpanded) {
+            for (TaskItem t : others) otherBox.addView(buildOtherCard(t));
+        }
+    }
+
+    /**
+     * 区内紧凑小卡（v1.56.0）：任务名＋优先级标记（与主卡重要性行选中态同款
+     * chip 画法）＋截止标注，右侧「改到今天」钮——本区唯一的动作；卡本体不
+     * 设点击、不展开编辑。
+     */
+    private View buildOtherCard(final TaskItem t) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(roundStroke(cardBg(), Ui.line(this), 10));
+        card.setPadding(dp(9), dp(6), dp(9), dp(6));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = dp(6);
+        card.setLayoutParams(clp);
+        TextView nm = new TextView(this);
+        nm.setText(t.title);
+        nm.setTextSize(12);
+        nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
+        nm.setTextColor(Ui.text(this));
+        nm.setSingleLine(true);
+        nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.addView(nm, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(chip(TaskItem.priorityLabel(t.priority, en()), true, null));
+        TextView dl = new TextView(this);
+        dl.setText(otherDeadlineLabel(t));
+        dl.setTextSize(11);
+        dl.setTextColor(Ui.sub(this));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.leftMargin = dp(8);
+        dl.setLayoutParams(dlp);
+        card.addView(dl);
+        card.addView(chip(s("改到今天", "Move to today"), false, v -> {
+            t.deadline = logicToday;
+            persistTask(t);
+        }));
+        return card;
     }
 
     private View buildCard(final TaskItem t) {
