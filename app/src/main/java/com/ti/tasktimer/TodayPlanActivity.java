@@ -2,6 +2,7 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
@@ -20,8 +21,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 「今天安排」页（v1.28.0 feature 9，用户亲自设计、审稿定稿后开发）：
@@ -34,6 +40,11 @@ import java.util.List;
  * - 快速输入「今天可支配 X 小时」＋ⓘ说明
  * - 任务卡：已用/还剩（还剩可点改）、截止两钮、重要性四钮当场改，点卡展开全字段编辑
  * - 底部「排进今天的日程」：走既有自动排程（避锁时/睡眠），排不下的当页点名
+ *
+ * v1.54.0（用户亲定）：截止钮加明天/周六/下周一/挑选日期；推迟（deadline
+ * 改到未来）的卡不消失、只置灰，灰卡不计时间账、不进本页排程输入、不进
+ * 红字；本页卡序在页面打开时冻住，页内编辑一律不重排，只有标题行右上角
+ * 「重新排序」按快速重排同一 candidateOrder 重排一次；红字只点名今天的。
  */
 public class TodayPlanActivity extends Activity {
     private TaskStore store;
@@ -47,6 +58,12 @@ public class TodayPlanActivity extends Activity {
     private TextView digitsToggle, overflowNote;
     private EditText freeInput;
     private boolean digitsOpen = false;
+    private TextView resortBtn;
+    /** 本页卡序（v1.54.0）：页面打开时按既有口径（todayCandidates）定下并冻住；
+     * 此后页内编辑不重排、同步新到的候选追加末尾并入冻结序；完成/删除的摘掉。
+     * 只有「重新排序」按 candidateOrder 重排并刷新冻结序。 */
+    private final List<String> frozenOrder = new ArrayList<>();
+    private boolean orderFrozen = false;
     /** 数字条的工作副本（墙钟 HH:mm 字符串行），保存时才落 DayAvail。 */
     private final List<String[]> digitRows = new ArrayList<>(); // {kind,name,start,end} kind: sleep|lock
 
@@ -290,6 +307,18 @@ public class TodayPlanActivity extends Activity {
         th.setTextSize(12);
         th.setTextColor(Ui.sub(this));
         taskSec.addView(th);
+        resortBtn = new TextView(this);
+        resortBtn.setText(s("重新排序", "Re-sort"));
+        resortBtn.setTextSize(12);
+        resortBtn.setTextColor(Ui.text(this));
+        resortBtn.setPadding(dp(10), dp(3), dp(10), dp(3));
+        resortBtn.setBackground(roundStroke(cardBg(), Ui.line(this), 20));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.leftMargin = dp(8);
+        resortBtn.setLayoutParams(rlp);
+        resortBtn.setOnClickListener(v -> resortCards());
+        taskSec.addView(resortBtn);
         col.addView(taskSec);
 
         cardsBox = new LinearLayout(this);
@@ -388,8 +417,10 @@ public class TodayPlanActivity extends Activity {
         List<LocalAutoScheduler.Block> blocks = LocalAutoScheduler.blocksOf(
                 SyncManager.latestSchedule(this), TaskItem.today());
         int nowMin = DayAccount.nowMinutes();
+        Set<String> grey = greyIdSet(); // 灰卡不计时间账（v1.54.0）：它已有的块也不算已安排
         int arranged = 0;
         for (LocalAutoScheduler.Block b : blocks) {
+            if (grey.contains(b.taskId)) continue;
             arranged += Math.max(0, b.endMin - Math.max(b.startMin, nowMin));
         }
         int budget = Math.min(DayAvail.budgetMin(this, logicToday),
@@ -1030,9 +1061,111 @@ public class TodayPlanActivity extends Activity {
         return out;
     }
 
+    /**
+     * 置灰判定（v1.54.0）：非每日重复、deadline 在逻辑今天之后＝被推迟了，整卡
+     * 置灰。逾期（deadline＜今天）是滚进来的今日事、不置灰；无 deadline 不置灰
+     * （与「取消截止日期」沿用现状一致）；每日重复没有推迟一说，不置灰。
+     */
+    private boolean isGrey(TaskItem t) {
+        if (t == null || "daily".equals(t.repeat)) return false;
+        return t.deadline != null && logicToday != null
+                && t.deadline.compareTo(logicToday) > 0;
+    }
+
+    /** 本页当前的灰卡 id 集（冻结序里已被推迟的任务）；时间账与排程输入共用。 */
+    private Set<String> greyIdSet() {
+        Set<String> out = new HashSet<>();
+        for (String id : frozenOrder) {
+            TaskItem t = store.byId(id);
+            if (t != null && isGrey(t)) out.add(id);
+        }
+        return out;
+    }
+
+    /**
+     * 当前渲染的任务列（v1.54.0 顺序冻结）：冻结序内的任务（未删、未完成今日）
+     * 按冻结序出；冻结后新到的候选按既有口径排好追加到末尾并入冻结序；已完成/
+     * 已删的从冻结序摘掉。页内改 deadline/重要性只改任务本身，列表纹丝不动。
+     */
+    private List<TaskItem> currentTasks() {
+        List<TaskItem> cands = todayCandidates();
+        if (!orderFrozen) {
+            frozenOrder.clear();
+            for (TaskItem t : cands) frozenOrder.add(t.id);
+            orderFrozen = true;
+        } else {
+            Set<String> have = new HashSet<>(frozenOrder);
+            for (TaskItem t : cands) {
+                if (!have.contains(t.id)) frozenOrder.add(t.id);
+            }
+        }
+        List<TaskItem> out = new ArrayList<>();
+        List<String> keep = new ArrayList<>();
+        for (String id : frozenOrder) {
+            TaskItem t = store.byId(id);
+            if (t == null || t.deleted || t.isDoneToday()) continue;
+            keep.add(id);
+            out.add(t);
+        }
+        frozenOrder.clear();
+        frozenOrder.addAll(keep);
+        return out;
+    }
+
+    /**
+     * 「重新排序」（v1.54.0）：按日历「快速重排」同一套候选排序重排本页全部卡片
+     * 并成为新冻结序。快速重排的排序与其打包在 LocalAutoScheduler 里共用唯一
+     * 比较器 candidateOrder（plan()/computeReschedule 都走它），本页直接复用
+     * 同一比较器，只排卡、不动日程块。灰卡一并参与，排完仍灰（置灰是渲染口径）。
+     */
+    private void resortCards() {
+        List<TaskItem> list = currentTasks();
+        List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store);
+        Map<String, LocalAutoScheduler.Candidate> byId = new HashMap<>();
+        for (LocalAutoScheduler.Candidate cd : cands) byId.put(cd.id, cd);
+        Comparator<LocalAutoScheduler.Candidate> ord = LocalAutoScheduler.candidateOrder(logicToday);
+        list.sort((a, b) -> {
+            LocalAutoScheduler.Candidate ca = byId.get(a.id), cb = byId.get(b.id);
+            if (ca == null || cb == null) return 0;
+            return ord.compare(ca, cb);
+        });
+        frozenOrder.clear();
+        for (TaskItem t : list) frozenOrder.add(t.id);
+        refreshCards();
+    }
+
+    /** 本周六：基准日是周六即基准日；周日取即将到来的周六（不取刚过去的）。 */
+    private static String saturdayOf(String date) {
+        Calendar cal = DayUtil.parse(date);
+        if (cal == null) return date;
+        int delta = (Calendar.SATURDAY - cal.get(Calendar.DAY_OF_WEEK) + 7) % 7;
+        return DayUtil.addDays(date, delta);
+    }
+
+    /** 下一个周一：基准日是周一则 +7 天。 */
+    private static String nextMondayOf(String date) {
+        Calendar cal = DayUtil.parse(date);
+        if (cal == null) return date;
+        int delta = (Calendar.MONDAY - cal.get(Calendar.DAY_OF_WEEK) + 7) % 7;
+        if (delta == 0) delta = 7;
+        return DayUtil.addDays(date, delta);
+    }
+
+    /** 「挑选日期」：系统日期选择器，初始停在任务现 deadline（无则今天），选定即设。 */
+    private void pickDeadline(final TaskItem t) {
+        String base = t.deadline != null ? t.deadline : logicToday;
+        Calendar cal = base == null ? null : DayUtil.parse(base);
+        if (cal == null) cal = Calendar.getInstance();
+        new DatePickerDialog(this, (dv, y, mo, da) -> {
+            t.deadline = String.format(java.util.Locale.US, "%04d-%02d-%02d", y, mo + 1, da);
+            persistTask(t);
+        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH),
+                cal.get(Calendar.DAY_OF_MONTH)).show();
+    }
+
     private void refreshCards() {
         cardsBox.removeAllViews();
-        List<TaskItem> list = todayCandidates();
+        List<TaskItem> list = currentTasks();
         if (list.isEmpty()) {
             TextView none = new TextView(this);
             none.setText(s("今天没有要排的任务", "Nothing to plan for today"));
@@ -1054,6 +1187,9 @@ public class TodayPlanActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         clp.topMargin = dp(6);
         card.setLayoutParams(clp);
+        // 置灰（v1.54.0）：整卡 alpha 降调——底色、文字与钮一并变灰但仍清晰可读、
+        // 照常可点；点「改到今天」deadline 回到今天后重渲染自动恢复正常色。
+        if (isGrey(t)) card.setAlpha(0.55f);
 
         TextView nm = new TextView(this);
         nm.setText(t.title);
@@ -1089,21 +1225,51 @@ public class TodayPlanActivity extends Activity {
         card.addView(meta);
 
         if (!daily) {
-            LinearLayout row = chipRow(s("截止日期", "Due"));
+            // 截止钮（v1.54.0）：改到今天／明天／周六／下周一／挑选日期／取消截止
+            // 日期，六钮分两行（标签列定宽对齐）；点击都与「改到今天」同一走法——
+            // 设 deadline 后 persistTask 落盘＋同步；高亮口径一致：deadline 正好
+            // 等于该钮日期时该钮亮。日期以本页逻辑今天 logicToday 为基准。
+            final String today0 = logicToday;
+            final String tomorrow = today0 == null ? null : DayUtil.addDays(today0, 1);
+            final String saturday = today0 == null ? null : saturdayOf(today0);
+            final String nextMon = today0 == null ? null : nextMondayOf(today0);
+            LinearLayout row = deadlineRow(s("截止日期", "Due"));
             row.addView(chip(s("改到今天", "Move to today"),
-                    logicToday != null && logicToday.equals(t.deadline),
+                    today0 != null && today0.equals(t.deadline),
                     v -> {
-                        t.deadline = logicToday;
+                        t.deadline = today0;
                         persistTask(t);
                     }));
+            row.addView(chip(s("明天", "Tomorrow"),
+                    tomorrow != null && tomorrow.equals(t.deadline),
+                    v -> {
+                        t.deadline = tomorrow;
+                        persistTask(t);
+                    }));
+            row.addView(chip(s("周六", "Saturday"),
+                    saturday != null && saturday.equals(t.deadline),
+                    v -> {
+                        t.deadline = saturday;
+                        persistTask(t);
+                    }));
+            card.addView(row);
+            LinearLayout row2 = deadlineRow("");
+            row2.addView(chip(s("下周一", "Next Mon"),
+                    nextMon != null && nextMon.equals(t.deadline),
+                    v -> {
+                        t.deadline = nextMon;
+                        persistTask(t);
+                    }));
+            row2.addView(chip(s("挑选日期", "Pick a date"), false,
+                    v -> pickDeadline(t)));
             TextView cancel = chip(s("取消截止日期", "Clear due date"), false,
                     v -> {
                         t.deadline = null;
                         persistTask(t);
                     });
             if (t.deadline == null) cancel.setTextColor(Ui.sub(this));
-            row.addView(cancel);
-            card.addView(row);
+            row2.addView(cancel);
+            card.addView(row2);
         }
 
         LinearLayout prow = chipRow(s("重要性", "Priority"));
@@ -1154,6 +1320,15 @@ public class TodayPlanActivity extends Activity {
 
         card.setOnClickListener(v -> TaskEditSheet.showEdit(this, store, t, editHost));
         return card;
+    }
+
+    /** 截止钮专用行：与 chipRow 同款，但标签列定宽，让两行钮上下对齐。 */
+    private LinearLayout deadlineRow(String label) {
+        LinearLayout row = chipRow(label);
+        TextView lab = (TextView) row.getChildAt(0);
+        lab.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(48), ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
     }
 
     private LinearLayout chipRow(String label) {
@@ -1269,18 +1444,22 @@ public class TodayPlanActivity extends Activity {
     // ---------------- 底部排程 ----------------
 
     private void onPlanIntoToday() {
-        LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocal(this, store);
+        // 灰卡不进本页排程输入（v1.54.0）：现算与落盘都走排除版，排块算法本身
+        // （LocalAutoScheduler.plan）一字未动。灰卡 id 在按下这一刻现算。
+        final Set<String> grey = greyIdSet();
+        LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocalExcluding(this, store, grey);
         showOverflow(p.overflow);
         if (p.additions.isEmpty() && p.overflow.isEmpty()) {
             Toast.makeText(this, s("今天的任务都已经排好了", "Everything for today is already planned"),
                     Toast.LENGTH_SHORT).show();
             return;
         }
-        LocalAutoScheduler.runAsync(this, store, () -> {
-            LocalAutoScheduler.Plan after = LocalAutoScheduler.computeLocal(this, store);
-            showOverflow(after.overflow);
+        LocalAutoScheduler.runAsyncExcluding(this, store, grey, () -> {
+            LocalAutoScheduler.Plan after = LocalAutoScheduler.computeLocalExcluding(
+                    this, store, greyIdSet());
+            List<LocalAutoScheduler.Candidate> named = showOverflow(after.overflow);
             refreshLedger();
-            Toast.makeText(this, after.overflow.isEmpty()
+            Toast.makeText(this, named.isEmpty()
                             ? s("都排进今天的日程了", "All planned into today")
                             : s("排好了，点名的这几件实在排不下", "Planned — the named ones just don't fit"),
                     Toast.LENGTH_SHORT).show();
@@ -1300,17 +1479,36 @@ public class TodayPlanActivity extends Activity {
         finish();
     }
 
-    private void showOverflow(List<LocalAutoScheduler.Candidate> overflow) {
-        if (overflow == null || overflow.isEmpty()) {
+    /**
+     * 底部红字（v1.54.0 口径）：只点名「属于今天」的排不下任务——deadline ≤
+     * 逻辑今天（到期与逾期滚入），或无 deadline 的必做。改前口径：computeLocal
+     * 的计划对全部未排候选（含未来到期、无 deadline 的重要/次要）一并试排，
+     * overflow 里有什么就点名什么，非今天的任务也常被点名。改后计划判定不变
+     * （既有判定下排不下才算排不下），只是点名先按「属于今天」过滤；非今天的
+     * 一律不进红字。返回实际点名的名单（toast 口径与屏上名单对齐）。
+     */
+    private List<LocalAutoScheduler.Candidate> showOverflow(
+            List<LocalAutoScheduler.Candidate> overflow) {
+        List<LocalAutoScheduler.Candidate> named = new ArrayList<>();
+        if (overflow != null) {
+            for (LocalAutoScheduler.Candidate cd : overflow) {
+                boolean today = cd.deadline != null
+                        ? (logicToday != null && cd.deadline.compareTo(logicToday) <= 0)
+                        : cd.must;
+                if (today) named.add(cd);
+            }
+        }
+        if (named.isEmpty()) {
             overflowNote.setVisibility(View.GONE);
-            return;
+            return named;
         }
         StringBuilder sb = new StringBuilder(s("排不下：", "No room for: "));
-        for (int i = 0; i < overflow.size(); i++) {
+        for (int i = 0; i < named.size(); i++) {
             if (i > 0) sb.append("、");
-            sb.append(overflow.get(i).title);
+            sb.append(named.get(i).title);
         }
         overflowNote.setText(sb.toString());
         overflowNote.setVisibility(View.VISIBLE);
+        return named;
     }
 }

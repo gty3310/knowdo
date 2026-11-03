@@ -381,6 +381,23 @@ public final class LocalAutoScheduler {
         return !p.additions.isEmpty() || !p.overflow.isEmpty();
     }
 
+    /**
+     * computeLocal 的排除版（v1.54.0，今天安排页灰卡用）：与 computeLocal 同一份
+     * 口径（同一 plan()、同一批已有块、同一墙约束），只是候选池先剔掉
+     * excludeIds。plan() 打包算法本身一字未动——这里改的只有它的输入集合。
+     */
+    public static Plan computeLocalExcluding(Context c, TaskStore store, Set<String> excludeIds) {
+        List<Block> base = blocksOf(SyncManager.latestSchedule(c), TaskItem.today());
+        String logicToday = Rollover.logicalToday(c);
+        List<Candidate> cands = new ArrayList<>();
+        for (Candidate cd : snapshot(store)) {
+            if (excludeIds != null && excludeIds.contains(cd.id)) continue;
+            cands.add(cd);
+        }
+        return plan(cands, base, DayAccount.nowMinutes(), logicToday,
+                DayAvail.blockedWall(c, logicToday));
+    }
+
     // ---------------- 触发脚手架（并发合并） ----------------
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
     private static final AtomicBoolean PENDING = new AtomicBoolean();
@@ -408,6 +425,45 @@ public final class LocalAutoScheduler {
             } catch (Exception e) {
                 // 两个实现内部都已吞异常回落，这里兜的是计划外的漏网；
                 // 口径不变，只在测试者模式下亮出（v1.24.1）
+                ErrorReporter.report(app, Strings.en() ? "Auto-schedule" : "自动排程", 0,
+                        ErrorReporter.summarize(e));
+            }
+            RUNNING.set(false);
+            MAIN.post(() -> {
+                if (onDone != null) onDone.run();
+                if (PENDING.compareAndSet(true, false)) runAsync(c, store, null);
+            });
+        }).start();
+    }
+
+    /**
+     * runAsync 的排除版（v1.54.0）：短路判断与落盘快照都剔掉 excludeIds（今天
+     * 安排页的灰卡不被本页这次「排进今天的日程」选入）；并发合并走同一
+     * RUNNING/PENDING、落盘走同一 autoFillSchedule 写入口。排完若有积压的
+     * 常规触发，仍走不带排除的 runAsync——排除只作用于这一次调用。
+     */
+    public static void runAsyncExcluding(final Context c, final TaskStore store,
+                                         final Set<String> excludeIds, final Runnable onDone) {
+        Plan p = computeLocalExcluding(c, store, excludeIds);
+        if (p.additions.isEmpty() && p.overflow.isEmpty()) {
+            if (onDone != null) MAIN.post(onDone);
+            return;
+        }
+        if (!RUNNING.compareAndSet(false, true)) {
+            PENDING.set(true);
+            if (onDone != null) MAIN.post(onDone);
+            return;
+        }
+        final Context app = c.getApplicationContext();
+        final List<Candidate> snap = new ArrayList<>();
+        for (Candidate cd : snapshot(store)) {
+            if (excludeIds != null && excludeIds.contains(cd.id)) continue;
+            snap.add(cd);
+        }
+        new Thread(() -> {
+            try {
+                SyncManager.autoFillSchedule(app, snap, "KnowDo App（本地自动排程）");
+            } catch (Exception e) {
                 ErrorReporter.report(app, Strings.en() ? "Auto-schedule" : "自动排程", 0,
                         ErrorReporter.summarize(e));
             }
