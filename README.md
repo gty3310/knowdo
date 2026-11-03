@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.55.0)
+## Features (Android, v1.56.0)
 
-Current version: **v1.55.0**.
+Current version: **v1.56.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.56.0 — 2026-11-03
+
+**Why:** While planning today, the big tasks due later in the week were invisible — easy to discover only when their deadline was already on top of you. The user asked for a quiet place on the Plan today page that shows them, without disturbing today's list. Build commit `6c70c6b` · [compare v1.55.0...v1.56.0](https://github.com/gty3310/knowdo/compare/v1.55.0...v1.56.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Other important tasks, collapsed by default.** At the very end of the Plan today content sits a collapsible section, "Other important tasks (N)". It collects unfinished must/important tasks whose deadline is not today (a future date, or no date at all), sorted nearest deadline first with no-date tasks last and must ahead of important on the same day. Daily repeats and anything already on today's list (including greyed postponed cards) never appear; overdue tasks stay on today's list where they belong. When nothing qualifies, the section does not render at all. Expanded state is memory-only — the page always opens collapsed.
+- **Pull one into today with one tap.** Each item is a compact row — title, its priority marker, and a plain-language deadline (Tomorrow, a month/day date, or No date set) — with a single action, Move to today. It goes through the existing persist path (deadline = the page's logical today, saved and synced); the item leaves the section and joins today's list at the end of the frozen order in normal colour, and the time ledger recomputes. The rows themselves do not open the editor.
+
+Not yet verified on a real device: the section opening collapsed with the right count, nothing rendering when the section is empty, the inclusion boundaries (postponed grey cards not duplicated, overdue and daily tasks excluded, no-date tasks last), the ordering, the deadline labels, Move to today moving the row into today's list with the ledger recomputed, rows not opening the editor, the changelog popup, and the 1.55.0 to 1.56.0 in-app update chain.
+
 ### v1.55.0 — 2026-11-03
 
 **Why:** Planning the day used to break stride: think of a task and you had to leave for the Tasks tab to create it. The user asked for adding right where planning happens — manually, or by telling an AI several tasks at once and confirming its list. Build commit `9b83b60` · [compare v1.54.0...v1.55.0](https://github.com/gty3310/knowdo/compare/v1.54.0...v1.55.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -84,18 +94,6 @@ Not yet verified on a real device: the two-button row's look, the prefilled dead
 - **Planning input excludes grey cards, red line names only today.** `LocalAutoScheduler` gains `computeLocalExcluding`/`runAsyncExcluding` — same plan, same wall constraints, same write path, with the grey ids removed from the candidate pool; `plan()` itself is untouched. The bottom red line now names only overflow that belongs to today (deadline on or before today, or an undated must-do); before, it named everything the planner could not fit, future tasks included.
 
 Not yet verified on a real device: the six-button two-row layout and per-date highlighting, the date picker's initial date and saving, grey-stays-put with ledger/planning/red-line exclusion and full restore via Move to today, order holding under priority/minutes edits with new tasks appending, Re-sort changing the order while grey cards stay grey, the red line naming only today's tasks, daily cards keeping no deadline row and overdue cards never greying, the changelog popup, and the 1.53.0 to 1.54.0 in-app update chain.
-
-### v1.53.0 — 2026-11-03
-
-**Why:** A user report: on v1.49.0, starting an update download and then switching to another app killed the download — coming back showed "Update failed: Connection reset" and nothing was kept. Root cause, confirmed in code: downloads ran on a bare thread with no foreground service, so a backgrounded process was frozen/reclaimed and the connection reset; the raw exception was also shown verbatim in Settings. Within a shard there was no resume either — an interrupted shard restarted from zero, and any error failed the whole download. Build commit `ca86ccf` · [compare v1.52.0...v1.53.0](https://github.com/gty3310/knowdo/compare/v1.52.0...v1.53.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Update downloads run in a foreground service.** A new `UpdateDownloadService` (dataSync type, with the `FOREGROUND_SERVICE_DATA_SYNC` permission) now performs the download: `doCheck` stores the manifest in update state and hands off to the service, which shows a quiet progress notification ("Downloading KnowDo X · N%") and removes it when done or finally failed. If the system refuses to start the service, the download falls back to the previous in-process thread. The existing no-concurrent-download guard is unchanged — while the service downloads, the working flag is cleared by the service when it finishes.
-- **Resume inside a shard.** `downloadShard` now sends `Range: bytes=<have>-` when a partial shard is on disk and appends only on a 206 (a 200 restarts that shard; a 416 or an over-long local file deletes it and restarts once). Redirects from the Gitee API endpoint to the CDN are followed manually (up to 5 hops) so the Range header survives every hop. Transient I/O failures of a shard retry up to 3 times with short backoff, each time resuming; whole-shard size+MD5 verification is unchanged.
-- **Interrupted downloads resume automatically.** After a failed download, the next app open or realtime-reconnect check first runs an auto-resume gate: state is error, the pending version is still newer, its shard directory exists, the package is not ready, the network policy allows downloading, and the last auto-resume attempt was over 10 minutes ago. Only then does it re-enter the normal check path (finished shards skip, partial shards resume) — no user tap needed, and the attempt stamp keeps it from spinning.
-- **Completion notification and human error text.** If a download finishes while KnowDo is in the background, a notification ("KnowDo X is downloaded — tap to install") opens the app into the existing install prompt; in the foreground the existing dialog is used as before. Settings no longer shows raw exception text: an interrupted download reads "Download stopped — X of Y parts done. It resumes automatically when you open KnowDo", with the raw error kept in state only for diagnostics.
-
-Not yet verified on a real device: background/lock-screen download completion on the author's phone (install prompt on return, or completion notification first), mid-shard resume after a network drop or process kill, auto-resume on next open with finished shards skipped, auto-resume staying off when the network policy forbids it, the bare-thread fallback when the service cannot start, the human Settings error text, the changelog popup, and the one manual Drive install of this version (the fixed download path only takes effect once this build is on the phone).
 
 ## Build
 
