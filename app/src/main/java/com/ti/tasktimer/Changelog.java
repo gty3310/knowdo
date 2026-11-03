@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1560 = new Entry("v1.56.0", "2026-11-03");
+        e1560.add(new Group(s("新增", "New"),
+                s("其他重要任务也看得见了：今天安排页底部多了一个可以展开的区域，装着必做和重要、但截止日不是今天的任务，按截止日从近到远排；看中哪件，点它旁边的「改到今天」就拉进今天",
+                  "Other important tasks are visible now: a collapsible section at the bottom of Plan today holds must-do and important tasks whose deadline is not today, nearest first; tap Move to today next to one and it joins today's list")));
+        e1560.why = s("排今天的时候，也该顺手看看后面几天压着的大事，别等到了跟前才发现",
+                "While planning today you should also see the big things waiting in the next few days, instead of meeting them only when they are already due");
+        e1560.tryIt = s("展开「其他重要任务」，挑一件点「改到今天」，它就进今天的清单了",
+                "Expand Other important tasks, pick one and tap Move to today - it lands on today's list");
+        out.add(e1560);
+
         Entry e1550 = new Entry("v1.55.0", "2026-11-03");
         e1550.add(new Group(s("新增", "New"),
                 s("今天安排里直接加任务：页面底部多了「添加任务」和「跟 AI 一起添加任务」。前者点开就能新建今天的任务；后者展开一个聊天框，你把今天想做的几件事说给 AI，它整理成一张清单，你确认了才添加",
