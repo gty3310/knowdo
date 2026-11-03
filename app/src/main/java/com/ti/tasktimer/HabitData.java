@@ -392,6 +392,20 @@ public final class HabitData {
         } catch (Exception ignored) { }
     }
 
+    /** diary 里出现过的全部日期，新→旧（日期串倒序）。只读访问口（知·日记页签 v1.60.0 列日期用），不改数据、不落盘。 */
+    public static List<String> diaryDatesDesc(JSONObject root) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONObject d = root == null ? null : root.optJSONObject("diary");
+            if (d != null) {
+                Iterator<String> it = d.keys();
+                while (it.hasNext()) out.add(it.next());
+            }
+        } catch (Exception ignored) { }
+        out.sort((a, b) -> b.compareTo(a));
+        return out;
+    }
+
     // ---------------- 合并（同步纪律核心） ----------------
     /**
      * 本机与云端合并：定义按 id 并集（同 id 本机优先）；logs/diary/weekTargets/morningDone

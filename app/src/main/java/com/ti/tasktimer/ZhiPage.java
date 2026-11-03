@@ -40,11 +40,16 @@ import java.util.TimeZone;
 import java.util.UUID;
 
 /**
- * 知页（v1.59.0 大改版，底部第二签）：「知」分三页——原则（zhi_principles，
- * kind 分思维 think／行为 act）、问题（zhi_questions，status 待问 pending／已问
- * asked）、人名（zhi_people）；三类条目经 zhi_links 两两关联（关联对按类型名
- * 字母序存规范形：person &lt; principle &lt; question，'diary' 本版不用）。
- * 每页同一套工具：搜索（字面包含）、标签多选筛选（OR）、复制筛选结果、卡片/列表
+ * 知页（底部第二签）：「知」分四页——原则（zhi_principles，kind 分思维
+ * think／行为 act）、问题（zhi_questions，status 待问 pending／已问 asked）、
+ * 人名（zhi_people）、日记（v1.60.0 补的第四页签）；条目经 zhi_links 关联
+ * （关联对按类型名字母序存规范形：diary &lt; person &lt; principle &lt; question）。
+ * 日记不搬家：文本仍住 HabitData 的 diary 映射，读走 HabitData.diary／
+ * diaryDatesDesc，写只走 HabitData.putDiary（与晨间页、DiaryActivity 同一条路），
+ * zhi_links 里 diary 恒为 a 侧、a_id＝日期字符串。日记页签只有搜索与列表（日期
+ * 倒序、只列有文本的日期）；日记详情页可改全文（经 putDiary 保存）并与原则、
+ * 人名双向关联，原则/人名编辑页也各有一组「日记」关联区（问题页不加）。
+ * 前三页同一套工具：搜索（字面包含）、标签多选筛选（OR）、复制筛选结果、卡片/列表
  * 双模式（每页各自记住）；人名列表模式按拼音首字母分组＋右侧字母栏。
  * 编辑页三类同骨架：上半字段面板、下半关联区；加关联是输入联想（字面包含过滤
  * 已有条目，点一条立即写 zhi_links），也可新建并关联；关联增删立即落库，字段经
@@ -57,12 +62,14 @@ public final class ZhiPage {
     static final String T_PRINCIPLE = "principle";
     static final String T_QUESTION = "question";
     static final String T_PERSON = "person";
+    static final String T_DIARY = "diary";
 
     private static final int PAGE_PRINCIPLE = 0;
     private static final int PAGE_QUESTION = 1;
     private static final int PAGE_PERSON = 2;
-    private static final String[] PAGE_NAMES = {"原则", "问题", "人名"};
-    private static final String[] PAGE_NAMES_EN = {"Principles", "Questions", "People"};
+    private static final int PAGE_DIARY = 3;
+    private static final String[] PAGE_NAMES = {"原则", "问题", "人名", "日记"};
+    private static final String[] PAGE_NAMES_EN = {"Principles", "Questions", "People", "Diary"};
 
     private static final String PREF = "zhi_cache";
     private static final String MODE_PREF = "zhi2_mode";
@@ -110,7 +117,7 @@ public final class ZhiPage {
 
     // 列表状态（三页各自一份）
     private int page = PAGE_PRINCIPLE;
-    private final String[] queries = {"", "", ""};
+    private final String[] queries = {"", "", "", ""};
     private final List<Set<String>> tagSel = new ArrayList<>();
     private FrameLayout root;
     private LinearLayout resultsCol;
@@ -124,6 +131,16 @@ public final class ZhiPage {
     private boolean editing;
     private final List<Ref> editStack = new ArrayList<>();
     private EditState es;
+
+    // 日记详情状态（v1.60.0；日记不进三类条目的编辑栈，自成一套轻状态）
+    private boolean diaryDetail;
+    private boolean diaryFromEditor;   // 从原则/人名编辑页跳进来：返回时回编辑页
+    private boolean returnToDiary;     // 从日记详情跳进条目编辑页：编辑页返回到底时回日记详情
+    private String diaryDate;
+    private String diaryAddingType;    // 日记详情里哪个关联区的添加面板开着
+    private EditText diaryIn;
+    private LinearLayout diaryCandBox;
+    private JSONObject habitRoot;      // 最近一次 HabitData.load 的结果（渲染期取最新）
 
     public ZhiPage(Activity act, ViewGroup container) {
         this.act = act;
@@ -210,7 +227,8 @@ public final class ZhiPage {
     }
 
     private void renderCurrent() {
-        if (editing && es != null) renderEdit();
+        if (diaryDetail) renderDiaryDetail();
+        else if (editing && es != null) renderEdit();
         else renderList();
     }
 
@@ -226,13 +244,13 @@ public final class ZhiPage {
                     offline = false;
                     fetchFailed = false;
                     saveCache(pRows, qRows, peRows, lRows);
-                    if (!editing) renderList();   // 编辑中不打断未保存的字段，数据静默更新
+                    if (!editing && !diaryDetail) renderList();   // 编辑中/日记详情中不打断未保存的字段，数据静默更新
                 });
             } catch (Exception e) {
                 act.runOnUiThread(() -> {
                     boolean have = !principles.isEmpty() || !questions.isEmpty() || !people.isEmpty();
-                    if (have) { offline = true; if (!editing) renderList(); }
-                    else { fetchFailed = true; renderList(); }
+                    if (have) { offline = true; if (!editing && !diaryDetail) renderList(); }
+                    else { fetchFailed = true; diaryDetail = false; renderList(); }
                 });
             }
         }).start();
@@ -371,6 +389,7 @@ public final class ZhiPage {
         return null;
     }
     private String displayOf(String type, String id) {
+        if (T_DIARY.equals(type)) return dateLabel(id);
         if (T_PRINCIPLE.equals(type)) { Principle p = principleById(id); return p == null ? "" : displayOf(p); }
         if (T_QUESTION.equals(type)) { Question q = questionById(id); return q == null ? "" : displayOf(q); }
         Person pe = personById(id);
@@ -381,6 +400,23 @@ public final class ZhiPage {
     }
     private static String displayOf(Question q) {
         return !q.title.trim().isEmpty() ? q.title.trim() : firstLine(q.body);
+    }
+    /** 日记的显示名＝短日期＋星期（如「11 月 3 日 周二」）。 */
+    private static String dateLabel(String date) {
+        return DayUtil.shortDate(date) + " " + weekdayOf(date);
+    }
+    private static String weekdayOf(String date) {
+        java.util.Calendar cal = DayUtil.parse(date);
+        if (cal == null) return "";
+        int idx = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7; // 周一=0 … 周日=6
+        return DayUtil.weekdayName(idx);
+    }
+    /** 日记摘录：首段（空行分段），段内换行折成空格，视图侧再截两行。 */
+    private static String excerptOf(String text) {
+        String t = nz(text).trim();
+        int blank = t.indexOf("\n\n");
+        String first = blank >= 0 ? t.substring(0, blank) : t;
+        return first.replace('\n', ' ').trim();
     }
     /** 全部标签（三页通用标签池：三表标签的并集，保持出现序）。 */
     private List<String> allTags() {
@@ -408,7 +444,7 @@ public final class ZhiPage {
 
     private void addLink(final String t1, final String id1, final String t2, final String id2,
                          final Done done) {
-        // 规范形：类型名字母序在前（person < principle < question）
+        // 规范形：类型名字母序在前（diary < person < principle < question，日记恒为 a 侧）
         final String aT, aI, bT, bI;
         if (t1.compareTo(t2) <= 0) { aT = t1; aI = id1; bT = t2; bI = id2; }
         else { aT = t2; aI = id2; bT = t1; bI = id1; }
@@ -547,7 +583,7 @@ public final class ZhiPage {
             col.addView(off);
         }
 
-        // 三段切换：原则 / 问题 / 人名
+        // 四段切换：原则 / 问题 / 人名 / 日记
         LinearLayout seg = new LinearLayout(act);
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setBackground(roundBg(washC(), 0, 9));
@@ -556,7 +592,7 @@ public final class ZhiPage {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         segLp.topMargin = dp(14);
         col.addView(seg, segLp);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < PAGE_NAMES.length; i++) {
             final int idx = i;
             TextView t = tv(s(PAGE_NAMES[i], PAGE_NAMES_EN[i]), 13, idx == page ? inkC() : subC());
             t.setGravity(Gravity.CENTER);
@@ -590,8 +626,8 @@ public final class ZhiPage {
             }
         });
 
-        // 标签筛选（多选，OR）
-        List<String> ptags = pageTags();
+        // 标签筛选（多选，OR；日记页无标签筛选）
+        List<String> ptags = page == PAGE_DIARY ? new ArrayList<>() : pageTags();
         if (!ptags.isEmpty()) {
             FlowLayout flow = new FlowLayout(act, dp(6), dp(6));
             LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(
@@ -623,6 +659,7 @@ public final class ZhiPage {
         col.addView(tools, tLp);
         countView = tv("", 11.5f, weakC());
         tools.addView(countView);
+        if (page != PAGE_DIARY) {   // 日记页工具行只有计数（无复制、无卡片/列表双模式）
         View spacer = new View(act);
         tools.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
         TextView copy = tv(s("复制", "Copy"), 12, inkC());
@@ -649,6 +686,7 @@ public final class ZhiPage {
             mt.setOnClickListener(v -> { setModeOf(page, m); renderList(); });
             mode.addView(mt);
         }
+        }
 
         resultsCol = new LinearLayout(act);
         resultsCol.setOrientation(LinearLayout.VERTICAL);
@@ -673,14 +711,15 @@ public final class ZhiPage {
         fabLp.rightMargin = dp(18);
         fabLp.bottomMargin = dp(18);
         fabBtn.setOnClickListener(v -> openNew(pageType()));
-        r.addView(fabBtn, fabLp);
+        if (page != PAGE_DIARY) r.addView(fabBtn, fabLp);   // 日记不在这里新建（晨间页与习惯页才是写日记的入口）
         fab = fabBtn;
 
         renderResults();
     }
 
     private String pageType() {
-        return page == PAGE_PRINCIPLE ? T_PRINCIPLE : page == PAGE_QUESTION ? T_QUESTION : T_PERSON;
+        return page == PAGE_PRINCIPLE ? T_PRINCIPLE : page == PAGE_QUESTION ? T_QUESTION
+                : page == PAGE_DIARY ? T_DIARY : T_PERSON;
     }
 
     private boolean hitTags(List<String> tags) {
@@ -727,6 +766,7 @@ public final class ZhiPage {
         if (rail != null) { rail.removeAllViews(); rail.setVisibility(View.GONE); }
         if (page == PAGE_PRINCIPLE) renderPrincipleResults();
         else if (page == PAGE_QUESTION) renderQuestionResults();
+        else if (page == PAGE_DIARY) renderDiaryResults();
         else renderPeopleResults();
     }
 
@@ -1047,6 +1087,286 @@ public final class ZhiPage {
         return out;
     }
 
+
+    // ---------------- 日记页签（v1.60.0） ----------------
+    // 日记文本住 HabitData：读经 HabitData.diary / diaryDatesDesc，写只经 putDiary＋save，
+    // 与晨间页、DiaryActivity 同一条路；关联在 zhi_links 里 diary 恒为 a 侧、a_id＝日期串。
+
+    private void renderDiaryResults() {
+        habitRoot = HabitData.load(act);
+        List<String> dates = filteredDiaryDates();
+        countView.setText(s(dates.size() + " 篇", dates.size() + " entries"));
+        if (dates.isEmpty()) { resultsCol.addView(emptyHint()); return; }
+        for (final String date : dates) resultsCol.addView(diaryRow(date));
+    }
+
+    /** 有文本的日期倒序；搜索＝正文字面包含（输字只重画结果区，与三页同款）。 */
+    private List<String> filteredDiaryDates() {
+        String q = queries[PAGE_DIARY].trim();
+        List<String> out = new ArrayList<>();
+        for (String date : HabitData.diaryDatesDesc(habitRoot)) {
+            String text = HabitData.diary(habitRoot, date);
+            if (text.trim().isEmpty()) continue;
+            if (!q.isEmpty() && !text.contains(q)) continue;
+            out.add(date);
+        }
+        return out;
+    }
+
+    private View diaryRow(final String date) {
+        String text = HabitData.diary(habitRoot, date);
+        LinearLayout box = cardBox();
+        box.addView(serif(dateLabel(date), 15.5f, inkC(), true));
+        TextView ex = tv(excerptOf(text), 12, subC());
+        ex.setMaxLines(2);
+        ex.setEllipsize(TextUtils.TruncateAt.END);
+        ex.setLineSpacing(0, 1.35f);
+        ex.setPadding(0, dp(3), 0, 0);
+        box.addView(ex);
+        int pn = linkedIds(T_DIARY, date, T_PRINCIPLE).size();
+        int hn = linkedIds(T_DIARY, date, T_PERSON).size();
+        if (pn > 0 || hn > 0) {
+            List<String> parts = new ArrayList<>();
+            if (pn > 0) parts.add(s("原则 ", "Principles ") + pn);
+            if (hn > 0) parts.add(s("人 ", "People ") + hn);
+            TextView c = tv(TextUtils.join(" · ", parts), 11, weakC());
+            c.setPadding(0, dp(6), 0, 0);
+            box.addView(c);
+        }
+        box.setOnClickListener(v -> openDiaryDetail(date));
+        return box;
+    }
+
+    private void openDiaryDetail(String date) {
+        diaryFromEditor = editing && es != null;
+        diaryDate = date;
+        diaryDetail = true;
+        diaryAddingType = null;
+        diaryIn = null;
+        renderDiaryDetail();
+    }
+
+    private void backFromDiaryDetail() {
+        diaryDetail = false;
+        diaryAddingType = null;
+        diaryIn = null;
+        if (diaryFromEditor && es != null) {
+            diaryFromEditor = false;
+            renderEdit();
+        } else {
+            diaryFromEditor = false;
+            page = PAGE_DIARY;
+            renderList();
+        }
+    }
+
+    private void renderDiaryDetail() {
+        final String date = diaryDate;
+        // 重画（加/解除关联、同步刷新）不丢手头没存的文字
+        final String keep = diaryIn != null ? diaryIn.getText().toString() : null;
+        habitRoot = HabitData.load(act);
+        FrameLayout r = ensureRoot();
+        r.removeAllViews();
+        groupHeads.clear();
+
+        ScrollView scroll = new ScrollView(act);
+        scroll.setBackgroundColor(Ui.bg(act));
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(18), dp(16), dp(18), dp(40));
+        scroll.addView(col);
+        r.addView(scroll, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        TextView back = tv("‹ " + s("日记", "Diary"), 13, subC());
+        back.setPadding(0, dp(4), 0, dp(2));
+        back.setOnClickListener(v -> backFromDiaryDetail());
+        col.addView(back);
+
+        TextView title = serif(dateLabel(date), 19, inkC(), true);
+        title.setPadding(0, dp(10), 0, 0);
+        col.addView(title);
+
+        diaryIn = fieldBox(keep != null ? keep : HabitData.diary(habitRoot, date),
+                s("写下这一天的日记", "Write this day's entry"), 8);
+        LinearLayout.LayoutParams inLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        inLp.topMargin = dp(14);
+        col.addView(diaryIn, inLp);
+
+        TextView save = tv(s("保 存", "Save"), 14.5f, cardC());
+        save.setGravity(Gravity.CENTER);
+        save.setLetterSpacing(0.3f);
+        save.setBackground(roundBg(inkC(), 0, 10));
+        save.setPadding(0, dp(12), 0, dp(12));
+        LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        svLp.topMargin = dp(16);
+        svLp.bottomMargin = dp(6);
+        col.addView(save, svLp);
+        save.setOnClickListener(v -> {
+            // 写日记只经 putDiary（完成位同生同灭的口径与晨间页一致），再经 HabitData.save 落盘＋同步
+            JSONObject root = HabitData.load(act);
+            HabitData.putDiary(root, date, diaryIn.getText().toString().trim());
+            HabitData.save(act, root);
+            habitRoot = root;
+            toast(s("存好了", "Saved"));
+            renderDiaryDetail();
+        });
+
+        col.addView(diaryLinkSection(T_PRINCIPLE));
+        col.addView(diaryLinkSection(T_PERSON));
+    }
+
+    /** 日记详情的关联区（与编辑页 linkSection 同款式）：点条目跳它的编辑页，✕ 立即解除，＋ 添加走联想（不提供新建）。 */
+    private View diaryLinkSection(final String otherType) {
+        final String date = diaryDate;
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(roundBg(Ui.dark(act) ? Ui.surface(act) : Color.rgb(251, 248, 239), lineC(), 10));
+        box.setPadding(dp(13), dp(11), dp(13), dp(11));
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        bLp.topMargin = dp(12);
+        box.setLayoutParams(bLp);
+
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        List<String> ids = linkedIds(T_DIARY, date, otherType);
+        TextView h = tv(sectionTitle(otherType) + (ids.isEmpty() ? "" : "（" + ids.size() + "）"), 12, subC());
+        h.setLetterSpacing(0.15f);
+        head.addView(h);
+        View spacer = new View(act);
+        head.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
+        TextView plus = tv(s("＋ 添加", "＋ Add"), 12, redC());
+        plus.setPadding(dp(10), dp(2), dp(10), dp(2));
+        plus.setBackground(roundBg(Color.TRANSPARENT, redC(), 14));
+        plus.setOnClickListener(v -> {
+            diaryAddingType = otherType.equals(diaryAddingType) ? null : otherType;
+            renderDiaryDetail();
+        });
+        head.addView(plus);
+        box.addView(head);
+
+        for (final String oid : ids) {
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(7), 0, dp(7));
+            TextView name = tv(displayOf(otherType, oid), 13.5f, inkC());
+            name.setMaxLines(1);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            name.setOnClickListener(v -> jumpToEditorFromDiary(otherType, oid));
+            row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView x = tv("✕", 12, weakC());
+            x.setPadding(dp(10), dp(2), dp(2), dp(2));
+            x.setOnClickListener(v -> {
+                Link found = null;
+                for (Link l : linksOf(T_DIARY, date)) {
+                    if (l.otherType(T_DIARY, date).equals(otherType)
+                            && l.otherId(T_DIARY, date).equals(oid)) { found = l; break; }
+                }
+                if (found != null) removeLink(found, () -> renderDiaryDetail());
+            });
+            row.addView(x);
+            box.addView(row);
+        }
+
+        if (otherType.equals(diaryAddingType)) box.addView(diaryAddPanel(otherType));
+        return box;
+    }
+
+    private View diaryAddPanel(final String otherType) {
+        LinearLayout panel = new LinearLayout(act);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        pLp.topMargin = dp(8);
+        panel.setLayoutParams(pLp);
+
+        final EditText in = new EditText(act);
+        in.setHint(s("打几个字找已有的", "Type to find existing entries"));
+        in.setTextSize(14);
+        in.setSingleLine(true);
+        in.setBackground(roundBg(cardC(), subC(), 10));
+        in.setPadding(dp(12), dp(9), dp(12), dp(9));
+        panel.addView(in);
+
+        final LinearLayout cand = new LinearLayout(act);
+        cand.setOrientation(LinearLayout.VERTICAL);
+        cand.setBackground(roundBg(cardC(), lineC(), 10));
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        cLp.topMargin = dp(6);
+        panel.addView(cand, cLp);
+        diaryCandBox = cand;
+
+        in.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable e) { fillDiaryCandidates(otherType, e.toString().trim()); }
+        });
+        fillDiaryCandidates(otherType, "");
+        return panel;
+    }
+
+    private void fillDiaryCandidates(final String otherType, final String q) {
+        if (diaryCandBox == null) return;
+        LinearLayout cand = diaryCandBox;
+        cand.removeAllViews();
+        List<String[]> cands = new ArrayList<>();   // {id, display, haystack}
+        if (T_PRINCIPLE.equals(otherType)) {
+            for (Principle p : principles) cands.add(new String[]{p.id, displayOf(p), p.title + "\n" + p.body});
+        } else {
+            for (Person pe : people) cands.add(new String[]{pe.id, pe.name, pe.name + "\n" + pe.memo});
+        }
+        int shown = 0;
+        for (final String[] c : cands) {
+            if (isLinked(T_DIARY, diaryDate, otherType, c[0])) continue;
+            if (!q.isEmpty() && !c[2].contains(q)) continue;
+            if (shown >= 30) break;
+            shown++;
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(13), dp(10), dp(13), dp(10));
+            TextView name = tv(c[1], 13.5f, inkC());
+            name.setMaxLines(1);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView lk = tv(s("点一下直接关联 ›", "Tap to link ›"), 11, redC());
+            row.addView(lk);
+            row.setOnClickListener(v -> addLink(T_DIARY, diaryDate, otherType, c[0], () -> {
+                diaryAddingType = null;
+                renderDiaryDetail();
+            }));
+            cand.addView(row);
+        }
+        cand.setVisibility(cand.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+    }
+
+    /** 从日记详情跳到某条原则/人名的编辑页：先把手头日记文字经 putDiary 存好，编辑页返回到底时回本详情页。 */
+    private void jumpToEditorFromDiary(final String type, final String id) {
+        if (diaryIn != null) {
+            JSONObject root = HabitData.load(act);
+            HabitData.putDiary(root, diaryDate, diaryIn.getText().toString().trim());
+            HabitData.save(act, root);
+            habitRoot = root;
+        }
+        diaryDetail = false;
+        diaryAddingType = null;
+        diaryIn = null;
+        returnToDiary = true;
+        editStack.clear();
+        Ref ref = new Ref(type, id);
+        editStack.add(ref);
+        es = stateFromModel(ref);
+        editing = true;
+        page = pageOfType(type);
+        renderEdit();
+    }
+
     // ---------------- 复制筛选结果 ----------------
     private void copyFiltered() {
         List<String> lines = new ArrayList<>();
@@ -1153,10 +1473,12 @@ public final class ZhiPage {
 
     private static String typeName(String type) {
         return T_PRINCIPLE.equals(type) ? s("原则", "Principle")
-                : T_QUESTION.equals(type) ? s("问题", "Question") : s("人名", "Person");
+                : T_QUESTION.equals(type) ? s("问题", "Question")
+                : T_DIARY.equals(type) ? s("日记", "Diary") : s("人名", "Person");
     }
     private int pageOfType(String type) {
-        return T_PRINCIPLE.equals(type) ? PAGE_PRINCIPLE : T_QUESTION.equals(type) ? PAGE_QUESTION : PAGE_PERSON;
+        return T_PRINCIPLE.equals(type) ? PAGE_PRINCIPLE : T_QUESTION.equals(type) ? PAGE_QUESTION
+                : T_DIARY.equals(type) ? PAGE_DIARY : PAGE_PERSON;
     }
 
     private EditState stateFromModel(Ref ref) {
@@ -1185,6 +1507,7 @@ public final class ZhiPage {
     }
 
     private void openEdit(String type, String id) {
+        returnToDiary = false;
         editStack.clear();
         Ref ref = new Ref(type, id);
         editStack.add(ref);
@@ -1194,6 +1517,7 @@ public final class ZhiPage {
         renderEdit();
     }
     private void openNew(String type) {
+        returnToDiary = false;
         editStack.clear();
         Ref ref = new Ref(type, null);
         editStack.add(ref);
@@ -1214,6 +1538,11 @@ public final class ZhiPage {
         if (editStack.isEmpty()) {
             es = null;
             editing = false;
+            if (returnToDiary && diaryDate != null) {
+                returnToDiary = false;
+                openDiaryDetail(diaryDate);
+                return;
+            }
             renderList();
         } else {
             es = stateFromModel(editStack.get(editStack.size() - 1));
@@ -1263,6 +1592,7 @@ public final class ZhiPage {
     }
 
     private void renderEdit() {
+        habitRoot = HabitData.load(act);   // 日记关联区要读日记文本（悬空小字/联想候选），每次重画取最新
         FrameLayout r = ensureRoot();
         r.removeAllViews();
         groupHeads.clear();
@@ -1390,13 +1720,14 @@ public final class ZhiPage {
     }
 
     private String[] sectionsFor(String type) {
-        if (T_PRINCIPLE.equals(type)) return new String[]{T_PERSON, T_QUESTION};
+        if (T_PRINCIPLE.equals(type)) return new String[]{T_PERSON, T_QUESTION, T_DIARY};
         if (T_QUESTION.equals(type)) return new String[]{T_PERSON, T_PRINCIPLE};
-        return new String[]{T_QUESTION, T_PRINCIPLE};
+        return new String[]{T_QUESTION, T_PRINCIPLE, T_DIARY};
     }
     private String sectionTitle(String otherType) {
         return s("关联的", "Linked ") + (T_PERSON.equals(otherType) ? s("人名", "people")
-                : T_QUESTION.equals(otherType) ? s("问题", "questions") : s("原则", "principles"));
+                : T_QUESTION.equals(otherType) ? s("问题", "questions")
+                : T_DIARY.equals(otherType) ? s("日记", "diary") : s("原则", "principles"));
     }
 
     private View linkSection(final String otherType) {
@@ -1438,8 +1769,18 @@ public final class ZhiPage {
             TextView name = tv(displayOf(otherType, oid), 13.5f, inkC());
             name.setMaxLines(1);
             name.setEllipsize(TextUtils.TruncateAt.END);
-            name.setOnClickListener(v -> pushEdit(otherType, oid));
+            name.setOnClickListener(v -> {
+                if (T_DIARY.equals(otherType)) { collectDraft(); openDiaryDetail(oid); }
+                else pushEdit(otherType, oid);
+            });
             row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            if (T_DIARY.equals(otherType) && habitRoot != null
+                    && HabitData.diary(habitRoot, oid).trim().isEmpty()) {
+                // 悬空关联：这天的日记后来被清空了，关联不自动删，点进去是空编辑框可补写
+                TextView none = tv(s("这天没写", "Nothing written"), 11, weakC());
+                none.setPadding(dp(8), 0, 0, 0);
+                row.addView(none);
+            }
             TextView x = tv("✕", 12, weakC());
             x.setPadding(dp(10), dp(2), dp(2), dp(2));
             x.setOnClickListener(v -> {
@@ -1473,6 +1814,7 @@ public final class ZhiPage {
 
         final EditText in = new EditText(act);
         in.setHint(T_PERSON.equals(otherType) ? s("输入名字找已有的人", "Type a name to find people")
+                : T_DIARY.equals(otherType) ? s("输入日期或日记里的字找日记", "Type a date or words from an entry")
                 : s("打几个字找已有的", "Type to find existing entries"));
         in.setTextSize(14);
         in.setSingleLine(true);
@@ -1509,6 +1851,14 @@ public final class ZhiPage {
             for (Principle p : principles) cands.add(new String[]{p.id, displayOf(p), p.title + "\n" + p.body});
         } else if (T_QUESTION.equals(otherType)) {
             for (Question qs : questions) cands.add(new String[]{qs.id, displayOf(qs), qs.title + "\n" + qs.body});
+        } else if (T_DIARY.equals(otherType)) {
+            // 候选＝已有日记的日期（日期倒序，空文本不列）；可输日期或正文关键词过滤
+            if (habitRoot == null) habitRoot = HabitData.load(act);
+            for (String date : HabitData.diaryDatesDesc(habitRoot)) {
+                String text = HabitData.diary(habitRoot, date);
+                if (text.trim().isEmpty()) continue;
+                cands.add(new String[]{date, dateLabel(date), date + "\n" + text});
+            }
         } else {
             for (Person pe : people) cands.add(new String[]{pe.id, pe.name, pe.name + "\n" + pe.memo});
         }
@@ -1536,7 +1886,7 @@ public final class ZhiPage {
             }));
             cand.addView(row);
         }
-        if (!q.isEmpty()) {
+        if (!q.isEmpty() && !T_DIARY.equals(otherType)) {   // 日记不从这里新建（无「新建并关联」行）
             TextView create = tv(s("没有合适的？新建" + typeName(otherType) + "「" + q + "」并关联",
                     "Create new: " + q), 13, subC());
             create.setPadding(dp(13), dp(10), dp(13), dp(10));
