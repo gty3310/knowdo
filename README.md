@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.52.0)
+## Features (Android, v1.53.0)
 
-Current version: **v1.52.0**.
+Current version: **v1.53.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.53.0 — 2026-11-03
+
+**Why:** A user report: on v1.49.0, starting an update download and then switching to another app killed the download — coming back showed "Update failed: Connection reset" and nothing was kept. Root cause, confirmed in code: downloads ran on a bare thread with no foreground service, so a backgrounded process was frozen/reclaimed and the connection reset; the raw exception was also shown verbatim in Settings. Within a shard there was no resume either — an interrupted shard restarted from zero, and any error failed the whole download. Build commit `ca86ccf` · [compare v1.52.0...v1.53.0](https://github.com/gty3310/knowdo/compare/v1.52.0...v1.53.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Update downloads run in a foreground service.** A new `UpdateDownloadService` (dataSync type, with the `FOREGROUND_SERVICE_DATA_SYNC` permission) now performs the download: `doCheck` stores the manifest in update state and hands off to the service, which shows a quiet progress notification ("Downloading KnowDo X · N%") and removes it when done or finally failed. If the system refuses to start the service, the download falls back to the previous in-process thread. The existing no-concurrent-download guard is unchanged — while the service downloads, the working flag is cleared by the service when it finishes.
+- **Resume inside a shard.** `downloadShard` now sends `Range: bytes=<have>-` when a partial shard is on disk and appends only on a 206 (a 200 restarts that shard; a 416 or an over-long local file deletes it and restarts once). Redirects from the Gitee API endpoint to the CDN are followed manually (up to 5 hops) so the Range header survives every hop. Transient I/O failures of a shard retry up to 3 times with short backoff, each time resuming; whole-shard size+MD5 verification is unchanged.
+- **Interrupted downloads resume automatically.** After a failed download, the next app open or realtime-reconnect check first runs an auto-resume gate: state is error, the pending version is still newer, its shard directory exists, the package is not ready, the network policy allows downloading, and the last auto-resume attempt was over 10 minutes ago. Only then does it re-enter the normal check path (finished shards skip, partial shards resume) — no user tap needed, and the attempt stamp keeps it from spinning.
+- **Completion notification and human error text.** If a download finishes while KnowDo is in the background, a notification ("KnowDo X is downloaded — tap to install") opens the app into the existing install prompt; in the foreground the existing dialog is used as before. Settings no longer shows raw exception text: an interrupted download reads "Download stopped — X of Y parts done. It resumes automatically when you open KnowDo", with the raw error kept in state only for diagnostics.
+
+Not yet verified on a real device: background/lock-screen download completion on the author's phone (install prompt on return, or completion notification first), mid-shard resume after a network drop or process kill, auto-resume on next open with finished shards skipped, auto-resume staying off when the network policy forbids it, the bare-thread fallback when the service cannot start, the human Settings error text, the changelog popup, and the one manual Drive install of this version (the fixed download path only takes effect once this build is on the phone).
+
 ### v1.52.0 — 2026-11-03
 
 **Why:** Habit merging is local-first by design — for the same habit id, and for the same diary date, the phone's copy wins. Edits made from the cloud side to an existing habit's type, or a continuation appended to an existing day's diary, were therefore rolled back by the phone's next sync merge (three habit types and one diary continuation, all lost and since restored as a patch). This release changes no merging rule; it adds a narrow road in: a cloud patch, applied on the phone right after the merge, so the merged result that lands on-device already carries the edit — after which local-first keeps it. Build commit `5f4097c` · [compare v1.51.0...v1.52.0](https://github.com/gty3310/knowdo/compare/v1.51.0...v1.52.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -81,17 +93,6 @@ Not yet verified on a real device: the three rolled-back habit types returning o
 - **No card, no change.** No row, a failed fetch, no network, signed out, an already-read card (in the cloud, or marked on-device), or an empty card — the card area simply never renders and the morning page is exactly what it was. The edit/back-fill mode never fetches or shows cards, and the morning gate's completion rules are untouched: cards are part of no condition, sections A and B are unchanged, and the only app file changed is `MorningActivity.java` (pure additions).
 
 Not yet verified on a real device: an unread card's presentation and card order, the hidden diary box and the read-first flow, tapping Read (the diary opens, read_at lands in the cloud, a killed-and-reopened page does not gate again), an already-read card staying away, no-card/offline/signed-out mornings looking exactly as before, back-fill mode showing no card, cards not affecting gate completion or the progress dots, the glass look in dark mode, the changelog popup, and the 1.50.0 → 1.51.0 instant-update chain.
-
-### v1.50.0 — 2026-11-03
-
-**Why:** Knowing and doing are two ledgers. Tasks have always been the doing side; this release stands up the knowing side — a place for the principles he thinks by, the principles he acts by, and the questions he still means to ask. Build commit `f43a9a3` · [compare v1.49.0...v1.50.0](https://github.com/gty3310/knowdo/compare/v1.49.0...v1.50.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Five bottom tabs: Act / Know / Habits / Zhixing / Chat.** The first tab is the same schedule page, renamed from Schedule to Act; Know is inserted second and the rest shift down one place, their pages untouched. Tab indices moved with named constants, so existing deep links (the guard page and habit reminders opening a specific tab) follow automatically. The Know tab's icon is simply the character 知.
-- **The Know page.** Three sections — thinking principles, principles for action, questions to ask — each with its entries and an "Add one" row. An entry shows its title (or the first line of its body) plus a one-line preview; a question with a named addressee shows a small "for: X" beside the title. Tapping an entry opens the editor (title, body, and "who to ask" for questions); deleting asks for confirmation first, in the app's usual wording.
-- **Backed by the `zhi_entries` table.** Entries live in Supabase and are read and written through the app's existing Supa channel with the signed-in user's JWT, so the table's owner-only row-level security applies. The page caches the last successful fetch on-device: offline it shows the cache with a small "Offline — showing the last copy" note, with no cache it shows an empty state with retry, and signed out it simply asks for sign-in. Every create, edit and delete lands on the server first and only then refreshes the page and cache, so a failed save never leaves the page showing something the database does not have. `Supa` gains one small public `restDelete` helper for this; nothing else in the sync layer changed.
-
-Not yet verified on a real device: the five-tab order and renaming, tab switching and state retention (including notification/guard deep links landing on the right tab), the Know page's first fetch and three sections, creating/editing/deleting entries and reading them back from the cloud, the "for: X" addressee display, the offline cache and its note, the no-cache failure state with retry, the signed-out hint, the changelog popup, and the 1.49.0 → 1.50.0 instant-update chain.
 
 ## Build
 
