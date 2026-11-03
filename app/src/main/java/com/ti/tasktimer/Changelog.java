@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1600 = new Entry("v1.60.0", "2026-11-03");
+        e1600.add(new Group(s("新增", "New"),
+                s("「知」里加了日记页签／日记可以和原则、人名互相挂上关联／在原则下面能看到它是从哪几天的日记里来的",
+                  "The Know tab gains a Diary page / a day's diary can be linked to principles and people, both ways / under a principle you can see which days' diaries it grew out of")));
+        e1600.why = s("原则大多是从某一天的日记里长出来的，把出处连起来，日后回看才知道当时为什么这么想",
+                "Most principles grow out of one particular day's diary. Link the source back in, and when you look again later you will know why you thought it then");
+        e1600.tryIt = s("打开「知」点「日记」，点开任意一天往下看，给它挂一条原则／再打开那条原则，日记已经在它下面了",
+                "Open Know, tap Diary, open any day and scroll down to link a principle to it / then open that principle — the diary is already listed under it");
+        out.add(e1600);
+
         Entry e1590 = new Entry("v1.59.0", "2026-11-03");
         e1590.add(new Group(s("新增", "New"),
                 s("「知」改版：原则、问题、人名三页，互相打通／每条原则分思维与行为／问题可标待问、已问／人名页可按拼音首字母找人／三页都有搜索、标签筛选、复制整表、卡片与列表两种看法",
