@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.54.0)
+## Features (Android, v1.55.0)
 
-Current version: **v1.54.0**.
+Current version: **v1.55.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,17 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.55.0 — 2026-11-03
+
+**Why:** Planning the day used to break stride: think of a task and you had to leave for the Tasks tab to create it. The user asked for adding right where planning happens — manually, or by telling an AI several tasks at once and confirming its list. Build commit `9b83b60` · [compare v1.54.0...v1.55.0](https://github.com/gty3310/knowdo/compare/v1.54.0...v1.55.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Add task.** A lighter two-button row now sits above Plan into today. Add task reuses the existing new-task sheet (new `TaskEditSheet.showCreateWithDeadline` entry) with the deadline prefilled to the page's logical today and no start time; saving goes through the normal store path, the new card appends at the end of the page's frozen order, and the time ledger recomputes.
+- **Add with AI.** Tapping it opens a near-full-height chat panel inside the page (92% of the screen, anchored to the bottom) with a Close button that returns to the untouched page. The conversation is a throwaway session kept only in memory — it never touches the Chat tab's stored history. It rides the exact same transport as the Chat tab (`ChatClient` over the chat-proxy, same model chain) with a scene-specific system prompt: settle each item's title, minutes and priority, estimating lengths openly when unstated.
+- **Proposal first, always.** When the list is complete the AI ends its reply with a `knowdo-addtasks` JSON block; the app validates and normalizes it (non-empty titles, minutes clamped 1–480, priority whitelisted) and renders a proposal card — Add them / Keep editing. Only Add them creates the tasks (deadline = today, normal store path, sync kicked), the card locks against double-taps, and a chat line confirms the count. Unparseable replies simply render as plain chat; when the AI or network is down, a plain-language line lands in the chat and manual adding is unaffected.
+
+Not yet verified on a real device: the two-button row's look, the prefilled deadline and append/ledger behaviour after manual add, panel height and page-state preservation, keyboard behaviour in the panel, multi-turn AI collecting with estimated lengths, the proposal card's two buttons (creation + sync, no double-apply, edit-again flow), unparseable replies rendering as plain chat, offline behaviour, the changelog popup, and the 1.54.0 to 1.55.0 in-app update chain.
+
 ### v1.54.0 — 2026-11-03
 
 **Why:** Four changes the user dictated on the Plan-today page on the morning of 2026-11-03: a postponed task vanished from the page with no way back; every in-page edit of a deadline or priority re-sorted the whole list, so the board never sat still; the red no-room line also named future and undated tasks that are not today's business; and re-sorting should happen only on demand, from a Re-sort button using the calendar's Quick Re-plan order. Build commit `a982f8e` · [compare v1.53.0...v1.54.0](https://github.com/gty3310/knowdo/compare/v1.53.0...v1.54.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -85,15 +96,6 @@ Not yet verified on a real device: the six-button two-row layout and per-date hi
 - **Completion notification and human error text.** If a download finishes while KnowDo is in the background, a notification ("KnowDo X is downloaded — tap to install") opens the app into the existing install prompt; in the foreground the existing dialog is used as before. Settings no longer shows raw exception text: an interrupted download reads "Download stopped — X of Y parts done. It resumes automatically when you open KnowDo", with the raw error kept in state only for diagnostics.
 
 Not yet verified on a real device: background/lock-screen download completion on the author's phone (install prompt on return, or completion notification first), mid-shard resume after a network drop or process kill, auto-resume on next open with finished shards skipped, auto-resume staying off when the network policy forbids it, the bare-thread fallback when the service cannot start, the human Settings error text, the changelog popup, and the one manual Drive install of this version (the fixed download path only takes effect once this build is on the phone).
-
-### v1.52.0 — 2026-11-03
-
-**Why:** Habit merging is local-first by design — for the same habit id, and for the same diary date, the phone's copy wins. Edits made from the cloud side to an existing habit's type, or a continuation appended to an existing day's diary, were therefore rolled back by the phone's next sync merge (three habit types and one diary continuation, all lost and since restored as a patch). This release changes no merging rule; it adds a narrow road in: a cloud patch, applied on the phone right after the merge, so the merged result that lands on-device already carries the edit — after which local-first keeps it. Build commit `5f4097c` · [compare v1.51.0...v1.52.0](https://github.com/gty3310/knowdo/compare/v1.51.0...v1.52.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Cloud patch for habit data (`user_state.cloud_patch`).** An optional jsonb column holding `{habit_types: {habitId: type}, diary_appends: [{date, marker, text}]}`. During sync the app probes for the column like every other optional key and, when present, applies it to the freshly merged `habit_data` before the usual save-locally / write-back-if-different step: a habit whose id is listed gets its `type` set (no other field touched), and a diary append is joined onto that date's text with a blank line unless its marker is already there — idempotent, so repeated syncs never duplicate it. The adopt-whole-copy path for a device with no local habit data goes through the same patch first. Any failure to parse or apply is swallowed silently and never blocks sync; the column is read-only to the app, and accounts or servers without it behave exactly as before. The patch contents are the account's own cloud data; the code reads only the generic structure.
-
-Not yet verified on a real device: the three rolled-back habit types returning on the author's phone after one sync (with the diary habit's morning sharing, the reading page and the weekly gate following), the 2026-11-02 diary continuation being joined back exactly once across repeated syncs, the patched values reading back from the cloud, accounts without the column syncing unchanged, the changelog popup, and the 1.51.0 → 1.52.0 instant-update chain.
 
 ## Build
 
