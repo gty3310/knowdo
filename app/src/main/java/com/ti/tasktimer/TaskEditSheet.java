@@ -96,6 +96,17 @@ public final class TaskEditSheet {
         show(act, store, blank, true, presetStartMs, scheduleBlock, host);
     }
 
+    /** 新建并预填截止日期、不设开始时间（v1.55.0）：供「今天安排」页底部
+     *  「添加任务」用——截止＝宿主给的逻辑今天，开始时间留空（层里时间钮
+     *  显示「日期（未定开始时间）」，保存口径与 showCreate 完全一致）。 */
+    public static void showCreateWithDeadline(Activity act, TaskStore store,
+                                              String deadline, Host host) {
+        TaskItem blank = new TaskItem();
+        blank.id = "";
+        blank.deadline = deadline;
+        show(act, store, blank, true, null, false, host);
+    }
+
     /** 编辑已有任务（task 为渲染时对象，保存时按 id 重取最新副本）。 */
     public static void showEdit(Activity act, TaskStore store, TaskItem task, Host host) {
         show(act, store, task, false, null, false, host);

@@ -20,6 +20,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Comparator;
@@ -45,6 +48,12 @@ import java.util.Set;
  * 改到未来）的卡不消失、只置灰，灰卡不计时间账、不进本页排程输入、不进
  * 红字；本页卡序在页面打开时冻住，页内编辑一律不重排，只有标题行右上角
  * 「重新排序」按快速重排同一 candidateOrder 重排一次；红字只点名今天的。
+ *
+ * v1.55.0（用户亲定）：固定底上方加一行两钮——「添加任务」（复用
+ * TaskEditSheet 新建层、截止预填逻辑今天）与「跟 AI 一起添加任务」
+ * （本页内展开近全屏聊天面板：临时会话只存内存、绝不写「聊聊」主线；
+ * 传输复用 ChatClient 同一 chat-proxy 通道；AI 整理出清单必须先出
+ * knowdo-addtasks 提案卡、用户点「就这样添加」才经 TaskStore 建任务）。
  */
 public class TodayPlanActivity extends Activity {
     private TaskStore store;
@@ -64,6 +73,17 @@ public class TodayPlanActivity extends Activity {
      * 只有「重新排序」按 candidateOrder 重排并刷新冻结序。 */
     private final List<String> frozenOrder = new ArrayList<>();
     private boolean orderFrozen = false;
+
+    // ---- v1.55.0：AI 添加任务聊天面板（临时会话，只存内存，不落 ChatStore） ----
+    private LinearLayout aiPanel;
+    private LinearLayout aiMsgCol;
+    private ScrollView aiScroll;
+    private EditText aiInput;
+    private TextView aiSendBtn;
+    private final List<ChatStore.Msg> aiMsgs = new ArrayList<>();
+    private boolean aiStreaming = false;
+    private boolean aiGreeted = false;
+    private static final String AI_FENCE = "```knowdo-addtasks";
     /** 数字条的工作副本（墙钟 HH:mm 字符串行），保存时才落 DayAvail。 */
     private final List<String[]> digitRows = new ArrayList<>(); // {kind,name,start,end} kind: sleep|lock
 
@@ -344,6 +364,27 @@ public class TodayPlanActivity extends Activity {
         btn.setPadding(0, dp(7), 0, dp(7));
         btn.setBackground(round(Ui.text(this), 10));
         btn.setOnClickListener(v -> onPlanIntoToday());
+
+        // v1.55.0：加任务两钮——比底部大钮轻一档（描边浅底），排在大钮上方
+        LinearLayout addRow = new LinearLayout(this);
+        addRow.setOrientation(LinearLayout.HORIZONTAL);
+        TextView addBtn = lightBtn(s("添加任务", "Add task"));
+        addBtn.setOnClickListener(v -> TaskEditSheet.showCreateWithDeadline(
+                this, store, logicToday, editHost));
+        TextView aiBtn = lightBtn(s("跟 AI 一起添加任务", "Add with AI"));
+        aiBtn.setOnClickListener(v -> openAiPanel());
+        addRow.addView(addBtn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        View addGap = new View(this);
+        addRow.addView(addGap, new LinearLayout.LayoutParams(
+                dp(10), ViewGroup.LayoutParams.WRAP_CONTENT));
+        addRow.addView(aiBtn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        foot.addView(addRow);
+        View addRowGap = new View(this);
+        foot.addView(addRowGap, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
+
         foot.addView(btn);
         View footGap = new View(this);
         foot.addView(footGap, new LinearLayout.LayoutParams(
@@ -359,7 +400,30 @@ public class TodayPlanActivity extends Activity {
         foot.addView(startBtn);
         root.addView(foot);
 
-        setContentView(root);
+        // v1.55.0：整页包一层 FrameLayout，AI 聊天面板作底部浮层（近全屏高）
+        FrameLayout frame = new FrameLayout(this);
+        frame.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        aiPanel = buildAiPanel();
+        aiPanel.setVisibility(View.GONE);
+        int panelH = (int) (getResources().getDisplayMetrics().heightPixels * 0.92);
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, panelH);
+        plp.gravity = Gravity.BOTTOM;
+        frame.addView(aiPanel, plp);
+        setContentView(frame);
+    }
+
+    /** 描边浅底的轻钮（v1.55.0 加任务两钮用，比底部大钮轻一档）。 */
+    private TextView lightBtn(String text) {
+        TextView v = new TextView(this);
+        v.setText(text);
+        v.setTextSize(13);
+        v.setGravity(Gravity.CENTER);
+        v.setTextColor(Ui.text(this));
+        v.setPadding(0, dp(7), 0, dp(7));
+        v.setBackground(roundStroke(Ui.surface(this), Ui.line(this), 10));
+        return v;
     }
 
     private TextView smallLabel(String t) {
@@ -1510,5 +1574,488 @@ public class TodayPlanActivity extends Activity {
         overflowNote.setText(sb.toString());
         overflowNote.setVisibility(View.VISIBLE);
         return named;
+    }
+
+    // ================= v1.55.0：跟 AI 一起添加任务 =================
+    // 临时会话：消息只存内存 aiMsgs，退出面板即结束，绝不经 ChatStore 落盘、
+    // 绝不写「聊聊」主线。传输复用 ChatClient（同一 chat-proxy 通道与模型链、
+    // 同一 SSE 请求/响应处理），system 提示为本场景单独一份。AI 整理出的
+    // 清单必须带 knowdo-addtasks 结构块，App 解析成提案卡，用户点「就这样
+    // 添加」才经 TaskStore 正常通道建任务（既定提案纪律，AI 不直接落库）。
+
+    private LinearLayout buildAiPanel() {
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setBackgroundColor(Ui.bg(this));
+
+        View topLine = new View(this);
+        topLine.setBackgroundColor(Ui.line(this));
+        p.addView(topLine, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(18), dp(10), dp(18), dp(8));
+        TextView title = new TextView(this);
+        title.setText(s("跟 AI 一起添加任务", "Add tasks with AI"));
+        title.setTextSize(15);
+        title.setTypeface(title.getTypeface(), Typeface.BOLD);
+        title.setTextColor(Ui.text(this));
+        head.addView(title);
+        View spacer = new View(this);
+        head.addView(spacer, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = new TextView(this);
+        close.setText(s("收起", "Close"));
+        close.setTextSize(13);
+        close.setTextColor(Ui.sub(this));
+        close.setPadding(dp(10), dp(4), dp(2), dp(4));
+        close.setOnClickListener(v -> closeAiPanel());
+        head.addView(close);
+        p.addView(head);
+
+        View headLine2 = new View(this);
+        headLine2.setBackgroundColor(Ui.line(this));
+        p.addView(headLine2, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        aiScroll = new ScrollView(this);
+        aiMsgCol = new LinearLayout(this);
+        aiMsgCol.setOrientation(LinearLayout.VERTICAL);
+        aiMsgCol.setPadding(dp(18), dp(6), dp(18), dp(14));
+        aiScroll.addView(aiMsgCol);
+        p.addView(aiScroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        LinearLayout inRow = new LinearLayout(this);
+        inRow.setOrientation(LinearLayout.HORIZONTAL);
+        inRow.setGravity(Gravity.CENTER_VERTICAL);
+        inRow.setPadding(dp(14), dp(8), dp(14), dp(12));
+        aiInput = new EditText(this);
+        aiInput.setHint(s("说说今天想做的事，可以一次说好几件",
+                "Tell me today's tasks — several at once is fine"));
+        aiInput.setTextSize(15);
+        aiInput.setTextColor(Ui.text(this));
+        aiInput.setMaxLines(3);
+        aiInput.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        aiInput.setBackground(roundStroke(Ui.surface(this), Ui.line(this), 10));
+        aiInput.setPadding(dp(12), dp(8), dp(12), dp(8));
+        inRow.addView(aiInput, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        aiSendBtn = new TextView(this);
+        aiSendBtn.setText(s("发送", "Send"));
+        aiSendBtn.setTextSize(15);
+        aiSendBtn.setTypeface(aiSendBtn.getTypeface(), Typeface.BOLD);
+        aiSendBtn.setTextColor(Ui.accent(this));
+        aiSendBtn.setPadding(dp(14), dp(8), dp(4), dp(8));
+        aiSendBtn.setOnClickListener(v -> onAiSend());
+        inRow.addView(aiSendBtn);
+        p.addView(inRow);
+        return p;
+    }
+
+    private void openAiPanel() {
+        aiPanel.setVisibility(View.VISIBLE);
+        if (!aiGreeted) {
+            aiGreeted = true;
+            ChatStore.Msg g = new ChatStore.Msg("assistant",
+                    s("把今天想做的事说给我，一次说好几件也行。我帮你整理成一张清单，"
+                            + "你确认了才会真的添加。",
+                      "Tell me what you'd like to do today — several things at once is "
+                            + "fine. I'll shape them into a list, and nothing is added "
+                            + "until you confirm it."));
+            aiMsgs.add(g);
+            renderAiMsg(g);
+        }
+        aiScrollToBottom();
+    }
+
+    private void closeAiPanel() {
+        aiPanel.setVisibility(View.GONE);
+    }
+
+    private void aiScrollToBottom() {
+        aiScroll.post(() -> aiScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    // ---------------- 面板内消息渲染（气泡口径与 ChatPanel 一致） ----------------
+
+    private void renderAiMsg(ChatStore.Msg m) {
+        if ("user".equals(m.role)) {
+            LinearLayout wrap = new LinearLayout(this);
+            wrap.setGravity(Gravity.END);
+            wrap.setPadding(0, dp(6), 0, dp(6));
+            TextView tv = new TextView(this);
+            tv.setText(m.text);
+            tv.setTextSize(16);
+            tv.setTextColor(Ui.text(this));
+            tv.setLineSpacing(0, 1.3f);
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(14));
+            g.setColor(Ui.muted(this));
+            tv.setBackground(g);
+            tv.setPadding(dp(14), dp(10), dp(14), dp(10));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.leftMargin = dp(56);
+            tv.setLayoutParams(lp);
+            wrap.addView(tv);
+            aiMsgCol.addView(wrap);
+        } else {
+            TextView tv = new TextView(this);
+            tv.setText(m.text);
+            tv.setTextSize(16);
+            tv.setTextColor(Ui.text(this));
+            tv.setLineSpacing(0, 1.35f);
+            tv.setPadding(dp(2), dp(4), dp(24), dp(6));
+            aiMsgCol.addView(tv);
+            if (m.proposal != null && "addtasks".equals(m.propKind)) {
+                LinearLayout card = newAddCard();
+                fillAddCard(card, m);
+                aiMsgCol.addView(card);
+            }
+        }
+    }
+
+    private LinearLayout newAddCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(14));
+        g.setColor(Ui.surface(this));
+        g.setStroke(1, Ui.line(this));
+        card.setBackground(g);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        clp.setMargins(0, dp(4), 0, dp(10));
+        card.setLayoutParams(clp);
+        return card;
+    }
+
+    /** 提案卡内容（按 propState 重填：待确认带两钮，已添加/已收起只留状态行）。 */
+    private void fillAddCard(final LinearLayout card, final ChatStore.Msg m) {
+        card.removeAllViews();
+        List<String[]> tasks = parseAddTasks(m.proposal);
+        TextView head = new TextView(this);
+        head.setText(s("待确认清单", "Proposed list"));
+        head.setTextSize(13);
+        head.setTextColor(Ui.text(this));
+        head.setTypeface(head.getTypeface(), Typeface.BOLD);
+        card.addView(head);
+        for (int i = 0; i < tasks.size(); i++) {
+            String[] t = tasks.get(i);
+            TextView line = new TextView(this);
+            line.setText((i + 1) + ". " + t[0] + " · " + t[1]
+                    + s(" 分钟 · ", " min · ") + priorityLabel(t[2]));
+            line.setTextSize(15);
+            line.setTextColor(Ui.text(this));
+            line.setPadding(0, dp(3), 0, 0);
+            card.addView(line);
+        }
+        if (m.propState == ChatStore.PROP_APPLIED) {
+            card.addView(addStateText(s("已添加", "Added")));
+            return;
+        }
+        if (m.propState != ChatStore.PROP_PENDING) {
+            card.addView(addStateText(s("已收起，继续聊", "Set aside — keep chatting")));
+            return;
+        }
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(10), 0, 0);
+        TextView ok = new TextView(this);
+        ok.setText(s("就这样添加", "Add them"));
+        ok.setTextSize(13);
+        ok.setGravity(Gravity.CENTER);
+        ok.setTextColor(Color.WHITE);
+        ok.setPadding(dp(14), dp(7), dp(14), dp(7));
+        ok.setBackground(round(Ui.text(this), 8));
+        ok.setOnClickListener(v -> {
+            int n = applyAddProposal(m);
+            if (n > 0) {
+                m.propState = ChatStore.PROP_APPLIED;
+                fillAddCard(card, m);
+            }
+        });
+        row.addView(ok);
+        TextView no = new TextView(this);
+        no.setText(s("再改改", "Keep editing"));
+        no.setTextSize(13);
+        no.setGravity(Gravity.CENTER);
+        no.setTextColor(Ui.text(this));
+        no.setPadding(dp(14), dp(7), dp(14), dp(7));
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        nlp.leftMargin = dp(10);
+        no.setLayoutParams(nlp);
+        no.setBackground(roundStroke(Ui.surface(this), Ui.line(this), 8));
+        no.setOnClickListener(v -> {
+            m.propState = ChatStore.PROP_DISMISSED;
+            fillAddCard(card, m);
+        });
+        row.addView(no);
+        card.addView(row);
+    }
+
+    private TextView addStateText(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(13);
+        t.setTextColor(Ui.sub(this));
+        t.setPadding(0, dp(8), 0, 0);
+        return t;
+    }
+
+    private String priorityLabel(String p) {
+        if (en()) {
+            if ("must".equals(p)) return "Must";
+            if ("important".equals(p)) return "Important";
+            if ("leisure".equals(p)) return "Leisure";
+            return "Secondary";
+        }
+        if ("must".equals(p)) return "必做";
+        if ("important".equals(p)) return "重要";
+        if ("leisure".equals(p)) return "休息";
+        return "次要";
+    }
+
+    // ---------------- 发送与流式（复用 ChatClient 同一通道） ----------------
+
+    private void onAiSend() {
+        if (aiStreaming) return;
+        String text = aiInput.getText().toString().trim();
+        if (text.isEmpty()) return;
+        aiInput.setText("");
+        ChatStore.Msg userMsg = new ChatStore.Msg("user", text);
+        aiMsgs.add(userMsg);
+        while (aiMsgs.size() > 60) aiMsgs.remove(0); // 临时会话也别无限涨
+        renderAiMsg(userMsg);
+        aiScrollToBottom();
+
+        final TextView live = new TextView(this);
+        live.setText("…");
+        live.setTextSize(16);
+        live.setTextColor(Ui.text(this));
+        live.setLineSpacing(0, 1.35f);
+        live.setPadding(dp(2), dp(10), dp(24), dp(6));
+        aiMsgCol.addView(live);
+        aiScrollToBottom();
+        aiStreaming = true;
+        aiSendBtn.setTextColor(Ui.sub(this));
+
+        final JSONArray payload;
+        try {
+            payload = ChatClient.toMessagesJson(buildAiSystemPrompt(), aiMsgs, null);
+        } catch (Exception e) {
+            finishAiError(live, s("消息没拼好，再试一次",
+                    "Something went wrong putting the message together"));
+            return;
+        }
+        ChatClient.send(this, payload, new ChatClient.Callback() {
+            @Override public void onModel(String modelId) { }
+            @Override public void onDelta(String fullText) {
+                live.setText(aiDisplayPart(fullText));
+                aiScrollToBottom();
+            }
+            @Override public void onDone(String fullText) {
+                aiStreaming = false;
+                aiSendBtn.setTextColor(Ui.accent(TodayPlanActivity.this));
+                aiMsgCol.removeView(live);
+                ChatStore.Msg am = parseAiAssistant(fullText);
+                aiMsgs.add(am);
+                renderAiMsg(am);
+                aiScrollToBottom();
+            }
+            @Override public void onError(String friendlyMsg) {
+                finishAiError(live, friendlyMsg);
+            }
+        });
+    }
+
+    /** 失败口径：聊天里落一行人话提示（friendly 已是大白话），手动添加不受影响。 */
+    private void finishAiError(TextView live, String friendlyMsg) {
+        aiStreaming = false;
+        aiSendBtn.setTextColor(Ui.accent(this));
+        aiMsgCol.removeView(live);
+        ChatStore.Msg em = new ChatStore.Msg("assistant", friendlyMsg);
+        aiMsgs.add(em);
+        renderAiMsg(em);
+        aiScrollToBottom();
+    }
+
+    /** 流式展示正文：提案代码块不给用户看原文，出现块开头即截断显示。 */
+    private static String aiDisplayPart(String fullText) {
+        if (fullText == null) return "";
+        int i = fullText.indexOf(AI_FENCE);
+        if (i >= 0) return fullText.substring(0, i).trim();
+        return fullText;
+    }
+
+    // ---------------- 提案解析与应用 ----------------
+
+    /** 流结束：剥离 knowdo-addtasks 块、校验清单，组装成面板内消息。解析不出
+     *  结构就只当普通聊天显示（提案为 null），绝不崩溃。 */
+    private ChatStore.Msg parseAiAssistant(String fullText) {
+        ChatStore.Msg m = new ChatStore.Msg("assistant", "");
+        String proposal = null;
+        String text = fullText == null ? "" : fullText;
+        int start = text.indexOf(AI_FENCE);
+        if (start >= 0) {
+            int jsonStart = text.indexOf('\n', start);
+            int end = jsonStart < 0 ? -1 : text.indexOf("```", jsonStart);
+            if (jsonStart >= 0 && end > jsonStart) {
+                proposal = normalizeAddProposal(text.substring(jsonStart + 1, end).trim());
+                text = text.substring(0, start) + text.substring(end + 3);
+            } else {
+                text = text.substring(0, start);
+            }
+        }
+        m.text = text.trim();
+        if (m.text.isEmpty()) {
+            m.text = proposal != null
+                    ? s("清单整理好了，你核对一下：", "Here's the list — check it over:")
+                    : s("（这次没收到回复，再试一次）", "(No reply came back — try again)");
+        }
+        if (proposal != null) {
+            m.proposal = proposal;
+            m.propKind = "addtasks";
+            m.propState = ChatStore.PROP_PENDING;
+        }
+        return m;
+    }
+
+    /** 清单 JSON 校验＋规范化：标题非空才收，时长钳到 1–480（缺省 30），
+     *  优先级只认四档（之外按次要）；整表为空返回 null（当普通回复收）。 */
+    private String normalizeAddProposal(String json) {
+        try {
+            JSONObject p = new JSONObject(json);
+            JSONArray arr = p.optJSONArray("tasks");
+            if (arr == null) return null;
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String title = o.optString("title", "").trim();
+                if (title.isEmpty()) continue;
+                int minutes = o.optInt("minutes", 30);
+                if (minutes < 1) minutes = 1;
+                if (minutes > 480) minutes = 480;
+                String pr = o.optString("priority", "").trim();
+                if (!"must".equals(pr) && !"important".equals(pr)
+                        && !"secondary".equals(pr) && !"leisure".equals(pr)) {
+                    pr = "secondary";
+                }
+                JSONObject t = new JSONObject();
+                t.put("title", title);
+                t.put("minutes", minutes);
+                t.put("priority", pr);
+                out.put(t);
+            }
+            if (out.length() == 0) return null;
+            JSONObject res = new JSONObject();
+            res.put("tasks", out);
+            return res.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 把（已规范化的）提案 JSON 读成 {标题, 时长, 优先级} 行，供卡面渲染。 */
+    private List<String[]> parseAddTasks(String proposalJson) {
+        List<String[]> out = new ArrayList<>();
+        if (proposalJson == null) return out;
+        try {
+            JSONArray arr = new JSONObject(proposalJson).optJSONArray("tasks");
+            if (arr == null) return out;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                out.add(new String[]{o.optString("title", ""),
+                        String.valueOf(o.optInt("minutes", 30)),
+                        o.optString("priority", "secondary")});
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** 点「就这样添加」：全部经 TaskStore 正常通道建任务（deadline＝逻辑今天），
+     *  聊天里补一条系统行，本页清单刷新（新卡按冻结序口径追加末尾、时间账重算）。 */
+    private int applyAddProposal(ChatStore.Msg m) {
+        List<String[]> tasks = parseAddTasks(m.proposal);
+        if (tasks.isEmpty()) return 0;
+        store.load();
+        int n = 0;
+        for (String[] t : tasks) {
+            TaskItem item = TaskItem.create(t[0]);
+            try { item.durationMinutes = Integer.parseInt(t[1]); }
+            catch (Exception ignored) { item.durationMinutes = 30; }
+            item.priority = t[2];
+            item.deadline = logicToday;
+            item.touch();
+            store.add(item);
+            n++;
+        }
+        StartReminder.reschedule(this, store);
+        GuardRules.kickSync(this);
+        ChatStore.Msg done = new ChatStore.Msg("assistant",
+                s("已添加 " + n + " 件，都在今天的清单里了",
+                  "Added " + n + " — they're on today's list"));
+        aiMsgs.add(done);
+        renderAiMsg(done);
+        aiScrollToBottom();
+        refreshAll();
+        return n;
+    }
+
+    /** 本面板单独的场景提示：把今天想做的事整理成任务清单＋结构块约定。 */
+    private String buildAiSystemPrompt() {
+        if (en()) {
+            return "You are the add-tasks assistant on KnowDo's Plan-today page. The user "
+                    + "tells you, in their own words, several things they want to do today — "
+                    + "possibly all at once, possibly over a few turns.\n"
+                    + "Your job: settle each thing into a task — a title, a length in "
+                    + "minutes, and a priority: must / important / secondary / leisure.\n"
+                    + "- If the length is missing, estimate a sensible one and say in your "
+                    + "reply that it is an estimate for them to check. If the priority is "
+                    + "missing, default to secondary unless it clearly sounds urgent.\n"
+                    + "- Never invent tasks the user did not mention. If something is "
+                    + "genuinely unclear, ask one short question.\n"
+                    + "- When the list is complete (the details are settled, or the user "
+                    + "says that's all), give a one-line summary, then output exactly one "
+                    + "machine-readable block in this strict format (do not rename fields, "
+                    + "no comments inside):\n"
+                    + AI_FENCE + "\n"
+                    + "{\"tasks\":[{\"title\":\"Task title\",\"minutes\":30,"
+                    + "\"priority\":\"secondary\"}]}\n```\n"
+                    + "- Do not repeat the list item by item outside the block. If the user "
+                    + "asks to change an entry, confirm the change briefly and output the "
+                    + "whole updated list as a new block (it replaces the old one).\n"
+                    + "- While you are still collecting, do not output the block.\n"
+                    + "Today is " + logicToday + "; every task in the list will be added "
+                    + "to today. Keep replies calm, short and concrete; no lecturing.";
+        }
+        return "你是知行 KnowDo「今天安排」页里的添加任务助手。用户会用自己的话把今天想做的"
+                + "几件事说给你，可能一次说好几件，也可能分几轮补充。\n"
+                + "你的活：把每件事确认成一个任务——标题、时长（分钟）、优先级"
+                + "（必做 must／重要 important／次要 secondary／休息 leisure）。\n"
+                + "- 时长没说的，按常理估一个，并在正文里点明是估的、请他核对；优先级没说的"
+                + "默认次要，除非语气明显是要紧事。\n"
+                + "- 不要替他发明他没提过的事；实在拿不准的，只追问一句。\n"
+                + "- 当清单完整（信息已齐，或用户表示就这些了）时：先用一句话小结，然后另起"
+                + "一个代码块输出机器可读清单，格式严格如下，不要改字段名、不要加注释：\n"
+                + AI_FENCE + "\n"
+                + "{\"tasks\":[{\"title\":\"任务标题\",\"minutes\":30,"
+                + "\"priority\":\"secondary\"}]}\n```\n"
+                + "- 代码块之外不要再逐条重复清单；用户说要改某条时，先口头确认改法，再把"
+                + "整张更新后的清单作为一个新代码块输出（整张替换）。\n"
+                + "- 还没聊完时不要输出代码块。\n"
+                + "今天是 " + logicToday + "，清单里的任务都会加到今天。语气平静、简短、"
+                + "具体，不说教。";
     }
 }
