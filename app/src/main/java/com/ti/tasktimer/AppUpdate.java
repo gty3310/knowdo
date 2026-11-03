@@ -2,6 +2,9 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -55,6 +58,16 @@ import java.util.List;
  * 「新版 X 已下载好」＋安装按钮（每版只弹一次），或在设置页直接点安装。
  * 是否自动下载由 UpdatePrefs 决定：下载网络＝仅 Wi-Fi 时，流量下只记下
  * 「有新版」，等用户到设置页手动点下载。
+ *
+ * v1.53.0 下载后台化（用户报障：点下载后切去别的软件，再回来就报
+ * 「Connection reset」整单作废）：以前下载跑在裸线程上，切后台进程被
+ * 冻结/回收连接即断。现在检查决定要下载时把清单存进状态、启
+ * UpdateDownloadService（dataSync 前台服务）保活下载（服务起不来才回落
+ * 本线程兜底）；单片内支持 Range 断点续传（重定向手动跟随、每跳带 Range，
+ * 服务端回 206 才续写、200 则整片重下），单片瞬时网络失败自动重试至多
+ * 3 次；一次下载中断后，下次打开软件/信号补查时按 maybeAutoResume 的
+ * 条件自动接着下。下完时人不在软件里则发「已下载好」通知，点通知回
+ * 主界面走既有安装弹窗。失败原文只存状态备查，设置行改说人话。
  *
  * 全部网络/文件方法为阻塞 IO，只能在后台线程调用（状态读取除外）。
  */
@@ -195,8 +208,17 @@ public final class AppUpdate {
                 return en ? "New version " + name + " is downloaded — tap to install"
                         : "新版 " + name + " 已下载好——点这里安装";
             case ST_ERROR: {
-                String e = lastError(c);
-                return en ? "Update failed: " + e : "更新没成：" + e;
+                // 原始异常（如 Connection reset）只存状态备查，不上 UI（v1.53.0）
+                int totalShards = sp(c).getInt("dl_shards_total", 0);
+                int doneShards = sp(c).getInt("dl_shards_done", 0);
+                if (totalShards > 0 && !name.isEmpty()) {
+                    return en ? "Download stopped — " + doneShards + " of " + totalShards
+                            + " parts done. It resumes automatically when you open KnowDo"
+                            : "上次下载中断，下好 " + doneShards + " 片/共 " + totalShards
+                            + " 片，打开软件会自动接着下";
+                }
+                return en ? "Update didn't finish — it retries automatically"
+                        : "更新没成，打开软件会自动再试";
             }
             default:
                 return en ? "You're on the latest version" : "已是最新版";
@@ -212,6 +234,7 @@ public final class AppUpdate {
         // 自动检查本身仍按节流走，手动入口本来就不节流。
         clearStalePending(c);
         if (!UpdatePrefs.autoCheck(c)) return;
+        if (maybeAutoResume(c)) return; // 上次下载中断的先续下（v1.53.0，条件见该方法）
         if (working) return;
         if (System.currentTimeMillis() - lastCheckMs(c) < STARTUP_THROTTLE_MS) return;
         startCheck(c.getApplicationContext(), false);
@@ -222,6 +245,7 @@ public final class AppUpdate {
     public static void checkOnResume(Context c) {
         clearStalePending(c);
         if (!UpdatePrefs.autoCheck(c)) return;
+        if (maybeAutoResume(c)) return; // 上次下载中断的先续下（v1.53.0，条件见该方法）
         if (working) return;
         if (System.currentTimeMillis() - lastCheckMs(c) < RESUME_THROTTLE_MS) return;
         startCheck(c.getApplicationContext(), false);
@@ -231,6 +255,7 @@ public final class AppUpdate {
      * 断线期间新版信号同样到不了，重连后按回前台同一节流补一次，防连接抖动反复查。 */
     public static void checkOnReconnect(Context c) {
         if (!UpdatePrefs.autoCheck(c)) return;
+        if (maybeAutoResume(c)) return; // 上次下载中断的先续下（v1.53.0，条件见该方法）
         if (working) return;
         if (System.currentTimeMillis() - lastCheckMs(c) < RESUME_THROTTLE_MS) return;
         startCheck(c.getApplicationContext(), false);
@@ -268,22 +293,53 @@ public final class AppUpdate {
         }
     }
 
+    private static final long RESUME_ATTEMPT_GAP_MS = 10L * 60 * 1000; // 自动续下两次尝试的最小间隔（v1.53.0）
+
+    /**
+     * 上次下载中断后的自动续下（v1.53.0）：全部条件满足才触发——自动检查开着、
+     * 状态是失败、待安装版本仍比当前版本新、该版本的分片目录还在（有未下完的
+     * 分片）、整包未就绪、当前网络策略允许下载、距上次自动续下尝试已超 10 分钟。
+     * 触发后走 startCheck 既有路径：清单以 Gitee 为准，已下好的分片自然跳过、
+     * 单片从断点续传，不要求用户手点；10 分钟间隔＋触发即记戳保证不会空转。
+     * 触发了返回 true（调用方不再走普通检查）。
+     */
+    private static boolean maybeAutoResume(Context c) {
+        if (!UpdatePrefs.autoCheck(c)) return false;
+        if (working) return false;
+        if (state(c) != ST_ERROR) return false;
+        if (pendingCode(c) <= currentCode(c)) return false;
+        String n = pendingName(c);
+        if (n.isEmpty()) return false;
+        if (pendingReady(c)) return false;
+        File dir = new File(updatesDir(c), "shards-" + n);
+        if (!dir.isDirectory()) return false;
+        if (!downloadAllowed(c)) return false;
+        long now = System.currentTimeMillis();
+        if (now - sp(c).getLong("dl_resume_last_ms", 0) < RESUME_ATTEMPT_GAP_MS) return false;
+        sp(c).edit().putLong("dl_resume_last_ms", now).apply();
+        startCheck(c.getApplicationContext(), false);
+        return true;
+    }
+
     private static void startCheck(final Context app, final boolean manual) {
         working = true;
         setState(app, ST_CHECKING);
         new Thread(() -> {
+            boolean handedOff = false; // 下载已交给前台服务时，working 由服务收尾时清
             try {
-                doCheck(app, manual);
+                handedOff = doCheck(app, manual);
             } catch (Exception e) {
                 fail(app, e);
             } finally {
-                working = false;
-                notifyChanged();
+                if (!handedOff) {
+                    working = false;
+                    notifyChanged();
+                }
             }
         }).start();
     }
 
-    private static void fail(Context c, Exception e) {
+    static void fail(Context c, Exception e) {
         String msg = e.getMessage();
         sp(c).edit().putString("last_error", msg == null ? String.valueOf(e) : msg).apply();
         // 已下载好的待安装版本不被一次失败的检查抹掉
@@ -298,16 +354,87 @@ public final class AppUpdate {
 
     // ---------------- 检查与下载（后台线程） ----------------
 
-    private static final class Manifest {
+    static final class Manifest {
         int versionCode;
         String versionName = "";
         String releaseTag = "";
         long apkSize;
         String apkMd5 = "";
         final List<String[]> shards = new ArrayList<>(); // {name, size, md5}
+
+        /** 清单存进状态交给前台服务下载用（v1.53.0）。 */
+        String toJson() {
+            try {
+                JSONObject o = new JSONObject();
+                o.put("versionCode", versionCode);
+                o.put("versionName", versionName);
+                o.put("releaseTag", releaseTag);
+                o.put("apkSize", apkSize);
+                o.put("apkMd5", apkMd5);
+                JSONArray sh = new JSONArray();
+                for (String[] s : shards) {
+                    JSONObject x = new JSONObject();
+                    x.put("name", s[0]);
+                    x.put("size", Long.parseLong(s[1]));
+                    x.put("md5", s[2]);
+                    sh.put(x);
+                }
+                o.put("shards", sh);
+                return o.toString();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        static Manifest fromJson(JSONObject o) {
+            Manifest m = new Manifest();
+            m.versionCode = o.optInt("versionCode", 0);
+            m.versionName = o.optString("versionName", "");
+            m.releaseTag = o.optString("releaseTag", "");
+            m.apkSize = o.optLong("apkSize", 0);
+            m.apkMd5 = o.optString("apkMd5", "");
+            JSONArray sh = o.optJSONArray("shards");
+            if (sh != null) {
+                for (int i = 0; i < sh.length(); i++) {
+                    JSONObject s = sh.optJSONObject(i);
+                    if (s == null) continue;
+                    m.shards.add(new String[]{s.optString("name", ""),
+                            String.valueOf(s.optLong("size", 0)), s.optString("md5", "")});
+                }
+            }
+            return m;
+        }
     }
 
-    private static void doCheck(Context c, boolean manual) throws Exception {
+    /** 前台服务从状态里取回检查阶段存下的清单（v1.53.0）；没有/坏了返回 null。 */
+    static Manifest storedManifest(Context c) {
+        String j = sp(c).getString("dl_manifest", "");
+        if (j == null || j.isEmpty()) return null;
+        try {
+            Manifest m = Manifest.fromJson(new JSONObject(j));
+            return (m.versionCode > 0 && !m.shards.isEmpty() && !m.releaseTag.isEmpty()) ? m : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 前台服务无活可干时的兜底清标记（v1.53.0）。 */
+    static void clearWorking() { working = false; }
+
+    /** 前台服务（UpdateDownloadService）的下载执行体：收尾纪律与检查线程一致（v1.53.0）。 */
+    static void runDownload(Context app, Manifest m) {
+        try {
+            downloadAndAssemble(app, m);
+        } catch (Exception e) {
+            fail(app, e);
+        } finally {
+            working = false;
+            notifyChanged();
+        }
+    }
+
+    /** 返回 true 表示下载已交给前台服务（working 标记由服务收尾时清）。 */
+    private static boolean doCheck(Context c, boolean manual) throws Exception {
         sp(c).edit().putLong("last_check_ms", System.currentTimeMillis()).apply();
         if (ModelManager.token().isEmpty()) {
             throw new Exception(Strings.en() ? "update source is not configured in this build"
@@ -322,7 +449,7 @@ public final class AppUpdate {
             } else {
                 setState(c, ST_READY);
             }
-            return;
+            return false;
         }
         boolean samePending = pendingCode(c) == m.versionCode && pendingName(c).equals(m.versionName);
         sp(c).edit().putInt("pending_code", m.versionCode)
@@ -330,14 +457,21 @@ public final class AppUpdate {
                 .putLong("pending_size", m.apkSize).apply();
         if (samePending && pendingReady(c)) {
             setState(c, ST_READY);
-            return;
+            return false;
         }
         boolean mayDownload = manual || downloadAllowed(c);
         if (!mayDownload) {
             setState(c, ST_AVAILABLE);
-            return;
+            return false;
+        }
+        // 要下载：清单存进状态，交给前台服务在后台下（切走/锁屏不被掐断，v1.53.0）；
+        // 服务起不来（系统后台启动受限等）才回落当前线程兜底，行为与旧版一致。
+        sp(c).edit().putString("dl_manifest", m.toJson()).apply();
+        if (UpdateDownloadService.start(c.getApplicationContext())) {
+            return true;
         }
         downloadAndAssemble(c, m);
+        return false;
     }
 
     /** 自动下载的网络策略：Wi-Fi 就下；流量只有在用户选了「Wi-Fi 与流量」时才下。 */
@@ -398,10 +532,11 @@ public final class AppUpdate {
         return new String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8);
     }
 
-    private static void downloadAndAssemble(Context c, Manifest m) throws Exception {
+    static void downloadAndAssemble(Context c, Manifest m) throws Exception {
         setState(c, ST_DOWNLOADING);
         long total = m.apkSize;
-        sp(c).edit().putLong("dl_total", total).putLong("dl_done", 0).apply();
+        sp(c).edit().putLong("dl_total", total).putLong("dl_done", 0)
+                .putInt("dl_shards_total", m.shards.size()).putInt("dl_shards_done", 0).apply();
         notifyChanged();
 
         // 1) 按 tag 查 release id
@@ -431,7 +566,7 @@ public final class AppUpdate {
             boolean ok = dest.exists() && dest.length() == size
                     && (md5.isEmpty() || md5.equals(ModelManager.md5OfFile(dest)));
             if (!ok) {
-                downloadShard(c, releaseId, fid, dest);
+                downloadShardWithRetry(c, releaseId, fid, dest, size, done);
                 if (!dest.exists() || dest.length() != size) {
                     throw new Exception((Strings.en() ? "shard size mismatch: " : "分片大小不对：") + name);
                 }
@@ -443,7 +578,7 @@ public final class AppUpdate {
             }
             parts.add(dest);
             done += size;
-            sp(c).edit().putLong("dl_done", done).apply();
+            sp(c).edit().putLong("dl_done", done).putInt("dl_shards_done", parts.size()).apply();
             notifyChanged();
         }
         // 4) 拼合＋整件校验
@@ -473,7 +608,59 @@ public final class AppUpdate {
         if (!tmp.renameTo(apk)) throw new Exception("保存安装包失败");
         sp(c).edit().putLong("pending_size", m.apkSize).apply();
         setState(c, ST_READY);
-        promptInstallIfForeground(c);
+        // 人在软件里走既有对话框；不在（切走了/锁屏）发通知，点通知回主界面补弹（v1.53.0）
+        if (KnowDoApp.resumedActivity() != null) {
+            promptInstallIfForeground(c);
+        } else {
+            notifyDownloadReady(c, m.versionName);
+        }
+    }
+
+    /** 下载完成且软件不在前台时的一声招呼（v1.53.0）：点通知打开主界面，
+     *  onResume 的既有 maybePromptInstall 会接着弹安装框。 */
+    static void notifyDownloadReady(Context c, String versionName) {
+        try {
+            AlertHelper.createChannels(c);
+            Intent open = new Intent(c, MainActivity.class);
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pi = PendingIntent.getActivity(c, AlertHelper.NOTIF_UPDATE_READY, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            boolean en = Strings.en();
+            Notification n = new Notification.Builder(c, AlertHelper.CHANNEL_UPDATE_READY)
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle(en ? "KnowDo " + versionName + " is downloaded"
+                            : "知行 " + versionName + " 已下载好")
+                    .setContentText(en ? "Tap to install" : "点这里安装")
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build();
+            NotificationManager nm =
+                    (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(AlertHelper.NOTIF_UPDATE_READY, n);
+        } catch (Exception ignored) { }
+    }
+
+    /** 单片下载的瞬时网络失败自动重试（v1.53.0）：只对 IO 类失败（连接重置/超时等）
+     *  至多重试 3 次、短退避；每次重试都从已落盘的字节续传。HTTP 错误等非 IO
+     *  异常不重试、直接上抛。 */
+    private static void downloadShardWithRetry(Context c, long releaseId, long fileId,
+                                               File dest, long size, long baseDone) throws Exception {
+        int attempt = 0;
+        while (true) {
+            try {
+                downloadShard(c, releaseId, fileId, dest, size, baseDone);
+                return;
+            } catch (java.io.IOException e) {
+                attempt++;
+                if (attempt > 3) throw e;
+                try {
+                    Thread.sleep(1500L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
     }
 
     private static long findReleaseId(String tag) throws Exception {
@@ -520,25 +707,88 @@ public final class AppUpdate {
         return body;
     }
 
-    /** 一片附件：经 API /download 端点（跟随 302 到 CDN）流式落盘。 */
-    private static void downloadShard(Context c, long releaseId, long fileId, File dest) throws Exception {
-        String url = API + "/releases/" + releaseId + "/attach_files/" + fileId + "/download"
-                + "?access_token=" + URLEncoder.encode(ModelManager.token(), "UTF-8");
+    /**
+     * 一片附件：经 API /download 端点流式落盘（v1.53.0 起支持分片内断点续传）。
+     * 本地已有部分字节（0＜长度＜目标）时带 Range 续下：重定向手动跟随、每一跳
+     * 都重新带上 Range（自动跟随会把 Range 弄丢）；服务端回 206 才以 append
+     * 续写，回 200 说明不支持续传、整片重下；回 416 多半是本地残片比服务端
+     * 对象还长，删掉整片重下一次。baseDone 是此前已完成分片的字节总和，
+     * 只用来让进度（dl_done）在单片内也往前走。
+     */
+    private static void downloadShard(Context c, long releaseId, long fileId, File dest,
+                                      long expectedSize, long baseDone) throws Exception {
+        boolean restarted416 = false;
+        while (true) {
+            long have = dest.exists() ? dest.length() : 0;
+            if (expectedSize > 0 && have > expectedSize) {
+                //noinspection ResultOfMethodCallIgnored
+                dest.delete();
+                have = 0;
+            }
+            if (expectedSize > 0 && have == expectedSize) return;
+            String url = API + "/releases/" + releaseId + "/attach_files/" + fileId + "/download"
+                    + "?access_token=" + URLEncoder.encode(ModelManager.token(), "UTF-8");
+            HttpURLConnection con = openShard(url, have);
+            int code = con.getResponseCode();
+            int hops = 0;
+            while (code >= 300 && code < 400 && hops < 5) {
+                String loc = con.getHeaderField("Location");
+                if (loc == null || loc.isEmpty()) break;
+                String next = new URL(new URL(url), loc).toString();
+                con.disconnect();
+                url = next;
+                con = openShard(url, have);
+                code = con.getResponseCode();
+                hops++;
+            }
+            if (have > 0 && code == 416 && !restarted416) {
+                con.disconnect();
+                //noinspection ResultOfMethodCallIgnored
+                dest.delete();
+                restarted416 = true;
+                continue;
+            }
+            if (have > 0 && code == 206) {
+                copyShardBody(c, con, dest, true, baseDone, have);
+            } else if (code == 200) {
+                copyShardBody(c, con, dest, false, baseDone, 0);
+            } else {
+                con.disconnect();
+                throw new Exception("HTTP " + code + "（下载分片）");
+            }
+            return;
+        }
+    }
+
+    /** 开一条分片连接：不自动跟随重定向（要手动逐跳带 Range），续传时带 Range 头。 */
+    private static HttpURLConnection openShard(String url, long have) throws Exception {
         HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         con.setConnectTimeout(20_000);
         con.setReadTimeout(120_000);
         con.setRequestProperty("User-Agent", "KnowDo-Android");
-        con.setInstanceFollowRedirects(true);
-        int code = con.getResponseCode();
-        if (code != 200) {
-            con.disconnect();
-            throw new Exception("HTTP " + code + "（下载分片）");
-        }
+        con.setInstanceFollowRedirects(false);
+        if (have > 0) con.setRequestProperty("Range", "bytes=" + have + "-");
+        return con;
+    }
+
+    /** 把响应体写进分片文件（append＝续写），每 256KB 更新一次总体进度。 */
+    private static void copyShardBody(Context c, HttpURLConnection con, File dest,
+                                      boolean append, long baseDone, long have) throws Exception {
         InputStream in = con.getInputStream();
-        FileOutputStream out = new FileOutputStream(dest);
+        FileOutputStream out = new FileOutputStream(dest, append);
         byte[] buf = new byte[256 * 1024];
+        long copied = 0;
+        long nextMark = 256 * 1024;
         int n;
-        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        while ((n = in.read(buf)) > 0) {
+            out.write(buf, 0, n);
+            copied += n;
+            if (copied >= nextMark) {
+                nextMark += 256 * 1024;
+                sp(c).edit().putLong("dl_done", baseDone + have + copied).apply();
+                notifyChanged();
+            }
+        }
         out.close();
         in.close();
         con.disconnect();
@@ -585,6 +835,12 @@ public final class AppUpdate {
      */
     public static void launchInstall(final Activity a) {
         final boolean en = Strings.en();
+        // 真要装了，把「已下载好」通知撤掉，免得装完还挂在通知栏（v1.53.0）
+        try {
+            NotificationManager nm =
+                    (NotificationManager) a.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(AlertHelper.NOTIF_UPDATE_READY);
+        } catch (Exception ignored) { }
         File apk = pendingApk(a);
         if (!pendingReady(a) || apk == null) {
             Toast.makeText(a, en ? "The new version isn't downloaded yet"

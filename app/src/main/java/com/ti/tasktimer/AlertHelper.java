@@ -21,6 +21,8 @@ public final class AlertHelper {
     public static final String CHANNEL_RUNNING = "timer_running";
     public static final String CHANNEL_ALERTS = "timer_alerts";
     public static final String CHANNEL_HABIT = "habit_remind";
+    public static final String CHANNEL_UPDATE_DL = "update_download";
+    public static final String CHANNEL_UPDATE_READY = "update_ready";
     public static final int NOTIF_RUNNING = 100;
     public static final int NOTIF_ALERT = 200;
 
@@ -33,6 +35,8 @@ public final class AlertHelper {
     public static final int NOTIF_RESUME_SILENT = 205;
     public static final int NOTIF_MORNING = 206;
     public static final int NOTIF_THANKS = 207;
+    public static final int NOTIF_UPDATE_DL = 300;
+    public static final int NOTIF_UPDATE_READY = 301;
 
     private AlertHelper() {}
 
@@ -57,6 +61,18 @@ public final class AlertHelper {
                 CHANNEL_HABIT, "习惯提醒", NotificationManager.IMPORTANCE_DEFAULT);
         habit.setDescription("每个习惯自己设的提醒时间到了，通知你记一下");
         nm.createNotificationChannel(habit);
+
+        // 软件更新下载进度（v1.53.0）：前台服务的常驻进度通知，安静低优先
+        NotificationChannel updateDl = new NotificationChannel(
+                CHANNEL_UPDATE_DL, "软件更新下载", NotificationManager.IMPORTANCE_LOW);
+        updateDl.setDescription("下载新版时的进度通知，下完自动撤下");
+        nm.createNotificationChannel(updateDl);
+
+        // 软件更新已下好（v1.53.0）：人在别的软件时提醒点开安装，普通横幅即可
+        NotificationChannel updateReady = new NotificationChannel(
+                CHANNEL_UPDATE_READY, "软件更新已下好", NotificationManager.IMPORTANCE_DEFAULT);
+        updateReady.setDescription("新版下载完成时提醒你安装");
+        nm.createNotificationChannel(updateReady);
     }
 
     public static boolean canUseFullScreen(Context c) {
