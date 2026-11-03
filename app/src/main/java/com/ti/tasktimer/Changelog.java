@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1540 = new Entry("v1.54.0", "2026-11-03");
+        e1540.add(new Group(s("改进", "Improved"),
+                s("任务卡的截止钮多了「明天」「周六」「下周一」「挑选日期」；推迟的任务不再消失，只是变灰留在原地，点「改到今天」随时拉回来；在这页改日期、改重要性都不会把列表顺序打乱，想重排点右上角「重新排序」；底部红字只点名今天排不下的任务",
+                  "Task cards gain Tomorrow, Saturday, Next Monday and Pick-a-date deadline buttons. A postponed task no longer vanishes - it just turns grey where it sits, and Move to today brings it back any time. Changing dates or priorities on this page never reshuffles the list; tap Re-sort at the top right when you do want a new order. The red no-room line at the bottom now names only today's tasks")));
+        e1540.why = s("早上排今天时，要的是稳住一盘棋慢慢挑，而不是每改一个、名单就跳一次",
+                "Morning planning is about holding the whole board steady while you pick - not watching the list jump every time you change one thing");
+        e1540.tryIt = s("展开一张卡点「明天」，卡变灰但还在原位；再点「改到今天」就恢复。随便改几个任务的重要性，顺序纹丝不动；点右上角「重新排序」才会重排",
+                "Expand a card and tap Tomorrow: the card turns grey but stays put; tap Move to today and it is back. Change a few priorities and watch the order hold; then tap Re-sort at the top right to reorder");
+        out.add(e1540);
+
         Entry e1530 = new Entry("v1.53.0", "2026-11-03");
         e1530.add(new Group(s("修复", "Fixed"),
                 s("更新下载修好了：以前下新版时一切到别的软件，下载就会断、还报一句英文错。现在下载会在后台接着下，切走、锁屏都不怕；断了也能从断点接着下，不用从头来",
