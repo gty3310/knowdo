@@ -79,6 +79,9 @@ public class MainActivity extends Activity {
     private TextView fabView;
     private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
     private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
+    // ---- v1.57.0 行页：日期主轴排序＋「未排期」小标 ----
+    private String listLogicToday; // 本轮渲染用的逻辑今天（Rollover 口径），renderTable 每轮刷新
+    private final java.util.Set<String> todayBlockIds = new java.util.HashSet<>(); // 今日日程里有块的 taskId（不限分屏形态，只读 schedule）
     // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」；
     // v1.50.0 五签：第一签改名「行」，第二签新增「知」，其余顺延 ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
@@ -1399,6 +1402,7 @@ public class MainActivity extends Activity {
         if (bodyInner == null) return;
         if (listDragging) return; // 行正被拖向日历：整表重建会把手里的行销毁，拖完再画
         rebuildSplitScheduled();
+        rebuildListMeta();
         colViews.clear();
         fullViews.clear();
         liveLeftView = null;
@@ -1414,10 +1418,10 @@ public class MainActivity extends Activity {
         setW(bodyInner, curTableW);
     }
 
-    /** 行数据（与旧 TaskAdapter.reload 完全同口径）：可见任务在前，其后按完成日期倒序的历史分组。 */
+    /** 行数据：可见任务在前（v1.57.0 起走 listPageSorted 的日期主轴口径），其后按完成日期倒序的历史分组。 */
     private java.util.List<Row> buildRows() {
         java.util.List<Row> rows = new ArrayList<>();
-        for (TaskItem t : store.visibleSorted()) rows.add(Row.task(t));
+        for (TaskItem t : listPageSorted()) rows.add(Row.task(t));
         String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                 .format(new java.util.Date());
         java.util.Map<String, java.util.List<TaskItem>> byDate = new java.util.TreeMap<>(
@@ -1437,6 +1441,70 @@ public class MainActivity extends Activity {
             }
         }
         return rows;
+    }
+
+    /**
+     * 行页排序（v1.57.0，用户亲定）：以日期为主轴，与日历「先按天分、再看同一
+     * 天里谁先谁后」的看法一致。主键＝生效日期升序（逾期的在最前、然后今天、
+     * 然后未来各天；每日重复按逻辑今天算，进今天组；没有截止日的单独成组、
+     * 排在所有有日期的之后）；同一天内沿用既定优先级排程序（priorityRank：
+     * 必做＞重要＞次要＞休息，与排程 candidateOrder 的档位同源），同档按创建
+     * 序（旧口径的末级次序）。未完成在前、今日已完成在后的大分区沿用旧口径
+     * 不动。注意：只在本页重排——TaskStore.visibleSorted 本身不改口径，它还
+     * 供悬浮窗／下一个任务页／聊聊等处使用，那些地方不在本版范围。
+     */
+    private java.util.List<TaskItem> listPageSorted() {
+        java.util.List<TaskItem> v = store.visibleSorted();
+        final String lt = listLogicToday != null ? listLogicToday : Rollover.logicalToday(this);
+        v.sort((a, b) -> {
+            int da = a.isDoneToday() ? 1 : 0, db = b.isDoneToday() ? 1 : 0;
+            if (da != db) return da - db;
+            String ea = listEffDate(a, lt), eb = listEffDate(b, lt);
+            if (ea == null && eb != null) return 1;
+            if (ea != null && eb == null) return -1;
+            if (ea != null && !ea.equals(eb)) return ea.compareTo(eb);
+            int pa = TaskItem.priorityRank(a.priority), pb = TaskItem.priorityRank(b.priority);
+            if (pa != pb) return pa - pb;
+            return Long.compare(a.createdAtMs, b.createdAtMs);
+        });
+        return v;
+    }
+
+    private static String listEffDate(TaskItem t, String logicToday) {
+        if ("daily".equals(t.repeat)) return logicToday;
+        return t.deadline;
+    }
+
+    /** 每轮 renderTable 刷新：逻辑今天＋今日日程块 id 集（只读本机 schedule，不写）。 */
+    private void rebuildListMeta() {
+        listLogicToday = Rollover.logicalToday(this);
+        todayBlockIds.clear();
+        try {
+            org.json.JSONObject sch = SyncManager.latestSchedule(this);
+            if (sch == null || !TaskItem.today().equals(sch.optString("date", ""))) return;
+            org.json.JSONArray arr = sch.optJSONArray("blocks");
+            if (arr == null) return;
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String tid = o.optString("taskId", "");
+                if (!tid.isEmpty()) todayBlockIds.add(tid);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * 「未排期」判定（v1.57.0）：未完成 ∧ 截止日＝逻辑今天 ∧ 非休息档 ∧ 非每日
+     * 重复（每日重复的「截止」是虚拟的，挂标会天天误报，本版不挂）∧ 今日日程
+     * 里没有以该 taskId 出现的时段块。行渲染时实时算，排进日程后随重画消失。
+     */
+    private boolean isUnscheduledToday(TaskItem t) {
+        if (t.isDoneToday()) return false;
+        if ("daily".equals(t.repeat)) return false;
+        if ("leisure".equals(t.priority)) return false;
+        if (t.deadline == null || listLogicToday == null) return false;
+        if (!t.deadline.equals(listLogicToday)) return false;
+        return !todayBlockIds.contains(t.id);
     }
 
     private void buildHeader() {
@@ -1742,11 +1810,23 @@ public class MainActivity extends Activity {
                 v.setTextColor(Ui.link(this));
                 v.setOnClickListener(x -> dialogDuration(t));
                 break;
-            case "dl":
-                v.setText(deadlineOnlyText(t));
+            case "dl": {
+                String dlText = deadlineOnlyText(t);
+                if (isUnscheduledToday(t)) {
+                    // 「未排期」小标（v1.57.0）：接在日期下一行，朱砂色、小一号，不抢任务名层级
+                    SpannableStringBuilder sb = new SpannableStringBuilder(dlText);
+                    int s0 = sb.length();
+                    sb.append("\n").append(Strings.en() ? "unscheduled" : "未排期");
+                    sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.setSpan(new RelativeSizeSpan(0.85f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    v.setText(sb);
+                } else {
+                    v.setText(dlText);
+                }
                 v.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Ui.sub(this) : Ui.link(this));
                 v.setOnClickListener(x -> dialogDeadline(t));
                 break;
+            }
             case "pri":
                 if ("must".equals(t.priority)) {
                     v.setText(Strings.priMust());
