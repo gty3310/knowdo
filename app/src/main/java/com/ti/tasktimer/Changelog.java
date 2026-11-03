@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1550 = new Entry("v1.55.0", "2026-11-03");
+        e1550.add(new Group(s("新增", "New"),
+                s("今天安排里直接加任务：页面底部多了「添加任务」和「跟 AI 一起添加任务」。前者点开就能新建今天的任务；后者展开一个聊天框，你把今天想做的几件事说给 AI，它整理成一张清单，你确认了才添加",
+                  "Add tasks right from Plan today: two new buttons at the bottom - Add task opens the usual new-task sheet with today prefilled; Add with AI opens a chat panel where you tell the AI several things you want to do today, it shapes them into a list, and nothing is added until you confirm")));
+        e1550.why = s("早上排今天时，想到什么就该当场记下、排进去，不用再切去别的页面",
+                "When you are planning the day, whatever comes to mind should be captured and planned on the spot - no switching to another page");
+        e1550.tryIt = s("点「跟 AI 一起添加任务」，一口气说三四件今天要做的事，等它给出清单，核对时长和优先级，点「就这样添加」，任务就进今天的清单了",
+                "Tap Add with AI, say three or four of today's tasks in one go, wait for its list, check the lengths and priorities, tap Add them, and the tasks land on today's list");
+        out.add(e1550);
+
         Entry e1540 = new Entry("v1.54.0", "2026-11-03");
         e1540.add(new Group(s("改进", "Improved"),
                 s("任务卡的截止钮多了「明天」「周六」「下周一」「挑选日期」；推迟的任务不再消失，只是变灰留在原地，点「改到今天」随时拉回来；在这页改日期、改重要性都不会把列表顺序打乱，想重排点右上角「重新排序」；底部红字只点名今天排不下的任务",
