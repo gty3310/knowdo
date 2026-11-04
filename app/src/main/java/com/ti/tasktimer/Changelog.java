@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1640 = new Entry("v1.64.0", "2026-11-04");
+        e1640.add(new Group(s("改进", "Improved"),
+                s("底部图标线条加粗；未选中时图标里的红色也保留红色，不再全灰",
+                  "Bottom tab icons get thicker strokes; unselected icons keep their red parts red instead of going all grey")));
+        e1640.why = s("你说线条太细看不出意思，没选中时纯灰也把意思盖住了",
+                "You said the strokes were too thin to read, and the all-grey unselected state hid what the icons mean");
+        e1640.tryIt = s("看底部签栏，没点中的签也能认出图标里的红点和灯焰",
+                "Look at the bottom tab bar — the tabs you haven't tapped still show the red dot and the flame");
+        out.add(e1640);
+
         Entry e1630 = new Entry("v1.63.0", "2026-11-04");
         e1630.add(new Group(s("新增", "New"),
                 s("底部五签换上正式图标：行是路上的脚印、知是书上心灯、习惯是循环、知行是半圆、聊聊是话泡",
