@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.64.0)
+## Features (Android, v1.65.0)
 
-Current version: **v1.64.0**.
+Current version: **v1.65.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.65.0 — 2026-11-04
+
+**Why:** On a new day, a daily repeating task still showed its all-time accumulated Used minutes, which did not match the Left column beside it — Left was already a today-only figure. This release puts Used on the same basis for daily tasks: it counts today only and resets to zero on a new day. Build commit `96cbc3e` · [compare v1.64.0...v1.65.0](https://github.com/gty3310/knowdo/compare/v1.64.0...v1.65.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Daily tasks: Used counts today only.** The task-list Used column, the detail meta, the calendar meta and the timer floating window all switch to `SessionLog.todayMsForTask` for `repeat == "daily"` tasks — the same basis Left already used.
+- **Segment counts match the minutes.** Detail-meta segment counts for daily tasks now count today's segments only, via a new `SessionLog.todayCountForTask`; the existing total/today/count helpers are untouched, history segments are neither deleted nor rewritten, and non-daily tasks still show all-time totals everywhere.
+
+Not yet verified on a real device: a daily task (e.g. Taiji) showing only today's minutes and 0 tomorrow, Used + Left equalling the planned duration, today's open segment counted exactly once while timing, a non-daily task still showing its all-time total, and the 1.64.0 to 1.65.0 in-app update chain.
+
 ### v1.64.0 — 2026-11-04
 
 **Why:** On a real phone, the finished icons from v1.63.0 read too faintly: the strokes were too thin to tell what each icon means at 24dp, and the all-grey unselected state also greyed out the one vermilion element each icon carries — Act's endpoint, Know's flame, the hearts, Chat's dot — the very part that carries the meaning. This release changes only the ten icon files: thicker strokes, and red stays red when unselected. Build commit `b43befc` · [compare v1.63.0...v1.64.0](https://github.com/gty3310/knowdo/compare/v1.63.0...v1.64.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,19 +93,6 @@ Not yet verified on a real device: legibility of the thickened icons at a real 2
 - The vermilion-dot selected marker and the emoji/text glyph icons. Selection is carried by the icons' own two states, with no added decoration.
 
 Not yet verified on a real device: the icons' legibility at 24dp (above all Act's dashed path in its unselected state and Know's small flame), the tab bar's slightly changed height, the unselected grey's contrast in dark mode, the chat unread badge's position against the new bubble icon, and the 1.62.0 to 1.63.0 in-app update chain.
-
-### v1.62.0 — 2026-11-04
-
-**Why:** The first wiki-link release (v1.61.0) raised a large bottom picker — choose a kind, type into the picker's own search box, and use a create button with a full form when search came up empty — dragging the writing cursor out of the text again and again. Ruled by the user on 2026-11-04 and refined through four UI mock rounds: the cursor never leaves the text. This release is the input-method rebuild only — the morning page's four fixes are not bundled (they ship as v1.63), and HabitData, the database schema and the tab bar are untouched. The {{kind:id}} token format, render-time name lookup, broken-link styling, the WikiSheet entry editor, diary titles and question short titles all carry over. Build commit `816691d` · [compare v1.61.0...v1.62.0](https://github.com/gty3310/knowdo/compare/v1.61.0...v1.62.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A quick edit bar under every citation editor.** Four keys only: a {{ / }} state key plus select-all, copy and paste. With no citation open the key reads {{ and sends it at the cursor; while a citation is open it flips to }} and closes it. The keys never take focus, so the cursor stays put. Copy copies the stored text (token form, so pasting back into any citation editor re-renders as links; with no selection it copies everything), and paste feeds the clipboard through the normal input path. On the morning page the bar hides and returns together with the diary field behind an unread morning card (the card's own behaviour is unchanged).
-- **Close-to-create.** Pick a kind, write the thought out in full right in the text, then close with }} (typed, or the quick bar's close key) and the entry is created headlessly and the whole span becomes a real token: a person takes the text as its name; a principle takes it as its title with kind defaulting to "think" (editable later); a question takes it as its title, pending, with its short_title generated by the existing genShortTitle path (AI via chat-proxy, first-10-characters fallback). New questions and principles automatically link every existing person's name that appears literally in the text (canonical zhi_links form, same construction as the entry sheet). Diary citations are link-only: closing without a pick dissolves the braces and leaves the words as plain text; closing before picking a kind does the same; closing on empty text creates nothing. If creation fails, the text is left exactly as written.
-
-**Improved**
-- **The citation picker, rebuilt.** The v1.61 bottom sheet is gone. Typing {{ (half- or full-width) raises a small popup above the cursor's line — about 85% opaque paper white, non-focusable (keyboard focus never leaves the editor, the AutoCompleteTextView dropdown mechanism) — holding just four kind buttons (Person / Principle / Question / Diary). After a kind is picked, whatever you keep typing in the text itself is the search query (there is no second search box); the popup lists up to five matching entries of that kind and tapping one replaces the whole {{ plus typed text with that entry's link. The popup hugs the top edge of the cursor's line, follows scrolling, and only drops below the line when it would run off the top of the screen; ignore it and it merely updates or dismisses itself (deleted trigger, cursor leaving the span), never resizing the editor or pushing the text. A hint line under each editor says "type one more {" after the first brace, keeps a standing "close with }}" reminder while a citation is open, and "one more } to close" after a single }. Triggering is session-tracked — the open flag is only set by a genuine typing change ending in {{, never by re-rendering, opening old text or sync backfill, and pasted complete tokens only render, never create. Spaces (half- or full-width) in the typed text do not invalidate a citation — dictation is full of them — search runs on the text as-is and closing creates from the full text; only a stray single brace, a newline, a deleted trigger, leaving the span or overlength abandons it. The entry points are v1.61's: the morning diary field, the Diary screen (including the history edit dialog), the Know editor's body and memo fields, the diary detail editor, the task note dialog, and the entry sheet's own text fields. Tapping an existing link still opens the WikiSheet entry editor, unchanged; the floating window's note editor remains out of scope.
-
-Not yet verified on a real device: the popup's position and translucency on every entry point (especially in dialogs and after scrolling), tapping kind buttons and results inside a non-focusable popup, close-to-create end to end (question short-title latency, people auto-linking), the quick bar's flip key and clipboard keys in each editor, pasting a paragraph of existing tokens, and the 1.61.0 to 1.62.0 in-app update chain.
 
 ## Build
 
