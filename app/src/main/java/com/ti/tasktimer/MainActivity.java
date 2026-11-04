@@ -31,6 +31,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -100,7 +101,7 @@ public class MainActivity extends Activity {
     private FrameLayout chatContainer;
     private final View[] tabCells = new View[5];
     private final TextView[] tabLabels = new TextView[5];
-    private final View[] tabMarks = new View[5];
+    private final ImageView[] tabIcons = new ImageView[5];
     private ZhiPage zhiPage;
     private HabitPage habitPage;
     private ZhixingPage zhixingPage;
@@ -647,41 +648,30 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Ui.dark(this) ? Ui.surface(this) : Ui.bg(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
-        String[] icons = {"🗓️", "知", "🌱", "◎", "💬"};
         String[] labels = {Strings.tabSchedule(), Strings.tabZhi(), Strings.tabHabits(),
                 Strings.tabZhixing(), Strings.tabChat()};
         for (int i = 0; i < 5; i++) {
             final int idx = i;
             // 外层 FrameLayout 是为了给「聊聊」页签留一个右上角角标位（v1.27.0），
-            // 内层仍是原来的竖排（图标/文字/选中标记），排版不变。
+            // 内层是竖排（图标在上、文字在下）。
             FrameLayout cell = new FrameLayout(this);
             LinearLayout inner = new LinearLayout(this);
             inner.setOrientation(LinearLayout.VERTICAL);
             inner.setGravity(Gravity.CENTER_HORIZONTAL);
             inner.setPadding(0, dp(2), 0, 0);
-            TextView ic = new TextView(this);
-            ic.setText(icons[i]);
-            ic.setTextSize(19);
-            ic.setGravity(Gravity.CENTER);
-            inner.addView(ic);
+            // v1.63.0：换正式 VectorDrawable 图标（24dp），选中/未选中两态切换，
+            // 不再叠加朱砂小点等额外标记，选中区别只靠图标本身两态＋标签色。
+            ImageView ic = new ImageView(this);
+            ic.setImageResource(TAB_ICON_UNSEL[i]);
+            inner.addView(ic, new LinearLayout.LayoutParams(dp(24), dp(24)));
             TextView lab = new TextView(this);
             lab.setText(labels[i]);
             lab.setTextSize(11.5f);
             lab.setGravity(Gravity.CENTER);
-            inner.addView(lab);
-            View mark = new View(this);
-            android.graphics.drawable.GradientDrawable mg = new android.graphics.drawable.GradientDrawable();
-            mg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            mg.setColor(Ui.accent(this));
-            mark.setBackground(mg);
-            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(6), dp(6));
-            mlp.topMargin = dp(1);
-            mlp.bottomMargin = dp(2);
-            inner.addView(mark, mlp);
-            // v1.58.0：选中标记改朱砂小点并移到页签上方（设计稿口径）；
-            // 只是视图顺序调整，paintTabs 的显隐逻辑一字不变。
-            inner.removeView(mark);
-            inner.addView(mark, 0);
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            llp.topMargin = dp(1);
+            inner.addView(lab, llp);
             cell.addView(inner, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
             if (i == TAB_CHAT) {
@@ -711,10 +701,20 @@ public class MainActivity extends Activity {
             bar.addView(cell, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             tabCells[i] = cell;
             tabLabels[i] = lab;
-            tabMarks[i] = mark;
+            tabIcons[i] = ic;
         }
         paintTabs();
     }
+
+    // v1.63.0 底部五签正式图标：顺序与 TAB_* 常量一致（行/知/习惯/知行/聊聊）
+    private static final int[] TAB_ICON_SEL = {
+            R.drawable.ic_01_act_selected, R.drawable.ic_02_knowledge_selected,
+            R.drawable.ic_03_habits_selected, R.drawable.ic_04_unity_selected,
+            R.drawable.ic_05_chat_selected};
+    private static final int[] TAB_ICON_UNSEL = {
+            R.drawable.ic_01_act_unselected, R.drawable.ic_02_knowledge_unselected,
+            R.drawable.ic_03_habits_unselected, R.drawable.ic_04_unity_unselected,
+            R.drawable.ic_05_chat_unselected};
 
     private void paintTabs() {
         for (int i = 0; i < tabLabels.length; i++) {
@@ -723,7 +723,7 @@ public class MainActivity extends Activity {
             tabLabels[i].setTextColor(on ? Ui.text(this) : skinWeak());
             tabLabels[i].setTypeface(tabLabels[i].getTypeface(),
                     on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-            tabMarks[i].setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+            if (tabIcons[i] != null) tabIcons[i].setImageResource(on ? TAB_ICON_SEL[i] : TAB_ICON_UNSEL[i]);
         }
     }
 

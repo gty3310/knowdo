@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1630 = new Entry("v1.63.0", "2026-11-04");
+        e1630.add(new Group(s("新增", "New"),
+                s("底部五签换上正式图标：行是路上的脚印、知是书上心灯、习惯是循环、知行是半圆、聊聊是话泡",
+                  "The bottom five tabs get their finished icons: Act is footprints along a path, Know is a heart-lamp over an open book, Habits is a cycle, Unity is a half circle, Chat is a speech bubble")));
+        e1630.why = s("图标定稿入库，更新不会再丢；知的图标里，书是明理、上头一点灯焰是本心",
+                "The finished icons now ship inside the app, so updates can't lose them; in Know's icon, the book is understanding and the small flame above it is the original heart");
+        e1630.tryIt = s("看底部签栏，点每个签切换，选中和未选中的图标深浅不同",
+                "Look at the bottom tab bar and tap through the tabs — selected and unselected icons differ in depth");
+        out.add(e1630);
+
         Entry e1620 = new Entry("v1.62.0", "2026-11-04");
         e1620.add(new Group(s("新增", "New"),
                 s("快捷编辑栏：编辑框下方常驻，｛｛ 与 ｝｝ 是同一个键，开启引用后自动变合上；另带全选、复制、粘贴／引用合上自动新建：选好类型后把想法直接写完，打 ｝｝ 合上就自动存成新的人名、原则或问题，文中提到的人会自动关联上",

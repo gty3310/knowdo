@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 知 · 书上心灯 v2（选中态）：书＝明理（墨青描边），灯焰＝本心/良知（朱砂实心）。
+     由 Drive「知行_书上心灯_极简修正版_v2.zip」内 02_knowledge_heartlamp_simple_v2_selected.svg 转换，路径与原图逐字一致。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M4.3,13.1 Q8.4,11.85 12,14.15 Q15.6,11.85 19.7,13.1 V18.55 Q15.7,17.55 12,19.7 Q8.3,17.55 4.3,18.55 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#1F2F2A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M12,14.15 V19.7"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#1F2F2A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M12,4.4 C12.25,5.65 13.75,6.75 13.75,8.35 C13.75,9.72 12.93,10.55 12,10.55 C10.98,10.55 10.25,9.69 10.25,8.4 C10.25,6.9 11.73,5.7 12,4.4 Z"
+        android:fillColor="#D94B3A" />
+</vector>
