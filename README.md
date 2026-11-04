@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.62.0)
+## Features (Android, v1.63.0)
 
-Current version: **v1.62.0**.
+Current version: **v1.63.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.63.0 — 2026-11-04
+
+**Why:** The bottom tab bar was still makeshift — emoji and text glyphs for icons, plus a vermilion dot to mark the selected tab. Emoji render differently under every device font, the look sat oddly with the app's quiet eastern-minimal style, and the user's phone even showed a set of tab icons of unknown origin. The finished icon set arrived on 2026-11-04 (a full resource pack for Act / Habits / Unity / Chat, with Know revised to the minimal "heart-lamp over an open book" v2), and this release ships it inside the app, so updates can't lose it. Tab bar only — the morning page's four fixes are not bundled, and nothing else moves. Build commit `e6c5025` · [compare v1.62.0...v1.63.0](https://github.com/gty3310/knowdo/compare/v1.62.0...v1.63.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Finished icons for the bottom five tabs.** Ten VectorDrawables ship in `res/drawable`, a selected and an unselected artwork per tab: Act is an S-shaped path with a vermilion endpoint (footprints along a path), Know is a heart-lamp over an open book (the book is understanding; the small vermilion flame above it is the original heart), Habits is a cycle ring with a vermilion heart, Unity is a half circle with a vermilion heart, and Chat is a speech bubble with a vermilion dot. Selected artwork is deep ink `#1F2F2A` with vermilion `#D94B3A`; unselected is pale grey `#9AA79F`; `paintTabs()` switches the two, and the bar is now a 24dp icon over its label. The artwork is byte-identical to the approved source files.
+
+**Removed**
+- The vermilion-dot selected marker and the emoji/text glyph icons. Selection is carried by the icons' own two states, with no added decoration.
+
+Not yet verified on a real device: the icons' legibility at 24dp (above all Act's dashed path in its unselected state and Know's small flame), the tab bar's slightly changed height, the unselected grey's contrast in dark mode, the chat unread badge's position against the new bubble icon, and the 1.62.0 to 1.63.0 in-app update chain.
+
 ### v1.62.0 — 2026-11-04
 
 **Why:** The first wiki-link release (v1.61.0) raised a large bottom picker — choose a kind, type into the picker's own search box, and use a create button with a full form when search came up empty — dragging the writing cursor out of the text again and again. Ruled by the user on 2026-11-04 and refined through four UI mock rounds: the cursor never leaves the text. This release is the input-method rebuild only — the morning page's four fixes are not bundled (they ship as v1.63), and HabitData, the database schema and the tab bar are untouched. The {{kind:id}} token format, render-time name lookup, broken-link styling, the WikiSheet entry editor, diary titles and question short titles all carry over. Build commit `816691d` · [compare v1.61.0...v1.62.0](https://github.com/gty3310/knowdo/compare/v1.61.0...v1.62.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,18 +100,6 @@ Not yet verified on a real device: the popup's position and translucency on ever
 - **Question short titles (short_title).** The Know question editor gains a Short title field under the title. When a new question is saved with the short title empty, the save thread asks the built-in AI channel (ChatClient / chat-proxy) for a short title within 10 characters (25-second cap, quotes and trailing punctuation stripped); on failure or timeout it falls back to the first 10 characters of the question (or of the body's first line), and saving is never blocked. Citations, the picker and link sections show the short title; the Questions list itself still shows full titles.
 
 Not yet verified on a real device: the {{ trigger and the picker on the morning page and in the editors, link taps coexisting with cursor editing, sheets stacked over sheets, the AI short title's latency, diary titles rendering everywhere, the changelog popup, and the 1.60.0 to 1.61.0 in-app update chain.
-
-### v1.60.0 — 2026-11-03
-
-**Why:** The Know tab's three pages (Principles, Questions, People) were linked, but the diary still lived over in Habits — and most principles grow out of one particular day's diary, with the source left dangling. This release adds the fourth page, Diary, and links days to principles and people both ways, so when you look back you can see why you thought what you thought. The diary itself does not move: its text stays in the habit data, exactly where the morning gate and the diary screen already write it. Build commit `9841160` · [compare v1.59.0...v1.60.0](https://github.com/gty3310/knowdo/compare/v1.59.0...v1.60.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A Diary page inside Know.** The segmented switcher grows to four (Principles / Questions / People / Diary; the first three are untouched). The diary list runs newest first and lists only days that have text; each row shows the date in large type, a two-line excerpt of the first paragraph, and a small link count (principles n · people n). Search is the same literal-substring box as the other pages, over the diary text. There is no card/list switch, no tag filter and no ＋ button here — new diary text is still written in the morning gate or the Habits tab.
-- **One write path, respected.** Diary text is read through the habit data layer and written only through its existing unified `putDiary` path — the same one the morning page and the diary activity use — so the diary habit's done state keeps following the text exactly as before. The habit data layer itself gains only a read-only date listing; its merge and sync logic are byte-identical.
-- **Diary detail and two-way links.** Opening a day shows the full text in an editor (the date itself is fixed) with a Save button, and below it two link sections — Principles and People. Linked entries can be opened (the editor returns to the diary day afterwards), unlinked with ✕, or added through the same type-ahead panel as the other pages (literal substring, already-linked entries excluded, no create-and-link on this side). In reverse, the Principle and Person editors gain a Diary section listing linked dates, with the same type-ahead over days that have text, filterable by date or by words from the entry.
-- **Dangling links are kept, and say so.** If a linked day's text is later cleared, the date still shows in the principle's and person's Diary sections with a small "nothing written" note; opening it gives an empty editor to write into, and the link is never deleted on its own. The day simply does not appear in the Diary page list, which only lists days with text.
-
-Not yet verified on a real device: the Diary page's look (date rows, two-line excerpts, link counts), saving from the detail page and the diary habit's done state following, the full linking flow on both sides (type-ahead, link, unlink, jump-to-edit and back), the "nothing written" dangling-date rendering, the Diary page offline, the changelog popup, and the 1.59.0 to 1.60.0 in-app update chain.
 
 ## Build
 
