@@ -36,6 +36,19 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1660 = new Entry("v1.66.0", "2026-11-04");
+        e1660.add(new Group(s("修复", "Fixed"),
+                s("晨间页「戒晚睡」的按钮问反了，已翻正；过去记反的记录一并对调",
+                  "The morning page's Late-sleep question was backwards and is now flipped; the records it got wrong have been swapped to match")));
+        e1660.add(new Group(s("改进", "Improved"),
+                s("晨间页自读直接显示全文，读完点按钮就勾上；晨间卡不再拦着日记框；写日记不再在上头重复一行",
+                  "On the morning page, readings now show the full text with a done button right there; the morning card no longer blocks the diary box; writing a diary no longer repeats as a row above")));
+        e1660.why = s("你说按钮一直反着答、数据全记反了；晨间页也要少绕一步",
+                "You said the button had been answered backwards all along and the data was all wrong; and the morning page should take one less detour");
+        e1660.tryIt = s("明早晨间页：自读全文就在页上，戒晚睡按「做到了/没做到」答",
+                "Tomorrow morning: the reading is right on the page, and answer Late-sleep with Done / Not done");
+        out.add(e1660);
+
         Entry e1650 = new Entry("v1.65.0", "2026-11-04");
         e1650.add(new Group(s("修复", "Fixed"),
                 s("每日重复的任务，「已用」改为只算今天，到了新的一天自动清零",

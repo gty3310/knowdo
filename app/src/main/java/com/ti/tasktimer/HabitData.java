@@ -279,6 +279,52 @@ public final class HabitData {
         } catch (Exception ignored) { }
     }
 
+    // ---------------- 一次性数据修复（v1.66.0） ----------------
+    /** 戒晚睡（至多型）的固定 id：旧账翻正只认这一个习惯，不按名字找（防改名/重名）。 */
+    public static final String LEGACY_MAX_FLIP_HABIT_ID = "97a6d6a9-69b5-43aa-982d-5cee8e6ce44a";
+    private static final String KEY_LEGACY_MAX_FLIP = "legacy_max_flip_v1660_done";
+
+    /**
+     * 一次性迁移：晨间页至多型按钮旧问法「有/没有」把值记反了（见 MorningActivity
+     * .ynRow 的翻正注释），本版把「戒晚睡」在本地 logs 里所有日期的旧值对调：0→1、1→0。
+     * 只动值恰为 0 或 1 的格：旧按钮只写过 0/1；而大于 1 的值只可能来自习惯页补记的
+     * 「一天发生了几次」如实次数（至多型本就可记多次），对调会改错，故跳过。
+     *
+     * 防重复：先在 habit_store 落标志（commit 同步写）再动数据——进程中途被杀，
+     * 宁可没翻成也不能翻两次；重装/清数据后标志随数据一同消失，届时按新装数据
+     * 的状态再判。本机还没有数据（has_local=false、云端整份尚未被采用）时不落
+     * 标志、直接返回，等数据到位后的下一次启动再翻。翻完走 save() 正常落盘并
+     * 触发同步，合并纪律本机优先，云端该习惯的同格记录随之被翻正值覆盖。
+     * 触发点：MainActivity.onCreate 与 MorningActivity.onCreate（各自 load 之前，
+     * 哪个先开哪个跑，标志保证只跑一次）。
+     */
+    public static synchronized void flipLegacyMaxLogsOnce(Context c) {
+        try {
+            SharedPreferences p = prefs(c);
+            if (p.getBoolean(KEY_LEGACY_MAX_FLIP, false)) return;
+            if (!hasLocal(c)) return;
+            JSONObject root = load(c);
+            Habit target = habitById(root, LEGACY_MAX_FLIP_HABIT_ID);
+            // 先落标志再动数据（见上：防翻两次优先于防没翻成）
+            p.edit().putBoolean(KEY_LEGACY_MAX_FLIP, true).commit();
+            if (target == null) return; // 本机有数据但没有这个习惯：没有旧账可翻
+            JSONObject logs = root.optJSONObject("logs");
+            if (logs == null) return;
+            boolean changed = false;
+            Iterator<String> dates = logs.keys();
+            while (dates.hasNext()) {
+                JSONObject day = logs.optJSONObject(dates.next());
+                if (day == null || !day.has(LEGACY_MAX_FLIP_HABIT_ID)
+                        || day.isNull(LEGACY_MAX_FLIP_HABIT_ID)) continue;
+                long v = day.getLong(LEGACY_MAX_FLIP_HABIT_ID);
+                if (v == 0L) { day.put(LEGACY_MAX_FLIP_HABIT_ID, 1L); changed = true; }
+                else if (v == 1L) { day.put(LEGACY_MAX_FLIP_HABIT_ID, 0L); changed = true; }
+                // v > 1：如实次数，不动（理由见方法注释）
+            }
+            if (changed) save(c, root);
+        } catch (Exception ignored) { }
+    }
+
     // ---------------- 晨间设置 ----------------
     public static boolean morningEnabled(JSONObject root) {
         JSONObject m = root == null ? null : root.optJSONObject("morning");

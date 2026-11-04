@@ -134,6 +134,9 @@ public class MainActivity extends Activity {
         appliedDark = Ui.dark(this);
         appliedEn = Strings.en();
         store = new TaskStore(this);
+        // v1.66.0 一次性旧账翻正（戒晚睡至多型按钮记反的数据）：标志保证只跑一次，
+        // 与晨间页那处触发哪个先到哪个跑
+        HabitData.flipLegacyMaxLogsOnce(this);
         AlertHelper.createChannels(this);
         buildUi();
         // 常驻悬浮窗：打开过知行就一直在（开关在权限页；没给悬浮权限时服务空转等待授权）

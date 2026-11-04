@@ -84,6 +84,7 @@ public class MorningActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Strings.init(this);
+        HabitData.flipLegacyMaxLogsOnce(this); // v1.66.0 一次性旧账翻正，须在 load 之前
         root = HabitData.load(this);
         String mode = getIntent() == null ? null : getIntent().getStringExtra(EXTRA_MODE);
         editMode = MODE_EDIT.equals(mode);
@@ -316,9 +317,11 @@ public class MorningActivity extends Activity {
             if (HabitData.TYPE_WEEKLY.equals(h.type)) {
                 sec.addView(weeklyInfoRow(h));
             } else if (HabitData.TYPE_DIARY.equals(h.type)) {
-                sec.addView(diaryInfoRow(h));
+                // v1.66.0：日记型不在 A 区再出现——日记框就在本页 C 节，写了即由
+                // putDiary 自动记完成，不再单列一行（用户 2026-11-04 亲定）
+                continue;
             } else if (HabitData.TYPE_READ.equals(h.type)) {
-                sec.addView(readInfoRow(h));
+                sec.addView(readBlock(h, existing));
             } else if (HabitData.TYPE_REMIND.equals(h.type)) {
                 sec.addView(remindYnRow(h, existing));
             } else if (HabitData.TYPE_MIN.equals(h.type) || HabitData.TYPE_MAX.equals(h.type)) {
@@ -358,53 +361,83 @@ public class MorningActivity extends Activity {
     }
 
     /**
-     * 记日记型的昨日行（v1.48.0）：日记在日记页按天写、晨间 C 节写的也是同一份，这里
-     * 只读展示昨日写没写；不进 A 节必答——晨间门的完成条件不因新类型改变（同 weekly 先例）。
-     * 写没写看 HabitData.diary 的昨日文本（完成位 logs 由 putDiary 与文本同步维护）。
+     * 自读型的晨间行（v1.49.0 只读昨日行；v1.66.0 合并改版）：旧版这里只读展示
+     * 「昨天读没读」，读全文要去习惯页/朗读页，晨间页里出现两处自读呈现。本版合并
+     * 成一处（用户 2026-11-04 亲定）：昨日状态小字＋今天这篇的全文（先显示 20 行、
+     * 超了给展开按钮）＋文下「读完了」按钮——点按经 putLog 记 session 日（今天）
+     * 完成、再点撤销，与提醒型今日块、习惯页、朗读页同一条 putLog 路径、同一个
+     * 完成口径。仍不进 A 节必答（aDone 跳过 read——读没读如实记达成率，不拦开启今天）。
      */
-    private View diaryInfoRow(final HabitData.Habit h) {
+    private View readBlock(final HabitData.Habit h, Long yesterdayVal) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(0, dp(9), 0, dp(9));
+        LinearLayout nameRow = new LinearLayout(this);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        nameRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView name = new TextView(this);
         name.setText(h.name);
         name.setTextSize(14);
         name.setTypeface(name.getTypeface(), Typeface.BOLD);
         name.setTextColor(Ui.text(this));
-        box.addView(name);
-        box.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
-        boolean done = !HabitData.diary(root, logDate).trim().isEmpty();
-        TextView st = small(done
-                ? s("昨天的日记已写（在习惯页点开这个习惯看）", "Yesterday's diary is written (open the habit on the Habits page)")
-                : s("昨天的日记还没写——在习惯页点开这个习惯补", "Yesterday's diary isn't written yet — open the habit on the Habits page to add it"), 12);
-        if (done) st.setTextColor(Ui.green(this));
-        box.addView(st);
-        return box;
-    }
-
-    /**
-     * 自读型的昨日行（v1.49.0）：全文在朗读页读，这里只读展示昨日读没读；
-     * 不进 A 节必答——晨间门的完成条件不因新类型改变（同 weekly/diary 先例）。
-     * 读没读看 logs[昨日]（朗读页点「读过了」才写 logs，是唯一的完成口径）。
-     */
-    private View readInfoRow(final HabitData.Habit h) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(0, dp(9), 0, dp(9));
-        TextView name = new TextView(this);
-        name.setText(h.name);
-        name.setTextSize(14);
-        name.setTypeface(name.getTypeface(), Typeface.BOLD);
-        name.setTextColor(Ui.text(this));
-        box.addView(name);
-        box.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
-        Long v = HabitData.logValue(root, logDate, h.id);
-        boolean done = v != null && v > 0;
-        TextView st = small(done
-                ? s("昨天已读过（在习惯页点开这个习惯读）", "Yesterday's reading is done (open the habit on the Habits page)")
-                : s("昨天还没读——在习惯页点开这个习惯读", "Yesterday's reading isn't done yet — open the habit on the Habits page to read it"), 12);
-        if (done) st.setTextColor(Ui.green(this));
-        box.addView(st);
+        nameRow.addView(name);
+        TextView tn = small(ZhixingPage.HabitPageTypeName.name(h.type), 10);
+        tn.setPadding(dp(6), 0, 0, 0);
+        nameRow.addView(tn);
+        box.addView(nameRow);
+        boolean yDone = yesterdayVal != null && yesterdayVal > 0;
+        TextView yst = small(yDone
+                ? s("昨天已读 · 今天这篇读完点下面「读完了」", "Read yesterday · when you finish today's passage, tap below")
+                : s("昨天未读 · 今天这篇读完点下面「读完了」", "Not read yesterday · when you finish today's passage, tap below"), 12);
+        if (yDone) yst.setTextColor(Ui.green(this));
+        yst.setPadding(0, dp(3), 0, 0);
+        box.addView(yst);
+        final TextView full = new TextView(this);
+        full.setText(h.remindText == null || h.remindText.isEmpty()
+                ? s("（还没写要读的全文，去习惯页点习惯名补上）", "(No reading text yet — add it from the habits page)") : h.remindText);
+        full.setTextSize(14);
+        full.setTextColor(Ui.text(this));
+        full.setLineSpacing(0, 1.45f);
+        full.setPadding(0, dp(4), 0, dp(6));
+        box.addView(full);
+        // 先不限行高渲一遍，布局后行数超 20 才收成 20 行并亮出展开按钮
+        final TextView expand = ynButton(s("展开全文", "Show all"));
+        expand.setVisibility(View.GONE);
+        final boolean[] expanded = {false};
+        expand.setOnClickListener(v -> {
+            expanded[0] = !expanded[0];
+            full.setMaxLines(expanded[0] ? Integer.MAX_VALUE : 20);
+            expand.setText(expanded[0] ? s("收起", "Collapse") : s("展开全文", "Show all"));
+            paintYn(expand, expanded[0], Ui.accent(MorningActivity.this));
+        });
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        box.addView(expand, elp);
+        full.post(() -> {
+            if (full.getLineCount() > 20) {
+                full.setMaxLines(20);
+                expand.setVisibility(View.VISIBLE);
+            }
+        });
+        final TextView btn = ynButton("");
+        Runnable paint = () -> {
+            Long v = HabitData.logValue(root, session, h.id);
+            boolean read = v != null && v > 0;
+            btn.setText(read ? s("读完了 ✓ · 点一下撤销", "Finished ✓ · tap to undo") : s("读完了", "Finished reading"));
+            paintYn(btn, read, Ui.green(this));
+        };
+        btn.setOnClickListener(v -> {
+            Long cur = HabitData.logValue(root, session, h.id);
+            if (cur != null && cur > 0) HabitData.removeLog(root, session, h.id);
+            else HabitData.putLog(root, session, h.id, 1L);
+            HabitData.save(MorningActivity.this, root); // 边点边存：暂停/被杀不丢
+            paint.run();
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(6);
+        box.addView(btn, blp);
+        paint.run();
         return box;
     }
 
@@ -551,29 +584,36 @@ public class MorningActivity extends Activity {
         nameBox.addView(name);
         nameBox.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
         row.addView(nameBox);
-        final TextView b1 = ynButton(isMin ? s("做到了", "Done") : s("有", "Yes"));
-        final TextView b2 = ynButton(isMin ? s("没做到", "Not done") : s("没有", "No"));
+        // v1.66.0 翻正：至多型旧问法「有/没有」（「有」存 1 涂红、「没有」存 0 涂绿）语义反了
+        // ——用户一直按「有＝有做到」理解作答，记下的数据全反。本版起至少/至多同款问
+        // 「做到了/没做到」：至少型 做到了=1、没做到=0（不变）；至多型 做到了=0（没发生，
+        // 绿）、没做到=1（发生了一次，红）。旧账由 HabitData.flipLegacyMaxLogsOnce
+        // 在升级后首启一次性对调，本行只管新口径。
+        final long doneVal = isMin ? 1L : 0L; // 「做到了」写入的值
+        final long notVal = isMin ? 0L : 1L;  // 「没做到」写入的值
+        final TextView b1 = ynButton(s("做到了", "Done"));
+        final TextView b2 = ynButton(s("没做到", "Not done"));
         final TextView hint = small(s("还没选", "Pick one"), 10.5f);
         hint.setLayoutParams(new LinearLayout.LayoutParams(dp(38), LinearLayout.LayoutParams.WRAP_CONTENT));
         hint.setGravity(Gravity.END);
         if (existing != null) ynAnswers.put(h.id, existing);
         Runnable paint = () -> {
             Long v = ynAnswers.get(h.id);
-            paintYn(b1, v != null && v == 1, isMin ? Ui.green(this) : Ui.danger(this));
-            paintYn(b2, v != null && v == 0, isMin ? Color.rgb(160, 152, 132) : Ui.green(this));
+            paintYn(b1, v != null && v == doneVal, Ui.green(this));
+            paintYn(b2, v != null && v == notVal, isMin ? Color.rgb(160, 152, 132) : Ui.danger(this));
             hint.setText(v == null ? s("还没选", "Pick one") : s("已选", "Done"));
             hint.setTextColor(v == null ? Ui.accent(this) : Ui.green(this));
         };
         b1.setOnClickListener(v -> {
-            ynAnswers.put(h.id, 1L);
-            HabitData.putLog(root, logDate, h.id, 1L);
+            ynAnswers.put(h.id, doneVal);
+            HabitData.putLog(root, logDate, h.id, doneVal);
             HabitData.save(MorningActivity.this, root); // 边填边存：暂停/被杀不丢
             paint.run();
             refreshGate();
         });
         b2.setOnClickListener(v -> {
-            ynAnswers.put(h.id, 0L);
-            HabitData.putLog(root, logDate, h.id, 0L);
+            ynAnswers.put(h.id, notVal);
+            HabitData.putLog(root, logDate, h.id, notVal);
             HabitData.save(MorningActivity.this, root);
             paint.run();
             refreshGate();
@@ -755,8 +795,11 @@ public class MorningActivity extends Activity {
         diaryField.addTextChangedListener(new TextWatcher() {
             @Override public void afterTextChanged(Editable e) {
                 // 边填边存（记到 session 日名下）；双链编辑面存的是记号原文（v1.61.0）
-                HabitData.putDiary(root, session, WikiLinks.extractText(diaryField).trim());
+                String text = WikiLinks.extractText(diaryField).trim();
+                HabitData.putDiary(root, session, text);
                 HabitData.saveQuiet(MorningActivity.this, root);
+                // 写日记即静默标晨间卡已读（v1.66.0，卡常驻无按钮，见彼处注释）
+                markCardReadSilentlyIfWriting(text);
                 refreshGate();
             }
             @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
@@ -776,11 +819,13 @@ public class MorningActivity extends Activity {
         return sec;
     }
 
-    // ---------------- 晨间卡（v1.51.0） ----------------
+    // ---------------- 晨间卡（v1.51.0；v1.66.0 常驻改版） ----------------
     // 昨夜由作者的 AI 助手生成的卡片（云端 morning_cards 表，一行一天）：门/测试
     // 模式打开晨间页时拉今天 session 日的那一张。无行/拉失败/无网/未登录/已读
-    // → 整区不渲染，日记段与晨间流程保持原样；有未读卡 → 玻璃框列在日记框上方，
-    // 日记框先藏起来，点「读过了」才展开（与「自读」同一口径）。卡不进任何完成条件。
+    // → 整区不渲染，日记段与晨间流程保持原样；有未读卡 → 玻璃框常驻列在日记框
+    // 上方：v1.66.0 起不再藏日记框、卡上没有「读过了」按钮，用户在日记框写下
+    // 内容即静默标已读（markCardReadSilentlyIfWriting：本机标记＋云端 read_at
+    // 回写），下次打开晨间页不再重复拉这张。卡不进任何完成条件。
     private static final String CARD_PREF = "morning_cards";
     private LinearLayout cardZone;
     private String cardRowId = "";
@@ -840,28 +885,22 @@ public class MorningActivity extends Activity {
                 cardZone.addView(glassCard(cardKindLabel(it.optString("kind", "")), title, body, false));
             }
         }
-        TextView readBtn = new TextView(this);
-        readBtn.setText(s("读过了", "Read it"));
-        readBtn.setTextSize(15.5f);
-        readBtn.setTypeface(readBtn.getTypeface(), Typeface.BOLD);
-        readBtn.setGravity(Gravity.CENTER);
-        readBtn.setPadding(0, dp(13), 0, dp(13));
-        readBtn.setTextColor(Color.WHITE);
-        readBtn.setBackground(round(Ui.accent(this), dp(15)));
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        blp.topMargin = dp(12);
-        readBtn.setLayoutParams(blp);
-        readBtn.setOnClickListener(v -> {
-            // 先在本机记已读并展开日记框；云端回写异步进行，失败也不回滚、不拦人
-            markCardReadLocally(session);
-            cardZone.setVisibility(View.GONE);
-            diaryField.setVisibility(View.VISIBLE);
-            patchCardRead(cardRowId);
-        });
-        cardZone.addView(readBtn);
-        // 本版选择：未读期间日记框不显示（隐藏式），点「读过了」才展开
-        diaryField.setVisibility(View.GONE);
+        // v1.66.0：卡常驻在日记框上方——不加「读过了」按钮、不藏日记框；
+        // 已读靠写日记静默标记（markCardReadSilentlyIfWriting），见日记输入路径
+    }
+
+    /**
+     * 写日记即静默记卡已读（v1.66.0）：日记保存路径（晨间页输入监听、complete 落盘）
+     * 每次存入非空文本时调一次——本机先标已读，再异步回写云端 read_at，失败静默
+     * （本机标记已保证不再重复拉卡）。没拉到卡（cardRowId 空，如编辑模式）是空操作；
+     * 已标过已读后靠 cardReadLocally 短路，不重复回写。
+     */
+    private void markCardReadSilentlyIfWriting(String text) {
+        if (cardRowId == null || cardRowId.isEmpty()) return;
+        if (text == null || text.trim().isEmpty()) return;
+        if (cardReadLocally(session)) return;
+        markCardReadLocally(session);
+        patchCardRead(cardRowId);
     }
 
     private String cardKindLabel(String kind) {
@@ -1155,7 +1194,9 @@ public class MorningActivity extends Activity {
                 }
             }
         }
-        HabitData.putDiary(root, session, WikiLinks.extractText(diaryInput).trim());
+        String diaryText = WikiLinks.extractText(diaryInput).trim();
+        HabitData.putDiary(root, session, diaryText);
+        markCardReadSilentlyIfWriting(diaryText); // 输入监听一般已标过，这里兜底
         HabitData.markMorningDone(root, session);
         HabitData.save(this, root);
         MorningGate.onCompleted(this);
