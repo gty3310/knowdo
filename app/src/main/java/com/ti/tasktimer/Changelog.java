@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1610 = new Entry("v1.61.0", "2026-11-04");
+        e1610.add(new Group(s("新增", "New"),
+                s("引用：在日记、任务描述、原则、问题、备忘里输入｛｛，就能把人名、原则、问题、别的日记选进来，正文里变成一个红色的链接／点链接改词条：点正文里的链接，会升起一个小窗，直接改那个词条，改完正文里的名字自动跟着变／搜不到就新建：选择窗底下有创建按钮，建好自动插回正文／日记标题：每篇日记有了标题，6 位日期加一句主题，在「知 · 日记」里一眼看清哪篇是哪篇（标题由 AI 生成，也能自己改）／问题短题：每个问题多了一个 10 字以内的短题，引用问题时显示短题，不占地方",
+                  "Citations: type {{ in a diary entry, a task note, a principle, a question or a memo to pick a person, principle, question or another day's diary — it lands in the text as a red link / Tap a link to edit its entry: a small sheet rises and you edit that entry right there; rename it and the name in your text follows / Create when search comes up empty: the picker has a create button at the bottom, and the new entry is inserted back into your text / Diary titles: every diary day now has a title — the 6-digit date plus a one-line theme — so in Know · Diary you can tell at a glance which day is which (titles are AI-generated and editable) / Question short titles: every question gains a short title of up to 10 characters, shown when the question is cited so it takes no room")));
+        e1610.why = s("让「知」里的东西在写作时互相连起来，写着写着就把人和事、原则和问题织成一张网",
+                "So the things in Know connect while you write — people and events, principles and questions woven into one web as you go");
+        e1610.tryIt = s("写今天的日记时，输入｛｛，选一个认识的人插进去，再点一下那个红名字",
+                "While writing today's diary, type {{, pick someone you know, then tap the red name");
+        out.add(e1610);
+
         Entry e1600 = new Entry("v1.60.0", "2026-11-03");
         e1600.add(new Group(s("新增", "New"),
                 s("「知」里加了日记页签／日记可以和原则、人名互相挂上关联／在原则下面能看到它是从哪几天的日记里来的",
