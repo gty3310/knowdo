@@ -37,6 +37,8 @@ public class DiaryActivity extends Activity {
     private HabitData.Habit habit;
     private JSONObject root;
     private TextView todayStatus;
+    private EditText todayTitleIn;   // 今日日记标题（v1.61.0，DiaryTitles）
+    private boolean builtOnce;
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
     private static String s(String zh, String en) { return Strings.en() ? en : zh; }
@@ -54,6 +56,13 @@ public class DiaryActivity extends Activity {
         super.onPause();
         // 离开页面时整份落盘＋同步（逐字输入只走 saveQuiet，这里补齐）
         try { HabitData.save(this, root); } catch (Exception ignored) { }
+        try { DiaryTitles.save(this, DiaryTitles.load(this)); } catch (Exception ignored) { }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        // 从双链浮窗改过日记/标题回来：重读本地再重画，别用旧 root 整份回写盖掉（v1.61.0）
+        if (builtOnce) rebuild();
     }
 
     // ---------------- 页面 ----------------
@@ -80,7 +89,24 @@ public class DiaryActivity extends Activity {
         final String today = DayUtil.today();
 
         // 今天的日记
-        col.addView(sectionTitle(s("今天的日记", "Today's entry") + " · " + DayUtil.shortDate(today)));
+        col.addView(sectionTitle(s("今天的日记", "Today's entry") + " · " + DayUtil.shortDate(today)
+                + " · " + DiaryTitles.yymmdd(today)));
+        // 日记标题（v1.61.0）：AI 生成、这里可手改，存 DiaryTitles 独立列
+        todayTitleIn = new EditText(this);
+        todayTitleIn.setText(DiaryTitles.title(DiaryTitles.load(this), today));
+        todayTitleIn.setHint(s("日记标题：主题，10 字以内（可空）", "Entry title: a theme, up to 10 characters (optional)"));
+        todayTitleIn.setTextSize(13.5f);
+        todayTitleIn.setSingleLine(true);
+        col.addView(todayTitleIn);
+        todayTitleIn.addTextChangedListener(new TextWatcher() {
+            @Override public void afterTextChanged(Editable e) {
+                JSONObject t = DiaryTitles.load(DiaryActivity.this);
+                DiaryTitles.putTitle(t, today, e.toString());
+                DiaryTitles.saveQuiet(DiaryActivity.this, t);
+            }
+            @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
+        });
         final EditText din = new EditText(this);
         din.setText(HabitData.diary(root, today));
         din.setHint(s("写一句今天的打算，或今天的省察……", "One line: today's plan, or today's reflection…"));
@@ -94,14 +120,16 @@ public class DiaryActivity extends Activity {
         paintTodayStatus(din.getText().toString());
         din.addTextChangedListener(new TextWatcher() {
             @Override public void afterTextChanged(Editable e) {
-                // 与晨间页同一口径：存 trim 后的文本；putDiary 同步维护完成位
-                HabitData.putDiary(root, today, e.toString().trim());
+                // 与晨间页同一口径：存 trim 后的文本；putDiary 同步维护完成位；双链存记号原文（v1.61.0）
+                HabitData.putDiary(root, today, WikiLinks.extractText(din).trim());
                 HabitData.saveQuiet(DiaryActivity.this, root);
                 paintTodayStatus(e.toString());
             }
             @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
             @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
         });
+        WikiLinks.attach(this, din, null);
+        builtOnce = true;
 
         // 历史日记（今天在上面写，不进列表；空文本的日期不算一篇，不列）
         col.addView(sectionTitle(s("过去的日记", "Past entries")));
@@ -160,7 +188,10 @@ public class DiaryActivity extends Activity {
         box.setLayoutParams(blp);
 
         TextView head = new TextView(this);
-        head.setText(DayUtil.shortDate(date) + " " + weekdayOf(date)
+        String dTitle = DiaryTitles.title(DiaryTitles.load(this), date);
+        head.setText((dTitle.isEmpty()
+                ? DayUtil.shortDate(date) + " " + weekdayOf(date)
+                : DiaryTitles.yymmdd(date) + " " + dTitle)
                 + " · " + text.trim().length() + s(" 字", " chars"));
         head.setTextSize(13.5f);
         head.setTypeface(head.getTypeface(), Typeface.BOLD);
@@ -179,17 +210,32 @@ public class DiaryActivity extends Activity {
     }
 
     private void editDiaryDialog(final String date, String current) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        final EditText titleIn = new EditText(this);
+        titleIn.setText(DiaryTitles.title(DiaryTitles.load(this), date));
+        titleIn.setHint(s("日记标题：主题，10 字以内（可空）", "Entry title: a theme, up to 10 characters (optional)"));
+        titleIn.setTextSize(13.5f);
+        titleIn.setSingleLine(true);
+        box.addView(titleIn);
         final EditText in = new EditText(this);
         in.setText(current);
         in.setMinLines(5);
         in.setGravity(Gravity.TOP);
         in.setSelection(in.getText().length());
+        box.addView(in);
+        WikiLinks.attach(this, in, null);
         new AlertDialog.Builder(this)
                 .setTitle(DayUtil.shortDate(date) + " " + weekdayOf(date) + s(" 的日记", "'s entry"))
-                .setView(in)
+                .setView(box)
                 .setPositiveButton(s("保存", "Save"), (d, w) -> {
-                    HabitData.putDiary(root, date, in.getText().toString().trim());
+                    HabitData.putDiary(root, date, WikiLinks.extractText(in).trim());
                     HabitData.save(this, root);
+                    JSONObject t = DiaryTitles.load(this);
+                    DiaryTitles.putTitle(t, date, titleIn.getText().toString());
+                    DiaryTitles.save(this, t);
+                    WikiLinks.noteDiaryChanged(this);
                     rebuild();
                 })
                 .setNegativeButton(Strings.btnCancel(), null)

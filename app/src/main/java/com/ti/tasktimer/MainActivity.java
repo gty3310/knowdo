@@ -2737,12 +2737,14 @@ public class MainActivity extends Activity {
         input.setSelection(input.getText().length());
         input.setMinLines(3);
         input.setGravity(Gravity.TOP);
+        // 双链（v1.61.0）：任务笔记里也能｛｛引用、点链接改词条；保存时还原成记号原文
+        WikiLinks.attach(this, input, null);
         AlertDialog d = new AlertDialog.Builder(this)
                 .setTitle("笔记 · " + t.title)
                 .setView(wrapWithCopyButton(t, input, "note"))
                 .setPositiveButton("保存", (dg, w) -> {
                     TaskItem cur = freshCopyOf(t);
-                    cur.note = input.getText().toString().trim();
+                    cur.note = WikiLinks.extractText(input).trim();
                     cur.touch();
                     store.save();
                     adapter.notifyDataSetChanged();

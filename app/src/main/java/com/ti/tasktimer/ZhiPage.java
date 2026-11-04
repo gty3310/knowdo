@@ -81,6 +81,7 @@ public final class ZhiPage {
     }
     static final class Question {
         String id, title = "", body = "", status = "pending";
+        String shortTitle = "";   // 短题（v1.61.0）：引用时显示，≤10 字，zhi_questions.short_title
         List<String> tags = new ArrayList<>();
     }
     static final class Person {
@@ -139,12 +140,18 @@ public final class ZhiPage {
     private String diaryDate;
     private String diaryAddingType;    // 日记详情里哪个关联区的添加面板开着
     private EditText diaryIn;
+    private EditText diaryTitleIn;     // 日记标题（v1.61.0，DiaryTitles）
+    private JSONObject diaryTitlesRoot;   // 渲染期取的 DiaryTitles 快照（标题显示用）
+    private WikiLinks.Hook diaryHook;  // 日记详情正文的双链挂钩（v1.61.0）
     private LinearLayout diaryCandBox;
     private JSONObject habitRoot;      // 最近一次 HabitData.load 的结果（渲染期取最新）
+    /** 双链浮窗改动数据后的回调：静默刷新模型（编辑中不重画、不丢草稿，与 fetch 同纪律）。 */
+    private WikiLinks.Host wikiHost;
 
     public ZhiPage(Activity act, ViewGroup container) {
         this.act = act;
         this.container = container;
+        this.wikiHost = () -> { if (Supa.isLoggedIn(this.act)) fetch(); };
         for (int i = 0; i < 3; i++) tagSel.add(new HashSet<>());
         loadCache();
     }
@@ -277,6 +284,7 @@ public final class ZhiPage {
                 q.title = nz(o.optString("title", ""));
                 q.body = nz(o.optString("body", ""));
                 q.status = o.optString("status", "pending");
+                q.shortTitle = nz(o.optString("short_title", ""));
                 q.tags = parseTags(o);
                 questions.add(q);
             }
@@ -326,7 +334,7 @@ public final class ZhiPage {
             for (Question q : questions) {
                 JSONObject o = new JSONObject();
                 o.put("id", q.id); o.put("title", q.title); o.put("body", q.body);
-                o.put("status", q.status); o.put("tags", tagsJson(q.tags));
+                o.put("status", q.status); o.put("short_title", q.shortTitle); o.put("tags", tagsJson(q.tags));
                 qa.put(o);
             }
             for (Person pe : people) {
@@ -802,7 +810,8 @@ public final class ZhiPage {
         return box;
     }
     private TextView bodyPreview(String body) {
-        TextView p = tv(firstLine(body), 12, subC());
+        // 摘要纯文本：记号换成显示名，不露原始记号（v1.61.0；点击打开在编辑面）
+        TextView p = tv(WikiLinks.plainDisplay(act, firstLine(body)), 12, subC());
         p.setMaxLines(2);
         p.setEllipsize(TextUtils.TruncateAt.END);
         p.setLineSpacing(0, 1.35f);
@@ -1094,6 +1103,7 @@ public final class ZhiPage {
 
     private void renderDiaryResults() {
         habitRoot = HabitData.load(act);
+        diaryTitlesRoot = DiaryTitles.load(act);
         List<String> dates = filteredDiaryDates();
         countView.setText(s(dates.size() + " 篇", dates.size() + " entries"));
         if (dates.isEmpty()) { resultsCol.addView(emptyHint()); return; }
@@ -1116,8 +1126,11 @@ public final class ZhiPage {
     private View diaryRow(final String date) {
         String text = HabitData.diary(habitRoot, date);
         LinearLayout box = cardBox();
-        box.addView(serif(dateLabel(date), 15.5f, inkC(), true));
-        TextView ex = tv(excerptOf(text), 12, subC());
+        // 标题行：有标题显示「YYMMDD 主题」，没标题只显示日期（v1.61.0）
+        String dTitle = diaryTitlesRoot == null ? "" : DiaryTitles.title(diaryTitlesRoot, date);
+        box.addView(serif(dTitle.isEmpty() ? dateLabel(date)
+                : DiaryTitles.yymmdd(date) + " " + dTitle, 15.5f, inkC(), true));
+        TextView ex = tv(WikiLinks.plainDisplay(act, excerptOf(text)), 12, subC());
         ex.setMaxLines(2);
         ex.setEllipsize(TextUtils.TruncateAt.END);
         ex.setLineSpacing(0, 1.35f);
@@ -1162,9 +1175,11 @@ public final class ZhiPage {
 
     private void renderDiaryDetail() {
         final String date = diaryDate;
-        // 重画（加/解除关联、同步刷新）不丢手头没存的文字
-        final String keep = diaryIn != null ? diaryIn.getText().toString() : null;
+        // 重画（加/解除关联、同步刷新）不丢手头没存的文字；正文按存储记号回收（v1.61.0）
+        final String keep = diaryIn != null ? WikiLinks.extractText(diaryIn) : null;
+        final String keepTitle = diaryTitleIn != null ? diaryTitleIn.getText().toString() : null;
         habitRoot = HabitData.load(act);
+        diaryTitlesRoot = DiaryTitles.load(act);
         FrameLayout r = ensureRoot();
         r.removeAllViews();
         groupHeads.clear();
@@ -1183,9 +1198,17 @@ public final class ZhiPage {
         back.setOnClickListener(v -> backFromDiaryDetail());
         col.addView(back);
 
-        TextView title = serif(dateLabel(date), 19, inkC(), true);
+        // 标题行：有标题显示「YYMMDD 主题」，没标题只显示日期（v1.61.0）
+        String dTitle0 = DiaryTitles.title(diaryTitlesRoot, date);
+        TextView title = serif(dTitle0.isEmpty() ? dateLabel(date)
+                : DiaryTitles.yymmdd(date) + " " + dTitle0, 19, inkC(), true);
         title.setPadding(0, dp(10), 0, 0);
         col.addView(title);
+
+        col.addView(fieldLabel(s("日 记 标 题", "Entry title")));
+        diaryTitleIn = fieldBox(keepTitle != null ? keepTitle : dTitle0,
+                s("主题，10 字以内（可空）", "Theme, up to 10 characters (optional)"), 1);
+        col.addView(diaryTitleIn);
 
         diaryIn = fieldBox(keep != null ? keep : HabitData.diary(habitRoot, date),
                 s("写下这一天的日记", "Write this day's entry"), 8);
@@ -1193,6 +1216,7 @@ public final class ZhiPage {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         inLp.topMargin = dp(14);
         col.addView(diaryIn, inLp);
+        diaryHook = WikiLinks.attach(act, diaryIn, wikiHost);
 
         TextView save = tv(s("保 存", "Save"), 14.5f, cardC());
         save.setGravity(Gravity.CENTER);
@@ -1207,9 +1231,15 @@ public final class ZhiPage {
         save.setOnClickListener(v -> {
             // 写日记只经 putDiary（完成位同生同灭的口径与晨间页一致），再经 HabitData.save 落盘＋同步
             JSONObject root = HabitData.load(act);
-            HabitData.putDiary(root, date, diaryIn.getText().toString().trim());
+            HabitData.putDiary(root, date, WikiLinks.extractText(diaryIn).trim());
             HabitData.save(act, root);
             habitRoot = root;
+            // 标题写 DiaryTitles（独立列同步，不进 habit_data）
+            JSONObject tRoot = DiaryTitles.load(act);
+            DiaryTitles.putTitle(tRoot, date, diaryTitleIn.getText().toString());
+            DiaryTitles.save(act, tRoot);
+            diaryTitlesRoot = tRoot;
+            WikiLinks.noteDiaryChanged(act);
             toast(s("存好了", "Saved"));
             renderDiaryDetail();
         });
@@ -1350,7 +1380,7 @@ public final class ZhiPage {
     private void jumpToEditorFromDiary(final String type, final String id) {
         if (diaryIn != null) {
             JSONObject root = HabitData.load(act);
-            HabitData.putDiary(root, diaryDate, diaryIn.getText().toString().trim());
+            HabitData.putDiary(root, diaryDate, WikiLinks.extractText(diaryIn).trim());
             HabitData.save(act, root);
             habitRoot = root;
         }
@@ -1464,10 +1494,11 @@ public final class ZhiPage {
         Ref ref;
         // 草稿（文本字段从视图回收；其余状态点选即存这里，重画不丢）
         String title = "", body = "", name = "", memo = "";
+        String shortTitle = "";          // 问题短题（v1.61.0）
         String kind = "think", status = "pending";
         List<String> tags = new ArrayList<>();
         String addingType;               // 哪个关联区的添加面板开着（null=都关）
-        EditText titleIn, bodyIn, nameIn, memoIn, addIn;
+        EditText titleIn, bodyIn, nameIn, memoIn, shortIn, addIn;
         LinearLayout candBox;
     }
 
@@ -1490,7 +1521,7 @@ public final class ZhiPage {
             if (p != null) { st.title = p.title; st.body = p.body; st.kind = p.kind; st.tags = new ArrayList<>(p.tags); }
         } else if (T_QUESTION.equals(ref.type)) {
             Question q = questionById(ref.id);
-            if (q != null) { st.title = q.title; st.body = q.body; st.status = q.status; st.tags = new ArrayList<>(q.tags); }
+            if (q != null) { st.title = q.title; st.body = q.body; st.status = q.status; st.shortTitle = q.shortTitle; st.tags = new ArrayList<>(q.tags); }
         } else {
             Person pe = personById(ref.id);
             if (pe != null) { st.name = pe.name; st.memo = pe.memo; st.tags = new ArrayList<>(pe.tags); }
@@ -1501,9 +1532,11 @@ public final class ZhiPage {
     private void collectDraft() {
         if (es == null) return;
         if (es.titleIn != null) es.title = es.titleIn.getText().toString();
-        if (es.bodyIn != null) es.body = es.bodyIn.getText().toString();
+        // 正文/备注是双链编辑面：回收时把链接段还原成记号再存草稿（v1.61.0）
+        if (es.bodyIn != null) es.body = WikiLinks.extractText(es.bodyIn);
         if (es.nameIn != null) es.name = es.nameIn.getText().toString();
-        if (es.memoIn != null) es.memo = es.memoIn.getText().toString();
+        if (es.memoIn != null) es.memo = WikiLinks.extractText(es.memoIn);
+        if (es.shortIn != null) es.shortTitle = es.shortIn.getText().toString();
     }
 
     private void openEdit(String type, String id) {
@@ -1621,6 +1654,7 @@ public final class ZhiPage {
             col.addView(fieldLabel(s("记 忆 点", "Memo")));
             st.memoIn = fieldBox(st.memo, s("帮你记住这个人的一段话", "A note that helps you remember this person"), 3);
             col.addView(st.memoIn);
+            WikiLinks.attach(act, st.memoIn, wikiHost);
         } else {
             if (T_PRINCIPLE.equals(type)) {
                 col.addView(fieldLabel(s("类 型", "Kind")));
@@ -1632,10 +1666,16 @@ public final class ZhiPage {
             st.titleIn = fieldBox(st.title, s("标题", "Title"), 1);
             if (T_PRINCIPLE.equals(type)) st.titleIn.setTypeface(Typeface.SERIF, Typeface.BOLD);
             col.addView(st.titleIn);
+            if (T_QUESTION.equals(type)) {
+                col.addView(fieldLabel(s("短 题", "Short title")));
+                st.shortIn = fieldBox(st.shortTitle, s("引用时显示，10 字以内", "Shown in citations, up to 10 characters"), 1);
+                col.addView(st.shortIn);
+            }
             col.addView(fieldLabel(s("内 容", "Body")));
             st.bodyIn = fieldBox(st.body, T_QUESTION.equals(type)
                     ? s("写下这个问题", "Write the question") : s("写下这条原则", "Write the principle"), 4);
             col.addView(st.bodyIn);
+            WikiLinks.attach(act, st.bodyIn, wikiHost);
             if (T_QUESTION.equals(type)) {
                 col.addView(fieldLabel(s("状 态", "Status")));
                 col.addView(twoChoice(new String[]{"pending", "asked"},
@@ -1977,6 +2017,7 @@ public final class ZhiPage {
         q.title = nz(o.optString("title", ""));
         q.body = nz(o.optString("body", ""));
         q.status = o.optString("status", "pending");
+        q.shortTitle = nz(o.optString("short_title", ""));
         q.tags = parseTags(o);
         return q;
     }
@@ -2004,6 +2045,9 @@ public final class ZhiPage {
         final String now = isoNow();
         new Thread(() -> {
             try {
+                // 新建问题且短题为空：先经 chat-proxy 让 AI 生成 ≤10 字短题（失败内部兜底截原题前 10 字）
+                final String shortFinal = (T_QUESTION.equals(type) && isNew && st.shortTitle.trim().isEmpty())
+                        ? genShortTitle(act, st.title.trim(), st.body.trim()) : st.shortTitle.trim();
                 JSONObject row = new JSONObject();
                 row.put("id", id);
                 row.put("user_id", Supa.userId(act));
@@ -2021,6 +2065,7 @@ public final class ZhiPage {
                     row.put("title", st.title.trim());
                     row.put("body", st.body.trim());
                     row.put("status", st.status);
+                    row.put("short_title", shortFinal);
                     row.put("tags", tagsJson(st.tags));
                 } else {
                     table = "zhi_people";
@@ -2056,6 +2101,44 @@ public final class ZhiPage {
                         "Couldn't save — nothing was changed, try again")));
             }
         }).start();
+    }
+
+    /**
+     * 问题短题生成（v1.61.0）：经现有 chat-proxy 通道让 AI 把问题浓缩成 ≤10 字短题；
+     * 失败/无网/超时/产出不合格 → 截原题前 10 字兜底（原题为空则用正文首行）。
+     * 在后台线程调用（内部用 latch 等流式回完，上限 25 秒）。
+     */
+    static String genShortTitle(android.content.Context ctx, String title, String body) {
+        String fallback = !title.trim().isEmpty() ? title.trim() : firstLine(body);
+        fallback = fallback.length() > 10 ? fallback.substring(0, 10) : fallback;
+        try {
+            JSONArray msgs = new JSONArray();
+            JSONObject sys = new JSONObject();
+            sys.put("role", "system");
+            sys.put("content", "你把用户的问题浓缩成一个不超过10个汉字的短标题，只输出短标题本身，不要标点、不要引号、不要解释");
+            msgs.put(sys);
+            JSONObject usr = new JSONObject();
+            usr.put("role", "user");
+            usr.put("content", "问题：" + title + (body == null || body.trim().isEmpty() ? "" : "\n补充：" + body));
+            msgs.put(usr);
+            final String[] got = new String[1];
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            ChatClient.send(ctx, msgs, new ChatClient.Callback() {
+                @Override public void onModel(String modelId) { }
+                @Override public void onDelta(String fullText) { }
+                @Override public void onDone(String fullText) { got[0] = fullText; latch.countDown(); }
+                @Override public void onError(String friendlyMsg) { latch.countDown(); }
+            });
+            latch.await(25, java.util.concurrent.TimeUnit.SECONDS);
+            if (got[0] != null) {
+                String t = got[0].trim().replace("\n", "").replace(" ", "")
+                        .replace("「", "").replace("」", "").replace("『", "").replace("』", "")
+                        .replace("《", "").replace("》", "").replace("：", "").replace(":", "")
+                        .replace("。", "").replace("？", "").replace("?", "").replace("\"", "").replace("'", "");
+                if (!t.isEmpty()) return t.length() > 10 ? t.substring(0, 10) : t;
+            }
+        } catch (Exception ignored) { }
+        return fallback;
     }
 
     private void replacePrinciple(Principle np) {

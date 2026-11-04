@@ -154,7 +154,7 @@ public class MorningActivity extends Activity {
             }
         }
         if (diaryInput != null) {
-            HabitData.putDiary(root, session, diaryInput.getText().toString().trim());
+            HabitData.putDiary(root, session, WikiLinks.extractText(diaryInput).trim());
         }
     }
 
@@ -754,8 +754,8 @@ public class MorningActivity extends Activity {
         diaryInput = diaryField;
         diaryField.addTextChangedListener(new TextWatcher() {
             @Override public void afterTextChanged(Editable e) {
-                // 边填边存（记到 session 日名下）
-                HabitData.putDiary(root, session, e.toString().trim());
+                // 边填边存（记到 session 日名下）；双链编辑面存的是记号原文（v1.61.0）
+                HabitData.putDiary(root, session, WikiLinks.extractText(diaryField).trim());
                 HabitData.saveQuiet(MorningActivity.this, root);
                 refreshGate();
             }
@@ -765,6 +765,8 @@ public class MorningActivity extends Activity {
         // 预填已存的日记（暂停回来/编辑版先填过/门模式接着填，都读同一处）
         String saved = HabitData.diary(root, session);
         if (!saved.isEmpty()) diaryField.setText(saved);
+        // 双链（v1.61.0）：输入｛｛引用、点链接开浮窗改词条；浮窗改过数据后重读 root，防旧根整份回写盖掉浮窗的修改
+        WikiLinks.attach(this, diaryField, () -> { root = HabitData.load(MorningActivity.this); });
         // 晨间卡区（v1.51.0）：插在日记框上方；编辑模式不拉卡、此区恒空，页面与改前一致
         cardZone = new LinearLayout(this);
         cardZone.setOrientation(LinearLayout.VERTICAL);
@@ -1153,7 +1155,7 @@ public class MorningActivity extends Activity {
                 }
             }
         }
-        HabitData.putDiary(root, session, diaryInput.getText().toString().trim());
+        HabitData.putDiary(root, session, WikiLinks.extractText(diaryInput).trim());
         HabitData.markMorningDone(root, session);
         HabitData.save(this, root);
         MorningGate.onCompleted(this);

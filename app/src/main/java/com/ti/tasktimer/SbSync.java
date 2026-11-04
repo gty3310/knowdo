@@ -240,6 +240,7 @@ public final class SbSync {
         boolean hasAcc = probeUserStateCol(c, "accountability"); // v1.28.0：黄图问责邮件设置，列未就绪只用本地、绝不碰此键
         boolean hasDayAvail = probeUserStateCol(c, "day_avail"); // v1.28.0 feature 9：今天安排时段（睡眠/锁时/可支配），列未就绪只用本地、绝不碰此键
         boolean hasWeekly = probeUserStateCol(c, "weekly_data"); // v1.47.0：每周目标反思专属数据（周目标＋每日反省），列未就绪只用本地、绝不碰此键
+        boolean hasDiaryTitles = probeUserStateCol(c, "diary_titles"); // v1.61.0：日记标题（日期→标题），列未就绪只用本地、绝不碰此键
         boolean hasPatch = probeUserStateCol(c, "cloud_patch"); // v1.52.0：云端补丁（云端协助整理的数据改动落地用），列未就绪不读、行为与旧版一字不差
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
@@ -403,6 +404,25 @@ public final class SbSync {
                     }
                 }
             }
+            if (hasDiaryTitles) {
+                // 日记标题合并（v1.61.0，与 weekly_data 同一套探测纪律，只动 diary_titles 一个键）：
+                // 本机从未存过且云端有值→整份采用；本机有值→DiaryTitles.merge 并集（本机优先），
+                // 合并结果变了先落本地、与云端不同才回写。
+                JSONObject remoteT = urow.isNull("diary_titles") ? null : urow.optJSONObject("diary_titles");
+                if (!DiaryTitles.hasLocal(c) && remoteT != null) {
+                    DiaryTitles.adopt(c, remoteT);
+                } else if (DiaryTitles.hasLocal(c)) {
+                    JSONObject localT = DiaryTitles.load(c);
+                    JSONObject mergedT = DiaryTitles.merge(localT, remoteT);
+                    if (!HabitData.contentEquals(mergedT, localT)) {
+                        DiaryTitles.saveQuiet(c, mergedT);
+                    }
+                    if (!HabitData.contentEquals(mergedT, remoteT)) {
+                        write.put("diary_titles", mergedT);
+                        needWrite = true;
+                    }
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -470,6 +490,10 @@ public final class SbSync {
             }
             if (hasWeekly && WeeklyData.hasLocal(c)) {
                 write.put("weekly_data", WeeklyData.load(c));
+                needWrite = true;
+            }
+            if (hasDiaryTitles && DiaryTitles.hasLocal(c)) {
+                write.put("diary_titles", DiaryTitles.load(c));
                 needWrite = true;
             }
         }
@@ -628,6 +652,21 @@ public final class SbSync {
                             WeeklyData.saveQuiet(c, mergedW);
                         }
                     }
+                }
+            }
+            // 日记标题（v1.61.0）：推来时合并进本地（本机优先的并集，标题不丢），不在这里回写
+            if (!row.isNull("diary_titles")) {
+                JSONObject rt = row.optJSONObject("diary_titles");
+                if (rt != null) {
+                    if (!DiaryTitles.hasLocal(c)) {
+                        DiaryTitles.adopt(c, rt);
+                    } else {
+                        JSONObject mergedT = DiaryTitles.merge(DiaryTitles.load(c), rt);
+                        if (!HabitData.contentEquals(mergedT, DiaryTitles.load(c))) {
+                            DiaryTitles.saveQuiet(c, mergedT);
+                        }
+                    }
+                    WikiLinks.noteDiaryChanged(c);   // 标题变了，已打开的编辑面重渲染显示名
                 }
             }
             if (!row.isNull("timer_state")) {
