@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1650 = new Entry("v1.65.0", "2026-11-04");
+        e1650.add(new Group(s("修复", "Fixed"),
+                s("每日重复的任务，「已用」改为只算今天，到了新的一天自动清零",
+                  "For daily repeating tasks, Used now counts today only and resets to zero on a new day")));
+        e1650.why = s("你说每日任务跨天还挂着以前的累计，跟旁边的「剩余」对不上",
+                "You said a daily task still showed the accumulated total from earlier days, which didn't match the Left column next to it");
+        e1650.tryIt = s("看太极这类每日任务：已用只剩今天做的分钟数，明天打开是 0",
+                "Check a daily task like Taiji: Used shows only the minutes you did today, and tomorrow it starts at 0");
+        out.add(e1650);
+
         Entry e1640 = new Entry("v1.64.0", "2026-11-04");
         e1640.add(new Group(s("改进", "Improved"),
                 s("底部图标线条加粗；未选中时图标里的红色也保留红色，不再全灰",

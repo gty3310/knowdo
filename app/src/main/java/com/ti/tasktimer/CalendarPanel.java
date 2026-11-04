@@ -1140,8 +1140,13 @@ note.setTextColor(hasNote ? Ui.text(ctx) : Ui.sub(ctx));
 note.setOnClickListener(v -> dialogNote(t));
 exp.addView(note);
 
-int usedMin = (int) (SessionLog.totalMsForTask(ctx, t.id) / 60000);
-int segs = SessionLog.countForTask(ctx, t.id)
+// 每日重复任务：已用与段数都只算今天（v1.65.0，与 MainActivity 详情 meta 同改法，
+// todayCountForTask 内部已含今天开的打开段）；非每日任务保持全历史累计＋打开段 +1
+boolean daily = "daily".equals(t.repeat);
+int usedMin = (int) ((daily ? SessionLog.todayMsForTask(ctx, t.id)
+: SessionLog.totalMsForTask(ctx, t.id)) / 60000);
+int segs = daily ? SessionLog.todayCountForTask(ctx, t.id)
+: SessionLog.countForTask(ctx, t.id)
 + (t.id.equals(SessionLog.openTaskId(ctx)) ? 1 : 0);
 String startPart = t.nextStartMs() > 0
 ? Strings.metaStart(startCellText(t)) : Strings.metaNotStarted();

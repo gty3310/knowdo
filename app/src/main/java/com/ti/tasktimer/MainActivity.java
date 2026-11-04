@@ -1845,7 +1845,11 @@ public class MainActivity extends Activity {
                 v.setOnClickListener(x -> dialogDeadline(t));
                 break;
             case "used": {
-                int usedMin = (int) (SessionLog.totalMsForTask(this, t.id) / 60000);
+                // 每日重复任务「已用」只算今天，与「剩余」列的 todayMsForTask 同口径（v1.65.0）；
+                // 非每日任务保持全历史累计
+                int usedMin = (int) (("daily".equals(t.repeat)
+                        ? SessionLog.todayMsForTask(this, t.id)
+                        : SessionLog.totalMsForTask(this, t.id)) / 60000);
                 v.setText(Strings.fmtMin(usedMin));
                 v.setOnClickListener(x -> dialogDuration(t));
                 break;
@@ -1936,8 +1940,14 @@ public class MainActivity extends Activity {
         note.setOnClickListener(v -> dialogNote(t));
         exp.addView(note);
 
-        int usedMin = (int) (SessionLog.totalMsForTask(this, t.id) / 60000);
-        int segs = SessionLog.countForTask(this, t.id)
+        // 每日重复任务：已用与段数都只算今天（v1.65.0，todayCountForTask 内部已含
+        // 「打开段是今天开的」那一段，与 todayMsForTask 同口径，不再另加）；
+        // 非每日任务保持全历史累计＋打开段 +1
+        boolean daily = "daily".equals(t.repeat);
+        int usedMin = (int) ((daily ? SessionLog.todayMsForTask(this, t.id)
+                : SessionLog.totalMsForTask(this, t.id)) / 60000);
+        int segs = daily ? SessionLog.todayCountForTask(this, t.id)
+                : SessionLog.countForTask(this, t.id)
                 + (t.id.equals(SessionLog.openTaskId(this)) ? 1 : 0);
         String startPart = t.nextStartMs() > 0
                 ? Strings.metaStart(startCellText(t)) : Strings.metaNotStarted();

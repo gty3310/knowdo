@@ -120,6 +120,24 @@ public final class SessionLog {
     }
 
     /**
+     * 某任务今天的段数（与 todayMsForTask 同口径的段数版，v1.65.0）：今天的已关闭段
+     * （按当天裁剪）按 taskId 计数，当前打开段若正是这个任务且是今天开的，再计 1 段。
+     * 每日重复任务的「已用 N 分（M 段）」用它，保证段数与已用分钟数数的是同一批段。
+     */
+    public static synchronized int todayCountForTask(Context c, String taskId) {
+        if (taskId == null || taskId.isEmpty()) return 0;
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+        int n = 0;
+        for (Seg s : segmentsForDay(c, today)) {
+            if (taskId.equals(s.taskId)) n++;
+        }
+        long os = openStart(c);
+        if (os > 0 && taskId.equals(openTaskId(c)) && os >= dayStartMs(today)) n++;
+        return n;
+    }
+
+    /**
      * 某任务今天、且只算 sinceMs 之后那部分的已用毫秒（v1.21.1 开始抵扣的基数）：
      * 已关闭段先按今天裁剪，再只计与 [sinceMs, 段尾] 重叠的部分；打开段若正是它，
      * 同口径计到此刻。完成/重置的时间戳由 StartBaseline 提供——基线时刻之前做过的

@@ -385,6 +385,8 @@ public class FloatingWindow {
         }
         // EDIT 卡时间行右侧（v1.6.1）：已用 / 计划总。
         // 已用 = SessionLog 全部段累计 + 正在跑的这一段（口径见 SessionLog.totalMsForTask）；
+        // 每日重复任务的已用改只算今天（口径见 SessionLog.todayMsForTask，v1.65.0，
+        // 正在跑的这一段如何计入沿用该方法的原有处理）；
         // 计划总 = 当前目标总时长（计时/暂停中取计时器目标，含加时；未开始取任务计划时长）。
         if (usedView != null) {
             if (d.task == null) {
@@ -400,7 +402,10 @@ public class FloatingWindow {
                     totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
                 }
                 if (totalMs <= 0) totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
-                usedView.setText(fmt(SessionLog.totalMsForTask(c, d.task.id)) + " / " + fmt(totalMs));
+                long usedMs = "daily".equals(d.task.repeat)
+                        ? SessionLog.todayMsForTask(c, d.task.id)
+                        : SessionLog.totalMsForTask(c, d.task.id);
+                usedView.setText(fmt(usedMs) + " / " + fmt(totalMs));
             }
         }
         if (playPauseBtn != null) {
