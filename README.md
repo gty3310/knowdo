@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.65.0)
+## Features (Android, v1.66.0)
 
-Current version: **v1.65.0**.
+Current version: **v1.66.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.66.0 — 2026-11-04
+
+**Why:** The morning page's at-most question (the Late-sleep habit) was backwards: it asked "Happened / Didn't", the user had always answered "Happened = I did it (kept the rule)", and the app stored that as one occurrence — so a week of late nights showed 0 occurrences and a fake 100%. The buttons are flipped to the same Done / Not done as the at-least habits, and the user ruled that the records it got wrong be swapped to match. The morning page also loses a few detours. Build commit `9a90586` · [compare v1.65.0...v1.66.0](https://github.com/gty3310/knowdo/compare/v1.65.0...v1.66.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Late-sleep buttons flipped, mis-recorded history swapped.** On the morning page an at-most habit now answers Done / Not done: Done stores 0 (green), Not done stores 1 (red); at-least habits store exactly what they stored before. A one-time first-launch migration swaps the Late-sleep habit's stored 0s and 1s in the local logs — cells above 1 are left alone, because the old buttons only ever wrote 0/1, so a bigger number can only be a truthful occurrence back-fill from the Habits tab (whose at-most back-fill dialog is a factual register and is deliberately not flipped). The done-flag is committed before the data moves, so the flip can never run twice, and flipped values sync up through the normal path.
+- **Morning page: readings in place, card no longer blocking, no duplicate diary row.** A read habit now shows its full text right in section A (name, yesterday's state, today's text — collapsing behind an expand toggle only when it truly exceeds 20 lines) with a "Finished reading" button on the same `putLog` path as everywhere else. The morning card stays resident above the diary box, loses its "Read" button, and is marked read silently — locally and in the cloud `read_at`, exactly once — the moment a diary is written, so it does not reappear that day. The diary habit's read-only row in section A is gone; the diary's done state still lives and dies with the diary text itself.
+
+Not yet verified on a real device: tomorrow's morning page showing Done / Not done for Late-sleep with last week's rate back to its true low value, the history flipping exactly once across restarts, the read block's expand toggle and undo, the card not reappearing after a diary entry, and the 1.65.0 to 1.66.0 in-app update chain.
+
 ### v1.65.0 — 2026-11-04
 
 **Why:** On a new day, a daily repeating task still showed its all-time accumulated Used minutes, which did not match the Left column beside it — Left was already a today-only figure. This release puts Used on the same basis for daily tasks: it counts today only and resets to zero on a new day. Build commit `96cbc3e` · [compare v1.64.0...v1.65.0](https://github.com/gty3310/knowdo/compare/v1.64.0...v1.65.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -81,18 +91,6 @@ Not yet verified on a real device: a daily task (e.g. Taiji) showing only today'
 - **Unselected icons keep their red.** Each unselected artwork now keeps exactly one vermilion element — Act's endpoint, Know's flame, the hearts in Habits and Unity, Chat's dot — with the rest in pale grey `#9AA79F`. Selected colours are unchanged, and the tab-bar code is untouched: `paintTabs()` never tinted or filtered the icons, only the artwork files changed.
 
 Not yet verified on a real device: legibility of the thickened icons at a real 24dp (above all Act's S path and Know's flame), whether selected vs unselected still reads clearly now that both states carry red, dark-mode contrast of grey plus vermilion, and the 1.63.0 to 1.64.0 in-app update chain.
-
-### v1.63.0 — 2026-11-04
-
-**Why:** The bottom tab bar was still makeshift — emoji and text glyphs for icons, plus a vermilion dot to mark the selected tab. Emoji render differently under every device font, the look sat oddly with the app's quiet eastern-minimal style, and the user's phone even showed a set of tab icons of unknown origin. The finished icon set arrived on 2026-11-04 (a full resource pack for Act / Habits / Unity / Chat, with Know revised to the minimal "heart-lamp over an open book" v2), and this release ships it inside the app, so updates can't lose it. Tab bar only — the morning page's four fixes are not bundled, and nothing else moves. Build commit `e6c5025` · [compare v1.62.0...v1.63.0](https://github.com/gty3310/knowdo/compare/v1.62.0...v1.63.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Finished icons for the bottom five tabs.** Ten VectorDrawables ship in `res/drawable`, a selected and an unselected artwork per tab: Act is an S-shaped path with a vermilion endpoint (footprints along a path), Know is a heart-lamp over an open book (the book is understanding; the small vermilion flame above it is the original heart), Habits is a cycle ring with a vermilion heart, Unity is a half circle with a vermilion heart, and Chat is a speech bubble with a vermilion dot. Selected artwork is deep ink `#1F2F2A` with vermilion `#D94B3A`; unselected is pale grey `#9AA79F`; `paintTabs()` switches the two, and the bar is now a 24dp icon over its label. The artwork is byte-identical to the approved source files.
-
-**Removed**
-- The vermilion-dot selected marker and the emoji/text glyph icons. Selection is carried by the icons' own two states, with no added decoration.
-
-Not yet verified on a real device: the icons' legibility at 24dp (above all Act's dashed path in its unselected state and Know's small flame), the tab bar's slightly changed height, the unselected grey's contrast in dark mode, the chat unread badge's position against the new bubble icon, and the 1.62.0 to 1.63.0 in-app update chain.
 
 ## Build
 
