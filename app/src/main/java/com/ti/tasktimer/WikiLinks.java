@@ -585,8 +585,8 @@ public final class WikiLinks {
             }
             boolean single = q.endsWith("}") || q.endsWith("｝");
             String body = single ? q.substring(0, q.length() - 1) : q;
-            if (hasBadChar(body) || body.indexOf(' ') >= 0 || body.indexOf('　') >= 0) {
-                abandonRef();   // 原文出现空格 → 小窗消失、引用作废（原文与花括号留作普通文字）
+            if (hasBadChar(body)) {
+                abandonRef();   // 混了括号/换行（多半是粘贴）→ 小窗消失、引用作废（原文与花括号留作普通文字）；空格不作废：口述原文常带空格，搜索照含空格原文走，合上时按全文自动新建
                 return false;
             }
             curQuery = body;
