@@ -36,6 +36,19 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1620 = new Entry("v1.62.0", "2026-11-04");
+        e1620.add(new Group(s("新增", "New"),
+                s("快捷编辑栏：编辑框下方常驻，｛｛ 与 ｝｝ 是同一个键，开启引用后自动变合上；另带全选、复制、粘贴／引用合上自动新建：选好类型后把想法直接写完，打 ｝｝ 合上就自动存成新的人名、原则或问题，文中提到的人会自动关联上",
+                  "Quick edit bar: it now sits under every editor — ｛｛ and ｝｝ are the same key, which flips to close once a citation is open; select-all, copy and paste sit beside it / Close to create: pick a type, write your thought out in full, then close with ｝｝ and it is saved as a new person, principle or question — people mentioned in the text are linked automatically")));
+        e1620.add(new Group(s("改进", "Improved"),
+                s("引用选择窗改版：打出 ｛｛ 后先在光标上方的小窗里选类型，接着在正文里打字就是搜索，选中现成的点一下就好；小窗半透明、不抢光标，不理它可以接着写",
+                  "Citation picker rebuilt: after ｛｛, pick the type in the small popup above your cursor, then keep typing in the text itself to search; tap a match to insert it. The popup is translucent and never steals your cursor — ignore it and keep writing")));
+        e1620.why = s("写作时光标不该离开正文，找词条和新建都不该把人拽进大弹窗",
+                "Your cursor should never leave the text while writing; finding and creating entries should not drag you into a big popup");
+        e1620.tryIt = s("在写日记或任务笔记时打 ｛｛，在小窗点一类，接着打字找现成的；找不到就把想法写完，点快捷栏右边的 ｝｝ 合上，它会自动存进「知」",
+                "While writing a diary entry or a task note, type ｛｛, tap a type in the popup, then type to find an existing entry; if there is none, finish the thought and tap the ｝｝ key on the quick bar to close — it files itself into Know");
+        out.add(e1620);
+
         Entry e1610 = new Entry("v1.61.0", "2026-11-04");
         e1610.add(new Group(s("新增", "New"),
                 s("引用：在日记、任务描述、原则、问题、备忘里输入｛｛，就能把人名、原则、问题、别的日记选进来，正文里变成一个红色的链接／点链接改词条：点正文里的链接，会升起一个小窗，直接改那个词条，改完正文里的名字自动跟着变／搜不到就新建：选择窗底下有创建按钮，建好自动插回正文／日记标题：每篇日记有了标题，6 位日期加一句主题，在「知 · 日记」里一眼看清哪篇是哪篇（标题由 AI 生成，也能自己改）／问题短题：每个问题多了一个 10 字以内的短题，引用问题时显示短题，不占地方",

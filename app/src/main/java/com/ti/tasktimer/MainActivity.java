@@ -2738,10 +2738,20 @@ public class MainActivity extends Activity {
         input.setMinLines(3);
         input.setGravity(Gravity.TOP);
         // 双链（v1.61.0）：任务笔记里也能｛｛引用、点链接改词条；保存时还原成记号原文
-        WikiLinks.attach(this, input, null);
+        WikiLinks.Hook noteHook = WikiLinks.attach(this, input, null);
+        // 快捷栏（v1.62.0）：输入框父容器是 FrameLayout（悬浮复制钮），自动插入不适用，
+        // 在这里把快捷栏显式拼到输入框正下方
+        LinearLayout noteBox = new LinearLayout(this);
+        noteBox.setOrientation(LinearLayout.VERTICAL);
+        noteBox.addView(wrapWithCopyButton(t, input, "note"));
+        LinearLayout.LayoutParams nbLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        nbLp.leftMargin = dp(20);
+        nbLp.rightMargin = dp(20);
+        noteBox.addView(noteHook.barView(), nbLp);
         AlertDialog d = new AlertDialog.Builder(this)
                 .setTitle("笔记 · " + t.title)
-                .setView(wrapWithCopyButton(t, input, "note"))
+                .setView(noteBox)
                 .setPositiveButton("保存", (dg, w) -> {
                     TaskItem cur = freshCopyOf(t);
                     cur.note = WikiLinks.extractText(input).trim();

@@ -2,6 +2,8 @@ package com.ti.tasktimer;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -19,12 +21,16 @@ import android.text.style.UnderlineSpan;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -45,7 +51,12 @@ import java.util.regex.Pattern;
  * uuid 或日记日期 yyyy-MM-dd。编辑框里记号渲染成显示名链接（朱砂字＋下划线，
  * 显示名按编号现查：人名→name、原则→title、问题→short_title 空则 title、
  * 日记→DiaryTitles 的「YYMMDD＋标题」）；编号查不到＝断链（灰字＋虚线下划线）。
- * 点链接开 WikiSheet 浮窗编辑；输入 {{ 或 ｛｛ 弹选择窗插入记号。
+ * 点链接开 WikiSheet 浮窗编辑。输入 {{ 或 ｛｛ 的交互自 v1.62.0 改版：光标行上方
+ * 弹半透明不可获焦小窗先选类型，正文里接着打字即搜索，点现成条目插入记号；
+ * 打 }} 合上则按类型自动新建（WikiCreate；日记只许链接不许新建）。自动新建只认
+ * 「本编辑会话亲手开启并合上」的引用（Hook 的开启状态追踪），粘贴/回填不触发。
+ * 每个接入编辑框下方常驻快捷栏（Hook 建、宿主拼装）：｛｛/｝｝ 状态切换键＋全选/复制/粘贴，
+ * 下方一行小字提示。
  *
  * 存回正文时经 extractText 把链接段还原成记号（链接段内的文字改动不算数，
  * 以记号为准）；各编辑面的保存路径一律走 extractText，不要直接 getText()。
@@ -428,7 +439,10 @@ public final class WikiLinks {
             }
         }
         for (final Hook h : live) {
-            h.et.post(() -> h.decorate(true));
+            h.et.post(() -> {
+                h.decorate(true);
+                if (h.refOpen && !h.creating) h.renderPop();   // 快照刷新完，小窗结果跟着更新
+            });
         }
     }
 
@@ -438,6 +452,18 @@ public final class WikiLinks {
         final Host host;
         boolean applying;
         private String lastRaw;
+        // ---- v1.62.0 输入改版：引用开启状态追踪＋光标上方小窗＋快捷栏 ----
+        boolean refOpen;          // 本编辑会话亲手开启了一条未合上的引用
+        int refRawStart = -1;     // 引用原文在存储坐标里的起点（{{ 之后）
+        String refType;           // 已选类型；null＝还没选
+        String curQuery = "";     // 当前原文（不含结尾单个 }）
+        boolean oneClose;         // 已打了一个 }（提示「再输入一个」）
+        boolean creating;         // 合上自动新建在途（网络中），期间不再进状态机
+        private PopupWindow pop;
+        private LinearLayout popCol;
+        private LinearLayout barBox;
+        private TextView toggleBtn, hintView;
+        private boolean barTaken, barInserted;
 
         Hook(Activity act, EditText et, Host host) {
             this.act = act; this.et = et; this.host = host;
@@ -452,7 +478,7 @@ public final class WikiLinks {
                 try {
                     int off = et.getOffsetForPosition(ev.getX(), ev.getY());
                     LinkSpan sp = spanAt(et.getText(), off);
-                    if (sp == null) return false;
+                    if (sp == null) { et.post(this::refreshState); return false; }
                     openSpan(sp);
                     return true;
                 } catch (Exception ignored) { return false; }
@@ -462,10 +488,22 @@ public final class WikiLinks {
                 @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
                 @Override public void afterTextChanged(Editable e) {
                     if (applying) return;
-                    if (checkTrigger()) return;
-                    checkIntegrity();
+                    refLogic();
+                    if (!refOpen && !creating) checkIntegrity();
                 }
             });
+            et.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View v) { ensureBar(); }
+                @Override public void onViewDetachedFromWindow(View v) { dismissPop(); }
+            });
+            // 快捷栏显隐跟随编辑框（如晨间页未读卡时日记框先藏起来，栏不能孤零零挂着）
+            et.getViewTreeObserver().addOnPreDrawListener(() -> {
+                if (barBox != null && barBox.getVisibility() != et.getVisibility()) {
+                    barBox.setVisibility(et.getVisibility());
+                }
+                return true;
+            });
+            et.post(this::ensureBar);
             decorate(true);
             refreshAsync(act);
         }
@@ -497,36 +535,452 @@ public final class WikiLinks {
             }
         }
 
-        /** 刚输入 {{ 或 ｛｛ → 删掉触发符、弹选择窗。返回 true 表示已处理。 */
-        private boolean checkTrigger() {
+        // ---------------- v1.62.0：引用输入状态机 ----------------
+        /**
+         * 引用开启只认「本编辑会话亲手打出的 {{」（或点快捷栏切换键送入的）：
+         * refOpen 只在文本变更落点恰好以 {{ 结尾时置位，合上/作废即清零。
+         * 打开既有文本、同步回填（走 decorate，applying 抑制）、粘贴成段都不会
+         * 置位——粘贴进来的已合上记号只走 checkIntegrity 的既有渲染，不会误建条目。
+         */
+        private void refLogic() {
+            Editable ed = et.getText();
+            if (ed == null) return;
+            int sel = et.getSelectionStart();
+            if (creating) { updateBar(); updateHint(); return; }
+            if (refOpen && handleOpen(sel)) { updateBar(); updateHint(); return; }
+            // 未开启（或刚作废）：看这一笔是不是刚打出的 {{
+            if (sel >= 2 && sel <= ed.length()) {
+                String two = ed.subSequence(sel - 2, sel).toString();
+                if ("{{".equals(two) || "｛｛".equals(two)) {
+                    refOpen = true;
+                    refType = null;
+                    curQuery = "";
+                    oneClose = false;
+                    refRawStart = displayToRaw(ed, sel);
+                    renderPop();
+                }
+            }
+            updateBar();
+            updateHint();
+        }
+
+        /** 引用开启中的一笔。返回 true＝仍在引用流程内；false＝已作废，落回普通检测。 */
+        private boolean handleOpen(int sel) {
             Editable ed = et.getText();
             if (ed == null) return false;
-            int sel = et.getSelectionStart();
-            if (sel < 2 || sel > ed.length()) return false;
-            String two = ed.subSequence(sel - 2, sel).toString();
-            if (!"{{".equals(two) && !"｛｛".equals(two)) return false;
-            applying = true;
-            try { ed.delete(sel - 2, sel); } finally { applying = false; }
-            lastRaw = extractText(et);
-            final int rawPos = displayToRaw(ed, sel - 2);
-            showPicker(act, null, true, (type, id) -> insertToken(rawPos, type, id),
-                    (type, q) -> WikiSheet.open(act, type, null, q, (t, newId) -> {
-                        insertToken(rawPos, t, newId);
-                        if (host != null) host.onWikiDataChanged();
-                    }));
+            int rawSel = displayToRaw(ed, sel);
+            String raw = extractText(et);
+            if (refRawStart < 2 || rawSel < refRawStart || refRawStart > raw.length()) {
+                abandonRef();
+                return false;
+            }
+            String br = raw.substring(refRawStart - 2, refRawStart);
+            if (!"{{".equals(br) && !"｛｛".equals(br)) { abandonRef(); return false; }
+            String q = raw.substring(refRawStart, Math.min(rawSel, raw.length()));
+            if (q.endsWith("}}") || q.endsWith("｝｝")) {
+                String body = q.substring(0, q.length() - 2);
+                if (hasBadChar(body)) { abandonRef(); return false; }   // 混了括号/换行（多半是粘贴）→ 不当新建
+                closeRef(body, sel);
+                return true;
+            }
+            boolean single = q.endsWith("}") || q.endsWith("｝");
+            String body = single ? q.substring(0, q.length() - 1) : q;
+            if (hasBadChar(body) || body.indexOf(' ') >= 0 || body.indexOf('　') >= 0) {
+                abandonRef();   // 原文出现空格 → 小窗消失、引用作废（原文与花括号留作普通文字）
+                return false;
+            }
+            curQuery = body;
+            oneClose = single;
+            renderPop();
             return true;
         }
 
-        private void insertToken(int rawPos, String type, String id) {
+        private static boolean hasBadChar(String b) {
+            return b.indexOf('{') >= 0 || b.indexOf('}') >= 0
+                    || b.indexOf('｛') >= 0 || b.indexOf('｝') >= 0 || b.indexOf('\n') >= 0;
+        }
+
+        private void abandonRef() {
+            refOpen = false;
+            refType = null;
+            curQuery = "";
+            oneClose = false;
+            dismissPop();
+        }
+
+        /** 打 }} 合上：按类型分流（未选类型＝普通文字；日记/空＝花括号消解；其余＝自动新建）。 */
+        private void closeRef(String body, int sel) {
+            final String type = refType;
+            dismissPop();
+            if (type == null) { refOpen = false; return; }
+            if (T_DIARY.equals(type) || body.trim().isEmpty()) {
+                dissolveBraces(body);
+                refOpen = false;
+                refType = null;
+                return;
+            }
+            Editable ed = et.getText();
+            final int segStart = rawToDisplay(ed, refRawStart - 2);
+            final String segText = ed.subSequence(segStart, Math.min(sel, ed.length())).toString();
+            refOpen = false;
+            refType = null;
+            creating = true;
+            updateBar();
+            updateHint();
+            WikiCreate.create(act, type, body, (t, newId) -> {
+                creating = false;
+                if (newId != null) {
+                    replacePendingWithToken(t, newId, segStart, segText);
+                    if (host != null) host.onWikiDataChanged();
+                } else {
+                    Toast.makeText(act, s("没存上，联网后再试一次", "Couldn't save — try again when online"),
+                            Toast.LENGTH_SHORT).show();
+                }
+                updateBar();
+                updateHint();
+            });
+        }
+
+        /** 日记合上不选/空内容：把一对花括号从正文里摘掉，原文留作普通文字。 */
+        private void dissolveBraces(String body) {
             Editable ed = et.getText();
             if (ed == null) return;
-            int dPos = rawToDisplay(ed, Math.max(0, Math.min(rawPos, extractText(et).length())));
+            int sel = et.getSelectionStart();
+            int segStart = rawToDisplay(ed, refRawStart - 2);
             applying = true;
-            try { ed.insert(dPos, "{{" + type + ":" + id + "}}"); } finally { applying = false; }
+            try {
+                if (sel >= 2) ed.delete(sel - 2, sel);                 // 合上的一对
+                if (segStart >= 0 && segStart + 2 <= ed.length()) ed.delete(segStart, segStart + 2);   // 开启的一对
+            } finally { applying = false; }
+            try { et.setSelection(Math.min(segStart + body.length(), et.getText().length())); }
+            catch (Exception ignored) { }
+        }
+
+        /** 新建回来：把当初那段 {{原文}} 原样段换成正式记号（段被改动过则按全文找，找不到就不动）。 */
+        private void replacePendingWithToken(String type, String newId, int segStart, String segText) {
+            Editable ed = et.getText();
+            if (ed == null || segText.isEmpty()) return;
+            int idx = -1;
+            if (segStart >= 0 && segStart + segText.length() <= ed.length()
+                    && ed.subSequence(segStart, segStart + segText.length()).toString().equals(segText)) {
+                idx = segStart;
+            } else {
+                idx = ed.toString().indexOf(segText);
+            }
+            if (idx < 0) return;
+            applying = true;
+            try { ed.replace(idx, idx + segText.length(), "{{" + type + ":" + newId + "}}"); }
+            finally { applying = false; }
             decorate(true);
-            int after = rawToDisplay(et.getText(), rawPos + ("{{" + type + ":" + id + "}}").length());
-            try { et.setSelection(Math.min(after, et.getText().length())); } catch (Exception ignored) { }
             et.requestFocus();
+        }
+
+        /** 点中现成条目：整段 {{＋原文 换成该条目的记号，小窗关，接着写。 */
+        private void pickEntry(Entry e) {
+            Editable ed = et.getText();
+            if (ed == null) return;
+            int segStart = rawToDisplay(ed, refRawStart - 2);
+            int sel = Math.min(et.getSelectionStart(), ed.length());
+            if (segStart < 0 || sel < segStart) { abandonRef(); return; }
+            applying = true;
+            try { ed.replace(segStart, sel, "{{" + e.type + ":" + e.id + "}}"); }
+            finally { applying = false; }
+            refOpen = false;
+            refType = null;
+            dismissPop();
+            decorate(true);
+            et.requestFocus();
+            updateBar();
+            updateHint();
+        }
+
+        /** 点按别处后刷新：光标移出引用段 → 收窗作废；还在段内 → 小窗跟到新位置。 */
+        private void refreshState() {
+            if (applying || creating) return;
+            if (refOpen) {
+                Editable ed = et.getText();
+                if (ed == null) return;
+                int rawSel = displayToRaw(ed, et.getSelectionStart());
+                String raw = extractText(et);
+                boolean bad = rawSel < refRawStart || refRawStart < 2 || refRawStart > raw.length();
+                if (!bad) {
+                    String q = raw.substring(refRawStart, Math.min(rawSel, raw.length()));
+                    bad = q.contains("}}") || q.contains("｝｝") || q.indexOf(' ') >= 0 || hasBadChar(q);
+                    if (!bad) {
+                        boolean single = q.endsWith("}") || q.endsWith("｝");
+                        curQuery = single ? q.substring(0, q.length() - 1) : q;
+                        oneClose = single;
+                        renderPop();
+                    }
+                }
+                if (bad) abandonRef();
+            }
+            updateBar();
+            updateHint();
+        }
+
+        // ---------------- 小窗（光标行上方、半透明、不可获焦） ----------------
+        private void ensurePop() {
+            if (pop != null) return;
+            popCol = new LinearLayout(act);
+            popCol.setOrientation(LinearLayout.VERTICAL);
+            popCol.setPadding(dp(act, 6), dp(act, 4), dp(act, 6), dp(act, 4));
+            int bgc = Ui.bg(act);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(Color.argb(217, Color.red(bgc), Color.green(bgc), Color.blue(bgc)));   // 米白约 85% 不透明
+            bg.setCornerRadius(dp(act, 10));
+            bg.setStroke(Math.max(1, dp(act, 1)), Ui.line(act));
+            popCol.setBackground(bg);
+            pop = new PopupWindow(popCol, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            pop.setFocusable(false);          // 键盘焦点始终留在编辑框
+            pop.setTouchable(true);           // 窗内按钮可点（点类型/条目不夺焦）
+            pop.setOutsideTouchable(false);
+            pop.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            if (android.os.Build.VERSION.SDK_INT >= 21) pop.setElevation(dp(act, 6));
+        }
+
+        private void renderPop() {
+            if (!refOpen) { dismissPop(); return; }
+            ensurePop();
+            popCol.removeAllViews();
+            if (refType == null) {
+                LinearLayout row = new LinearLayout(act);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                final String[] types = {T_PERSON, T_PRINCIPLE, T_QUESTION, T_DIARY};
+                for (final String t : types) {
+                    TextView b = new TextView(act);
+                    b.setText(typeName(t));
+                    b.setTextSize(13.5f);
+                    b.setTextColor(Ui.text(act));
+                    b.setGravity(Gravity.CENTER);
+                    b.setPadding(dp(act, 13), dp(act, 6), dp(act, 13), dp(act, 6));
+                    b.setOnClickListener(v -> {
+                        refType = t;
+                        renderPop();
+                        updateHint();
+                    });
+                    row.addView(b);
+                }
+                popCol.addView(row);
+            } else {
+                List<Entry> list = entriesOf(act, refType);
+                int shown = 0;
+                for (final Entry e : list) {
+                    if (shown >= 5) break;
+                    if (!curQuery.isEmpty() && !matchEntry(e, curQuery)) continue;
+                    shown++;
+                    LinearLayout r = new LinearLayout(act);
+                    r.setOrientation(LinearLayout.VERTICAL);
+                    r.setPadding(dp(act, 8), dp(act, 6), dp(act, 8), dp(act, 6));
+                    TextView nm = new TextView(act);
+                    nm.setText(e.name);
+                    nm.setTextSize(14);
+                    nm.setTypeface(Typeface.SERIF, Typeface.BOLD);
+                    nm.setTextColor(Ui.text(act));
+                    r.addView(nm);
+                    if (!e.sub.isEmpty()) {
+                        TextView sbv = new TextView(act);
+                        sbv.setText(e.sub);
+                        sbv.setTextSize(11);
+                        sbv.setTextColor(Ui.sub(act));
+                        r.addView(sbv);
+                    }
+                    r.setOnClickListener(v -> pickEntry(e));
+                    popCol.addView(r);
+                }
+                if (shown == 0) {
+                    TextView none = new TextView(act);
+                    none.setText(s("没有现成的，写完打｝｝合上就存成新的", "Nothing yet — close with }} to save it as new"));
+                    none.setTextSize(12);
+                    none.setTextColor(Ui.sub(act));
+                    none.setPadding(dp(act, 8), dp(act, 6), dp(act, 8), dp(act, 6));
+                    popCol.addView(none);
+                }
+            }
+            positionPop();
+        }
+
+        private static boolean matchEntry(Entry e, String q) {
+            if (T_DIARY.equals(e.type)) return e.id.contains(q) || e.name.contains(q);   // 日记查日期或标题
+            return e.name.contains(q);
+        }
+
+        /** 小窗下沿贴光标行的上沿；量不到布局时收窗，不硬撑位置。 */
+        private void positionPop() {
+            if (pop == null || popCol == null) return;
+            try {
+                android.text.Layout lay = et.getLayout();
+                Editable ed = et.getText();
+                if (lay == null || ed == null) { dismissPop(); return; }
+                int sel = Math.max(0, Math.min(et.getSelectionStart(), ed.length()));
+                int line = lay.getLineForOffset(sel);
+                int[] loc = new int[2];
+                et.getLocationInWindow(loc);
+                int winW = act.getResources().getDisplayMetrics().widthPixels;
+                int cap = et.getWidth() > 0 ? et.getWidth() : winW - dp(act, 24);
+                popCol.measure(View.MeasureSpec.makeMeasureSpec(cap, View.MeasureSpec.AT_MOST),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+                int pw = popCol.getMeasuredWidth(), ph = popCol.getMeasuredHeight();
+                int x = (int) (loc[0] + lay.getPrimaryHorizontal(sel) - et.getScrollX());
+                x = Math.max(0, Math.min(x, Math.max(0, winW - pw)));
+                int y = loc[1] + lay.getLineTop(line) - et.getScrollY() - ph - dp(act, 4);
+                if (y < 0) y = loc[1] + lay.getLineBottom(line) - et.getScrollY() + dp(act, 4);   // 顶到头了才落到行下
+                if (pop.isShowing()) pop.update(x, y, pw, ph);
+                else pop.showAtLocation(et, Gravity.NO_GRAVITY, x, y);
+            } catch (Exception ignored) { }
+        }
+
+        private void dismissPop() {
+            if (pop != null && pop.isShowing()) pop.dismiss();
+        }
+
+        // ---------------- 快捷编辑栏＋提示行 ----------------
+        /** 对话框等非 LinearLayout 父容器接入时，由宿主把这条栏显式拼到编辑框下方。 */
+        public View barView() {
+            if (barBox == null) buildBar();
+            barTaken = true;
+            return barBox;
+        }
+
+        private void ensureBar() {
+            if (barTaken || barInserted) return;
+            if (barBox == null) buildBar();
+            ViewParent p = et.getParent();
+            if (p instanceof LinearLayout) {
+                LinearLayout parent = (LinearLayout) p;
+                int idx = parent.indexOfChild(et);
+                if (idx >= 0) {
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    lp.topMargin = dp(act, 6);
+                    parent.addView(barBox, idx + 1, lp);
+                    barInserted = true;
+                }
+            }
+        }
+
+        private TextView barBtn(String label) {
+            TextView b = new TextView(act);
+            b.setText(label);
+            b.setTextSize(13);
+            b.setGravity(Gravity.CENTER);
+            b.setTextColor(Ui.text(act));
+            GradientDrawable g = new GradientDrawable();
+            g.setColor(Ui.surface(act));
+            g.setCornerRadius(dp(act, 8));
+            g.setStroke(Math.max(1, dp(act, 1)), Ui.line(act));
+            b.setBackground(g);
+            b.setPadding(0, dp(act, 6), 0, dp(act, 6));
+            return b;
+        }
+
+        private void buildBar() {
+            barBox = new LinearLayout(act);
+            barBox.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            toggleBtn = barBtn("｛｛");
+            toggleBtn.setOnClickListener(v -> {
+                et.requestFocus();
+                Editable ed = et.getText();
+                if (ed == null) return;
+                int s0 = et.getSelectionStart(), e0 = et.getSelectionEnd();
+                if (s0 < 0) { et.setSelection(ed.length()); s0 = e0 = ed.length(); }
+                boolean inRef = refOpen && cursorInRef();
+                // 走正常输入路径（Editable.replace 触发 TextWatcher），开启/合上都由状态机接
+                ed.replace(Math.min(s0, e0), Math.max(s0, e0), inRef ? "}}" : "{{");
+            });
+            row.addView(toggleBtn, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView allBtn = barBtn(s("全选", "All"));
+            allBtn.setOnClickListener(v -> { et.requestFocus(); et.selectAll(); });
+            LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            aLp.leftMargin = dp(act, 6);
+            row.addView(allBtn, aLp);
+            TextView copyBtn = barBtn(s("复制", "Copy"));
+            copyBtn.setOnClickListener(v -> { et.requestFocus(); copySelection(); });
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            cLp.leftMargin = dp(act, 6);
+            row.addView(copyBtn, cLp);
+            TextView pasteBtn = barBtn(s("粘贴", "Paste"));
+            pasteBtn.setOnClickListener(v -> { et.requestFocus(); pasteClipboard(); });
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            pLp.leftMargin = dp(act, 6);
+            row.addView(pasteBtn, pLp);
+            barBox.addView(row);
+            hintView = new TextView(act);
+            hintView.setTextSize(11.5f);
+            hintView.setTextColor(Ui.sub(act));
+            hintView.setPadding(dp(act, 2), dp(act, 4), 0, 0);
+            hintView.setVisibility(View.GONE);
+            barBox.addView(hintView);
+        }
+
+        private boolean cursorInRef() {
+            Editable ed = et.getText();
+            if (ed == null || !refOpen) return false;
+            return displayToRaw(ed, et.getSelectionStart()) >= refRawStart;
+        }
+
+        private void copySelection() {
+            try {
+                ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm == null) return;
+                Editable ed = et.getText();
+                if (ed == null) return;
+                String raw = extractText(et);   // 复制存储原文（记号不丢，粘回别处可继续渲染）
+                int rs = displayToRaw(ed, Math.max(0, et.getSelectionStart()));
+                int re = displayToRaw(ed, Math.max(0, et.getSelectionEnd()));
+                rs = Math.max(0, Math.min(rs, raw.length()));
+                re = Math.max(0, Math.min(re, raw.length()));
+                String clip = re > rs ? raw.substring(rs, re) : raw;
+                cm.setPrimaryClip(ClipData.newPlainText("knowdo", clip));
+            } catch (Exception ignored) { }
+        }
+
+        private void pasteClipboard() {
+            try {
+                ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm == null || !cm.hasPrimaryClip()) return;
+                ClipData cd = cm.getPrimaryClip();
+                if (cd == null || cd.getItemCount() == 0) return;
+                CharSequence t = cd.getItemAt(0).coerceToText(act);
+                if (t == null || t.length() == 0) return;
+                Editable ed = et.getText();
+                if (ed == null) return;
+                int s0 = et.getSelectionStart(), e0 = et.getSelectionEnd();
+                if (s0 < 0) { et.setSelection(ed.length()); s0 = e0 = ed.length(); }
+                // 走正常输入路径送入光标处；含完整记号的段落只被渲染，不触发新建（新建只认会话内开启的引用）
+                ed.replace(Math.min(s0, e0), Math.max(s0, e0), t);
+            } catch (Exception ignored) { }
+        }
+
+        private void updateBar() {
+            if (toggleBtn == null) return;
+            toggleBtn.setText(refOpen && cursorInRef() ? "｝｝" : "｛｛");
+        }
+
+        private void updateHint() {
+            if (hintView == null) return;
+            String msg = null;
+            if (!creating) {
+                if (refOpen) {
+                    msg = oneClose ? s("再输入一个 ｝，就合上了", "One more } to close")
+                            : s("随时输入 ｝｝ 合上", "Type }} any time to close");
+                } else {
+                    Editable ed = et.getText();
+                    int sel = et.getSelectionStart();
+                    if (ed != null && sel >= 1 && sel <= ed.length()) {
+                        char ch = ed.charAt(sel - 1);
+                        boolean doubled = sel >= 2 && (ed.charAt(sel - 2) == '{' || ed.charAt(sel - 2) == '｛');
+                        if ((ch == '{' || ch == '｛') && !doubled) {
+                            msg = s("再输入一个 ｛，开启引用", "Type one more { to start a citation");
+                        }
+                    }
+                }
+            }
+            if (msg == null) hintView.setVisibility(View.GONE);
+            else { hintView.setText(msg); hintView.setVisibility(View.VISIBLE); }
         }
 
         /** 链接段被改坏（段内文字≠显示名）或正文里出现未渲染记号时重渲染。 */
