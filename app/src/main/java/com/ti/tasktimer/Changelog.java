@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1690 = new Entry("v1.69.0", "2026-11-05");
+        e1690.add(new Group(s("改进", "Improved"),
+                s("检查变密了：随机 10–20 秒查一次（原来 15–45 秒）",
+                  "Checks are denser now: one every 10–20 seconds at random (was 15–45)"),
+                s("有网时，屏幕内容跟任务合不合拍一律由云端 AI 终判；本地小模型只在没网时兜底",
+                  "While you're online, whether the screen fits your task is always settled by the cloud AI; the on-device model only steps in offline"),
+                s("本地小模型下载的毛病修了：哪一片坏了会写明数字并单独重下，下好还要自检能用才算数",
+                  "The on-device model download is fixed: a bad shard now says exactly which one and by how much, retries on its own, and the model must pass a self-check before it counts as ready"),
+                s("每次判定都留了痕：是本地判的、云端判的、还是断网时兜底判的，日志里分得清清楚楚",
+                  "Every verdict now leaves a trace: judged on-device, by the cloud, or by the offline fallback — the log tells them apart")));
+        e1690.why = s("你说分神时守卫常常察觉不到——这版把检查变密、终判换成云端优先，并让每次判定都留痕，漏判能查账",
+                "You said the guard often misses your distractions — this release densifies the checks, makes the cloud the first judge, and leaves a trace for every verdict so misses can be audited");
+        e1690.tryIt = s("开个任务去刷购物软件，看守卫多快有反应；再开飞行模式刷一会儿，关掉飞行模式后到守卫日志里能看到标着离线裁决的记录",
+                "Start a task and browse a shopping app to see how fast the guard reacts; then browse a while in airplane mode, turn it off, and look for the offline-verdict records in the guard log");
+        out.add(e1690);
+
         Entry e1680 = new Entry("v1.68.0", "2026-11-05");
         e1680.add(new Group(s("新增", "New"),
                 s("晨间页的日记框下面多了一块「本周目标反思」：本周目标还没定、哪周的反思还没写，都会直接摆在那里，就地写、写完就存，跟写日记一样",

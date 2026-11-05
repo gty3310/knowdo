@@ -136,8 +136,14 @@ public class ModelActivity extends Activity {
         box.addView(name);
 
         TextView sub = new TextView(this);
-        sub.setText(purposeText(m) + "\n" + ModelManager.sizeText(m.totalBytes())
-                + (en() ? " · status: " : " · 状态：") + statusText(st));
+        String subText = purposeText(m) + "\n" + ModelManager.sizeText(m.totalBytes())
+                + (en() ? " · status: " : " · 状态：") + statusText(st);
+        // 最近一条下载诊断（带数字，v1.69.0）：失败不再只有一句没数字的话
+        String dg = ModelManager.lastDiag(this, m.id);
+        if (!dg.isEmpty() && st != ModelManager.Status.READY) {
+            subText += "\n" + (en() ? "Last download: " : "最近下载：") + dg;
+        }
+        sub.setText(subText);
         sub.setTextSize(12.5f);
         sub.setTextColor(Ui.sub(this));
         box.addView(sub);

@@ -252,6 +252,24 @@ public final class ModelManager {
         File dir = modelDir(c, m.id);
         //noinspection ResultOfMethodCallIgnored
         dir.mkdirs();
+        // 清单强刷（v1.69.0）：下载前先现拉一次清单并换上新条目，不吃打开
+        // 页面时可能已过期的缓存清单（part_encoding/文件名/尺寸任一过期，
+        // 整轮下载都会按错误口径执行、必然「大小不对」）。强刷失败不中断，
+        // 沿用传入条目，但留痕写明。
+        boolean refreshed = false;
+        try {
+            String text = fetchText(c, MANIFEST_NAME);
+            File cf = manifestCache(c);
+            FileOutputStream co = new FileOutputStream(cf);
+            co.write(text.getBytes(StandardCharsets.UTF_8));
+            co.close();
+            for (Model fm : parseManifest(text)) {
+                if (fm.id.equals(m.id)) { m = fm; refreshed = true; break; }
+            }
+        } catch (Exception ignored) { }
+        diag(c, m.id, refreshed
+                ? "清单已强刷：v" + m.version + "，" + m.file + "，" + m.parts.size() + " 片"
+                : "清单强刷未成功，沿用既有清单：v" + m.version + "，" + m.file);
         long total = m.totalBytes();
         long[] done = new long[1];
         try {
@@ -269,19 +287,28 @@ public final class ModelManager {
                     if (pf.length() != p.size) {
                         Exception last = null;
                         boolean got = false;
-                        for (int attempt = 0; attempt < 3 && !got; attempt++) {
+                        for (int attempt = 1; attempt <= 3 && !got; attempt++) {
                             try {
                                 //noinspection ResultOfMethodCallIgnored
                                 if (pf.exists()) pf.delete();
-                                downloadOne(c, p.file, pf, b64);
+                                downloadOne(c, p.file, pf, b64, b64 ? expectedTextLen(p.size) : 0);
                                 got = pf.length() == p.size;
-                                if (!got) last = new Exception("分片大小不对：" + p.file);
+                                diag(c, m.id, "分片 " + p.file + " 第 " + attempt + " 次：实际 "
+                                        + pf.length() + "／期望 " + p.size + (got ? " ✓" : " ✗"));
+                                if (!got) {
+                                    last = new Exception("分片大小不对：" + p.file
+                                            + "（期望 " + p.size + "，实际 " + pf.length() + "）");
+                                }
                             } catch (Exception e) {
                                 last = e;
+                                diag(c, m.id, "分片 " + p.file + " 第 " + attempt + " 次失败："
+                                        + (e.getMessage() == null ? e.getClass().getSimpleName()
+                                                : e.getMessage()));
                             }
                         }
                         if (!got) {
-                            throw last != null ? last : new Exception("分片大小不对：" + p.file);
+                            throw last != null ? last : new Exception("分片大小不对：" + p.file
+                                    + "（期望 " + p.size + "，实际 " + pf.length() + "）");
                         }
                     }
                     FileInputStream in = new FileInputStream(pf);
@@ -313,7 +340,7 @@ public final class ModelManager {
                 File main = new File(dir, m.file);
                 if (!main.exists() || main.length() != m.size
                         || !md5OfFile(main).equalsIgnoreCase(m.md5)) {
-                    downloadOne(c, m.file, main, false);
+                    downloadOne(c, m.file, main, false, 0);
                     done[0] = m.size;
                     if (progress != null) progress.onProgress(m.id, done[0], total);
                     if (main.length() != m.size || !md5OfFile(main).equalsIgnoreCase(m.md5)) {
@@ -328,7 +355,7 @@ public final class ModelManager {
             for (Extra e : m.extras) {
                 File f = new File(dir, e.file);
                 if (!f.exists() || f.length() != e.size || !md5OfFile(f).equalsIgnoreCase(e.md5)) {
-                    downloadOne(c, e.file, f, false);
+                    downloadOne(c, e.file, f, false, 0);
                     if (f.length() != e.size || !md5OfFile(f).equalsIgnoreCase(e.md5)) {
                         //noinspection ResultOfMethodCallIgnored
                         f.delete();
@@ -338,12 +365,25 @@ public final class ModelManager {
                 done[0] += e.size;
                 if (progress != null) progress.onProgress(m.id, done[0], total);
             }
+            if (ID_EMBED.equals(m.id)) {
+                // 就绪闭环（v1.69.0）：md5 对上不等于能用——当场让 EmbedModel
+                // 真加载一次并对样例文本出向量，过不了不写就绪标记、原因留痕
+                String scErr = EmbedModel.selfCheck(c);
+                if (scErr != null) {
+                    diag(c, m.id, "自检没通过：" + scErr);
+                    throw new Exception("模型自检没通过：" + scErr);
+                }
+                diag(c, m.id, "自检通过：模型能加载并产出 512 维向量");
+            }
+            diag(c, m.id, "下载完成：整件与附属文件校验通过");
             FileOutputStream mark = new FileOutputStream(verifiedMark(c, m));
             mark.write((m.version + "|" + m.md5).getBytes(StandardCharsets.UTF_8));
             mark.close();
             return true;
         } catch (Exception e) {
             if (err != null) err[0] = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            diag(c, m.id, "下载失败：" + (err != null && err[0] != null ? err[0]
+                    : e.getClass().getSimpleName()));
             // 失败口径不变（原因照旧走 err[0] 给调用方）；测试者模式下另弹悬浮窗，
             // 下载类异常的消息里本就带 HTTP 状态码（如「下载 X 失败（HTTP 401）」）
             ErrorReporter.report(c, Strings.en() ? "Model download" : "模型下载", 0,
@@ -374,7 +414,7 @@ public final class ModelManager {
     private static String fetchText(Context c, String path) throws Exception {
         File tmp = new File(c.getCacheDir(), "mm_fetch_" + System.nanoTime());
         try {
-            downloadOne(c, path, tmp, false);
+            downloadOne(c, path, tmp, false, 0);
             return TaskStore.readAll(new FileInputStream(tmp));
         } finally {
             //noinspection ResultOfMethodCallIgnored
@@ -391,7 +431,8 @@ public final class ModelManager {
      * 才得到二进制——contents 接口下发二进制会定点截断、下发 ASCII 完全
      * 可靠，这层文本中转就是为绕开截断（v1.24.4）。
      */
-    private static void downloadOne(Context c, String path, File dest, boolean contentIsBase64Text) throws Exception {
+    private static void downloadOne(Context c, String path, File dest, boolean contentIsBase64Text,
+                                    long expectTextLen) throws Exception {
         Exception last = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
@@ -406,12 +447,18 @@ public final class ModelManager {
                     con.disconnect();
                     throw new Exception("下载 " + path + " 失败（HTTP " + code + "）");
                 }
-                String body = TaskStore.readAll(con.getInputStream());
+                String body = readBodyCounted(con, path);
                 con.disconnect();
                 JSONObject o = new JSONObject(body);
                 String b64 = o.optString("content", "");
                 if (b64.isEmpty()) throw new Exception("响应里没有 content：" + path);
                 byte[] data = Base64.decode(b64, Base64.DEFAULT);
+                if (expectTextLen > 0 && data.length != expectTextLen) {
+                    // 外层（contents 响应里的文本）在到达前就短了：字节丢在
+                    // 传输/接口层，不是解码步——数字写进异常，留痕可对账
+                    throw new Exception("外层文本长度不对：" + path + "（期望 " + expectTextLen
+                            + "，实际 " + data.length + "）");
+                }
                 if (contentIsBase64Text) {
                     // 解出来的是 Base64 文本（可能带换行），再解一次才是二进制分片
                     data = Base64.decode(data, Base64.DEFAULT);
@@ -426,6 +473,33 @@ public final class ModelManager {
             }
         }
         throw last != null ? last : new Exception("下载失败：" + path);
+    }
+
+    /**
+     * 读 contents 响应体并核对完整性（v1.69.0）：边读边计数，与声明的
+     * Content-Length 对不上就抛「响应不完整（应收 N、实收 M）」，让截断在
+     * 传输层就被抓住、走重试，而不是变成下游一条没数字的「大小不对」。
+     * gzip 透明解压时声明长度口径不一，带 gzip 编码头时跳过核对。
+     */
+    private static String readBodyCounted(HttpURLConnection con, String path) throws Exception {
+        InputStream in = con.getInputStream();
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[64 * 1024];
+        long n = 0;
+        int r;
+        while ((r = in.read(buf)) > 0) {
+            bos.write(buf, 0, r);
+            n += r;
+        }
+        in.close();
+        long declared = -1;
+        try { declared = con.getContentLengthLong(); } catch (Exception ignored) { }
+        String enc = null;
+        try { enc = con.getContentEncoding(); } catch (Exception ignored) { }
+        if (declared >= 0 && (enc == null || !enc.contains("gzip")) && n != declared) {
+            throw new Exception("响应不完整：" + path + "（应收 " + declared + " 字节，实收 " + n + "）");
+        }
+        return new String(bos.toByteArray(), StandardCharsets.UTF_8);
     }
 
     // ---------------- 工具 ----------------
@@ -453,5 +527,46 @@ public final class ModelManager {
     /** 大小显示：字节 → MB（一位小数）。 */
     public static String sizeText(long bytes) {
         return String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0);
+    }
+
+    // ---------------- 下载诊断留痕（v1.69.0） ----------------
+    // 每片的期望/实际字节数、每次尝试的结果都记进模型目录的 diag.txt
+    // （只留尾部约 6KB），模型页状态行显示最后一行；此前失败只有一句不带
+    // 数字的「分片大小不对」，设备侧问题无从自证，这轮把数字补齐。
+
+    private static File diagFile(Context c, String id) { return new File(modelDir(c, id), "diag.txt"); }
+
+    static void diag(Context c, String id, String line) {
+        try {
+            File f = diagFile(c, id);
+            //noinspection ResultOfMethodCallIgnored
+            f.getParentFile().mkdirs();
+            String prev = f.exists() ? TaskStore.readAll(new FileInputStream(f)) : "";
+            String stamp = new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US)
+                    .format(new java.util.Date());
+            String all = prev + stamp + " " + line + "\n";
+            if (all.length() > 6000) all = all.substring(all.length() - 6000);
+            FileOutputStream out = new FileOutputStream(f);
+            out.write(all.getBytes(StandardCharsets.UTF_8));
+            out.close();
+        } catch (Exception ignored) { }
+    }
+
+    /** 最近一条诊断（模型页状态行用）；没有返回空串。 */
+    public static String lastDiag(Context c, String id) {
+        try {
+            File f = diagFile(c, id);
+            if (!f.exists()) return "";
+            String s = TaskStore.readAll(new FileInputStream(f)).trim();
+            int i = s.lastIndexOf('\n');
+            return i >= 0 ? s.substring(i + 1) : s;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Base64 文本的应然长度（无换行）：4×ceil(二进制字节数/3)。 */
+    static long expectedTextLen(long binarySize) {
+        return 4L * ((binarySize + 2) / 3);
     }
 }

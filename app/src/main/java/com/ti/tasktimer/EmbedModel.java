@@ -45,6 +45,26 @@ public final class EmbedModel {
         return ModelManager.isReady(c, ModelManager.ID_EMBED);
     }
 
+    /** 清掉已加载会话与失败锁存（模型文件刚换新时用，让下一次 ensure 重新加载）。 */
+    public static synchronized void reset() {
+        if (session != null) { try { session.close(); } catch (Exception ignored) { } session = null; }
+        failed = false;
+        loadedFrom = "";
+    }
+
+    /**
+     * 装完自检（v1.69.0）：先复位，再对一句样例文本真跑一次推理——返回
+     * null 表示通过（拿到 512 维向量）；否则返回人话原因。下载侧只在自检
+     * 通过后才写就绪标记，把「下完」与「能用」闭环。
+     */
+    public static synchronized String selfCheck(Context c) {
+        reset();
+        float[] v = embed(c, "自检：把今天该做的事做完");
+        if (v == null) return "模型加载或推理失败";
+        if (v.length != DIM) return "向量维度不对（应为 " + DIM + "，实际 " + v.length + "）";
+        return null;
+    }
+
     private static synchronized boolean ensure(Context c) {
         ModelManager.Model m = ModelManager.find(c, ModelManager.ID_EMBED);
         if (m == null || !ModelManager.isReady(c, m)) return false;
