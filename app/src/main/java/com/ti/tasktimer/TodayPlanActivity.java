@@ -67,6 +67,9 @@ public class TodayPlanActivity extends Activity {
     private String logicToday;
 
     private TextView remainVal, arrangedVal, ledgerNote;
+    /** 开页自检补排的页顶小字（v1.67.0，F5）：补排/拉不到云端都要明示，不静默空白。 */
+    private TextView healNoteView;
+    private String healNote;
     private View barUsed, barOver, barRest;
     private FrameLayout strip;
     private TextView scaleWake, scaleEnd;
@@ -115,6 +118,7 @@ public class TodayPlanActivity extends Activity {
         store.load();
         logicToday = Rollover.logicalToday(this);
         buildUi();
+        selfCheckSchedule();
         refreshAll();
     }
 
@@ -123,7 +127,68 @@ public class TodayPlanActivity extends Activity {
         super.onResume();
         store.load();
         logicToday = Rollover.logicalToday(this);
+        selfCheckSchedule();
         refreshAll();
+    }
+
+    /**
+     * 开页自检（v1.67.0，F5）：本地缓存的日程不是今天的 → 先用本地任务当场补排
+     * 并落盘渲染（纯本地、不等云端；与自动排程同一份 plan() 口径：×1.5、
+     * candidateOrder、不排到 22:30 后、manual 块不动），不再出现一页空白。
+     * 同时异步拉一次云端日程：拉到就走既有 autoFillSchedule 合并（以云端为底
+     * 只往空档加，manual/已完成/计时中块都躺在底里原样保留）；拉不到就在页顶
+     * 小字明示「显示的是本地安排」。日期口径与本页渲染一致——blocksOf 按
+     * TaskItem.today() 摘块，自检也比这个日期。
+     */
+    private void selfCheckSchedule() {
+        JSONObject sch = SyncManager.latestSchedule(this);
+        String date = sch == null ? "" : sch.optString("date", "");
+        if (TaskItem.today().equals(date)) return;
+        LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocal(this, store);
+        java.util.List<LocalAutoScheduler.Block> merged =
+                new java.util.ArrayList<>(LocalAutoScheduler.blocksOf(sch, TaskItem.today()));
+        merged.addAll(p.additions);
+        try {
+            JSONObject healed = LocalAutoScheduler.scheduleJson(TaskItem.today(), merged);
+            healed.put("updatedAtMs", System.currentTimeMillis());
+            healed.put("updatedBy", "KnowDo App（今天安排页自检补排）");
+            SyncManager.cacheSchedule(this, healed);
+        } catch (Exception ignored) { }
+        healNote = s("已按本地任务补排今天", "Filled in from the tasks on this phone");
+        applyHealNote();
+        if (!Supa.isLoggedIn(this)) return;
+        new Thread(() -> {
+            boolean cloudOk = false;
+            try {
+                org.json.JSONArray us = Supa.restGet(this, "user_state?select=schedule");
+                cloudOk = us.length() > 0;
+            } catch (Exception ignored) { }
+            if (cloudOk) {
+                try {
+                    SyncManager.autoFillSchedule(this, LocalAutoScheduler.snapshot(store),
+                            "KnowDo App（今天安排页自检补排）");
+                } catch (Exception ignored) { }
+            }
+            final boolean ok = cloudOk;
+            runOnUiThread(() -> {
+                if (!ok) {
+                    healNote = s("没拉到云端最新，显示的是本地安排",
+                            "Couldn't reach the cloud — showing the local plan");
+                    applyHealNote();
+                }
+                refreshAll();
+            });
+        }).start();
+    }
+
+    private void applyHealNote() {
+        if (healNoteView == null) return;
+        if (healNote == null) {
+            healNoteView.setVisibility(View.GONE);
+        } else {
+            healNoteView.setText(healNote);
+            healNoteView.setVisibility(View.VISIBLE);
+        }
     }
 
     private boolean en() { return Strings.en(); }
@@ -206,6 +271,12 @@ public class TodayPlanActivity extends Activity {
         ledgerNote.setTextColor(Ui.sub(this));
         ledgerNote.setPadding(0, dp(2), 0, 0);
         head.addView(ledgerNote);
+        healNoteView = new TextView(this);
+        healNoteView.setTextSize(10.5f);
+        healNoteView.setTextColor(Ui.accent(this));
+        healNoteView.setPadding(0, dp(3), 0, 0);
+        healNoteView.setVisibility(View.GONE);
+        head.addView(healNoteView);
         root.addView(head);
         View headLine = new View(this);
         headLine.setBackgroundColor(Ui.line(this));
@@ -1773,7 +1844,11 @@ public class TodayPlanActivity extends Activity {
         aiMsgCol = new LinearLayout(this);
         aiMsgCol.setOrientation(LinearLayout.VERTICAL);
         aiMsgCol.setPadding(dp(18), dp(6), dp(18), dp(14));
-        aiScroll.addView(aiMsgCol);
+        // v1.67.0：显式给全宽/自适应高——旧版无参 addView 时它在 ScrollView 里的
+        // 测量口径含糊，是面板塌陷的嫌疑路径之一（详见 openAiPanel 的兜底注释）
+        aiScroll.addView(aiMsgCol, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT));
         p.addView(aiScroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -1807,18 +1882,29 @@ public class TodayPlanActivity extends Activity {
 
     private void openAiPanel() {
         aiPanel.setVisibility(View.VISIBLE);
-        if (!aiGreeted) {
-            aiGreeted = true;
-            ChatStore.Msg g = new ChatStore.Msg("assistant",
-                    s("把今天想做的事说给我，一次说好几件也行。我帮你整理成一张清单，"
-                            + "你确认了才会真的添加。",
-                      "Tell me what you'd like to do today — several things at once is "
-                            + "fine. I'll shape them into a list, and nothing is added "
-                            + "until you confirm it."));
-            aiMsgs.add(g);
-            renderAiMsg(g);
-        }
-        aiScrollToBottom();
+        aiPanel.bringToFront();
+        // v1.67.0 渲染兜底（F6）：旧版在 setVisibility(VISIBLE) 的同一帧里同步渲染
+        // 开场白气泡——此时面板还没走完首帧测量，aiMsgCol 高度为 0，气泡加上去后
+        // 没有任何后续事件再触发重排，真机上表现为「打开只有标题栏、没有开场白」
+        // （用户在旧版上实见）。改法：先 VISIBLE，post 到首帧布局之后再渲染开场白，
+        // 并强制消息列与滚动区各重排一次；气泡与消息列的 LayoutParams 也都写显式
+        // （见 buildAiPanel 与 renderAiMsg），把 0 宽/0 高路径堵死。
+        aiPanel.post(() -> {
+            if (!aiGreeted) {
+                aiGreeted = true;
+                ChatStore.Msg g = new ChatStore.Msg("assistant",
+                        s("把今天想做的事说给我，一次说好几件也行。我帮你整理成一张清单，"
+                                + "你确认了才会真的添加。",
+                          "Tell me what you'd like to do today — several things at once is "
+                                + "fine. I'll shape them into a list, and nothing is added "
+                                + "until you confirm it."));
+                aiMsgs.add(g);
+                renderAiMsg(g);
+            }
+            aiMsgCol.requestLayout();
+            aiScroll.requestLayout();
+            aiScrollToBottom();
+        });
     }
 
     private void closeAiPanel() {
@@ -1852,6 +1938,9 @@ public class TodayPlanActivity extends Activity {
             lp.leftMargin = dp(56);
             tv.setLayoutParams(lp);
             wrap.addView(tv);
+            wrap.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
             aiMsgCol.addView(wrap);
         } else {
             TextView tv = new TextView(this);
@@ -1860,6 +1949,9 @@ public class TodayPlanActivity extends Activity {
             tv.setTextColor(Ui.text(this));
             tv.setLineSpacing(0, 1.35f);
             tv.setPadding(dp(2), dp(4), dp(24), dp(6));
+            tv.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
             aiMsgCol.addView(tv);
             if (m.proposal != null && "addtasks".equals(m.propKind)) {
                 LinearLayout card = newAddCard();

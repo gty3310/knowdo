@@ -36,6 +36,25 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1670 = new Entry("v1.67.0", "2026-11-05");
+        e1670.add(new Group(s("改进", "Improved"),
+                s("「知」里编辑人名、问题、原则改成先存手机：网络不好也先存下来，恢复后自动补传，不会再出现改了半天没存上",
+                  "Editing people, questions and principles in Know now saves to the phone first: a bad connection no longer loses your edit — it syncs up automatically once you're back online"),
+                s("「知」页会自动跟上最新数据；万一拉取失败，页面上会写明并能点着重试，不再悄悄显示旧的",
+                  "The Know page now keeps itself up to date on its own; if a load fails it says so on the page with a tap-to-retry, instead of quietly showing stale data"),
+                s("「今天安排」打开时会先自检：日程不是今天的，就拿手机里的任务当场补排，不再出现一页空白",
+                  "Plan today now checks itself when opened: if the schedule isn't today's, it fills the day in from the tasks on the phone right away — no more blank page"),
+                s("底部第四个签改名为「合一」",
+                  "The fourth tab at the bottom is renamed to Oneness")));
+        e1670.add(new Group(s("新增", "New"),
+                s("人名、问题、原则、日记都能标重要性了：编辑时选无星、一星、二星；列表里带星的排在前面、显示朱砂红的星；筛选行最前面钉着 ★★ 和 ★，点一下就只看这一档",
+                  "People, questions, principles and diary entries can now carry importance: pick no star, one star or two when editing; starred entries sort first and show vermilion stars; ★★ and ★ are pinned at the front of the filter row — tap one to see only that tier")));
+        e1670.why = s("昨晚到今早连着出事：知页只显示旧的一半、编辑存不上、今天安排一片空白——根子都是拉取一失败就装作没事、拿旧数据糊弄。这一版让写入先落手机、失败必须出声",
+                "Last night and this morning kept going wrong: Know showed only half the people, an edit wouldn't save, Plan today was blank — all because failed loads silently pretended nothing was wrong. This release saves to the phone first and makes failures speak up");
+        e1670.tryIt = s("给任意一个人标二星，回列表看它排到最前、筛选行点 ★★ 能单独筛出来；再打开「今天安排」，应直接看到今天的安排",
+                "Give any person two stars, then check the list: they sort to the front, and tapping ★★ in the filter row shows only that tier; then open Plan today — today's plan should just be there");
+        out.add(e1670);
+
         Entry e1660 = new Entry("v1.66.0", "2026-11-04");
         e1660.add(new Group(s("修复", "Fixed"),
                 s("晨间页「戒晚睡」的按钮问反了，已翻正；过去记反的记录一并对调",
