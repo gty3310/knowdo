@@ -30,6 +30,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,9 +53,12 @@ import java.util.UUID;
  * 前三页同一套工具：搜索（字面包含）、标签多选筛选（OR）、复制筛选结果、卡片/列表
  * 双模式（每页各自记住）；人名列表模式按拼音首字母分组＋右侧字母栏。
  * 编辑页三类同骨架：上半字段面板、下半关联区；加关联是输入联想（字面包含过滤
- * 已有条目，点一条立即写 zhi_links），也可新建并关联；关联增删立即落库，字段经
- * 「保存」按钮 upsert。数据全走 Supa REST（用户 JWT，RLS 只见自己的）；本地缓存
- * 四表原始 JSON 于 SharedPreferences，拉取失败展示缓存并提示离线。
+ * 已有条目，点一条立即关联），也可新建并关联。数据全走 Supa REST（用户 JWT，
+ * RLS 只见自己的）。v1.67.0 起：写操作全部本地先行＋待同步队列（见队列一节），
+ * 拉取逐表独立成败（失败表在页签留可点重试的提示，不再静默用旧缓存），四表接
+ * Realtime 自动刷新；人名/问题/原则/日记都带重要性（importance：0 无星／1 一星
+ * ／2 二星，日记的存 user_state.diary_importance 按日期），列表星级降序、筛选行
+ * 钉 ★★/★。
  * 旧表 zhi_entries 本版起不再读写（表本身保留不动）。
  */
 public final class ZhiPage {
@@ -63,6 +67,12 @@ public final class ZhiPage {
     static final String T_QUESTION = "question";
     static final String T_PERSON = "person";
     static final String T_DIARY = "diary";
+
+    // 云端表名（v1.67.0：逐表拉取/补传/实时订阅都以表名为键）
+    static final String TB_PRINCIPLES = "zhi_principles";
+    static final String TB_QUESTIONS = "zhi_questions";
+    static final String TB_PEOPLE = "zhi_people";
+    static final String TB_LINKS = "zhi_links";
 
     private static final int PAGE_PRINCIPLE = 0;
     private static final int PAGE_QUESTION = 1;
@@ -78,15 +88,21 @@ public final class ZhiPage {
     static final class Principle {
         String id, kind = "think", title = "", body = "";
         List<String> tags = new ArrayList<>();
+        int importance;                 // 重要性（v1.67.0）：0 无星／1 一星／2 二星
+        String updatedAt = "";          // 云端 updated_at（补传冲突判定基准）
     }
     static final class Question {
         String id, title = "", body = "", status = "pending";
         String shortTitle = "";   // 短题（v1.61.0）：引用时显示，≤10 字，zhi_questions.short_title
         List<String> tags = new ArrayList<>();
+        int importance;                 // 重要性（v1.67.0）：0 无星／1 一星／2 二星
+        String updatedAt = "";          // 云端 updated_at（补传冲突判定基准）
     }
     static final class Person {
         String id, name = "", memo = "";
         List<String> tags = new ArrayList<>();
+        int importance;                 // 重要性（v1.67.0）：0 无星／1 一星／2 二星
+        String updatedAt = "";          // 云端 updated_at（补传冲突判定基准）
     }
     static final class Link {
         String aType, aId, bType, bId;
@@ -115,6 +131,19 @@ public final class ZhiPage {
     private final List<Link> links = new ArrayList<>();
     private boolean offline;
     private boolean fetchFailed;
+    // 逐表拉取状态（v1.67.0）：拉失败的表名集合，非空即该表在用旧缓存
+    private final Set<String> staleTables = new HashSet<>();
+    // 页顶一次性提示（如冲突后「这条已在别处更新」），refresh 时清掉
+    private String topNotice;
+    // 星筛选（三页各一份，v1.67.0）：0 不筛／1 只看一星／2 只看二星
+    private final int[] starSel = {0, 0, 0};
+    // 日记重要性（本地 DiaryImportance 快照＋详情页当前选择）
+    private JSONObject diaryImpRoot;
+    private int diaryImpSel;
+    // Realtime 防抖（同表 1 秒内的多次事件只重拉一次）
+    private final android.os.Handler rtHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Map<String, Runnable> rtPending = new HashMap<>();
 
     // 列表状态（三页各自一份）
     private int page = PAGE_PRINCIPLE;
@@ -154,6 +183,20 @@ public final class ZhiPage {
         this.wikiHost = () -> { if (Supa.isLoggedIn(this.act)) fetch(); };
         for (int i = 0; i < 3; i++) tagSel.add(new HashSet<>());
         loadCache();
+        // 「知」四表 Realtime（v1.67.0）：云端有变更（含别处写入）→ 防抖重拉对应表
+        SupaRealtime.setZhiListener(table -> onRealtimeZhi(table));
+    }
+
+    /** Realtime 变更事件：同表防抖 1 秒后重拉该表（拉取本身逐表独立成败）。 */
+    private void onRealtimeZhi(final String table) {
+        Runnable prev = rtPending.get(table);
+        if (prev != null) rtHandler.removeCallbacks(prev);
+        Runnable r = () -> {
+            rtPending.remove(table);
+            fetchTable(table);
+        };
+        rtPending.put(table, r);
+        rtHandler.postDelayed(r, 1000);
     }
 
     // ---------------- 小工具 ----------------
@@ -229,8 +272,10 @@ public final class ZhiPage {
     public void refresh() {
         if (!Supa.isLoggedIn(act)) { renderLoginHint(); return; }
         fetchFailed = false;
+        topNotice = null;
         renderCurrent();          // 先画缓存（或空区），不白屏
-        fetch();
+        fetch();                  // 切回知页强制重拉四表（逐表独立成败）
+        flushQueue();             // 顺手补传待同步队列（回前台触发点之一）
     }
 
     private void renderCurrent() {
@@ -240,67 +285,109 @@ public final class ZhiPage {
     }
 
     private void fetch() {
+        fetchTable(TB_PRINCIPLES);
+        fetchTable(TB_QUESTIONS);
+        fetchTable(TB_PEOPLE);
+        fetchTable(TB_LINKS);
+        fetchDiaryImportance();
+    }
+
+    /**
+     * 逐表独立拉取（v1.67.0，F2）：一表失败只标该表 stale、其余照常更新，不再
+     * 「四表全成才算数、任一失败静默用旧缓存」。失败表对应的页签会在列表页留
+     * 可点重试的提示；四表全败且本地一无所有才走整页失败态。
+     */
+    private void fetchTable(final String table) {
         new Thread(() -> {
             try {
-                JSONArray pRows = Supa.restGet(act, "zhi_principles?select=*&order=created_at.asc");
-                JSONArray qRows = Supa.restGet(act, "zhi_questions?select=*&order=created_at.asc");
-                JSONArray peRows = Supa.restGet(act, "zhi_people?select=*&order=created_at.asc");
-                JSONArray lRows = Supa.restGet(act, "zhi_links?select=*&order=created_at.asc");
+                JSONArray rows = Supa.restGet(act, table + "?select=*&order=created_at.asc");
                 act.runOnUiThread(() -> {
-                    applyRows(pRows, qRows, peRows, lRows);
-                    offline = false;
-                    fetchFailed = false;
-                    saveCache(pRows, qRows, peRows, lRows);
-                    if (!editing && !diaryDetail) renderList();   // 编辑中/日记详情中不打断未保存的字段，数据静默更新
+                    applyTable(table, rows);
+                    staleTables.remove(table);
+                    offline = !staleTables.isEmpty();
+                    saveCache();
+                    afterDataChanged();
                 });
             } catch (Exception e) {
                 act.runOnUiThread(() -> {
-                    boolean have = !principles.isEmpty() || !questions.isEmpty() || !people.isEmpty();
-                    if (have) { offline = true; if (!editing && !diaryDetail) renderList(); }
-                    else { fetchFailed = true; diaryDetail = false; renderList(); }
+                    staleTables.add(table);
+                    offline = true;
+                    afterDataChanged();
                 });
             }
         }).start();
     }
 
-    private void applyRows(JSONArray pRows, JSONArray qRows, JSONArray peRows, JSONArray lRows) {
+    private void afterDataChanged() {
+        boolean anyData = !principles.isEmpty() || !questions.isEmpty()
+                || !people.isEmpty() || !links.isEmpty();
+        fetchFailed = staleTables.size() >= 4 && !anyData;
+        // 编辑中/日记详情中不打断未保存的字段，数据静默更新（既有纪律不变）
+        if (!editing && !diaryDetail) renderList();
+    }
+
+    /** 日记重要性云端值并入本地（有待同步 op 的日期以本地为准，不被云端盖掉）。 */
+    private void fetchDiaryImportance() {
+        new Thread(() -> {
+            try {
+                JSONArray us = Supa.restGet(act, "user_state?select=diary_importance");
+                if (us.length() == 0) return;
+                JSONObject remote = us.getJSONObject(0).optJSONObject("diary_importance");
+                if (remote == null) return;
+                act.runOnUiThread(() -> {
+                    JSONObject local = DiaryImportance.load(act);
+                    Set<String> pendingDates = pendingDiaryImpDates();
+                    boolean changed = false;
+                    Iterator<String> ks = remote.keys();
+                    while (ks.hasNext()) {
+                        String k = ks.next();
+                        if (pendingDates.contains(k)) continue;
+                        int rv = remote.optInt(k, 0);
+                        if (DiaryImportance.of(local, k) != rv) {
+                            DiaryImportance.put(local, k, rv);
+                            changed = true;
+                        }
+                    }
+                    if (changed) {
+                        DiaryImportance.saveQuiet(act, local);
+                        diaryImpRoot = local;
+                        if (diaryDetail || page == PAGE_DIARY) renderCurrent();
+                    }
+                });
+            } catch (Exception ignored) { }
+        }).start();
+    }
+
+    private void applyTable(String table, JSONArray rows) {
+        if (TB_PRINCIPLES.equals(table)) applyPrinciples(rows);
+        else if (TB_QUESTIONS.equals(table)) applyQuestions(rows);
+        else if (TB_PEOPLE.equals(table)) applyPeople(rows);
+        else applyLinks(rows);
+    }
+
+    private void applyPrinciples(JSONArray rows) {
         try {
             principles.clear();
-            for (int i = 0; i < pRows.length(); i++) {
-                JSONObject o = pRows.getJSONObject(i);
-                Principle p = new Principle();
-                p.id = o.optString("id", "");
-                p.kind = o.optString("kind", "think");
-                p.title = nz(o.optString("title", ""));
-                p.body = nz(o.optString("body", ""));
-                p.tags = parseTags(o);
-                principles.add(p);
-            }
+            for (int i = 0; i < rows.length(); i++) principles.add(parsePrinciple(rows.getJSONObject(i)));
+        } catch (Exception ignored) { }
+    }
+    private void applyQuestions(JSONArray rows) {
+        try {
             questions.clear();
-            for (int i = 0; i < qRows.length(); i++) {
-                JSONObject o = qRows.getJSONObject(i);
-                Question q = new Question();
-                q.id = o.optString("id", "");
-                q.title = nz(o.optString("title", ""));
-                q.body = nz(o.optString("body", ""));
-                q.status = o.optString("status", "pending");
-                q.shortTitle = nz(o.optString("short_title", ""));
-                q.tags = parseTags(o);
-                questions.add(q);
-            }
+            for (int i = 0; i < rows.length(); i++) questions.add(parseQuestion(rows.getJSONObject(i)));
+        } catch (Exception ignored) { }
+    }
+    private void applyPeople(JSONArray rows) {
+        try {
             people.clear();
-            for (int i = 0; i < peRows.length(); i++) {
-                JSONObject o = peRows.getJSONObject(i);
-                Person pe = new Person();
-                pe.id = o.optString("id", "");
-                pe.name = nz(o.optString("name", ""));
-                pe.memo = nz(o.optString("memo", ""));
-                pe.tags = parseTags(o);
-                people.add(pe);
-            }
+            for (int i = 0; i < rows.length(); i++) people.add(parsePerson(rows.getJSONObject(i)));
+        } catch (Exception ignored) { }
+    }
+    private void applyLinks(JSONArray rows) {
+        try {
             links.clear();
-            for (int i = 0; i < lRows.length(); i++) {
-                JSONObject o = lRows.getJSONObject(i);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject o = rows.getJSONObject(i);
                 Link l = new Link();
                 l.aType = o.optString("a_type", "");
                 l.aId = o.optString("a_id", "");
@@ -309,6 +396,13 @@ public final class ZhiPage {
                 links.add(l);
             }
         } catch (Exception ignored) { }
+    }
+
+    private void applyRows(JSONArray pRows, JSONArray qRows, JSONArray peRows, JSONArray lRows) {
+        applyPrinciples(pRows);
+        applyQuestions(qRows);
+        applyPeople(peRows);
+        applyLinks(lRows);
     }
 
     private void loadCache() {
@@ -329,18 +423,21 @@ public final class ZhiPage {
                 JSONObject o = new JSONObject();
                 o.put("id", p.id); o.put("kind", p.kind); o.put("title", p.title);
                 o.put("body", p.body); o.put("tags", tagsJson(p.tags));
+                o.put("importance", p.importance); o.put("updated_at", p.updatedAt);
                 pa.put(o);
             }
             for (Question q : questions) {
                 JSONObject o = new JSONObject();
                 o.put("id", q.id); o.put("title", q.title); o.put("body", q.body);
                 o.put("status", q.status); o.put("short_title", q.shortTitle); o.put("tags", tagsJson(q.tags));
+                o.put("importance", q.importance); o.put("updated_at", q.updatedAt);
                 qa.put(o);
             }
             for (Person pe : people) {
                 JSONObject o = new JSONObject();
                 o.put("id", pe.id); o.put("name", pe.name); o.put("memo", pe.memo);
                 o.put("tags", tagsJson(pe.tags));
+                o.put("importance", pe.importance); o.put("updated_at", pe.updatedAt);
                 pea.put(o);
             }
             for (Link l : links) {
@@ -446,9 +543,255 @@ public final class ZhiPage {
         return out;
     }
 
-    // ---------------- 写库（关联立即生效；字段经保存 upsert） ----------------
+    // ---------------- 写库（v1.67.0 起：本地先行＋待同步队列，见下节） ----------------
     private interface Done { void ok(); }
     private interface DoneVal<T> { void ok(T v); }
+
+    // ---------------- 待同步队列（v1.67.0，F1 本地先行＋防冲突） ----------------
+    // 知页所有写操作（条目新建/编辑、关联增删、删除条目、日记重要性）先落本地
+    // 模型＋缓存、立即生效，再把操作排进落盘队列（SharedPreferences，进程被杀
+    // 不丢）；队列按序补传：新建 POST 同 id、编辑字段级 PATCH（只发改过的列）；
+    // 网络一断就停、op 留队首，下次保存/回前台/切回知页再试。编辑补传前先读云端
+    // updated_at：比编辑所基于的版本新 → 放弃该 op、拉回云端版本覆盖本地、
+    // 页顶小字明示（全软件「本地先行＋写入防冲突」规矩的知页实现）。
+    private static final String OPS_KEY = "pending_ops";
+    private boolean flushing;
+
+    /** 补传时发现云端已在别处更新（与网络失败相区分：网络失败留队重试）。 */
+    private static final class Conflict extends Exception { }
+
+    private JSONObject newOp(String kind) {
+        JSONObject op = new JSONObject();
+        try { op.put("k", kind); } catch (Exception ignored) { }
+        return op;
+    }
+    private synchronized JSONArray loadOps() {
+        try {
+            String raw = act.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(OPS_KEY, "[]");
+            return new JSONArray(raw == null ? "[]" : raw);
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+    private synchronized void saveOps(JSONArray ops) {
+        act.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+                .putString(OPS_KEY, ops.toString()).apply();
+    }
+    private void enqueueOp(JSONObject op) {
+        synchronized (this) {
+            JSONArray ops = loadOps();
+            ops.put(op);
+            saveOps(ops);
+        }
+    }
+    private int pendingCount() {
+        synchronized (this) { return loadOps().length(); }
+    }
+    private Set<String> pendingDiaryImpDates() {
+        Set<String> out = new HashSet<>();
+        try {
+            JSONArray ops = loadOps();
+            for (int i = 0; i < ops.length(); i++) {
+                JSONObject op = ops.getJSONObject(i);
+                if ("diary_imp".equals(op.optString("k"))) out.add(op.optString("date"));
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+    private void dropHeadOp() {
+        synchronized (this) {
+            JSONArray ops = loadOps();
+            JSONArray rest = new JSONArray();
+            for (int i = 1; i < ops.length(); i++) rest.put(ops.opt(i));
+            saveOps(rest);
+        }
+    }
+    private static String tableOfType(String type) {
+        return T_PRINCIPLE.equals(type) ? TB_PRINCIPLES
+                : T_QUESTION.equals(type) ? TB_QUESTIONS : TB_PEOPLE;
+    }
+    private static JSONObject copyJson(JSONObject o) {
+        try { return new JSONObject(o.toString()); }
+        catch (Exception e) { return new JSONObject(); }
+    }
+    /** 知页顶部的待同步小字（队列非空时渲染进列表页/编辑页）。 */
+    private void addPendingLine(LinearLayout col) {
+        int n = pendingCount();
+        if (n <= 0) return;
+        TextView t = tv(s("有 " + n + " 条改动待同步", n + " change(s) waiting to sync"), 11.5f, subC());
+        t.setPadding(0, dp(6), 0, 0);
+        col.addView(t);
+    }
+
+    /** 队列补传（后台线程按序执行；任一 op 遇网络/服务端失败即停，留待下次触发）。 */
+    private void flushQueue() {
+        if (!Supa.isLoggedIn(act)) return;
+        synchronized (this) {
+            if (flushing) return;
+            flushing = true;
+        }
+        new Thread(() -> {
+            boolean conflict = false;
+            String conflictTable = null;
+            try {
+                while (true) {
+                    JSONArray ops = loadOps();
+                    if (ops.length() == 0) break;
+                    JSONObject op = ops.getJSONObject(0);
+                    try {
+                        execOp(op);
+                        dropHeadOp();
+                    } catch (Conflict cf) {
+                        dropHeadOp();
+                        conflict = true;
+                        conflictTable = tableOfType(op.optString("type"));
+                    }
+                }
+            } catch (Exception ignored) {
+                // 网络等失败：op 留在队首，下次触发再试（页面有「待同步」小字明示）
+            }
+            synchronized (ZhiPage.this) { flushing = false; }
+            if (conflictTable != null) fetchTable(conflictTable);
+            final boolean cf = conflict;
+            act.runOnUiThread(() -> {
+                if (cf) topNotice = s("这条已在别处更新，已按最新显示",
+                        "This one was updated elsewhere — showing the latest");
+                if (!editing && !diaryDetail) renderList();
+            });
+        }).start();
+    }
+
+    private void execOp(JSONObject op) throws Exception {
+        String k = op.optString("k");
+        if ("upsert".equals(k)) {
+            execUpsert(op);
+        } else if ("link_add".equals(k)) {
+            JSONObject row = new JSONObject();
+            row.put("id", op.getString("linkId"));
+            row.put("user_id", Supa.userId(act));
+            row.put("a_type", op.getString("aType"));
+            row.put("a_id", op.getString("aId"));
+            row.put("b_type", op.getString("bType"));
+            row.put("b_id", op.getString("bId"));
+            row.put("created_at", op.getString("at"));
+            Supa.restUpsertOne(act, TB_LINKS, "user_id,a_type,a_id,b_type,b_id", row);
+        } else if ("link_del".equals(k)) {
+            Supa.restDelete(act, "zhi_links?a_type=eq." + op.getString("aType")
+                    + "&a_id=eq." + op.getString("aId")
+                    + "&b_type=eq." + op.getString("bType") + "&b_id=eq." + op.getString("bId"));
+        } else if ("delete".equals(k)) {
+            String type = op.getString("type"), id = op.getString("id");
+            Supa.restDelete(act, "zhi_links?a_type=eq." + type + "&a_id=eq." + id);
+            Supa.restDelete(act, "zhi_links?b_type=eq." + type + "&b_id=eq." + id);
+            Supa.restDelete(act, tableOfType(type) + "?id=eq." + id);
+        } else if ("diary_imp".equals(k)) {
+            // 只动 user_state.diary_importance 一列、只改该日期键：先拉最新再合并写回
+            String date = op.getString("date");
+            int val = op.getInt("value");
+            JSONArray us = Supa.restGet(act, "user_state?select=diary_importance");
+            JSONObject root = us.length() > 0
+                    ? us.getJSONObject(0).optJSONObject("diary_importance") : null;
+            if (root == null) root = new JSONObject();
+            DiaryImportance.put(root, date, val);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(act));
+            write.put("diary_importance", root);
+            Supa.restUpsertOne(act, "user_state", "user_id", write);
+        }
+    }
+
+    private void execUpsert(JSONObject op) throws Exception {
+        final String type = op.getString("type");
+        final String table = tableOfType(type);
+        final String id = op.getString("id");
+        final JSONObject fields = op.getJSONObject("fields");
+        if (op.optBoolean("isNew", false)) {
+            JSONObject row = copyJson(fields);
+            if (row.has("wantShort")) {
+                // 短题：本地先存的是截断兜底，补传时才走 AI 生成（失败内部仍兜底）
+                row.remove("wantShort");
+                row.put("short_title", genShortTitle(act,
+                        row.optString("title", ""), row.optString("body", "")));
+            }
+            row.put("id", id);
+            row.put("user_id", Supa.userId(act));
+            row.put("created_at", op.getString("at"));
+            row.put("updated_at", isoNow());
+            if (!T_PERSON.equals(type)) row.put("source", "app");
+            JSONArray back = Supa.restUpsertOne(act, table, "id", row);
+            if (back.length() == 0) throw new Exception("empty back");
+            applySavedRow(type, back.getJSONObject(0));
+            return;
+        }
+        // 编辑：先核云端 updated_at，没被别处更新才字段级 PATCH
+        String base = op.optString("base", "");
+        JSONArray cur = Supa.restGet(act, table + "?id=eq." + id + "&select=updated_at");
+        if (cur.length() == 0) {
+            // 云端这条已不在（别处删了）：以本地整条为准建回
+            JSONObject row = fullRowOf(type, id);
+            if (row == null) return;   // 本地也没有（其后被删，队列里有 delete op 兜底）
+            row.put("updated_at", isoNow());
+            JSONArray back = Supa.restUpsertOne(act, table, "id", row);
+            if (back.length() > 0) applySavedRow(type, back.getJSONObject(0));
+            return;
+        }
+        String cloudUpd = cur.getJSONObject(0).optString("updated_at", "");
+        if (!base.isEmpty() && !cloudUpd.isEmpty() && cloudUpd.compareTo(base) > 0) {
+            throw new Conflict();
+        }
+        JSONObject patch = copyJson(fields);
+        patch.put("updated_at", isoNow());
+        JSONArray back = Supa.restPatch(act, table + "?id=eq." + id, patch);
+        if (back.length() > 0) applySavedRow(type, back.getJSONObject(0));
+    }
+
+    /** 服务端回行并入本地模型（模型只在 UI 线程动：投递过去并等它落完）。 */
+    private void applySavedRow(final String type, final JSONObject rowJson) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        act.runOnUiThread(() -> {
+            try {
+                if (T_PRINCIPLE.equals(type)) replacePrinciple(parsePrinciple(rowJson));
+                else if (T_QUESTION.equals(type)) replaceQuestion(parseQuestion(rowJson));
+                else replacePerson(parsePerson(rowJson));
+                saveCache();
+            } catch (Exception ignored) { }
+            latch.countDown();
+        });
+        try { latch.await(15, java.util.concurrent.TimeUnit.SECONDS); }
+        catch (Exception ignored) { }
+    }
+
+    /** 本地模型整条拼成云端行（云端行丢失时建回用）。 */
+    private JSONObject fullRowOf(String type, String id) {
+        try {
+            JSONObject row = new JSONObject();
+            row.put("id", id);
+            row.put("user_id", Supa.userId(act));
+            row.put("created_at", isoNow());
+            if (T_PRINCIPLE.equals(type)) {
+                Principle p = principleById(id);
+                if (p == null) return null;
+                row.put("kind", p.kind); row.put("title", p.title); row.put("body", p.body);
+                row.put("tags", tagsJson(p.tags)); row.put("importance", p.importance);
+                row.put("source", "app");
+            } else if (T_QUESTION.equals(type)) {
+                Question q = questionById(id);
+                if (q == null) return null;
+                row.put("title", q.title); row.put("body", q.body); row.put("status", q.status);
+                row.put("short_title", q.shortTitle);
+                row.put("tags", tagsJson(q.tags)); row.put("importance", q.importance);
+                row.put("source", "app");
+            } else {
+                Person pe = personById(id);
+                if (pe == null) return null;
+                row.put("name", pe.name); row.put("memo", pe.memo);
+                row.put("tags", tagsJson(pe.tags)); row.put("importance", pe.importance);
+            }
+            return row;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     private void addLink(final String t1, final String id1, final String t2, final String id2,
                          final Done done) {
@@ -456,64 +799,53 @@ public final class ZhiPage {
         final String aT, aI, bT, bI;
         if (t1.compareTo(t2) <= 0) { aT = t1; aI = id1; bT = t2; bI = id2; }
         else { aT = t2; aI = id2; bT = t1; bI = id1; }
-        new Thread(() -> {
-            try {
-                JSONObject row = new JSONObject();
-                row.put("id", UUID.randomUUID().toString());
-                row.put("user_id", Supa.userId(act));
-                row.put("a_type", aT); row.put("a_id", aI);
-                row.put("b_type", bT); row.put("b_id", bI);
-                row.put("created_at", isoNow());
-                Supa.restUpsertOne(act, "zhi_links", "user_id,a_type,a_id,b_type,b_id", row);
-                act.runOnUiThread(() -> {
-                    Link l = new Link();
-                    l.aType = aT; l.aId = aI; l.bType = bT; l.bId = bI;
-                    links.add(l);
-                    saveCache();
-                    if (done != null) done.ok();
-                });
-            } catch (Exception e) {
-                act.runOnUiThread(() -> toast(s("没关联上，再试一次", "Couldn't link — try again")));
-            }
-        }).start();
+        if (isLinked(t1, id1, t2, id2)) { if (done != null) done.ok(); return; }
+        // 本地先行：先并入本地关联、立即生效，再排队补传
+        Link l = new Link();
+        l.aType = aT; l.aId = aI; l.bType = bT; l.bId = bI;
+        links.add(l);
+        saveCache();
+        try {
+            JSONObject op = newOp("link_add");
+            op.put("linkId", UUID.randomUUID().toString());
+            op.put("aType", aT); op.put("aId", aI);
+            op.put("bType", bT); op.put("bId", bI);
+            op.put("at", isoNow());
+            enqueueOp(op);
+        } catch (Exception ignored) { }
+        if (done != null) done.ok();
+        flushQueue();
     }
 
     private void removeLink(final Link l, final Done done) {
-        new Thread(() -> {
-            try {
-                Supa.restDelete(act, "zhi_links?a_type=eq." + l.aType + "&a_id=eq." + l.aId
-                        + "&b_type=eq." + l.bType + "&b_id=eq." + l.bId);
-                act.runOnUiThread(() -> {
-                    links.remove(l);
-                    saveCache();
-                    if (done != null) done.ok();
-                });
-            } catch (Exception e) {
-                act.runOnUiThread(() -> toast(s("没解除，再试一次", "Couldn't unlink — try again")));
-            }
-        }).start();
+        // 本地先行：先解除本地关联、立即生效，再排队补传
+        links.remove(l);
+        saveCache();
+        try {
+            JSONObject op = newOp("link_del");
+            op.put("aType", l.aType); op.put("aId", l.aId);
+            op.put("bType", l.bType); op.put("bId", l.bId);
+            enqueueOp(op);
+        } catch (Exception ignored) { }
+        if (done != null) done.ok();
+        flushQueue();
     }
 
     private void deleteItem(final String type, final String id, final Done done) {
-        final String table = T_PRINCIPLE.equals(type) ? "zhi_principles"
-                : T_QUESTION.equals(type) ? "zhi_questions" : "zhi_people";
-        new Thread(() -> {
-            try {
-                Supa.restDelete(act, "zhi_links?a_type=eq." + type + "&a_id=eq." + id);
-                Supa.restDelete(act, "zhi_links?b_type=eq." + type + "&b_id=eq." + id);
-                Supa.restDelete(act, table + "?id=eq." + id);
-                act.runOnUiThread(() -> {
-                    links.removeIf(l -> l.involves(type, id));
-                    if (T_PRINCIPLE.equals(type)) principles.removeIf(p -> p.id.equals(id));
-                    else if (T_QUESTION.equals(type)) questions.removeIf(q -> q.id.equals(id));
-                    else people.removeIf(pe -> pe.id.equals(id));
-                    saveCache();
-                    if (done != null) done.ok();
-                });
-            } catch (Exception e) {
-                act.runOnUiThread(() -> toast(s("没删掉，再试一次", "Couldn't delete — try again")));
-            }
-        }).start();
+        // 本地先行：先从本地模型与缓存摘掉（含它的全部关联），再排队补传删除
+        links.removeIf(l -> l.involves(type, id));
+        if (T_PRINCIPLE.equals(type)) principles.removeIf(p -> p.id.equals(id));
+        else if (T_QUESTION.equals(type)) questions.removeIf(q -> q.id.equals(id));
+        else people.removeIf(pe -> pe.id.equals(id));
+        saveCache();
+        try {
+            JSONObject op = newOp("delete");
+            op.put("type", type);
+            op.put("id", id);
+            enqueueOp(op);
+        } catch (Exception ignored) { }
+        if (done != null) done.ok();
+        flushQueue();
     }
 
     // ---------------- 列表页 ----------------
@@ -585,7 +917,22 @@ public final class ZhiPage {
             col.addView(retry);
             return;
         }
-        if (offline) {
+        if (topNotice != null) {
+            TextView nt = tv(topNotice, 12, redC());
+            nt.setPadding(0, dp(6), 0, 0);
+            nt.setOnClickListener(v -> { topNotice = null; renderList(); });
+            col.addView(nt);
+        }
+        addPendingLine(col);
+        String staleTbl = staleTableForPage();
+        if (staleTbl != null) {
+            // 失败必须明示（v1.67.0）：这一页的数据没拉到最新，给可点的重试
+            final String tbl = staleTbl;
+            TextView hint = tv(s("没拉到最新，点这里重试", "Couldn't load the latest — tap to retry"), 12, redC());
+            hint.setPadding(0, dp(6), 0, 0);
+            hint.setOnClickListener(v -> fetchTable(tbl));
+            col.addView(hint);
+        } else if (offline) {
             TextView off = tv(s("离线，显示上次的", "Offline — showing the last copy"), 12, redC());
             off.setPadding(0, dp(6), 0, 0);
             col.addView(off);
@@ -634,15 +981,26 @@ public final class ZhiPage {
             }
         });
 
-        // 标签筛选（多选，OR；日记页无标签筛选）
-        List<String> ptags = page == PAGE_DIARY ? new ArrayList<>() : pageTags();
-        if (!ptags.isEmpty()) {
+        // 筛选行（v1.67.0）：最前面永远钉 ★★ 与 ★（独立星筛选维度，与 tag 筛选
+        // 是 AND；tag 之间仍 OR）；点已选中的星取消。日记页无筛选行。
+        if (page != PAGE_DIARY) {
             FlowLayout flow = new FlowLayout(act, dp(6), dp(6));
             LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             fLp.topMargin = dp(10);
             col.addView(flow, fLp);
-            for (final String tag : ptags) {
+            for (final int sv : new int[]{2, 1}) {
+                boolean on = starSel[page] == sv;
+                TextView chip = tv(sv == 2 ? "★★" : "★", 11.5f, on ? cardC() : redC());
+                chip.setPadding(dp(11), dp(3), dp(11), dp(3));
+                chip.setBackground(roundBg(on ? redC() : Color.TRANSPARENT, on ? 0 : redC(), 20));
+                chip.setOnClickListener(v -> {
+                    starSel[page] = starSel[page] == sv ? 0 : sv;
+                    renderList();
+                });
+                flow.addView(chip);
+            }
+            for (final String tag : pageTags()) {
                 boolean on = tagSel.get(page).contains(tag);
                 TextView chip = tv(tag, 11.5f, on ? cardC() : subC());
                 chip.setPadding(dp(11), dp(3), dp(11), dp(3));
@@ -736,14 +1094,33 @@ public final class ZhiPage {
         for (String t : tags) if (sel.contains(t)) return true;
         return false;
     }
+    /** 星筛选（v1.67.0）：starSel 为 0 不筛，否则只收该星级；与 tag 筛选是 AND。 */
+    private boolean hitImportance(int imp) {
+        int sel = starSel[page];
+        return sel == 0 || imp == sel;
+    }
+    private static String stars(int imp) {
+        return imp >= 2 ? "★★" : imp == 1 ? "★" : "";
+    }
+    /** 当前页对应的表若没拉到最新（stale）返回表名；关联表 stale 对所有页都算。 */
+    private String staleTableForPage() {
+        String t = page == PAGE_PRINCIPLE ? TB_PRINCIPLES : page == PAGE_QUESTION ? TB_QUESTIONS
+                : page == PAGE_PERSON ? TB_PEOPLE : null;
+        if (t != null && staleTables.contains(t)) return t;
+        if (staleTables.contains(TB_LINKS)) return TB_LINKS;
+        return null;
+    }
     private List<Principle> filteredPrinciples() {
         String q = queries[page].trim();
         List<Principle> out = new ArrayList<>();
         for (Principle p : principles) {
             if (!hitTags(p.tags)) continue;
+            if (!hitImportance(p.importance)) continue;
             if (!q.isEmpty() && !(p.title.contains(q) || p.body.contains(q))) continue;
             out.add(p);
         }
+        // 星级降序为第一排序键，同星级保持原有次序（List.sort 稳定）
+        out.sort((a, b) -> Integer.compare(b.importance, a.importance));
         return out;
     }
     private List<Question> filteredQuestions() {
@@ -751,9 +1128,11 @@ public final class ZhiPage {
         List<Question> out = new ArrayList<>();
         for (Question qs : questions) {
             if (!hitTags(qs.tags)) continue;
+            if (!hitImportance(qs.importance)) continue;
             if (!q.isEmpty() && !(qs.title.contains(q) || qs.body.contains(q))) continue;
             out.add(qs);
         }
+        out.sort((a, b) -> Integer.compare(b.importance, a.importance));
         return out;
     }
     private List<Person> filteredPeople() {
@@ -761,9 +1140,11 @@ public final class ZhiPage {
         List<Person> out = new ArrayList<>();
         for (Person pe : people) {
             if (!hitTags(pe.tags)) continue;
+            if (!hitImportance(pe.importance)) continue;
             if (!q.isEmpty() && !(pe.name.contains(q) || pe.memo.contains(q))) continue;
             out.add(pe);
         }
+        out.sort((a, b) -> Integer.compare(b.importance, a.importance));
         return out;
     }
 
@@ -842,8 +1223,16 @@ public final class ZhiPage {
     }
     private View principleCard(final Principle p) {
         LinearLayout box = cardBox();
-        TextView kind = tv("think".equals(p.kind) ? s("思维", "Thinking") : s("行为", "Action"), 10.5f, redC());
-        box.addView(kind);
+        LinearLayout kindRow = new LinearLayout(act);
+        kindRow.setOrientation(LinearLayout.HORIZONTAL);
+        kindRow.setGravity(Gravity.CENTER_VERTICAL);
+        kindRow.addView(tv("think".equals(p.kind) ? s("思维", "Thinking") : s("行为", "Action"), 10.5f, redC()));
+        if (p.importance > 0) {
+            View ksp = new View(act);
+            kindRow.addView(ksp, new LinearLayout.LayoutParams(0, 1, 1));
+            kindRow.addView(tv(stars(p.importance), 12, redC()));
+        }
+        box.addView(kindRow);
         TextView title = serif(displayOf(p), 15.5f, inkC(), true);
         title.setPadding(0, dp(2), 0, 0);
         box.addView(title);
@@ -876,6 +1265,11 @@ public final class ZhiPage {
         LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         tLp.leftMargin = dp(10);
         row.addView(title, tLp);
+        if (p.importance > 0) {
+            TextView stv = tv(stars(p.importance), 12, redC());
+            stv.setPadding(dp(8), 0, 0, 0);
+            row.addView(stv);
+        }
         if (!p.tags.isEmpty()) {
             TextView tg = tv(TextUtils.join(" ", p.tags), 11, weakC());
             tg.setMaxLines(1);
@@ -901,6 +1295,11 @@ public final class ZhiPage {
         String prev = firstLine(q.body);
         if (!prev.isEmpty() && !prev.equals(displayOf(q))) box.addView(bodyPreview(q.body));
         FlowLayout meta = metaRow();
+        if (q.importance > 0) {
+            TextView stv = tv(stars(q.importance), 12, redC());
+            stv.setPadding(0, dp(2), 0, dp(2));
+            meta.addView(stv);
+        }
         List<String> pids = linkedIds(T_QUESTION, q.id, T_PERSON);
         if (!pids.isEmpty()) {
             TextView who = tv(s("问", "Ask"), 11.5f, subC());
@@ -938,6 +1337,11 @@ public final class ZhiPage {
             who.setPadding(dp(8), 0, dp(8), 0);
             row.addView(who);
         }
+        if (q.importance > 0) {
+            TextView stv = tv(stars(q.importance), 12, redC());
+            stv.setPadding(dp(8), 0, 0, 0);
+            row.addView(stv);
+        }
         TextView st = tv("pending".equals(q.status) ? s("待问", "To ask") : s("已问", "Asked"),
                 11, "pending".equals(q.status) ? redC() : weakC());
         row.addView(st);
@@ -961,6 +1365,8 @@ public final class ZhiPage {
         sorted.sort((a, b) -> {
             String ia = initialOf(a.name), ib = initialOf(b.name);
             int c = ia.compareTo(ib);
+            if (c != 0) return c;   // 拼音分组不破组
+            c = Integer.compare(b.importance, a.importance);   // 组内星级降序（v1.67.0）
             return c != 0 ? c : a.name.compareTo(b.name);
         });
         for (Person pe : sorted) {
@@ -1011,6 +1417,13 @@ public final class ZhiPage {
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         nLp.leftMargin = dp(10);
         row.addView(name, nLp);
+        if (pe.importance > 0) {
+            TextView stv = tv(stars(pe.importance), 12.5f, redC());
+            LinearLayout.LayoutParams sLp2 = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            sLp2.leftMargin = dp(8);
+            row.addView(stv, sLp2);
+        }
         box.addView(row);
         if (!pe.memo.trim().isEmpty()) {
             TextView m = tv(firstLine(pe.memo), 12, subC());
@@ -1034,6 +1447,11 @@ public final class ZhiPage {
         row.setPadding(dp(2), dp(8), dp(14), dp(8));
         TextView name = tv(pe.name, 14.5f, inkC());
         row.addView(name);
+        if (pe.importance > 0) {
+            TextView stv = tv(stars(pe.importance), 12, redC());
+            stv.setPadding(dp(8), 0, 0, 0);
+            row.addView(stv);
+        }
         if (!pe.tags.isEmpty()) {
             TextView tg = tv(pe.tags.get(0), 10.5f, subC());
             tg.setPadding(dp(7), dp(1), dp(7), dp(1));
@@ -1104,6 +1522,7 @@ public final class ZhiPage {
     private void renderDiaryResults() {
         habitRoot = HabitData.load(act);
         diaryTitlesRoot = DiaryTitles.load(act);
+        diaryImpRoot = DiaryImportance.load(act);
         List<String> dates = filteredDiaryDates();
         countView.setText(s(dates.size() + " 篇", dates.size() + " entries"));
         if (dates.isEmpty()) { resultsCol.addView(emptyHint()); return; }
@@ -1128,8 +1547,16 @@ public final class ZhiPage {
         LinearLayout box = cardBox();
         // 标题行：有标题显示「YYMMDD 主题」，没标题只显示日期（v1.61.0）
         String dTitle = diaryTitlesRoot == null ? "" : DiaryTitles.title(diaryTitlesRoot, date);
-        box.addView(serif(dTitle.isEmpty() ? dateLabel(date)
-                : DiaryTitles.yymmdd(date) + " " + dTitle, 15.5f, inkC(), true));
+        LinearLayout titleRow = new LinearLayout(act);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView dTitleV = serif(dTitle.isEmpty() ? dateLabel(date)
+                : DiaryTitles.yymmdd(date) + " " + dTitle, 15.5f, inkC(), true);
+        titleRow.addView(dTitleV, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        int dImp = diaryImpRoot == null ? 0 : DiaryImportance.of(diaryImpRoot, date);
+        if (dImp > 0) titleRow.addView(tv(stars(dImp), 12.5f, redC()));
+        box.addView(titleRow);
         TextView ex = tv(WikiLinks.plainDisplay(act, excerptOf(text)), 12, subC());
         ex.setMaxLines(2);
         ex.setEllipsize(TextUtils.TruncateAt.END);
@@ -1154,6 +1581,8 @@ public final class ZhiPage {
         diaryFromEditor = editing && es != null;
         diaryDate = date;
         diaryDetail = true;
+        diaryImpRoot = DiaryImportance.load(act);
+        diaryImpSel = DiaryImportance.of(diaryImpRoot, date);
         diaryAddingType = null;
         diaryIn = null;
         renderDiaryDetail();
@@ -1210,6 +1639,31 @@ public final class ZhiPage {
                 s("主题，10 字以内（可空）", "Theme, up to 10 characters (optional)"), 1);
         col.addView(diaryTitleIn);
 
+        // 重要性（v1.67.0）：与三类条目同一口径的三段选择器，随下方「保存」一起
+        // 落本地 DiaryImportance 并排队对云端 diary_importance 列读改写
+        if (diaryImpRoot == null) diaryImpRoot = DiaryImportance.load(act);
+        col.addView(fieldLabel(s("重 要 性", "Importance")));
+        LinearLayout impSeg = new LinearLayout(act);
+        impSeg.setOrientation(LinearLayout.HORIZONTAL);
+        impSeg.setBackground(roundBg(washC(), 0, 9));
+        impSeg.setPadding(dp(3), dp(3), dp(3), dp(3));
+        for (final int sv : new int[]{0, 1, 2}) {
+            boolean on = diaryImpSel == sv;
+            TextView t = tv(sv == 0 ? s("无星", "No star")
+                    : sv == 1 ? s("★ 一星", "★ 1 star") : s("★★ 二星", "★★ 2 stars"),
+                    13, on ? inkC() : subC());
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(7), 0, dp(7));
+            if (on) {
+                t.setBackground(roundBg(cardC(), 0, 7));
+                t.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+            }
+            t.setOnClickListener(v -> { diaryImpSel = sv; renderDiaryDetail(); });
+            impSeg.addView(t, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        }
+        col.addView(impSeg);
+
         diaryIn = fieldBox(keep != null ? keep : HabitData.diary(habitRoot, date),
                 s("写下这一天的日记", "Write this day's entry"), 8);
         LinearLayout.LayoutParams inLp = new LinearLayout.LayoutParams(
@@ -1239,6 +1693,19 @@ public final class ZhiPage {
             DiaryTitles.putTitle(tRoot, date, diaryTitleIn.getText().toString());
             DiaryTitles.save(act, tRoot);
             diaryTitlesRoot = tRoot;
+            // 重要性（v1.67.0）：变了才写——本地 DiaryImportance 先落盘，再排队补传
+            if (diaryImpRoot == null) diaryImpRoot = DiaryImportance.load(act);
+            if (DiaryImportance.of(diaryImpRoot, date) != diaryImpSel) {
+                DiaryImportance.put(diaryImpRoot, date, diaryImpSel);
+                DiaryImportance.saveQuiet(act, diaryImpRoot);
+                try {
+                    JSONObject op = newOp("diary_imp");
+                    op.put("date", date);
+                    op.put("value", diaryImpSel);
+                    enqueueOp(op);
+                } catch (Exception ignored) { }
+                flushQueue();
+            }
             WikiLinks.noteDiaryChanged(act);
             toast(s("存好了", "Saved"));
             renderDiaryDetail();
@@ -1496,6 +1963,7 @@ public final class ZhiPage {
         String title = "", body = "", name = "", memo = "";
         String shortTitle = "";          // 问题短题（v1.61.0）
         String kind = "think", status = "pending";
+        int importance;                  // 重要性（v1.67.0）：0 无星／1 一星／2 二星
         List<String> tags = new ArrayList<>();
         String addingType;               // 哪个关联区的添加面板开着（null=都关）
         EditText titleIn, bodyIn, nameIn, memoIn, shortIn, addIn;
@@ -1518,13 +1986,13 @@ public final class ZhiPage {
         if (ref.id == null) return st;
         if (T_PRINCIPLE.equals(ref.type)) {
             Principle p = principleById(ref.id);
-            if (p != null) { st.title = p.title; st.body = p.body; st.kind = p.kind; st.tags = new ArrayList<>(p.tags); }
+            if (p != null) { st.title = p.title; st.body = p.body; st.kind = p.kind; st.tags = new ArrayList<>(p.tags); st.importance = p.importance; }
         } else if (T_QUESTION.equals(ref.type)) {
             Question q = questionById(ref.id);
-            if (q != null) { st.title = q.title; st.body = q.body; st.status = q.status; st.shortTitle = q.shortTitle; st.tags = new ArrayList<>(q.tags); }
+            if (q != null) { st.title = q.title; st.body = q.body; st.status = q.status; st.shortTitle = q.shortTitle; st.tags = new ArrayList<>(q.tags); st.importance = q.importance; }
         } else {
             Person pe = personById(ref.id);
-            if (pe != null) { st.name = pe.name; st.memo = pe.memo; st.tags = new ArrayList<>(pe.tags); }
+            if (pe != null) { st.name = pe.name; st.memo = pe.memo; st.tags = new ArrayList<>(pe.tags); st.importance = pe.importance; }
         }
         return st;
     }
@@ -1645,6 +2113,7 @@ public final class ZhiPage {
         back.setPadding(0, dp(4), 0, dp(2));
         back.setOnClickListener(v -> backFromEdit());
         col.addView(back);
+        addPendingLine(col);
 
         // ---- 字段面板 ----
         if (T_PERSON.equals(type)) {
@@ -1683,6 +2152,13 @@ public final class ZhiPage {
                         v -> st.status = v));
             }
         }
+
+        // ---- 重要性（v1.67.0）：无星／一星／二星三段点选，随「保存」走本地先行队列 ----
+        col.addView(fieldLabel(s("重 要 性", "Importance")));
+        col.addView(twoChoice(new String[]{"0", "1", "2"},
+                new String[]{s("无星", "No star"), s("★ 一星", "★ 1 star"), s("★★ 二星", "★★ 2 stars")},
+                String.valueOf(st.importance),
+                v -> st.importance = Integer.parseInt(v)));
 
         // ---- 标签编辑：已有标签点选＋新建 ----
         col.addView(fieldLabel(s("标 签", "Tags")));
@@ -1936,70 +2412,54 @@ public final class ZhiPage {
         cand.setVisibility(cand.getChildCount() > 0 ? View.VISIBLE : View.GONE);
     }
 
-    /** 新建一条（以输入文字为标题/名字）并立即与当前条目关联。 */
+    /** 新建一条（以输入文字为标题/名字）并立即与当前条目关联（v1.67.0：本地先行＋排队补传）。 */
     private void createAndLink(final String newType, final String text) {
         final EditState st = es;
         final String newId = UUID.randomUUID().toString();
-        final String now = isoNow();
-        new Thread(() -> {
-            try {
-                JSONObject row = new JSONObject();
-                row.put("id", newId);
-                row.put("user_id", Supa.userId(act));
-                row.put("created_at", now);
-                row.put("updated_at", now);
-                String table;
-                if (T_PRINCIPLE.equals(newType)) {
-                    table = "zhi_principles";
-                    row.put("kind", "think");
-                    row.put("title", text);
-                    row.put("body", "");
-                    row.put("tags", new JSONArray());
-                    row.put("source", "app");
-                } else if (T_QUESTION.equals(newType)) {
-                    table = "zhi_questions";
-                    row.put("title", text);
-                    row.put("body", "");
-                    row.put("status", "pending");
-                    row.put("tags", new JSONArray());
-                    row.put("source", "app");
-                } else {
-                    table = "zhi_people";
-                    row.put("name", text);
-                    row.put("memo", "");
-                    row.put("tags", new JSONArray());
-                }
-                JSONArray back = Supa.restUpsertOne(act, table, "id", row);
-                if (back.length() == 0) throw new Exception("empty back");
-                JSONObject saved = back.getJSONObject(0);
-                // 规范形关联
-                String aT, aI, bT, bI;
-                if (st.ref.type.compareTo(newType) <= 0) { aT = st.ref.type; aI = st.ref.id; bT = newType; bI = newId; }
-                else { aT = newType; aI = newId; bT = st.ref.type; bI = st.ref.id; }
-                JSONObject lr = new JSONObject();
-                lr.put("id", UUID.randomUUID().toString());
-                lr.put("user_id", Supa.userId(act));
-                lr.put("a_type", aT); lr.put("a_id", aI);
-                lr.put("b_type", bT); lr.put("b_id", bI);
-                lr.put("created_at", now);
-                Supa.restUpsertOne(act, "zhi_links", "user_id,a_type,a_id,b_type,b_id", lr);
-                act.runOnUiThread(() -> {
-                    if (T_PRINCIPLE.equals(newType)) principles.add(parsePrinciple(saved));
-                    else if (T_QUESTION.equals(newType)) questions.add(parseQuestion(saved));
-                    else people.add(parsePerson(saved));
-                    Link l = new Link();
-                    l.aType = aT; l.aId = aI; l.bType = bT; l.bId = bI;
-                    links.add(l);
-                    saveCache();
-                    collectDraft();
-                    st.addingType = null;
-                    renderEdit();
-                    toast(s("建好并关联上了", "Created and linked"));
-                });
-            } catch (Exception e) {
-                act.runOnUiThread(() -> toast(s("没建上，再试一次", "Couldn't create — try again")));
+        try {
+            JSONObject fields = new JSONObject();
+            fields.put("tags", new JSONArray());
+            fields.put("importance", 0);
+            if (T_PRINCIPLE.equals(newType)) {
+                fields.put("kind", "think");
+                fields.put("title", text);
+                fields.put("body", "");
+                Principle np = new Principle();
+                np.id = newId; np.kind = "think"; np.title = text;
+                principles.add(np);
+            } else if (T_QUESTION.equals(newType)) {
+                fields.put("title", text);
+                fields.put("body", "");
+                fields.put("status", "pending");
+                String fb = text.length() > 10 ? text.substring(0, 10) : text;
+                fields.put("short_title", fb);
+                fields.put("wantShort", true);
+                Question nq = new Question();
+                nq.id = newId; nq.title = text; nq.shortTitle = fb;
+                questions.add(nq);
+            } else {
+                fields.put("name", text);
+                fields.put("memo", "");
+                Person np = new Person();
+                np.id = newId; np.name = text;
+                people.add(np);
             }
-        }).start();
+            JSONObject op = newOp("upsert");
+            op.put("type", newType);
+            op.put("id", newId);
+            op.put("isNew", true);
+            op.put("base", "");
+            op.put("at", isoNow());
+            op.put("fields", fields);
+            enqueueOp(op);
+            saveCache();
+        } catch (Exception ignored) { }
+        // 关联随后入队：队列 FIFO 保证条目先于关联落云
+        addLink(st.ref.type, st.ref.id, newType, newId, null);
+        collectDraft();
+        st.addingType = null;
+        renderEdit();
+        toast(s("建好并关联上了", "Created and linked"));
     }
 
     private static Principle parsePrinciple(JSONObject o) {
@@ -2009,6 +2469,8 @@ public final class ZhiPage {
         p.title = nz(o.optString("title", ""));
         p.body = nz(o.optString("body", ""));
         p.tags = parseTags(o);
+        p.importance = o.optInt("importance", 0);
+        p.updatedAt = nz(o.optString("updated_at", ""));
         return p;
     }
     private static Question parseQuestion(JSONObject o) {
@@ -2019,6 +2481,8 @@ public final class ZhiPage {
         q.status = o.optString("status", "pending");
         q.shortTitle = nz(o.optString("short_title", ""));
         q.tags = parseTags(o);
+        q.importance = o.optInt("importance", 0);
+        q.updatedAt = nz(o.optString("updated_at", ""));
         return q;
     }
     private static Person parsePerson(JSONObject o) {
@@ -2027,6 +2491,8 @@ public final class ZhiPage {
         pe.name = nz(o.optString("name", ""));
         pe.memo = nz(o.optString("memo", ""));
         pe.tags = parseTags(o);
+        pe.importance = o.optInt("importance", 0);
+        pe.updatedAt = nz(o.optString("updated_at", ""));
         return pe;
     }
 
@@ -2041,66 +2507,104 @@ public final class ZhiPage {
             toast(s("先写点什么再存", "Write something first"));
             return;
         }
+        // 本地先行（v1.67.0，F1）：id 本地先生成、模型与缓存立即更新、列表即时可见；
+        // 改动字段 diff 出来排进待同步队列，云端补传只发改过的列（字段级 PATCH）。
         final String id = isNew ? UUID.randomUUID().toString() : st.ref.id;
-        final String now = isoNow();
-        new Thread(() -> {
-            try {
-                // 新建问题且短题为空：先经 chat-proxy 让 AI 生成 ≤10 字短题（失败内部兜底截原题前 10 字）
-                final String shortFinal = (T_QUESTION.equals(type) && isNew && st.shortTitle.trim().isEmpty())
-                        ? genShortTitle(act, st.title.trim(), st.body.trim()) : st.shortTitle.trim();
-                JSONObject row = new JSONObject();
-                row.put("id", id);
-                row.put("user_id", Supa.userId(act));
-                row.put("updated_at", now);
-                if (isNew) { row.put("created_at", now); row.put("source", "app"); }
-                String table;
-                if (T_PRINCIPLE.equals(type)) {
-                    table = "zhi_principles";
-                    row.put("kind", st.kind);
-                    row.put("title", st.title.trim());
-                    row.put("body", st.body.trim());
-                    row.put("tags", tagsJson(st.tags));
-                } else if (T_QUESTION.equals(type)) {
-                    table = "zhi_questions";
-                    row.put("title", st.title.trim());
-                    row.put("body", st.body.trim());
-                    row.put("status", st.status);
-                    row.put("short_title", shortFinal);
-                    row.put("tags", tagsJson(st.tags));
+        String base = "";
+        JSONObject fields = new JSONObject();
+        try {
+            if (T_PRINCIPLE.equals(type)) {
+                Principle cur = isNew ? null : principleById(id);
+                if (cur != null) base = cur.updatedAt;
+                Principle np = new Principle();
+                np.id = id; np.kind = st.kind; np.title = st.title.trim(); np.body = st.body.trim();
+                np.tags = new ArrayList<>(st.tags); np.importance = st.importance;
+                np.updatedAt = cur != null ? cur.updatedAt : "";
+                if (cur == null) {
+                    fields.put("kind", np.kind); fields.put("title", np.title);
+                    fields.put("body", np.body); fields.put("tags", tagsJson(np.tags));
+                    fields.put("importance", np.importance);
                 } else {
-                    table = "zhi_people";
-                    row.remove("source");
-                    row.put("name", st.name.trim());
-                    row.put("memo", st.memo.trim());
-                    row.put("tags", tagsJson(st.tags));
+                    if (!np.kind.equals(cur.kind)) fields.put("kind", np.kind);
+                    if (!np.title.equals(cur.title)) fields.put("title", np.title);
+                    if (!np.body.equals(cur.body)) fields.put("body", np.body);
+                    if (!tagsJson(np.tags).toString().equals(tagsJson(cur.tags).toString()))
+                        fields.put("tags", tagsJson(np.tags));
+                    if (np.importance != cur.importance) fields.put("importance", np.importance);
                 }
-                JSONArray back = Supa.restUpsertOne(act, table, "id", row);
-                if (back.length() == 0) throw new Exception("empty back");
-                final JSONObject saved = back.getJSONObject(0);
-                act.runOnUiThread(() -> {
-                    if (T_PRINCIPLE.equals(type)) {
-                        Principle np = parsePrinciple(saved);
-                        replacePrinciple(np);
-                    } else if (T_QUESTION.equals(type)) {
-                        replaceQuestion(parseQuestion(saved));
-                    } else {
-                        replacePerson(parsePerson(saved));
+                replacePrinciple(np);
+            } else if (T_QUESTION.equals(type)) {
+                Question cur = isNew ? null : questionById(id);
+                if (cur != null) base = cur.updatedAt;
+                Question nq = new Question();
+                nq.id = id; nq.title = st.title.trim(); nq.body = st.body.trim();
+                nq.status = st.status; nq.tags = new ArrayList<>(st.tags);
+                nq.importance = st.importance;
+                nq.updatedAt = cur != null ? cur.updatedAt : "";
+                String shortT = st.shortTitle.trim();
+                if (cur == null) {
+                    if (shortT.isEmpty()) {
+                        // 短题先用截断兜底落本地（不为等 AI 堵住保存），AI 生成留到补传时
+                        String fbSrc = !nq.title.isEmpty() ? nq.title : firstLine(nq.body);
+                        shortT = fbSrc.length() > 10 ? fbSrc.substring(0, 10) : fbSrc;
+                        fields.put("wantShort", true);
                     }
-                    offline = false;
-                    saveCache();
-                    st.ref.id = id;
-                    // 以落库值刷新草稿，再重画（关联区随之可用）
-                    EditState fresh = stateFromModel(st.ref);
-                    fresh.addingType = st.addingType;
-                    es = fresh;
-                    renderEdit();
-                    toast(s("存好了", "Saved"));
-                });
-            } catch (Exception e) {
-                act.runOnUiThread(() -> toast(s("没存上，内容还在，再试一次",
-                        "Couldn't save — nothing was changed, try again")));
+                    nq.shortTitle = shortT;
+                    fields.put("title", nq.title); fields.put("body", nq.body);
+                    fields.put("status", nq.status); fields.put("short_title", shortT);
+                    fields.put("tags", tagsJson(nq.tags)); fields.put("importance", nq.importance);
+                } else {
+                    nq.shortTitle = shortT;
+                    if (!nq.title.equals(cur.title)) fields.put("title", nq.title);
+                    if (!nq.body.equals(cur.body)) fields.put("body", nq.body);
+                    if (!nq.status.equals(cur.status)) fields.put("status", nq.status);
+                    if (!shortT.equals(cur.shortTitle)) fields.put("short_title", shortT);
+                    if (!tagsJson(nq.tags).toString().equals(tagsJson(cur.tags).toString()))
+                        fields.put("tags", tagsJson(nq.tags));
+                    if (nq.importance != cur.importance) fields.put("importance", nq.importance);
+                }
+                replaceQuestion(nq);
+            } else {
+                Person cur = isNew ? null : personById(id);
+                if (cur != null) base = cur.updatedAt;
+                Person np = new Person();
+                np.id = id; np.name = st.name.trim(); np.memo = st.memo.trim();
+                np.tags = new ArrayList<>(st.tags); np.importance = st.importance;
+                np.updatedAt = cur != null ? cur.updatedAt : "";
+                if (cur == null) {
+                    fields.put("name", np.name); fields.put("memo", np.memo);
+                    fields.put("tags", tagsJson(np.tags)); fields.put("importance", np.importance);
+                } else {
+                    if (!np.name.equals(cur.name)) fields.put("name", np.name);
+                    if (!np.memo.equals(cur.memo)) fields.put("memo", np.memo);
+                    if (!tagsJson(np.tags).toString().equals(tagsJson(cur.tags).toString()))
+                        fields.put("tags", tagsJson(np.tags));
+                    if (np.importance != cur.importance) fields.put("importance", np.importance);
+                }
+                replacePerson(np);
             }
-        }).start();
+        } catch (Exception ignored) { }
+        saveCache();
+        if (isNew || fields.length() > 0) {
+            try {
+                JSONObject op = newOp("upsert");
+                op.put("type", type);
+                op.put("id", id);
+                op.put("isNew", isNew);
+                op.put("base", base);
+                op.put("at", isoNow());
+                op.put("fields", fields);
+                enqueueOp(op);
+            } catch (Exception ignored) { }
+        }
+        st.ref.id = id;
+        // 以本地新值刷新草稿，再重画（关联区随之可用）
+        EditState fresh = stateFromModel(st.ref);
+        fresh.addingType = st.addingType;
+        es = fresh;
+        renderEdit();
+        toast(s("存好了", "Saved"));
+        flushQueue();
     }
 
     /**

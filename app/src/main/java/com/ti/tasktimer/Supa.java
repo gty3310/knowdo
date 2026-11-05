@@ -180,6 +180,13 @@ public final class Supa {
         return restUpsert(c, table, onConflict, arr);
     }
 
+    /** PATCH 部分列（字段级更新，只动 body 里给的列），返回服务端 representation。 */
+    public static JSONArray restPatch(Context c, String path, JSONObject body) throws Exception {
+        Resp r = rest(c, "PATCH", path, body, "return=representation");
+        if (r.status >= 400) throw new Err(r.status, r.body);
+        return r.body.trim().isEmpty() ? new JSONArray() : r.jsonArr();
+    }
+
     /** DELETE，path 例：zhi_entries?id=eq.<uuid>（RLS 保证只删得到自己的行）。 */
     public static void restDelete(Context c, String path) throws Exception {
         Resp r = rest(c, "DELETE", path, null, null);
