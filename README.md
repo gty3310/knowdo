@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.66.0)
+## Features (Android, v1.67.0)
 
-Current version: **v1.66.0**.
+Current version: **v1.67.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,21 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.67.0 — 2026-11-05
+
+**Why:** Between last night and this morning the same root cause kept biting: Know showed 45 of 86 people, an edit to a person wouldn't save, the morning card vanished once, and Plan today opened blank. Writes in Know went straight to the cloud, so one network hiccup lost them, and several loads silently fell back to stale data and pretended nothing was wrong. The user set two standing rules that night — everything local-first (save on the phone, queue, auto-sync when the network recovers) and conflict-aware writes (field-level updates instead of whole-row overwrites). This release rebuilds Know on those two rules and fixes the same silent-fallback root behind the blank Plan today. Build commit `32acf53` · [compare v1.66.0...v1.67.0](https://github.com/gty3310/knowdo/compare/v1.66.0...v1.67.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Know saves to the phone first.** Edits, links, deletes and new entries apply locally at once and are recorded in a persisted pending queue (it survives leaving the app). Uploads run in order: edits go out as field-level PATCHes of just the changed columns; before upload each edit re-reads the row's updated_at and, if the row changed elsewhere, the queued edit is dropped, the latest is pulled back, and a notice says so on the page — a stale whole-row overwrite can no longer clobber newer data. A line at the top of Know shows "N changes waiting to sync" while the queue is non-empty.
+- **Know keeps itself current, and says so when it can't.** The four tables load independently — one failing no longer poisons the rest; a failed table leaves a tappable "couldn't load the latest" line that retries just that table. Returning to the foreground or switching tabs reloads, and the four tables are now on Realtime, so changes made elsewhere appear on their own. 
+- **Plan today heals itself.** On open and on resume, if the cached schedule isn't today's, it fills the day in from the tasks on the phone (same planner rules as always: ×1.5 durations, the standing priority order, nothing past 22:30), then tries the cloud once: reachable cloud data merges in the usual way (manual, finished and running blocks untouched); unreachable, a line at the top says the plan shown is the local one.
+- **The fourth tab is renamed to Oneness** (the app name and the page title are unchanged), and the AI add-panel can no longer collapse to an empty shell: its greeting now renders after the panel's first layout pass, with explicit layout sizes for the message column and bubbles.
+
+**New**
+- **Importance stars.** People, questions, principles and diary entries can be marked no star / ★ / ★★ when editing. Starred entries sort first and show vermilion stars in both list and card modes (the people list keeps its pinyin groups, sorting by stars inside each group). ★★ and ★ are pinned at the front of the filter row and act as their own AND dimension on top of the tag filter. Diary stars live in user_state.diary_importance by date and sync through the same queue, touching only that one column and that one date's key.
+
+Not yet verified on a real device: starring a person and seeing them sort first plus the ★★ filter, saving an edit offline and watching it sync back, the conflict notice, Know auto-refreshing on a Realtime change, Plan today's self-heal and its two notice lines, the AI panel opening with greeting and input row visible, the Oneness tab label, and the 1.66.0 to 1.67.0 in-app update chain.
+
 ### v1.66.0 — 2026-11-04
 
 **Why:** The morning page's at-most question (the Late-sleep habit) was backwards: it asked "Happened / Didn't", the user had always answered "Happened = I did it (kept the rule)", and the app stored that as one occurrence — so a week of late nights showed 0 occurrences and a fake 100%. The buttons are flipped to the same Done / Not done as the at-least habits, and the user ruled that the records it got wrong be swapped to match. The morning page also loses a few detours. Build commit `9a90586` · [compare v1.65.0...v1.66.0](https://github.com/gty3310/knowdo/compare/v1.65.0...v1.66.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -81,16 +96,6 @@ Not yet verified on a real device: tomorrow's morning page showing Done / Not do
 - **Segment counts match the minutes.** Detail-meta segment counts for daily tasks now count today's segments only, via a new `SessionLog.todayCountForTask`; the existing total/today/count helpers are untouched, history segments are neither deleted nor rewritten, and non-daily tasks still show all-time totals everywhere.
 
 Not yet verified on a real device: a daily task (e.g. Taiji) showing only today's minutes and 0 tomorrow, Used + Left equalling the planned duration, today's open segment counted exactly once while timing, a non-daily task still showing its all-time total, and the 1.64.0 to 1.65.0 in-app update chain.
-
-### v1.64.0 — 2026-11-04
-
-**Why:** On a real phone, the finished icons from v1.63.0 read too faintly: the strokes were too thin to tell what each icon means at 24dp, and the all-grey unselected state also greyed out the one vermilion element each icon carries — Act's endpoint, Know's flame, the hearts, Chat's dot — the very part that carries the meaning. This release changes only the ten icon files: thicker strokes, and red stays red when unselected. Build commit `b43befc` · [compare v1.63.0...v1.64.0](https://github.com/gty3310/knowdo/compare/v1.63.0...v1.64.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **Thicker strokes.** 1.5/1.55 → 2.0 across the set; Know (heart-lamp over a book) 1.6 → 2.1; Unity's fine line 0.65 → 0.9.
-- **Unselected icons keep their red.** Each unselected artwork now keeps exactly one vermilion element — Act's endpoint, Know's flame, the hearts in Habits and Unity, Chat's dot — with the rest in pale grey `#9AA79F`. Selected colours are unchanged, and the tab-bar code is untouched: `paintTabs()` never tinted or filtered the icons, only the artwork files changed.
-
-Not yet verified on a real device: legibility of the thickened icons at a real 24dp (above all Act's S path and Know's flame), whether selected vs unselected still reads clearly now that both states carry red, dark-mode contrast of grey plus vermilion, and the 1.63.0 to 1.64.0 in-app update chain.
 
 ## Build
 
