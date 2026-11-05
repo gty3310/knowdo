@@ -307,7 +307,7 @@ public class KnowDoAccessibilityService extends AccessibilityService {
                         "屏幕内容守卫：开始随机采样（无障碍通道，15–45 秒一张）");
             }
             try { sampleOnce(false); } catch (Exception ignored) { }
-            if (guardActive) handler.postDelayed(this, 15_000L + random.nextInt(30_001));
+            if (guardActive) handler.postDelayed(this, 10_000L + random.nextInt(10_001));
         }
     };
 

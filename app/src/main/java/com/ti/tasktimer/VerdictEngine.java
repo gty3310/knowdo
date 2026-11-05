@@ -100,7 +100,20 @@ public final class VerdictEngine {
         // 记下触发这一问询时的前台包名：用户若选宽限，宽限状态连它一起存，
         // 到点复查「是不是还停在当时那个分神应用」就靠它比对
         String fg = currentForeground(c);
-        GuardEvents.add(c, task, r.category, r.confidence, r.detail);
+        // 判定留痕（v1.69.0）：语义层出过结论的事件带 src/score/cloud；纯粗判
+        // （包名/关键词硬规则）标 src=rules；黄色类由看图模型定、照旧不带 src。
+        // 既有字段（category/confidence/detail）取值一律不动。
+        if (r.semanticSource != null) {
+            GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
+                    r.semanticSource,
+                    Float.isNaN(r.semanticScore) ? null : r.semanticScore,
+                    SemanticJudge.lastCloud.isEmpty() ? null : SemanticJudge.lastCloud);
+        } else if (!ContentAnalyzer.CAT_NSFW.equals(r.category)) {
+            GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
+                    "rules", null, null);
+        } else {
+            GuardEvents.add(c, task, r.category, r.confidence, r.detail);
+        }
         // 黄图问责邮件的唯一挂点（v1.28.0 feature 7）：只有走到这里才算「终判」
         // ——连续命中确认或黄色一张即触发，问询确实要弹。仅黄色类、且问责开关
         // 打开时，AccountabilityMailer 才会把这一帧当场在内存里打码发送；

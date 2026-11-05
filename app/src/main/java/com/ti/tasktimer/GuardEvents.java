@@ -30,7 +30,7 @@ public final class GuardEvents {
     private static File file(Context c) { return new File(c.getFilesDir(), FILE); }
 
     public static synchronized void add(Context c, TaskItem task, String category, float confidence, String detail) {
-        addInternal(c, task, category, confidence, detail, false);
+        addInternal(c, task, category, confidence, detail, false, null, null, null);
     }
 
     /**
@@ -39,11 +39,30 @@ public final class GuardEvents {
      * 备注绝不当成一次分神扣分。
      */
     public static synchronized void addNote(Context c, TaskItem task, String category, float confidence, String detail) {
-        addInternal(c, task, category, confidence, detail, true);
+        addInternal(c, task, category, confidence, detail, true, null, null, null);
+    }
+
+    /**
+     * 带判定留痕的触发事件（v1.69.0）：在既有字段之外只增三个可选字段——
+     * src＝判定来源（rules 粗判／embed 本地／cloud 云端／offline 离线裁决／
+     * degraded 云端降级后本地裁决）、score＝本地向量分数、cloud＝云端结果
+     * （ok／fallback:&lt;错误类别&gt;）。既有字段的取值与统计口径一律不动，
+     * 三个新字段为 null 时整条事件与旧版逐字节一致。
+     */
+    public static synchronized void addTraced(Context c, TaskItem task, String category, float confidence,
+                                              String detail, String src, Float score, String cloud) {
+        addInternal(c, task, category, confidence, detail, false, src, score, cloud);
+    }
+
+    /** 带判定留痕的备注事件（v1.69.0）：同 addNote，只多 src/score/cloud 三个可选字段。 */
+    public static synchronized void addNoteTraced(Context c, TaskItem task, String category, float confidence,
+                                                  String detail, String src, Float score, String cloud) {
+        addInternal(c, task, category, confidence, detail, true, src, score, cloud);
     }
 
     private static synchronized long addInternal(Context c, TaskItem task, String category,
-                                                   float confidence, String detail, boolean note) {
+                                                   float confidence, String detail, boolean note,
+                                                   String src, Float score, String cloud) {
         long now = System.currentTimeMillis();
         try {
             JSONArray arr = loadArray(c);
@@ -56,6 +75,9 @@ public final class GuardEvents {
             e.put("confidence", Math.round(confidence * 100.0) / 100.0);
             e.put("detail", detail == null ? "" : detail);
             if (note) e.put("note", true);
+            if (src != null) e.put("src", src);
+            if (score != null) e.put("score", Math.round(score * 100.0) / 100.0);
+            if (cloud != null) e.put("cloud", cloud);
             arr.put(e);
             saveArray(c, trim(arr));
         } catch (Exception ignored) { }

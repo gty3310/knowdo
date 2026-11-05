@@ -488,11 +488,11 @@ public class SettingsActivity extends Activity {
                     : "语义判定已关闭：只用手机本地判定，任何数据都不出手机"));
         });
         row(Strings.en() ? "Semantic verdicts" : "语义判定",
-                Strings.en() ? "When the guard can't decide, it compares the screen text with your task — "
-                        + "on-device first, and only if still unsure, the masked text (never an image) goes "
-                        + "to a cloud model for the final call. Turn it off and judging stays fully on-device"
-                        : "守卫拿不准时把屏幕文字和任务比一比：先用手机本地的小模型比，还拿不准才把文字"
-                        + "（敏感信息已自动打码，绝不发图）发给云端大模型帮判。关掉则只用手机本地判定，任何数据都不出手机",
+                Strings.en() ? "When the guard can't decide, the cloud AI makes the final call while "
+                        + "you're online (masked text only, never an image), and the on-device model "
+                        + "steps in when you're offline. Turn it off and judging stays fully on-device"
+                        : "守卫拿不准时，有网由云端 AI 终判（只发打码后的文字，绝不发图），没网时"
+                        + "本地小模型兜底；关掉则只用本地判定，数据不出手机",
                 sem, null);
         // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单弹问询，兜底名单也停
         Switch al = mkSwitch(ScreenGuardPrefs.appListsEnabled(this));
