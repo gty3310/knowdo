@@ -36,6 +36,19 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1680 = new Entry("v1.68.0", "2026-11-05");
+        e1680.add(new Group(s("新增", "New"),
+                s("晨间页的日记框下面多了一块「本周目标反思」：本周目标还没定、哪周的反思还没写，都会直接摆在那里，就地写、写完就存，跟写日记一样",
+                  "The morning page gains a Weekly goal & reflection section right under the diary box: a goal for this week that isn't set yet and a weekly reflection that isn't written yet are simply there — write in place, save in place, just like the diary")));
+        e1680.add(new Group(s("改进", "Improved"),
+                s("不用再绕去习惯页补了；习惯页的详情页照旧能看全部历史",
+                  "No more detour to the habits page to fill these in; the habit's detail page still keeps the full history")));
+        e1680.why = s("你说每周目标反思跟日记是同一个概念——就该在晨间页日记旁边就地写，不该再绕去习惯页",
+                "You said the weekly goal & reflection is the same kind of thing as the diary — it belongs right beside the diary on the morning page, not on a separate trip to the habits page");
+        e1680.tryIt = s("明早打开晨间页，滑到日记框下面，写两句本周目标存一下，退出重进还在，就是对了",
+                "Tomorrow morning, open the morning page, scroll below the diary box, write a couple of lines of this week's goal and save; leave and come back — still there, that's it");
+        out.add(e1680);
+
         Entry e1670 = new Entry("v1.67.0", "2026-11-05");
         e1670.add(new Group(s("改进", "Improved"),
                 s("「知」里编辑人名、问题、原则改成先存手机：网络不好也先存下来，恢复后自动补传，不会再出现改了半天没存上",

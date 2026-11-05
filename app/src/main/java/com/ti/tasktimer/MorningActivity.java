@@ -225,6 +225,7 @@ public class MorningActivity extends Activity {
         if (remindSec != null) col.addView(remindSec);
         col.addView(buildSectionB());
         col.addView(buildSectionC());
+        col.addView(buildSectionWeekly());
 
         startBtn = new TextView(this);
         startBtn.setText(editMode ? s("保存", "Save") : s("开启今天", "Start the day"));
@@ -315,7 +316,9 @@ public class MorningActivity extends Activity {
         for (final HabitData.Habit h : habits) {
             Long existing = HabitData.logValue(root, logDate, h.id);
             if (HabitData.TYPE_WEEKLY.equals(h.type)) {
-                sec.addView(weeklyInfoRow(h));
+                // v1.68.0：A 区不再单列只读行——日记框下方有「本周目标反思」就地
+                // 填写区（见 buildSectionWeekly），同一信息不在两处呈现
+                continue;
             } else if (HabitData.TYPE_DIARY.equals(h.type)) {
                 // v1.66.0：日记型不在 A 区再出现——日记框就在本页 C 节，写了即由
                 // putDiary 自动记完成，不再单列一行（用户 2026-11-04 亲定）
@@ -331,33 +334,6 @@ public class MorningActivity extends Activity {
             }
         }
         return sec;
-    }
-
-    /**
-     * 每周目标反思的昨日行（v1.47.0）：反省在习惯详情页按天写，这里只读展示昨日写没写；
-     * 不进 A 节必答——晨间门的完成条件不因新类型改变。写没写看 WeeklyData 里昨日的反省。
-     */
-    private View weeklyInfoRow(final HabitData.Habit h) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(0, dp(9), 0, dp(9));
-        TextView name = new TextView(this);
-        name.setText(h.name);
-        name.setTextSize(14);
-        name.setTypeface(name.getTypeface(), Typeface.BOLD);
-        name.setTextColor(Ui.text(this));
-        box.addView(name);
-        box.addView(small(ZhixingPage.HabitPageTypeName.name(h.type), 10));
-        String ref = "";
-        try { ref = WeeklyData.reflection(WeeklyData.load(this), h.id, logDate); }
-        catch (Exception ignored) { }
-        boolean done = !ref.trim().isEmpty();
-        TextView st = small(done
-                ? s("昨天的反省已写（在习惯页点开这个习惯看）", "Yesterday's reflection is written (open the habit on the Habits page)")
-                : s("昨天的反省还没写——在习惯页点开这个习惯补", "Yesterday's reflection isn't written yet — open the habit on the Habits page to add it"), 12);
-        if (done) st.setTextColor(Ui.green(this));
-        box.addView(st);
-        return box;
     }
 
     /**
@@ -817,6 +793,145 @@ public class MorningActivity extends Activity {
         sec.addView(diaryField);
         if (!editMode) loadMorningCard();
         return sec;
+    }
+
+    // ---------------- 本周目标反思（v1.68.0：晨间页就地填） ----------------
+    // 用户 2026-11-05 亲定：每周目标反思与日记是同一个概念——在晨间页日记框下方
+    // 直接放填写区，就地写、就地存，不再跳习惯页补。欠填项口径与 WeeklyData 的
+    // 周门一致（requiredMondays：本周恒在列，周日 20:00 后下周也加入）；目标按
+    // 周一日期存（putGoal），反思同样以对应周的周一日期为键存（WeeklyData 的
+    // reflection 按日期取键，与 goals 同键——详情页历史区会把它呈现为那周周一
+    // 的反省，数据结构不变）。保存走 WeeklyData 既有通道：点「存」时重新 load
+    // → putGoal/putReflection → save（本地存＋weekly_data 同步合并沿用既有实现），
+    // 存完当场把该项翻成已填呈现。保存方式选点按钮而非失焦自动存：与详情页目标
+    // 编辑块同款（写完点保存、即时落盘），晨间页误触失焦也不会半截存入。
+    // 本节不进晨间门完成条件（A 节必答与 aDone 跳过 weekly 的口径逐字未动），
+    // 也不碰 HabitData.logs——完成位仍归详情页「今日反省」的既有口径。
+    // 日期口径：weekly 一系历来用本地墙钟（WeeklyData 的 thisMonday/
+    // requiredMondays 即如此），不随晨间 session 日/编辑版记录日走。
+    private JSONObject wroot;
+    private LinearLayout weeklyItems;
+
+    private View buildSectionWeekly() {
+        LinearLayout sec = section(s("本周目标反思", "Weekly goal & reflection"),
+                s("就地写、就地存，跟写日记一样", "Write it right here, saved on the spot — just like the diary"));
+        weeklyItems = new LinearLayout(this);
+        weeklyItems.setOrientation(LinearLayout.VERTICAL);
+        sec.addView(weeklyItems);
+        renderWeeklyItems();
+        return sec;
+    }
+
+    private void renderWeeklyItems() {
+        if (weeklyItems == null) return;
+        weeklyItems.removeAllViews();
+        wroot = WeeklyData.load(this);
+        List<HabitData.Habit> ws = new ArrayList<>();
+        for (HabitData.Habit h : habits) {
+            if (HabitData.TYPE_WEEKLY.equals(h.type)) ws.add(h);
+        }
+        if (ws.isEmpty()) {
+            // 没有这类习惯时整节仍在（只留标题＋一行小字），免得用户找不到
+            weeklyItems.addView(small(s("还没有每周目标反思的习惯", "No weekly goal & reflection habit yet"), 12.5f));
+            return;
+        }
+        boolean anyItem = false;
+        for (final HabitData.Habit h : ws) {
+            if (ws.size() > 1) {
+                TextView hn = new TextView(this);
+                hn.setText(h.name);
+                hn.setTextSize(14);
+                hn.setTypeface(hn.getTypeface(), Typeface.BOLD);
+                hn.setTextColor(Ui.text(this));
+                hn.setPadding(0, dp(8), 0, 0);
+                weeklyItems.addView(hn);
+            }
+            for (final String monday : WeeklyData.requiredMondays()) {
+                weeklyItems.addView(weeklyItem(h, monday, true));
+                weeklyItems.addView(weeklyItem(h, monday, false));
+                anyItem = true;
+            }
+        }
+        if (!anyItem) {
+            weeklyItems.addView(small(s("本周目标已定，该写的反思也写了", "This week's goal is set and the reflection is written"), 12.5f));
+        }
+    }
+
+    /**
+     * 一项填写（某周目标或某周反思）：未填→多行输入框＋「存」；已填→摘要一行
+     * （单行省略）＋「改」，点「改」展开同一个输入框就地改，不跳页。存后整节
+     * 按最新 WeeklyData 重画（本节自成一块，不影响 A/C 的输入框状态）。
+     */
+    private View weeklyItem(final HabitData.Habit h, final String monday, final boolean isGoal) {
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(8), 0, dp(4));
+        final boolean thisWeek = monday.equals(WeeklyData.thisMonday());
+        TextView head = new TextView(this);
+        head.setText((isGoal
+                        ? (thisWeek ? s("本周目标", "This week's goal") : s("下周目标", "Next week's goal"))
+                        : (thisWeek ? s("本周反思", "This week's reflection") : s("下周反思", "Next week's reflection")))
+                + " · " + DayUtil.shortDate(monday) + s(" 那周", " week"));
+        head.setTextSize(14);
+        head.setTypeface(head.getTypeface(), Typeface.BOLD);
+        head.setTextColor(Ui.text(this));
+        box.addView(head);
+        final LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        box.addView(body);
+        final boolean[] editing = {false};
+        final Runnable[] render = new Runnable[1];
+        render[0] = () -> {
+            body.removeAllViews();
+            String cur = isGoal ? WeeklyData.goal(wroot, h.id, monday)
+                    : WeeklyData.reflection(wroot, h.id, monday);
+            if (!editing[0] && !cur.trim().isEmpty()) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(0, dp(3), 0, 0);
+                TextView sum = new TextView(this);
+                sum.setText(cur.trim().replace('\n', ' '));
+                sum.setTextSize(13.5f);
+                sum.setTextColor(Ui.text(this));
+                sum.setMaxLines(1);
+                sum.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                row.addView(sum, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                TextView edit = ynButton(s("改", "Edit"));
+                edit.setOnClickListener(v -> { editing[0] = true; render[0].run(); });
+                LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(dp(56), LinearLayout.LayoutParams.WRAP_CONTENT);
+                elp.leftMargin = dp(8);
+                row.addView(edit, elp);
+                body.addView(row);
+                return;
+            }
+            final EditText in = new EditText(this);
+            in.setText(cur);
+            in.setHint(isGoal ? s("这一周的目标", "The goal for this week")
+                    : s("这一周做得怎么样，写几句", "How did this week go — a few lines"));
+            in.setTextSize(14.5f);
+            in.setMinLines(isGoal ? 2 : 3);
+            in.setGravity(Gravity.TOP);
+            if (!cur.isEmpty()) in.setSelection(in.getText().length());
+            body.addView(in);
+            TextView save = ynButton(s("存", "Save"));
+            paintYn(save, true, Ui.accent(this));
+            save.setOnClickListener(v -> {
+                String t = in.getText().toString();
+                wroot = WeeklyData.load(MorningActivity.this);
+                if (isGoal) WeeklyData.putGoal(wroot, h.id, monday, t);
+                else WeeklyData.putReflection(wroot, h.id, monday, t);
+                WeeklyData.save(MorningActivity.this, wroot);
+                Toast.makeText(MorningActivity.this, s("已保存", "Saved"), Toast.LENGTH_SHORT).show();
+                renderWeeklyItems();
+            });
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT);
+            slp.gravity = Gravity.END;
+            slp.topMargin = dp(6);
+            body.addView(save, slp);
+        };
+        render[0].run();
+        return box;
     }
 
     // ---------------- 晨间卡（v1.51.0；v1.66.0 常驻改版） ----------------
