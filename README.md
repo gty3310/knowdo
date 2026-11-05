@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.67.0)
+## Features (Android, v1.68.0)
 
-Current version: **v1.67.0**.
+Current version: **v1.68.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.68.0 — 2026-11-05
+
+**Why:** The user settled it on the morning of 2026-11-05: the weekly goal & reflection is the same kind of thing as the diary, so it should be written in the same place. Until now it lived only on the habit's detail page — the morning page showed just a read-only line in section A saying whether yesterday's reflection existed and pointing to the habits page. This release moves it onto the morning page, directly under the diary box. The data layer is untouched: same WeeklyData store (local weekly_data.json plus the user_state.weekly_data column) with its existing merge rules, and the morning gate's completion conditions are unchanged — this section is not a must-answer. Build commit `8a355ec` · [compare v1.67.0...v1.68.0](https://github.com/gty3310/knowdo/compare/v1.67.0...v1.68.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Weekly goal & reflection on the morning page.** A new section under the diary box lists what's still owed, on the same terms as the weekly gate (WeeklyData.requiredMondays: the current week always, next week joins after Sunday 20:00). A missing goal or weekly reflection is a multi-line editor right there — tap Save and it is stored and synced through the existing WeeklyData path, flipping to a filled one-line summary with an Edit button that reopens the same editor in place. Goals and reflections are keyed by their week's Monday, the same store the detail page reads, so the detail page's history shows them as that week's Monday reflection. With no weekly habit the section stays as a title plus one small line rather than disappearing.
+
+**Improved**
+- **No more detour to the habits page.** The read-only weekly line in the morning page's section A is gone — the same information no longer appears in two places. The detail page still keeps the full history of past weeks.
+
+Not yet verified on a real device: writing this week's goal in the new morning section and seeing it persist after leaving and re-entering, the filled/edit in-place flip, next-week items appearing after Sunday 20:00, the section with no weekly habit, and the 1.67.0 to 1.68.0 in-app update chain.
+
 ### v1.67.0 — 2026-11-05
 
 **Why:** Between last night and this morning the same root cause kept biting: Know showed 45 of 86 people, an edit to a person wouldn't save, the morning card vanished once, and Plan today opened blank. Writes in Know went straight to the cloud, so one network hiccup lost them, and several loads silently fell back to stale data and pretended nothing was wrong. The user set two standing rules that night — everything local-first (save on the phone, queue, auto-sync when the network recovers) and conflict-aware writes (field-level updates instead of whole-row overwrites). This release rebuilds Know on those two rules and fixes the same silent-fallback root behind the blank Plan today. Build commit `32acf53` · [compare v1.66.0...v1.67.0](https://github.com/gty3310/knowdo/compare/v1.66.0...v1.67.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -86,16 +98,6 @@ Not yet verified on a real device: starring a person and seeing them sort first 
 - **Morning page: readings in place, card no longer blocking, no duplicate diary row.** A read habit now shows its full text right in section A (name, yesterday's state, today's text — collapsing behind an expand toggle only when it truly exceeds 20 lines) with a "Finished reading" button on the same `putLog` path as everywhere else. The morning card stays resident above the diary box, loses its "Read" button, and is marked read silently — locally and in the cloud `read_at`, exactly once — the moment a diary is written, so it does not reappear that day. The diary habit's read-only row in section A is gone; the diary's done state still lives and dies with the diary text itself.
 
 Not yet verified on a real device: tomorrow's morning page showing Done / Not done for Late-sleep with last week's rate back to its true low value, the history flipping exactly once across restarts, the read block's expand toggle and undo, the card not reappearing after a diary entry, and the 1.65.0 to 1.66.0 in-app update chain.
-
-### v1.65.0 — 2026-11-04
-
-**Why:** On a new day, a daily repeating task still showed its all-time accumulated Used minutes, which did not match the Left column beside it — Left was already a today-only figure. This release puts Used on the same basis for daily tasks: it counts today only and resets to zero on a new day. Build commit `96cbc3e` · [compare v1.64.0...v1.65.0](https://github.com/gty3310/knowdo/compare/v1.64.0...v1.65.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Daily tasks: Used counts today only.** The task-list Used column, the detail meta, the calendar meta and the timer floating window all switch to `SessionLog.todayMsForTask` for `repeat == "daily"` tasks — the same basis Left already used.
-- **Segment counts match the minutes.** Detail-meta segment counts for daily tasks now count today's segments only, via a new `SessionLog.todayCountForTask`; the existing total/today/count helpers are untouched, history segments are neither deleted nor rewritten, and non-daily tasks still show all-time totals everywhere.
-
-Not yet verified on a real device: a daily task (e.g. Taiji) showing only today's minutes and 0 tomorrow, Used + Left equalling the planned duration, today's open segment counted exactly once while timing, a non-daily task still showing its all-time total, and the 1.64.0 to 1.65.0 in-app update chain.
 
 ## Build
 
