@@ -69,9 +69,24 @@ public class TaskStore {
             JSONObject root = new JSONObject(s);
             JSONArray arr = root.optJSONArray("tasks");
             if (arr != null) for (int i = 0; i < arr.length(); i++) {
-                tasks.add(TaskItem.fromJson(arr.getJSONObject(i)));
+                // 单条坏数据只跳过这一条，不能连累整张清单变空（今天安排页空白的嫌疑根因）
+                try {
+                    tasks.add(TaskItem.fromJson(arr.getJSONObject(i)));
+                } catch (Exception bad) {
+                    android.util.Log.w("TaskStore", "skip bad task #" + i + ": " + bad);
+                }
             }
-        } catch (Exception ignored) { }
+        } catch (Exception e) {
+            // 整个文件解析失败：留一份备份再放空，避免后续 save() 把坏文件静默覆盖成空清单
+            android.util.Log.w("TaskStore", "load failed: " + e);
+            try {
+                File f = file();
+                if (f.exists()) {
+                    File bak = new File(f.getPath() + ".corrupt");
+                    if (!bak.exists()) f.renameTo(bak);
+                }
+            } catch (Exception ignored) { }
+        }
     }
 
     public void save() {
