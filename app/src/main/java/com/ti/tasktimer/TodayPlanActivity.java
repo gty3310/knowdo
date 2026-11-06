@@ -70,6 +70,10 @@ public class TodayPlanActivity extends Activity {
     /** 开页自检补排的页顶小字（v1.67.0，F5）：补排/拉不到云端都要明示，不静默空白。 */
     private TextView healNoteView;
     private String healNote;
+    /** 页内自检行（v1.70.0，F4）：常驻页头，报已载入任务数／今日日程段数／本页卡片数。 */
+    private TextView selfCheckView;
+    /** 最近一次 refreshCardsOnly 实际画出的卡片＋兜底行数（F4 自检行取数）。 */
+    private int lastCardCount = 0;
     private View barUsed, barOver, barRest;
     private FrameLayout strip;
     private TextView scaleWake, scaleEnd;
@@ -226,7 +230,8 @@ public class TodayPlanActivity extends Activity {
         title.setTextSize(15);
         title.setTypeface(title.getTypeface(), Typeface.BOLD);
         title.setTextColor(Ui.text(this));
-        head.addView(title);
+        head.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout ledger = new LinearLayout(this);
         ledger.setOrientation(LinearLayout.HORIZONTAL);
@@ -235,8 +240,10 @@ public class TodayPlanActivity extends Activity {
         left.setOrientation(LinearLayout.VERTICAL);
         TextView labL = smallLabel(s("还剩可用", "Left"));
         remainVal = bigNum();
-        left.addView(labL);
-        left.addView(remainVal);
+        left.addView(labL, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        left.addView(remainVal, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         ledger.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
@@ -245,10 +252,13 @@ public class TodayPlanActivity extends Activity {
         labR.setGravity(Gravity.END);
         arrangedVal = bigNum();
         arrangedVal.setGravity(Gravity.END);
-        right.addView(labR);
-        right.addView(arrangedVal);
+        right.addView(labR, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        right.addView(arrangedVal, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         ledger.addView(right, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        head.addView(ledger);
+        head.addView(ledger, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -261,23 +271,33 @@ public class TodayPlanActivity extends Activity {
         barOver = new View(this);
         barOver.setBackgroundColor(Ui.accent(this));
         barRest = new View(this);
-        bar.addView(barUsed);
-        bar.addView(barOver);
-        bar.addView(barRest);
+        bar.addView(barUsed, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0f));
+        bar.addView(barOver, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0f));
+        bar.addView(barRest, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0f));
         head.addView(bar, blp);
 
         ledgerNote = new TextView(this);
         ledgerNote.setTextSize(10);
         ledgerNote.setTextColor(Ui.sub(this));
         ledgerNote.setPadding(0, dp(2), 0, 0);
-        head.addView(ledgerNote);
+        head.addView(ledgerNote, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         healNoteView = new TextView(this);
         healNoteView.setTextSize(10.5f);
         healNoteView.setTextColor(Ui.accent(this));
         healNoteView.setPadding(0, dp(3), 0, 0);
         healNoteView.setVisibility(View.GONE);
-        head.addView(healNoteView);
-        root.addView(head);
+        head.addView(healNoteView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // 页内自检行（v1.70.0，F4）：常驻显示，refreshAll 后更新三个数
+        selfCheckView = new TextView(this);
+        selfCheckView.setTextSize(10.5f);
+        selfCheckView.setTextColor(Ui.sub(this));
+        selfCheckView.setPadding(0, dp(3), 0, 0);
+        head.addView(selfCheckView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(head, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View headLine = new View(this);
         headLine.setBackgroundColor(Ui.line(this));
         root.addView(headLine, new LinearLayout.LayoutParams(
@@ -285,10 +305,12 @@ public class TodayPlanActivity extends Activity {
 
         // ---- 滚动区 ----
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(4), dp(18), dp(22));
-        scroll.addView(col);
+        scroll.addView(col, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -314,8 +336,10 @@ public class TodayPlanActivity extends Activity {
             digitsBox.setVisibility(digitsOpen ? View.VISIBLE : View.GONE);
             if (digitsOpen) rebuildDigitRows();
         });
-        secRow.addView(digitsToggle);
-        col.addView(secRow);
+        secRow.addView(digitsToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(secRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         strip = new FrameLayout(this);
         strip.setBackground(roundStroke(cardBg(), Ui.line(this), 12));
@@ -336,7 +360,8 @@ public class TodayPlanActivity extends Activity {
         scale.addView(sc18, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         scaleEnd = scaleLabel(Gravity.END);
         scale.addView(scaleEnd, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        col.addView(scale);
+        col.addView(scale, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         digitsBox = new LinearLayout(this);
         digitsBox.setOrientation(LinearLayout.VERTICAL);
@@ -357,7 +382,8 @@ public class TodayPlanActivity extends Activity {
         qLab.setText(s("今天可支配", "Free today"));
         qLab.setTextSize(12);
         qLab.setTextColor(Ui.text(this));
-        quick.addView(qLab);
+        quick.addView(qLab, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         freeInput = new EditText(this);
         freeInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         freeInput.setTextSize(15);
@@ -373,7 +399,8 @@ public class TodayPlanActivity extends Activity {
         qUnit.setTextSize(12);
         qUnit.setTextColor(Ui.text(this));
         qUnit.setPadding(dp(8), 0, 0, 0);
-        quick.addView(qUnit);
+        quick.addView(qUnit, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView info = new TextView(this);
         info.setText("i");
         info.setTextSize(12);
@@ -382,14 +409,14 @@ public class TodayPlanActivity extends Activity {
         info.setBackground(roundStroke(Color.TRANSPARENT, Ui.sub(this), 20));
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(18), dp(18));
         ilp.leftMargin = dp(10);
-        info.setLayoutParams(ilp);
         info.setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setMessage(s("可支配时间就是今天能用来安排任务的时间",
                         "Your free time is the time today that can hold tasks"))
                 .setPositiveButton(s("知道了", "OK"), null)
                 .show());
-        quick.addView(info);
-        col.addView(quick);
+        quick.addView(info, ilp);
+        col.addView(quick, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         freeInput.setOnFocusChangeListener((v, has) -> { if (!has) applyFreeInput(); });
         freeInput.setOnEditorActionListener((v, id, e) -> { applyFreeInput(); return false; });
 
@@ -407,7 +434,8 @@ public class TodayPlanActivity extends Activity {
         th.setText(s("点卡片可展开编辑", "Tap a card to edit"));
         th.setTextSize(12);
         th.setTextColor(Ui.sub(this));
-        taskSec.addView(th);
+        taskSec.addView(th, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         resortBtn = new TextView(this);
         resortBtn.setText(s("重新排序", "Re-sort"));
         resortBtn.setTextSize(12);
@@ -417,28 +445,31 @@ public class TodayPlanActivity extends Activity {
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rlp.leftMargin = dp(8);
-        resortBtn.setLayoutParams(rlp);
         resortBtn.setOnClickListener(v -> resortCards());
-        taskSec.addView(resortBtn);
-        col.addView(taskSec);
+        taskSec.addView(resortBtn, rlp);
+        col.addView(taskSec, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         cardsBox = new LinearLayout(this);
         cardsBox.setOrientation(LinearLayout.VERTICAL);
-        col.addView(cardsBox);
+        col.addView(cardsBox, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         overflowNote = new TextView(this);
         overflowNote.setTextSize(12);
         overflowNote.setTextColor(Ui.accent(this));
         overflowNote.setPadding(0, dp(8), 0, 0);
         overflowNote.setVisibility(View.GONE);
-        col.addView(overflowNote);
+        col.addView(overflowNote, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // 「其他重要任务」可展开区（v1.56.0）：内容区末尾（任务卡与红字之下、
         // 固定底之上）；内容由 refreshOtherSection 填，空时整区不渲染。
         otherBox = new LinearLayout(this);
         otherBox.setOrientation(LinearLayout.VERTICAL);
         otherBox.setVisibility(View.GONE);
-        col.addView(otherBox);
+        col.addView(otherBox, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // ---- 固定底 ----
         LinearLayout foot = new LinearLayout(this);
@@ -468,12 +499,14 @@ public class TodayPlanActivity extends Activity {
                 dp(10), ViewGroup.LayoutParams.WRAP_CONTENT));
         addRow.addView(aiBtn, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        foot.addView(addRow);
+        foot.addView(addRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View addRowGap = new View(this);
         foot.addView(addRowGap, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
 
-        foot.addView(btn);
+        foot.addView(btn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View footGap = new View(this);
         foot.addView(footGap, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
@@ -485,8 +518,10 @@ public class TodayPlanActivity extends Activity {
         startBtn.setPadding(0, dp(7), 0, dp(7));
         startBtn.setBackground(round(Ui.text(this), 10));
         startBtn.setOnClickListener(v -> onStartToday());
-        foot.addView(startBtn);
-        root.addView(foot);
+        foot.addView(startBtn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(foot, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // v1.55.0：整页包一层 FrameLayout，AI 聊天面板作底部浮层（近全屏高）
         FrameLayout frame = new FrameLayout(this);
@@ -540,15 +575,101 @@ public class TodayPlanActivity extends Activity {
 
     // ---------------- 刷新 ----------------
 
+    /**
+     * 全页刷新（v1.70.0，F2）：分段护栏——时间账／时段条／任务卡／其他重要任务
+     * 逐段独立 try/catch，某段抛错不连累其他段；出错段原位渲染一行朱砂小字
+     * 「这一区没画出来，点此重试」（点按重跑 refreshAll），异常同时写测试者
+     * 日志（ErrorReporter，异常类名＋一句话）。末尾更新页内自检行（F4）。
+     */
     private void refreshAll() {
-        refreshLedger();
-        refreshStrip();
-        if (digitsOpen) rebuildDigitRows();
-        refreshCards();
-        double fh = DayAvail.freeHours(this, logicToday);
-        String cur = freeInput.getText().toString().trim();
-        String want = fh >= 0 ? trimNum(fh) : "";
-        if (!cur.equals(want) && !freeInput.hasFocus()) freeInput.setText(want);
+        guardSection("ledger", this::refreshLedger, null);
+        guardSection("strip", this::refreshStrip, strip);
+        if (digitsOpen) {
+            try {
+                rebuildDigitRows();
+            } catch (Exception e) {
+                logSectionError("digits", e);
+            }
+        }
+        guardSection("cards", this::refreshCardsOnly, cardsBox);
+        guardSection("other", this::refreshOtherSection, otherBox);
+        try {
+            double fh = DayAvail.freeHours(this, logicToday);
+            String cur = freeInput.getText().toString().trim();
+            String want = fh >= 0 ? trimNum(fh) : "";
+            if (!cur.equals(want) && !freeInput.hasFocus()) freeInput.setText(want);
+        } catch (Exception e) {
+            logSectionError("freeInput", e);
+        }
+        updateSelfCheckLine();
+    }
+
+    /** 分段护栏执行体：ledger 段成功时顺手清掉占位小字留下的重试点击。 */
+    private void guardSection(String name, Runnable body, ViewGroup box) {
+        try {
+            body.run();
+            if (box == null && ledgerNote != null) ledgerNote.setOnClickListener(null);
+        } catch (Exception e) {
+            logSectionError(name, e);
+            showSectionError(box);
+        }
+    }
+
+    private void logSectionError(String name, Exception e) {
+        try {
+            ErrorReporter.report(this, s("今天安排", "Today plan"), 0,
+                    name + ": " + e.getClass().getSimpleName() + " - "
+                            + String.valueOf(e.getMessage()));
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * 出错段原位明示（F2）：box 为 null 表示时间账段——借页头 ledgerNote 原位
+     * 显示（下一次 refreshLedger 成功照常覆写它）；其余段把小字加进该段容器
+     * （FrameLayout 的时段条用满幅居中，其余满宽一行）。点按重跑整页刷新。
+     */
+    private void showSectionError(ViewGroup box) {
+        String msg = s("这一区没画出来，点此重试",
+                "This section didn't draw - tap to retry");
+        if (box == null) {
+            ledgerNote.setText(msg);
+            ledgerNote.setTextColor(Ui.accent(this));
+            ledgerNote.setOnClickListener(v -> refreshAll());
+            return;
+        }
+        TextView tv = new TextView(this);
+        tv.setText(msg);
+        tv.setTextSize(12);
+        tv.setTextColor(Ui.accent(this));
+        tv.setOnClickListener(v -> refreshAll());
+        if (box instanceof FrameLayout) {
+            tv.setGravity(Gravity.CENTER);
+            box.addView(tv, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            tv.setPadding(0, dp(8), 0, dp(8));
+            if (box == otherBox) box.setVisibility(View.VISIBLE);
+            box.addView(tv, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+    }
+
+    /** 页内自检行（F4）：已载入任务 N（未删）· 今日日程 M 段 · 本页卡片 K 张；
+     * 任一数为 0 时整行转朱砂色，用户截图这一行即可定位数据到没到。 */
+    private void updateSelfCheckLine() {
+        if (selfCheckView == null) return;
+        int n = 0;
+        if (store != null && store.tasks != null) {
+            for (TaskItem t : store.tasks) if (!t.deleted) n++;
+        }
+        int m = LocalAutoScheduler.blocksOf(
+                SyncManager.latestSchedule(this), TaskItem.today()).size();
+        int k = lastCardCount;
+        selfCheckView.setText(en()
+                ? "Loaded " + n + " tasks - " + m + " blocks today - " + k + " cards"
+                : "已载入任务 " + n + " 个 · 今日日程 " + m + " 段 · 本页卡片 " + k + " 张");
+        selfCheckView.setTextColor((n == 0 || m == 0 || k == 0)
+                ? Ui.accent(this) : Ui.sub(this));
     }
 
     private static String trimNum(double v) {
@@ -1088,9 +1209,11 @@ public class TodayPlanActivity extends Activity {
                     digitRows.remove(idx);
                     renderDigitRows();
                 });
-                row.addView(del);
+                row.addView(del, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
-            digitsBox.addView(row);
+            digitsBox.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         LinearLayout footRow = new LinearLayout(this);
         footRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1113,8 +1236,10 @@ public class TodayPlanActivity extends Activity {
         save.setPadding(dp(12), dp(3), dp(12), dp(3));
         save.setBackground(round(Ui.text(this), 20));
         save.setOnClickListener(v -> saveDigitRows());
-        footRow.addView(save);
-        digitsBox.addView(footRow);
+        footRow.addView(save, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        digitsBox.addView(footRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     private EditText digitInput(String text, boolean time) {
@@ -1315,21 +1440,94 @@ public class TodayPlanActivity extends Activity {
                 cal.get(Calendar.DAY_OF_MONTH)).show();
     }
 
+    /** 任务卡段＋其他重要任务段的组合刷新（既有调用点口径不变）；两段各有
+     * 护栏（F2），本段抛错不连累彼段。 */
     private void refreshCards() {
+        guardSection("cards", this::refreshCardsOnly, cardsBox);
+        guardSection("other", this::refreshOtherSection, otherBox);
+    }
+
+    /**
+     * 任务卡段（v1.70.0，F3 互济）：有候选照旧画卡（冻结序／灰卡口径不动）；
+     * 候选为空但今日日程块非空时，按块逐段画只读行（起止＋任务名，解析不到
+     * 的段跳过并计数），有日程就绝不让本段空着；两样都空才显示空态——且本机
+     * 一个未删任务都没有时换成「数据还没到」的说法，区分真没任务与没同步到。
+     */
+    private void refreshCardsOnly() {
         cardsBox.removeAllViews();
+        lastCardCount = 0;
         List<TaskItem> list = currentTasks();
-        if (list.isEmpty()) {
-            TextView none = new TextView(this);
-            none.setText(s("今天没有要排的任务", "Nothing to plan for today"));
-            none.setTextSize(12);
-            none.setTextColor(Ui.sub(this));
-            none.setPadding(0, dp(10), 0, 0);
-            cardsBox.addView(none);
-            refreshOtherSection();
+        if (!list.isEmpty()) {
+            for (TaskItem t : list) {
+                cardsBox.addView(buildCard(t));
+                lastCardCount++;
+            }
             return;
         }
-        for (TaskItem t : list) cardsBox.addView(buildCard(t));
-        refreshOtherSection();
+        List<LocalAutoScheduler.Block> blocks = LocalAutoScheduler.blocksOf(
+                SyncManager.latestSchedule(this), TaskItem.today());
+        int skipped = 0;
+        for (LocalAutoScheduler.Block b : blocks) {
+            TaskItem t = store.byId(b.taskId);
+            if (t == null) {
+                skipped++;
+                continue;
+            }
+            cardsBox.addView(buildBlockRow(b, t));
+            lastCardCount++;
+        }
+        if (lastCardCount > 0) {
+            if (skipped > 0) {
+                android.util.Log.w("TodayPlan",
+                        "block fallback rows skipped (task missing): " + skipped);
+            }
+            return;
+        }
+        TextView none = new TextView(this);
+        int alive = 0;
+        if (store.tasks != null) {
+            for (TaskItem t : store.tasks) if (!t.deleted) alive++;
+        }
+        none.setText(alive == 0
+                ? s("本机还没有任务数据，重开本页会再同步一次",
+                        "No task data on this phone yet - reopening this page syncs again")
+                : s("今天没有要排的任务", "Nothing to plan for today"));
+        none.setTextSize(12);
+        none.setTextColor(Ui.sub(this));
+        none.setPadding(0, dp(10), 0, 0);
+        cardsBox.addView(none, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    /** 日程兜底只读行（F3）：起止时间＋任务名，不可点、不展开编辑。 */
+    private View buildBlockRow(LocalAutoScheduler.Block b, TaskItem t) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(roundStroke(cardBg(), Ui.line(this), 10));
+        row.setPadding(dp(9), dp(6), dp(9), dp(6));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(6);
+        row.setLayoutParams(rlp);
+        TextView tm = new TextView(this);
+        tm.setText(LocalAutoScheduler.hhmm(b.startMin) + "–" + LocalAutoScheduler.hhmm(b.endMin));
+        tm.setTextSize(12);
+        tm.setTextColor(Ui.sub(this));
+        row.addView(tm, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView nm = new TextView(this);
+        nm.setText(t.title);
+        nm.setTextSize(12);
+        nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
+        nm.setTextColor(Ui.text(this));
+        nm.setSingleLine(true);
+        nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        nlp.leftMargin = dp(8);
+        row.addView(nm, nlp);
+        return row;
     }
 
     /**
@@ -1410,12 +1608,14 @@ public class TodayPlanActivity extends Activity {
         arrow.setText(otherExpanded ? "▴" : "▾");
         arrow.setTextSize(12);
         arrow.setTextColor(Ui.sub(this));
-        head.addView(arrow);
+        head.addView(arrow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         head.setOnClickListener(v -> {
             otherExpanded = !otherExpanded;
-            refreshOtherSection();
+            guardSection("other", this::refreshOtherSection, otherBox);
         });
-        otherBox.addView(head);
+        otherBox.addView(head, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         if (otherExpanded) {
             for (TaskItem t : others) otherBox.addView(buildOtherCard(t));
         }
@@ -1453,8 +1653,7 @@ public class TodayPlanActivity extends Activity {
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         dlp.leftMargin = dp(8);
-        dl.setLayoutParams(dlp);
-        card.addView(dl);
+        card.addView(dl, dlp);
         card.addView(chip(s("改到今天", "Move to today"), false, v -> {
             t.deadline = logicToday;
             persistTask(t);
@@ -1480,7 +1679,8 @@ public class TodayPlanActivity extends Activity {
         nm.setTextSize(13);
         nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
         nm.setTextColor(Ui.text(this));
-        card.addView(nm);
+        card.addView(nm, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         final int used = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
         boolean daily = "daily".equals(t.repeat);
@@ -1491,12 +1691,14 @@ public class TodayPlanActivity extends Activity {
         m1.setTextSize(11);
         m1.setTextColor(Ui.sub(this));
         m1.setText(daily ? s("每日重复", "Daily") : s("已用 ", "Used ") + used + s(" 分", " min"));
-        meta.addView(m1);
+        meta.addView(m1, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView m2 = new TextView(this);
         m2.setTextSize(11);
         m2.setTextColor(Ui.sub(this));
         m2.setText(s("　还剩 ", "　Left "));
-        meta.addView(m2);
+        meta.addView(m2, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         final int remain = Math.max(0, t.durationMinutes - used);
         TextView m3 = new TextView(this);
         m3.setText(remain + s(" 分", " min"));
@@ -1505,8 +1707,10 @@ public class TodayPlanActivity extends Activity {
         m3.setTextColor(Ui.text(this));
         m3.setPaintFlags(m3.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
         m3.setOnClickListener(v -> editRemaining(t, used, remain));
-        meta.addView(m3);
-        card.addView(meta);
+        meta.addView(m3, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(meta, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         if (!daily) {
             // 截止钮（v1.54.0）：改到今天／明天／周六／下周一／挑选日期／取消截止
@@ -1536,7 +1740,8 @@ public class TodayPlanActivity extends Activity {
                         t.deadline = saturday;
                         persistTask(t);
                     }));
-            card.addView(row);
+            card.addView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout row2 = deadlineRow("");
             row2.addView(chip(s("下周一", "Next Mon"),
                     nextMon != null && nextMon.equals(t.deadline),
@@ -1553,7 +1758,8 @@ public class TodayPlanActivity extends Activity {
                     });
             if (t.deadline == null) cancel.setTextColor(Ui.sub(this));
             row2.addView(cancel);
-            card.addView(row2);
+            card.addView(row2, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
         LinearLayout prow = chipRow(s("重要性", "Priority"));
@@ -1565,7 +1771,8 @@ public class TodayPlanActivity extends Activity {
                 persistTask(t);
             }));
         }
-        card.addView(prow);
+        card.addView(prow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         if (t.hasSubtasks()) {
             LinearLayout subs = new LinearLayout(this);
@@ -1580,16 +1787,19 @@ public class TodayPlanActivity extends Activity {
                 sv.setTextColor(Ui.sub(this));
                 sv.setSingleLine(true);
                 sv.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                subs.addView(sv);
+                subs.addView(sv, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
             if (t.subtasks.size() > showN) {
                 TextView more = new TextView(this);
                 more.setText("…");
                 more.setTextSize(11);
                 more.setTextColor(Ui.sub(this));
-                subs.addView(more);
+                subs.addView(more, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
-            card.addView(subs);
+            card.addView(subs, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
         LinearLayout acts = new LinearLayout(this);
@@ -1600,7 +1810,8 @@ public class TodayPlanActivity extends Activity {
         TextView delChip = chip(s("删除", "Delete"), false, v -> confirmDeleteFromCard(t));
         delChip.setTextColor(Ui.accent(this));
         acts.addView(delChip);
-        card.addView(acts);
+        card.addView(acts, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         card.setOnClickListener(v -> TaskEditSheet.showEdit(this, store, t, editHost));
         return card;
@@ -1625,12 +1836,15 @@ public class TodayPlanActivity extends Activity {
         lab.setTextSize(11);
         lab.setTextColor(Ui.sub(this));
         lab.setPadding(0, 0, dp(2), 0);
-        row.addView(lab);
+        row.addView(lab, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return row;
     }
 
     private TextView chip(String text, boolean on, View.OnClickListener click) {
         TextView c = new TextView(this);
+        c.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         c.setText(text);
         c.setTextSize(10);
         c.setPadding(dp(7), dp(2), dp(7), dp(2));
