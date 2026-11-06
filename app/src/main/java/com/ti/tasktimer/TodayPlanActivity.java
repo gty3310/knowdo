@@ -1682,6 +1682,21 @@ public class TodayPlanActivity extends Activity {
         card.addView(nm, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // 关联小字（v1.71.0，F4）：读知页本地缓存，有关联才画一行对象名；
+        // 没缓存/没关联整行不出现、不阻塞渲染；只显示、不可点（整卡点击仍是编辑）
+        String linkLine = ZhiPage.taskLinkLine(this, t.id);
+        if (linkLine != null) {
+            TextView lv = new TextView(this);
+            lv.setText(linkLine);
+            lv.setTextSize(11);
+            lv.setTextColor(Ui.sub(this));
+            lv.setMaxLines(1);
+            lv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            lv.setPadding(0, dp(1), 0, 0);
+            card.addView(lv, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
         final int used = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
         boolean daily = "daily".equals(t.repeat);
         LinearLayout meta = new LinearLayout(this);

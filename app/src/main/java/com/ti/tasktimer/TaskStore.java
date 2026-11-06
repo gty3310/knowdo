@@ -127,7 +127,16 @@ public class TaskStore {
 
     public void add(TaskItem t) { tasks.add(t); save(); }
 
-    public void remove(TaskItem t) { t.deleted = true; t.touch(); save(); }
+    public void remove(TaskItem t) {
+        t.deleted = true;
+        t.touch();
+        save();
+        // 任务的知关联一并解除（v1.71.0，F2）：所有删除入口（列表长按、编辑层、
+        // 今天安排、聊天面板）都汇到这一个墓碑路径，在这里统一清——本地缓存
+        // 先摘、解除 op 进知页同一条待同步队列，不留孤儿关联；失败不拦删除本身
+        try { ZhiPage.removeAllLinksFor(ctx, ZhiPage.T_TASK, t.id); }
+        catch (Exception ignored) { }
+    }
 
     /** 全部已知情景（各任务用过的并集），给多选面板用。 */
     public List<String> allScenarios() {

@@ -1782,8 +1782,8 @@ public class MainActivity extends Activity {
                 FrameLayout cell = new FrameLayout(this);
                 cell.setLayoutParams(new LinearLayout.LayoutParams(colPx(c),
                         LinearLayout.LayoutParams.WRAP_CONTENT));
-                v.setLayoutParams(new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+                v.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
                 String titleText = t.title
                         + (isPausedThis ? Strings.pausedTag() : "");
                 Integer plannedMin = (calOpen && !done) ? splitScheduled.get(t.id) : null;
@@ -1828,7 +1828,25 @@ public class MainActivity extends Activity {
                     expandedTaskId = expanded ? null : t.id;
                     renderTable();
                 });
-                cell.addView(v);
+                // 标题与关联小字（v1.71.0，F4）竖排进内层：小字读知页本地缓存，
+                // 有关联才画、没有就整行不出现、绝不等数据阻塞列表渲染；只显示不可点
+                LinearLayout cellInner = new LinearLayout(this);
+                cellInner.setOrientation(LinearLayout.VERTICAL);
+                cellInner.setLayoutParams(new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+                cellInner.addView(v);
+                String linkLine = ZhiPage.taskLinkLine(this, t.id);
+                if (linkLine != null) {
+                    TextView lv = new TextView(this);
+                    lv.setText(linkLine);
+                    lv.setTextSize(11);
+                    lv.setTextColor(Ui.sub(this));
+                    lv.setMaxLines(1);
+                    lv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    lv.setPadding(dp(21), dp(1), dp(16), 0);
+                    cellInner.addView(lv);
+                }
+                cell.addView(cellInner);
                 cell.addView(prioDot(t.priority)); // v1.58.0：优先级圆点（替代原 ★ 前缀，四档全标）
                 TextView chev = new TextView(this);
                 chev.setText("›");
@@ -1974,19 +1992,7 @@ public class MainActivity extends Activity {
                 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
         chips.addView(chip(primary, true, v -> onPlay(t)));
         chips.addView(chip(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(this, store, t,
-                new TaskEditSheet.Host() {
-                    @Override public void onSaved(TaskItem saved, boolean created) {
-                        adapter.notifyDataSetChanged();
-                        refreshStatus();
-                    }
-                    @Override public void onStartNow(TaskItem saved, boolean created) {
-                        adapter.notifyDataSetChanged();
-                        refreshStatus();
-                        startTaskNow(saved);
-                    }
-                    @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
-                    @Override public void onResetTimer(TaskItem task) { resetTask(task); }
-                })));
+                taskEditHost())));
         chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
         if (isRunningThis) {
             chips.addView(chip(Strings.chipPlus15(), false, v -> {
@@ -2298,6 +2304,29 @@ public class MainActivity extends Activity {
      *  只去掉暂停分支——正在计时的就是它＝已经开始了，不重启也不弹暂停卡；
      *  暂停中的就是它＝按剩余继续（同 onPlay 的继续分支）；其余走 startTaskTimer
      *  （直接切换/全新开始同 ▶）。调用前宿主已按 onSaved 口径刷新过界面。 */
+    /** 任务编辑层宿主（行内「编辑」与知页任务关联行共用同一套：保存刷新、
+     *  立刻开始走 startTaskNow、专注规则/重置计时走既有对话框）。 */
+    private TaskEditSheet.Host taskEditHost() {
+        return new TaskEditSheet.Host() {
+            @Override public void onSaved(TaskItem saved, boolean created) {
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+            }
+            @Override public void onStartNow(TaskItem saved, boolean created) {
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+                startTaskNow(saved);
+            }
+            @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
+            @Override public void onResetTimer(TaskItem task) { resetTask(task); }
+        };
+    }
+
+    /** 知页人名/原则的任务关联行点开任务（v1.71.0，F3）：与行内编辑同一个编辑层、同宿主。 */
+    public void openTaskEditorFromZhi(TaskItem t) {
+        TaskEditSheet.showEdit(this, store, t, taskEditHost());
+    }
+
     private void startTaskNow(TaskItem t) {
         if (TimerState.isRunning(this)) {
             if (t.id.equals(TimerState.taskId(this))) return;

@@ -365,6 +365,149 @@ public final class TaskEditSheet {
             });
             chatRow.addView(chatBtn);
             col.addView(chatRow);
+
+            // 关联区（v1.71.0，F2）：把这个任务连到人名/原则，与知页编辑页同款
+            // 交互（输入联想、点中即连、✕ 即解除；不提供新建）。关联即时生效、
+            // 不随本层的保存/取消——写走知页同一套本地先行队列的静态入口
+            // （ZhiPage.addLinkExternal 等：先落知缓存、再入队补传），本层只持
+            // 一份渲染快照，每次增删后从缓存重读重画。
+            col.addView(label(ctx, en ? "Linked" : "关联"));
+            final LinearLayout linkBox = new LinearLayout(ctx);
+            linkBox.setOrientation(LinearLayout.VERTICAL);
+            col.addView(linkBox);
+            final List<ZhiPage.Person> linkPeople = ZhiPage.peopleCache(ctx);
+            final List<ZhiPage.Principle> linkPrinciples = ZhiPage.principlesCache(ctx);
+            final List<ZhiPage.Link> myLinks = new ArrayList<>();
+            final String[] linkAdding = {null};   // 正在添加的类型（person/principle），null=没开
+            final Runnable[] renderLinksH = {null};
+            renderLinksH[0] = () -> {
+                myLinks.clear();
+                for (ZhiPage.Link l : ZhiPage.linksCache(ctx)) {
+                    if (l.involves(ZhiPage.T_TASK, src.id)) myLinks.add(l);
+                }
+                linkBox.removeAllViews();
+                if (myLinks.isEmpty() && linkPeople.isEmpty() && linkPrinciples.isEmpty()) {
+                    // 本地还没有知数据（没打开过知页同步）：明示出处，不假装能搜
+                    TextView hint = new TextView(ctx);
+                    hint.setText(en ? "Open the Know tab once to sync people & principles first"
+                            : "先打开一次「知」页同步，这里才能搜到人和原则");
+                    hint.setTextSize(12);
+                    hint.setTextColor(Ui.sub(ctx));
+                    linkBox.addView(hint);
+                    return;
+                }
+                for (final ZhiPage.Link l : myLinks) {
+                    final String ot = l.otherType(ZhiPage.T_TASK, src.id);
+                    final String oid = l.otherId(ZhiPage.T_TASK, src.id);
+                    String dname = null;
+                    if (ZhiPage.T_PERSON.equals(ot)) {
+                        for (ZhiPage.Person pe : linkPeople) if (pe.id.equals(oid)) { dname = pe.name; break; }
+                    } else if (ZhiPage.T_PRINCIPLE.equals(ot)) {
+                        for (ZhiPage.Principle pr : linkPrinciples) if (pr.id.equals(oid)) {
+                            dname = !pr.title.trim().isEmpty() ? pr.title.trim()
+                                    : pr.body.split("\n")[0].trim();
+                            break;
+                        }
+                    }
+                    if (dname == null || dname.isEmpty()) continue;   // 对端解析不到就不画这一行
+                    LinearLayout lrow = new LinearLayout(ctx);
+                    lrow.setOrientation(LinearLayout.HORIZONTAL);
+                    lrow.setGravity(Gravity.CENTER_VERTICAL);
+                    lrow.setPadding(0, dp(ctx, 5), 0, dp(ctx, 5));
+                    TextView lnm = new TextView(ctx);
+                    lnm.setText((ZhiPage.T_PERSON.equals(ot)
+                            ? (en ? "Person · " : "人 · ") : (en ? "Principle · " : "原则 · ")) + dname);
+                    lnm.setTextSize(13.5f);
+                    lnm.setTextColor(Ui.text(ctx));
+                    lnm.setMaxLines(1);
+                    lnm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    lrow.addView(lnm, new LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                    TextView lx = new TextView(ctx);
+                    lx.setText("✕");
+                    lx.setTextSize(12);
+                    lx.setTextColor(Ui.sub(ctx));
+                    lx.setPadding(dp(ctx, 10), dp(ctx, 2), dp(ctx, 2), dp(ctx, 2));
+                    lx.setOnClickListener(v -> {
+                        ZhiPage.removeLinkExternal(ctx, l.aType, l.aId, l.bType, l.bId);
+                        renderLinksH[0].run();
+                    });
+                    lrow.addView(lx);
+                    linkBox.addView(lrow);
+                }
+                LinearLayout addRowL = new LinearLayout(ctx);
+                addRowL.setOrientation(LinearLayout.HORIZONTAL);
+                addRowL.setPadding(0, dp(ctx, 6), 0, 0);
+                TextView addPerson = chip(ctx, en ? "+ Link person" : "＋ 关联人",
+                        ZhiPage.T_PERSON.equals(linkAdding[0]));
+                addPerson.setOnClickListener(v -> {
+                    linkAdding[0] = ZhiPage.T_PERSON.equals(linkAdding[0]) ? null : ZhiPage.T_PERSON;
+                    renderLinksH[0].run();
+                });
+                addRowL.addView(addPerson);
+                TextView addPrinciple = chip(ctx, en ? "+ Link principle" : "＋ 关联原则",
+                        ZhiPage.T_PRINCIPLE.equals(linkAdding[0]));
+                addPrinciple.setOnClickListener(v -> {
+                    linkAdding[0] = ZhiPage.T_PRINCIPLE.equals(linkAdding[0]) ? null : ZhiPage.T_PRINCIPLE;
+                    renderLinksH[0].run();
+                });
+                addRowL.addView(addPrinciple);
+                linkBox.addView(addRowL);
+                if (linkAdding[0] != null) {
+                    final String wantType = linkAdding[0];
+                    final EditText lin = new EditText(ctx);
+                    lin.setHint(ZhiPage.T_PERSON.equals(wantType)
+                            ? (en ? "Type a name to find people" : "输入名字找已有的人")
+                            : (en ? "Type to find principles" : "打几个字找已有的原则"));
+                    lin.setTextSize(14);
+                    lin.setSingleLine(true);
+                    lin.setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8));
+                    LinearLayout.LayoutParams linLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    linLp.topMargin = dp(ctx, 8);
+                    linkBox.addView(lin, linLp);
+                    final LinearLayout candBox = new LinearLayout(ctx);
+                    candBox.setOrientation(LinearLayout.VERTICAL);
+                    linkBox.addView(candBox);
+                    final Runnable fillCand = () -> {
+                        candBox.removeAllViews();
+                        String q = lin.getText().toString().trim();
+                        int shown = 0;
+                        if (ZhiPage.T_PERSON.equals(wantType)) {
+                            for (final ZhiPage.Person pe : linkPeople) {
+                                if (isTaskLinked(myLinks, wantType, pe.id)) continue;
+                                if (!q.isEmpty() && !(pe.name + "\n" + pe.memo).contains(q)) continue;
+                                if (shown++ >= 30) break;
+                                candBox.addView(linkCandRow(ctx, pe.name, () -> {
+                                    ZhiPage.addLinkExternal(ctx, ZhiPage.T_TASK, src.id, wantType, pe.id);
+                                    linkAdding[0] = null;
+                                    renderLinksH[0].run();
+                                }));
+                            }
+                        } else {
+                            for (final ZhiPage.Principle pr : linkPrinciples) {
+                                if (isTaskLinked(myLinks, wantType, pr.id)) continue;
+                                if (!q.isEmpty() && !(pr.title + "\n" + pr.body).contains(q)) continue;
+                                if (shown++ >= 30) break;
+                                String dn = !pr.title.trim().isEmpty() ? pr.title.trim()
+                                        : pr.body.split("\n")[0].trim();
+                                candBox.addView(linkCandRow(ctx, dn, () -> {
+                                    ZhiPage.addLinkExternal(ctx, ZhiPage.T_TASK, src.id, wantType, pr.id);
+                                    linkAdding[0] = null;
+                                    renderLinksH[0].run();
+                                }));
+                            }
+                        }
+                    };
+                    lin.addTextChangedListener(new android.text.TextWatcher() {
+                        @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
+                        @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
+                        @Override public void afterTextChanged(android.text.Editable e) { fillCand.run(); }
+                    });
+                    fillCand.run();
+                }
+            };
+            renderLinksH[0].run();
             // tag 在 dialog 建好后回填（见下方）
             focusBtn.setTag(null);
             resetBtn.setTag(null);
@@ -596,6 +739,42 @@ public final class TaskEditSheet {
     }
 
     // ---------------- 小部件 ----------------
+
+    /** 编辑层关联区用：这条任务的关联里是否已有 (otherType, otherId) 对端。 */
+    private static boolean isTaskLinked(List<ZhiPage.Link> myLinks, String otherType, String otherId) {
+        for (ZhiPage.Link l : myLinks) {
+            // myLinks 里的关联都涉这条任务：另一侧是 (otherType, otherId) 即算已关联
+            boolean hit = (l.aType.equals(otherType) && l.aId.equals(otherId)
+                    && l.bType.equals(ZhiPage.T_TASK))
+                    || (l.bType.equals(otherType) && l.bId.equals(otherId)
+                    && l.aType.equals(ZhiPage.T_TASK));
+            if (hit) return true;
+        }
+        return false;
+    }
+
+    /** 关联候选一行：名字＋「点一下直接关联 ›」，点整行即关联（与知页同款）。 */
+    private static View linkCandRow(Context ctx, String name, Runnable onPick) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(ctx, 4), dp(ctx, 9), dp(ctx, 4), dp(ctx, 9));
+        TextView nm = new TextView(ctx);
+        nm.setText(name);
+        nm.setTextSize(13.5f);
+        nm.setTextColor(Ui.text(ctx));
+        nm.setMaxLines(1);
+        nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(nm, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView lk = new TextView(ctx);
+        lk.setText(Strings.en() ? "Tap to link \u203a" : "点一下直接关联 \u203a");
+        lk.setTextSize(11);
+        lk.setTextColor(Ui.accent(ctx));
+        row.addView(lk);
+        row.setOnClickListener(v -> onPick.run());
+        return row;
+    }
 
     private static TextView label(Context ctx, String s) {
         TextView t = new TextView(ctx);
