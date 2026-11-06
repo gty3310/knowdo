@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1700 = new Entry("v1.70.0", "2026-11-06");
+        e1700.add(new Group(s("修复", "Fixed"),
+                s("这一页的毛病修了：以前会只剩页头、任务卡画不出来，现在整页按硬尺寸重画",
+                  "This page is fixed: it could end up showing only the header with the task cards missing - the whole page is now drawn with hard layout sizes"),
+                s("页头下面多了一行小字：载入了多少任务、多少段日程、画了多少张卡，一眼能看出数据到没到",
+                  "A small line under the header now shows how many tasks loaded, how many blocks today has, and how many cards were drawn - you can tell at a glance whether the data arrived"),
+                s("万一哪一区画不出来，会在原地写明并能点一下重试，不会再整页静默空白",
+                  "If a section ever fails to draw, it now says so in place and retries on tap instead of leaving the whole page silently blank")));
+        e1700.why = s("你打开今天安排只剩页头、下面全空白——查清了数据都在、坏在画法，这版把整页重画，还让它自己会报信",
+                "You opened Plan today to a header over a blank page - the data was all there, the drawing was at fault; this release redraws the whole page and makes it report its own state");
+        e1700.tryIt = s("打开今天安排页，看页头下那行小字三个数对不对（任务数应是你的任务总数、日程段数应是今天排的段数）；任务卡应全部出现",
+                "Open Plan today and check the three numbers in the small line under the header (tasks should be your total task count, blocks the number of blocks planned for today); all the task cards should show");
+        out.add(e1700);
+
         Entry e1690 = new Entry("v1.69.0", "2026-11-05");
         e1690.add(new Group(s("改进", "Improved"),
                 s("检查变密了：随机 10–20 秒查一次（原来 15–45 秒）",
