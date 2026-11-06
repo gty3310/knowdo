@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.70.0)
+## Features (Android, v1.71.0)
 
-Current version: **v1.70.0**.
+Current version: **v1.71.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.71.0 — 2026-11-06
+
+**Why:** A task should be able to point at the person and the principle behind it — the reading task about the Axial Age belongs to the senior who set it, a chore belongs to the principle it serves — so that doing (行） and knowing （知） can be checked against each other. The data layer went first: the zhi_links type checks were widened to five types (principle/question/person/diary/task) and probe-verified before this release; links keep the established canonical form (type names in alphabetical order, task last, the task id as its id string). This release links tasks to people and principles only (not questions or diary), multiple links allowed, shown from both sides; the Mac app follows after Android is verified. The Zhixing index, scheduling and the guard are untouched, and links among the existing four Zhi types behave exactly as before. Build commit `8479db4` · [compare v1.70.0...v1.71.0](https://github.com/gty3310/knowdo/compare/v1.70.0...v1.71.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A Links section in the task editor.** At the bottom of every existing task's edit sheet: two entries (person, principle) with the same interaction as the Zhi editor — type to search the local Know data, tap to link, ✕ to unlink, no create-from-here. Links take effect immediately (they do not roll back with the sheet's Save/Cancel), and if no Know data is on the phone yet the section says to open the Know tab once to sync instead of pretending to search.
+- **One shared pending-op queue.** The Zhi tab's local-first queue (persisted, FIFO, field-level re-upload with its conflict rules) is now a static shared layer: normalization, op construction and the cloud execution for link ops exist exactly once and are used from both sides, and a single flush flag keeps two flushers from touching the queue head at once. Task-side link changes land in the same local Zhi cache first, then queue, then flush (the task-side flusher only drains link ops at the head and stops at any other kind, preserving global FIFO) — no new direct-to-cloud writes anywhere.
+- **Tasks listed on people and principles.** The person and principle editors in the Know tab gain a Tasks link section (the question and diary editors do not): linked task titles, done ones carrying a ✓, and tapping one opens the task editor through MainActivity's own host — Start now, focus rules and timer reset take the same paths as from the task list. Candidates are the local undeleted tasks, completed ones included; tasks are never created from here.
+- **A small linked-names line on task rows and cards.** On the Tasks tab (under the title) and on Plan-today cards, a task with links in the local Zhi cache shows who and what it is linked to (person names / principle titles, in link order, first two plus a total count when there are more) — display only, not tappable; with no cache or no links the line simply does not appear and never blocks list rendering.
+- **Deleting a task cleans its links.** Every delete entry (list long-press, task editor, Plan today, chat panel) funnels into the single TaskStore.remove tombstone path, which now also removes the task's links from the local cache and queues their unlink ops on the same queue; a cleanup failure never blocks the deletion itself.
+
+Not yet verified on a real device: linking and unlinking from the task editor (including offline queueing and later flush), the Tasks section on person/principle pages with its done marks and tap-to-open, the linked-names line on task rows and Plan-today cards, link cleanup on task deletion, and the 1.70.0 to 1.71.0 in-app update chain.
+
 ### v1.70.0 — 2026-11-06
 
 **Why:** On the morning of 2026-11-06 the user opened Plan today on v1.69.0 and got a header over a blank page: the ledger and the two small add buttons rendered, but the whole scroll area (hours strip, free-time row, task cards, other-important section) and the footer's two big buttons never appeared. The cloud side was read back first and cleared: the stored schedule for 2026-11-06 holds 23 blocks (06:00–21:59), every taskId resolves against the tasks table (138 rows), and the header's "13h 4m planned" was computed on-device from those very blocks — the local schedule cache was fresh; the fault is in drawing, not data or network. Same family as the v1.67 AI-panel collapse: several containers in this hand-built page were added with no LayoutParams and never recovered from a zero-height first frame. This release reworks TodayPlanActivity only; scheduling semantics (candidateOrder, the ×1.5 rule, autoFill merging, grey cards, the frozen card order, the ledger math, the open-page self-check) and the v1.67 AI-panel fix were audited and left untouched, as were all other pages. Build commit `b220a13` · [compare v1.69.0...v1.70.0](https://github.com/gty3310/knowdo/compare/v1.69.0...v1.70.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -85,18 +98,6 @@ Not yet verified on a real device: Plan today rendering in full on the phone (se
 - **Every verdict leaves a trace.** guard_events gains three additive fields — src (rules / embed / cloud / offline / degraded), score (the local embedding score, when there is one) and cloud (ok / fallback:<error class>, on semantic-layer records). Trigger events written by the verdict engine carry the same trace; existing category/detail values are untouched.
 
 Not yet verified on a real device: sampling actually landing in the 10–20 s band in daily use, a drift event carrying src=cloud while online, offline verdicts marked offline after browsing in airplane mode, the semantic model finally downloading end-to-end on the phone (per-shard numbers on the Models page, self-check passing, prescreen live), and the 1.68.0 to 1.69.0 in-app update chain.
-
-### v1.68.0 — 2026-11-05
-
-**Why:** The user settled it on the morning of 2026-11-05: the weekly goal & reflection is the same kind of thing as the diary, so it should be written in the same place. Until now it lived only on the habit's detail page — the morning page showed just a read-only line in section A saying whether yesterday's reflection existed and pointing to the habits page. This release moves it onto the morning page, directly under the diary box. The data layer is untouched: same WeeklyData store (local weekly_data.json plus the user_state.weekly_data column) with its existing merge rules, and the morning gate's completion conditions are unchanged — this section is not a must-answer. Build commit `8a355ec` · [compare v1.67.0...v1.68.0](https://github.com/gty3310/knowdo/compare/v1.67.0...v1.68.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Weekly goal & reflection on the morning page.** A new section under the diary box lists what's still owed, on the same terms as the weekly gate (WeeklyData.requiredMondays: the current week always, next week joins after Sunday 20:00). A missing goal or weekly reflection is a multi-line editor right there — tap Save and it is stored and synced through the existing WeeklyData path, flipping to a filled one-line summary with an Edit button that reopens the same editor in place. Goals and reflections are keyed by their week's Monday, the same store the detail page reads, so the detail page's history shows them as that week's Monday reflection. With no weekly habit the section stays as a title plus one small line rather than disappearing.
-
-**Improved**
-- **No more detour to the habits page.** The read-only weekly line in the morning page's section A is gone — the same information no longer appears in two places. The detail page still keeps the full history of past weeks.
-
-Not yet verified on a real device: writing this week's goal in the new morning section and seeing it persist after leaving and re-entering, the filled/edit in-place flip, next-week items appearing after Sunday 20:00, the section with no weekly habit, and the 1.67.0 to 1.68.0 in-app update chain.
 
 ## Build
 
