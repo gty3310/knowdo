@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1710 = new Entry("v1.71.0", "2026-11-06");
+        e1710.add(new Group(s("新增", "New"),
+                s("在任务的编辑页最下面多了「关联」：能把这个任务连到某个人、某条原则，可连多个",
+                  "Task edit pages gain a Links section at the bottom: link a task to a person or a principle - as many as you like"),
+                s("反过来，在人名和原则的页面里也能看到它挂着哪些任务，点一下就打开",
+                  "The other way round too: a person's or a principle's page lists its tasks, and tapping one opens it"),
+                s("任务卡上会带一行小字，写着它关联了谁、哪条原则",
+                  "Task cards carry a small line naming the people and principles they are linked to")));
+        e1710.why = s("任务不再是孤立的一条条：它连着的人和原则，就是你做这件事的来由——把它们连起来，知和行才对得上账",
+                "A task never stands alone: the people and principles behind it are why you do it - linking them is how knowing and doing line up");
+        e1710.tryIt = s("打开《轴心时代》的编辑页，在关联区搜「予然」连上；再去知页打开杨予然，看任务在不在他名下",
+                "Open the Axial Age task's edit page, search for the person in the Links section and link him; then open that person on the Know tab and check the task is listed under him");
+        out.add(e1710);
+
         Entry e1700 = new Entry("v1.70.0", "2026-11-06");
         e1700.add(new Group(s("修复", "Fixed"),
                 s("这一页的毛病修了：以前会只剩页头、任务卡画不出来，现在整页按硬尺寸重画",
