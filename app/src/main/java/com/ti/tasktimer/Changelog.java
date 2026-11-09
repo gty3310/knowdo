@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1720 = new Entry("v1.72.0", "2026-11-09");
+        e1720.add(new Group(s("新增", "New"),
+                s("加时之前，先问一句动机",
+                  "Before extending, one question about motive"),
+                s("每次加时之前，会先出现一句自问「动机至善，私心了无」，点「有」或「没有」都能继续加时",
+                  "Before every extension a self-question appears — pure motive, no selfishness — and tapping Yes or No both let you go on to extend"),
+                s("每次的回答都会记下来，在「合一」页能看到「有」的比例（今日与累计）",
+                  "Every answer is kept, and the Oneness page shows the share of Yes, today and all time"),
+                s("「知」里的原则现在可以和习惯关联",
+                  "Principles in Know can now be linked to habits")));
+        e1720.why = s("加时是最容易掺私心的地方，先问一句动机再加时；回答攒成比例，就能看见自己有多少次是真心在做",
+                "Extending is where selfishness slips in most easily, so ask about motive first; gathered into a ratio, the answers show how often the work is truly wholehearted");
+        e1720.tryIt = s("随便开始一个任务，计时结束或在检查页点加时，先回答自问再选加时时长；然后打开底部「合一」页看比例；在「知」的原则页打开「动机至善，私心了无」可以给它关联一个习惯",
+                "Start any task; when it ends, or when you extend from a check page, answer the question first, then pick how long; then open the Oneness tab at the bottom to see the ratio; on the Know tab, open the principle Pure motive, no selfishness to link it to a habit");
+        out.add(e1720);
+
         Entry e1710 = new Entry("v1.71.0", "2026-11-06");
         e1710.add(new Group(s("新增", "New"),
                 s("在任务的编辑页最下面多了「关联」：能把这个任务连到某个人、某条原则，可连多个",
