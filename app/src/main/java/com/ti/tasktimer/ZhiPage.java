@@ -44,7 +44,8 @@ import java.util.UUID;
  * 知页（底部第二签）：「知」分四页——原则（zhi_principles，kind 分思维
  * think／行为 act）、问题（zhi_questions，status 待问 pending／已问 asked）、
  * 人名（zhi_people）、日记（v1.60.0 补的第四页签）；条目经 zhi_links 关联
- * （关联对按类型名字母序存规范形：diary &lt; person &lt; principle &lt; question &lt; task）。
+ * （关联对按类型名字母序存规范形：diary &lt; habit &lt; person &lt; principle
+ * &lt; question &lt; task；v1.72.0 起习惯也可被关联，id＝habit_data 里的习惯 id）。
  * 日记不搬家：文本仍住 HabitData 的 diary 映射，读走 HabitData.diary／
  * diaryDatesDesc，写只走 HabitData.putDiary（与晨间页、DiaryActivity 同一条路），
  * zhi_links 里 diary 恒为 a 侧、a_id＝日期字符串。日记页签只有搜索与列表（日期
@@ -68,12 +69,14 @@ public final class ZhiPage {
     static final String T_PERSON = "person";
     static final String T_DIARY = "diary";
     static final String T_TASK = "task";   // 任务（v1.71.0）：只在 zhi_links 里出现，不进知页页签
+    static final String T_HABIT = "habit"; // 习惯（v1.72.0）：只在 zhi_links 里出现，id＝习惯定义 id
 
     // 云端表名（v1.67.0：逐表拉取/补传/实时订阅都以表名为键）
     static final String TB_PRINCIPLES = "zhi_principles";
     static final String TB_QUESTIONS = "zhi_questions";
     static final String TB_PEOPLE = "zhi_people";
     static final String TB_LINKS = "zhi_links";
+    static final String TB_EVENTS = "zhi_events";   // 通用事件流（v1.72.0）：不进四表拉取，单独读写
 
     private static final int PAGE_PRINCIPLE = 0;
     private static final int PAGE_QUESTION = 1;
@@ -250,9 +253,12 @@ public final class ZhiPage {
         return nz(body).replace('\n', ' ').trim();
     }
     private static String isoNow() {
+        return isoOfMs(System.currentTimeMillis());
+    }
+    private static String isoOfMs(long ms) {
         SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
         f.setTimeZone(TimeZone.getTimeZone("UTC"));
-        return f.format(new Date());
+        return f.format(new Date(ms));
     }
     private static List<String> parseTags(JSONObject o) {
         List<String> out = new ArrayList<>();
@@ -502,6 +508,12 @@ public final class ZhiPage {
         return null;
     }
     private String displayOf(String type, String id) {
+        if (T_HABIT.equals(type)) {
+            // 习惯名从 habit_data 定义里查（v1.72.0）；习惯已删时返回空名，关联行还在、可解除
+            JSONObject root = habitRoot != null ? habitRoot : HabitData.load(act);
+            HabitData.Habit h = HabitData.habitById(root, id);
+            return h == null ? "" : h.name;
+        }
         if (T_TASK.equals(type)) { TaskItem t = taskById(id); return t == null ? "" : t.title; }
         if (T_DIARY.equals(type)) return dateLabel(id);
         if (T_PRINCIPLE.equals(type)) { Principle p = principleById(id); return p == null ? "" : displayOf(p); }
@@ -692,6 +704,22 @@ public final class ZhiPage {
                 + "&a_id=eq." + op.getString("aId")
                 + "&b_type=eq." + op.getString("bType") + "&b_id=eq." + op.getString("bId"));
     }
+    /** event_add 的云端执行（实例补传与静态补传共用，v1.72.0）：按 op 里的
+     *  客户端 id upsert 到 zhi_events——补传重跑（执行成功但摘队首前进程被杀）
+     *  也只落一行，不产生重复。事件只增不改，无需冲突比对。 */
+    private static void execEventAdd(Context c, JSONObject op) throws Exception {
+        JSONObject e = op.getJSONObject("event");
+        JSONObject row = new JSONObject();
+        row.put("id", op.getString("eventId"));
+        row.put("user_id", Supa.userId(c));
+        row.put("ts", e.getString("ts"));
+        row.put("subject_type", e.optString("subject_type", ""));
+        row.put("subject_id", e.optString("subject_id", ""));
+        row.put("kind", e.optString("kind", ""));
+        row.put("value", e.optString("value", ""));
+        row.put("source", e.optString("source", ""));
+        Supa.restUpsertOne(c, TB_EVENTS, "id", row);
+    }
 
     private void execOp(JSONObject op) throws Exception {
         String k = op.optString("k");
@@ -701,6 +729,8 @@ public final class ZhiPage {
             execLinkAdd(act, op);
         } else if ("link_del".equals(k)) {
             execLinkDel(act, op);
+        } else if ("event_add".equals(k)) {
+            execEventAdd(act, op);
         } else if ("delete".equals(k)) {
             String type = op.getString("type"), id = op.getString("id");
             Supa.restDelete(act, "zhi_links?a_type=eq." + type + "&a_id=eq." + id);
@@ -815,8 +845,10 @@ public final class ZhiPage {
         }
     }
 
-    /** 规范形：类型名字母序在前（diary < person < principle < question < task，日记恒为 a 侧）。
-     *  返回 {aType, aId, bType, bId}；知页内外共用，不许另起一套。 */
+    /** 规范形：类型名字母序在前（diary < habit < person < principle < question
+     *  < task，纯字典序比较、日记恒为 a 侧；v1.72.0 加 habit 时本函数无需改——
+     *  新类型只是多一个字符串）。返回 {aType, aId, bType, bId}；知页内外共用，
+     *  不许另起一套。 */
     private static String[] normLink(String t1, String id1, String t2, String id2) {
         if (t1.compareTo(t2) <= 0) return new String[]{t1, id1, t2, id2};
         return new String[]{t2, id2, t1, id1};
@@ -986,9 +1018,9 @@ public final class ZhiPage {
         for (Link l : mine) removeLinkExternal(c, l.aType, l.aId, l.bType, l.bId);
     }
     /**
-     * 只补传队首的 link op：遇到其他 kind 就停（全局 FIFO 不乱序——排在 upsert
-     * 之后的 link 等知页 flushQueue 整队补传，与既有触发点口径一致）。与实例
-     * flushQueue 共用 queueFlushing 旗，两个补传者不会同时动队首。
+     * 只补传队首的 link／event op：遇到其他 kind 就停（全局 FIFO 不乱序——排在
+     * upsert 之后的 link/event 等知页 flushQueue 整队补传，与既有触发点口径
+     * 一致）。与实例 flushQueue 共用 queueFlushing 旗，两个补传者不会同时动队首。
      */
     public static void flushLinkOps(final Context c) {
         if (!Supa.isLoggedIn(c)) return;
@@ -1006,6 +1038,7 @@ public final class ZhiPage {
                     String k = op.optString("k");
                     if ("link_add".equals(k)) execLinkAdd(app, op);
                     else if ("link_del".equals(k)) execLinkDel(app, op);
+                    else if ("event_add".equals(k)) execEventAdd(app, op);
                     else break;
                     dropHeadOp(app);
                 }
@@ -1014,6 +1047,109 @@ public final class ZhiPage {
             }
             synchronized (QUEUE_LOCK) { queueFlushing = false; }
         }).start();
+    }
+
+    // ---------------- 事件流（v1.72.0，F2）：zhi_events 本地先行 ----------------
+    // 通用践行事件（首个用途：加时动机自问的每次回答）：先落本地事件缓存
+    // （全量保留、体积小不截断，供合一页离线算比例），同时把 event_add op 排进
+    // 与关联同一条待同步队列补传 zhi_events。断网不丢、重启不丢（缓存与队列
+    // 都在 SharedPreferences 落盘）；事件只增不改，绝不写 user_state.self_checks。
+    private static final String EVENTS_KEY = "events";
+
+    /** 本地事件缓存（全量；从未记过时为空表）。事件形状：
+     *  {ts ISO, tsMs, subject_type, subject_id, kind, value, source}。 */
+    public static JSONArray eventsCache(Context c) {
+        return cacheArray(c, EVENTS_KEY);
+    }
+    private static void saveEventsCache(Context c, JSONArray arr) {
+        c.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+                .putString(EVENTS_KEY, arr.toString()).apply();
+    }
+    /** 去重键：同一时刻、同主体、同类、同值、同来源视为同一条（本地与云端回拉合并用）。 */
+    private static String eventKey(JSONObject e) {
+        return e.optLong("tsMs", 0) + "|" + e.optString("subject_id", "") + "|"
+                + e.optString("kind", "") + "|" + e.optString("value", "") + "|"
+                + e.optString("source", "");
+    }
+    /** 记一条事件（外部入口：动机门等）：先落本地缓存、再入队、再试补传，与关联同口径。 */
+    public static void recordEventExternal(Context c, String subjectType, String subjectId,
+                                           String kind, String value, String source) {
+        try {
+            long nowMs = System.currentTimeMillis();
+            JSONObject e = new JSONObject();
+            e.put("ts", isoOfMs(nowMs));
+            e.put("tsMs", nowMs);
+            e.put("subject_type", subjectType);
+            e.put("subject_id", subjectId);
+            e.put("kind", kind);
+            e.put("value", value);
+            e.put("source", source);
+            synchronized (ZhiPage.class) {
+                JSONArray arr = eventsCache(c);
+                arr.put(e);
+                saveEventsCache(c, arr);
+            }
+            JSONObject op = new JSONObject();
+            op.put("k", "event_add");
+            op.put("eventId", UUID.randomUUID().toString());
+            op.put("event", e);
+            enqueueOp(c, op);
+        } catch (Exception ignored) { }
+        flushLinkOps(c);
+    }
+    /** 拉云端事件并入本地缓存（合一页刷新比例用）：失败静默保留本地数，done 总回主线程。 */
+    public static void refreshEvents(final Context c, final Runnable done) {
+        final Context app = c.getApplicationContext();
+        new Thread(() -> {
+            try {
+                if (Supa.isLoggedIn(app)) {
+                    JSONArray rows = Supa.restGet(app, TB_EVENTS
+                            + "?select=ts,subject_type,subject_id,kind,value,source&order=ts.asc");
+                    synchronized (ZhiPage.class) {
+                        JSONArray arr = eventsCache(app);
+                        Set<String> seen = new HashSet<>();
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject e = arr.optJSONObject(i);
+                            if (e != null) seen.add(eventKey(e));
+                        }
+                        boolean changed = false;
+                        for (int i = 0; rows != null && i < rows.length(); i++) {
+                            JSONObject r = rows.getJSONObject(i);
+                            JSONObject e = new JSONObject();
+                            String ts = r.optString("ts", "");
+                            e.put("ts", ts);
+                            e.put("tsMs", parseIsoMs(ts));
+                            e.put("subject_type", r.optString("subject_type", ""));
+                            e.put("subject_id", r.optString("subject_id", ""));
+                            e.put("kind", r.optString("kind", ""));
+                            e.put("value", r.optString("value", ""));
+                            e.put("source", r.optString("source", ""));
+                            if (seen.add(eventKey(e))) { arr.put(e); changed = true; }
+                        }
+                        if (changed) saveEventsCache(app, arr);
+                    }
+                }
+            } catch (Exception ignored) {
+                // 拉取失败：静默用本地缓存（合一页口径），不弹错
+            }
+            if (done != null) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(done);
+            }
+        }).start();
+    }
+    private static long parseIsoMs(String iso) {
+        try { return java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli(); }
+        catch (Exception e1) {
+            try { return java.time.Instant.parse(iso).toEpochMilli(); }
+            catch (Exception e2) { return 0; }
+        }
+    }
+    /** 外部跳入（合一页比例节标题，v1.72.0）：切到原则页签并打开这条原则的
+     *  编辑页；本地模型里还没有这条时只停在原则列表，不硬开空页。 */
+    public void openPrincipleById(String id) {
+        page = PAGE_PRINCIPLE;
+        if (principleById(id) == null) { renderList(); return; }
+        pushEdit(T_PRINCIPLE, id);
     }
     /** 任务关联到的对象名（人名姓名／原则标题），按缓存里的关联顺序；解析不到的跳过。 */
     public static List<String> taskLinkNames(Context c, String taskId) {
@@ -2457,7 +2593,7 @@ public final class ZhiPage {
     }
 
     private String[] sectionsFor(String type) {
-        if (T_PRINCIPLE.equals(type)) return new String[]{T_PERSON, T_QUESTION, T_DIARY, T_TASK};
+        if (T_PRINCIPLE.equals(type)) return new String[]{T_PERSON, T_QUESTION, T_DIARY, T_TASK, T_HABIT};
         if (T_QUESTION.equals(type)) return new String[]{T_PERSON, T_PRINCIPLE};
         return new String[]{T_QUESTION, T_PRINCIPLE, T_DIARY, T_TASK};
     }
@@ -2465,7 +2601,8 @@ public final class ZhiPage {
         return s("关联的", "Linked ") + (T_PERSON.equals(otherType) ? s("人名", "people")
                 : T_QUESTION.equals(otherType) ? s("问题", "questions")
                 : T_DIARY.equals(otherType) ? s("日记", "diary")
-                : T_TASK.equals(otherType) ? s("任务", "tasks") : s("原则", "principles"));
+                : T_TASK.equals(otherType) ? s("任务", "tasks")
+                : T_HABIT.equals(otherType) ? s("习惯", "habits") : s("原则", "principles"));
     }
 
     private View linkSection(final String otherType) {
@@ -2513,6 +2650,7 @@ public final class ZhiPage {
             name.setOnClickListener(v -> {
                 if (T_DIARY.equals(otherType)) { collectDraft(); openDiaryDetail(oid); }
                 else if (T_TASK.equals(otherType)) { collectDraft(); openTaskEditor(oid); }
+                else if (T_HABIT.equals(otherType)) { /* 习惯在知页内没有编辑页：本版只展示与解除（v1.72.0） */ }
                 else pushEdit(otherType, oid);
             });
             row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -2558,6 +2696,7 @@ public final class ZhiPage {
         in.setHint(T_PERSON.equals(otherType) ? s("输入名字找已有的人", "Type a name to find people")
                 : T_DIARY.equals(otherType) ? s("输入日期或日记里的字找日记", "Type a date or words from an entry")
                 : T_TASK.equals(otherType) ? s("输入任务名找已有的任务", "Type to find tasks")
+                : T_HABIT.equals(otherType) ? s("输入习惯名找已有的习惯", "Type to find habits")
                 : s("打几个字找已有的", "Type to find existing entries"));
         in.setTextSize(14);
         in.setSingleLine(true);
@@ -2608,6 +2747,12 @@ public final class ZhiPage {
                 if (t.deleted) continue;
                 cands.add(new String[]{t.id, t.title, t.title + "\n" + nz(t.note)});
             }
+        } else if (T_HABIT.equals(otherType)) {
+            // 候选＝现有习惯定义（habit_data 里的 id 即习惯 id）：只关联既有的，不在这里新建
+            if (habitRoot == null) habitRoot = HabitData.load(act);
+            for (HabitData.Habit h : HabitData.habits(habitRoot)) {
+                cands.add(new String[]{h.id, h.name, h.name});
+            }
         } else {
             for (Person pe : people) cands.add(new String[]{pe.id, pe.name, pe.name + "\n" + pe.memo});
         }
@@ -2635,7 +2780,8 @@ public final class ZhiPage {
             }));
             cand.addView(row);
         }
-        if (!q.isEmpty() && !T_DIARY.equals(otherType) && !T_TASK.equals(otherType)) {   // 日记、任务不从这里新建（无「新建并关联」行）
+        if (!q.isEmpty() && !T_DIARY.equals(otherType) && !T_TASK.equals(otherType)
+                && !T_HABIT.equals(otherType)) {   // 日记、任务、习惯不从这里新建（无「新建并关联」行）
             TextView create = tv(s("没有合适的？新建" + typeName(otherType) + "「" + q + "」并关联",
                     "Create new: " + q), 13, subC());
             create.setPadding(dp(13), dp(10), dp(13), dp(10));
