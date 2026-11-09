@@ -1995,11 +1995,9 @@ public class MainActivity extends Activity {
                 taskEditHost())));
         chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
         if (isRunningThis) {
-            chips.addView(chip(Strings.chipPlus15(), false, v -> {
-                TimerService.extendTimer(MainActivity.this, 15 * 60);
-                toast(Strings.en() ? "Extended by 15 minutes" : "已加时 15 分钟");
-                handler.postDelayed(() -> { renderTable(); refreshStatus(); }, 650);
-            }));
+            // +15 先过加时动机门（v1.72.0）：门内答完直接加时，回本页时 onResume 会重画
+            chips.addView(chip(Strings.chipPlus15(), false, v ->
+                    MotiveGate.launchExtend(MainActivity.this, 15 * 60)));
         }
         chips.addView(chip(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
             if (done) { t.markUndone(); StartBaseline.clearCompleted(MainActivity.this, t.id); }
@@ -2325,6 +2323,13 @@ public class MainActivity extends Activity {
     /** 知页人名/原则的任务关联行点开任务（v1.71.0，F3）：与行内编辑同一个编辑层、同宿主。 */
     public void openTaskEditorFromZhi(TaskItem t) {
         TaskEditSheet.showEdit(this, store, t, taskEditHost());
+    }
+
+    /** 合一页动机比例节标题跳知页原则（v1.72.0，F3）：先切到知页签（switchTab 内
+     *  会建 zhiPage 并刷新），再让知页打开这条原则的编辑页。 */
+    public void openZhiPrinciple(String principleId) {
+        switchTab(TAB_ZHI);
+        if (zhiPage != null) zhiPage.openPrincipleById(principleId);
     }
 
     private void startTaskNow(TaskItem t) {

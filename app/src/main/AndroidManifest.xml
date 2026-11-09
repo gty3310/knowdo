@@ -129,6 +129,12 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 
+        <!-- 加时动机门（v1.72.0）：页外加时入口（行页/日历「+15 分钟」）先过自问再加时 -->
+        <activity
+            android:name=".MotiveGateActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 全屏检查页：压锁屏显示、点亮屏幕、独立任务、不进最近任务 -->
         <activity
             android:name=".CheckActivity"
