@@ -132,6 +132,29 @@ public final class ZhixingPage {
             col.addView(cold);
         }
 
+        // ---- 动机自问比例（v1.72.0，F3） ----
+        // 数据＝zhi_events 本地缓存里这条原则的 motive_check 事件：进页面先用本地
+        // 数即时画，再拉云端合并刷新这两行（拉取失败静默用本地数）。只读展示，
+        // 不碰知行指数的任何算法。点标题跳知页这条原则。
+        View motiveTitle = sectionTitle(MotiveGate.QUESTION);
+        motiveTitle.setOnClickListener(v -> {
+            if (act instanceof MainActivity) {
+                ((MainActivity) act).openZhiPrinciple(MotiveGate.PRINCIPLE_ID);
+            }
+        });
+        col.addView(motiveTitle);
+        final TextView motiveToday = small("", 13);
+        final TextView motiveAll = small("", 13);
+        col.addView(motiveToday);
+        col.addView(motiveAll);
+        final Runnable paintMotive = () -> {
+            int[] st = MotiveGate.stats(act);
+            motiveToday.setText(motiveLine(s("今日", "Today"), st[0], st[1]));
+            motiveAll.setText(motiveLine(s("累计", "All time"), st[2], st[3]));
+        };
+        paintMotive.run();
+        ZhiPage.refreshEvents(act, paintMotive);
+
         // ---- 本周构成 ----
         col.addView(sectionTitle(s("本周构成", "This week's makeup")));
         col.addView(compRow(s("习惯达成", "Habits"), "50%", cur.habitAvg, cur.habitAvg - prev.habitAvg, true,
@@ -221,6 +244,14 @@ public final class ZhixingPage {
             note.setPadding(0, dp(8), 0, 0);
             col.addView(note);
         }
+    }
+
+    /** 动机比例一行：今日/累计 有 X 次／共 Y 次（Z%）；没有记录时显示 0／0。 */
+    private String motiveLine(String label, int yes, int total) {
+        if (total <= 0) return label + " 0／0";
+        int pct = (int) Math.round(yes * 100.0 / total);
+        if (Strings.en()) return label + " yes " + yes + " of " + total + " (" + pct + "%)";
+        return label + " 有 " + yes + " 次／共 " + total + " 次（" + pct + "%）";
     }
 
     // ---------------- 构成行 ----------------
