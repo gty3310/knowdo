@@ -36,6 +36,23 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1730 = new Entry("v1.73.0", "2026-11-10");
+        e1730.add(new Group(s("新增", "New"),
+                s("自读类习惯在习惯页有了正经的卡片，能直接看到累计读了多少遍",
+                  "Reading habits get a proper card on the Habits tab, with the total number of readings right on it"),
+                s("阅读页点「读完一遍」就累计一遍，同一天读几遍记几遍",
+                  "On the reading page, each tap of \"Finished one reading\" counts one — read it several times in a day and it counts that many")));
+        e1730.add(new Group(s("改进", "Improved"),
+                s("自读全文可以在阅读页直接编辑",
+                  "The reading text can now be edited right on the reading page"),
+                s("云端协助整理的自读全文会自动同步到手机",
+                  "A reading text tidied up in the cloud now syncs to the phone on its own")));
+        e1730.why = s("「每日自读」是个特殊习惯，要找得到、能编辑、记得住一共读了多少遍",
+                "The daily self-reading is a special habit: it must be findable, editable, and remember how many times it has been read in all");
+        e1730.tryIt = s("打开习惯页点「每日自读」，读完点「读完一遍」，看累计遍数加一；晨间页的自读块上也能看到累计遍数",
+                "Open the Habits tab and tap your daily reading; when you finish, tap \"Finished one reading\" and watch the total go up by one — the morning page's reading block shows the total too");
+        out.add(e1730);
+
         Entry e1720 = new Entry("v1.72.0", "2026-11-09");
         e1720.add(new Group(s("新增", "New"),
                 s("加时之前，先问一句动机",
