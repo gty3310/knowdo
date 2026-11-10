@@ -36,6 +36,23 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1750 = new Entry("v1.75.0", "2026-11-10");
+        e1750.add(new Group(s("新增", "New"),
+                s("任务完成时会问一句：这件事上，你做到关联的原则了吗——做到了、没做到、没考虑，各记各的",
+                  "When a task finishes, you are asked whether you lived up to its linked principle — did it, didn't, or never thought of it; each answer is kept its own way"),
+                s("「知」的原则列表每条旁边能看到知行合一比例，点进去能看历次践行记录",
+                  "Each principle in Know now shows its unity-of-knowing-and-doing ratio right in the list, and tapping in shows its practice history")));
+        e1750.add(new Group(s("改进", "Improved"),
+                s("加时前的动机自问多了「没考虑」一档，合一页的比例按三档显示",
+                  "The motive self-question before extending gains a third choice — never thought of it — and the Oneness page now breaks the ratio into three"),
+                s("答「没考虑」会撤掉不贴切的原则关联，AI 以后不再这么配",
+                  "Answering that you never thought of it removes an ill-fitting principle link, so the AI will not pair them that way again")));
+        e1750.why = s("原则不是挂在墙上的，是要在每件事上照见自己做没做到",
+                "A principle is not meant to hang on the wall — it is there to mirror, in each task, whether you actually lived it");
+        e1750.tryIt = s("做完一个有关联原则的任务，在完成页答一次，再去原则页看比例变化",
+                "Finish a task that has a linked principle, answer once on the finish page, then open the Principles list to see the ratio move");
+        out.add(e1750);
+
         Entry e1740 = new Entry("v1.74.0", "2026-11-10");
         e1740.add(new Group(s("新增", "New"),
                 s("建任务时可以选「给 AI 做」，提交后作者的 AI 助手会在幕后接单开工",
