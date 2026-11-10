@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.74.0)
+## Features (Android, v1.75.0)
 
-Current version: **v1.74.0**.
+Current version: **v1.75.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,21 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.75.0 — 2026-11-10
+
+**Why:** A principle on a list changes nothing; a principle that meets you at the end of each task might. The cloud-side assistant now pairs each new task with its single most fitting principle, and this release is the app side of that companionship: the principle is visible where you work, you are asked about it when the task ends, and every answer becomes part of that principle's track record. The motive gate's self-question also gains the honest third answer the user asked for — "never thought of it". Build commit `9bbf655` · [compare v1.74.0...v1.75.0](https://github.com/gty3310/knowdo/compare/v1.74.0...v1.75.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A principle check on the finish page.** When a task with a linked principle reaches its finish page, the page shows the principle — its name and one-line version — and asks: on this task, did you live up to it? Three answers, three fates: "Did it" records a practice; "Didn't" records a gap and keeps the link; "Never thought of it" means the pairing itself was wrong — the event is kept out of all statistics and the task–principle link is removed (locally first, through the existing sync queue, never by direct cloud delete), so the assistant will not pair them that way again. The question never blocks: finishing without answering is always possible and leaves no record, and it is asked once per completion.
+- **The "main principle" where you work.** A task's earliest-linked principle appears in its expanded row on the Do tab (name + one-liner, "+N more" when there are several) and in a slim line under the now-timing strip while that task runs or is paused. Tasks with no principle show nothing new; all of it renders from the local Know cache with no extra network fetch.
+- **Practice ratios and history for every principle.** The Principles list (cards and rows alike) shows each principle's unity ratio — "Practiced X/Y · Z%" — counting only Did-it over Did-it + Didn't; a principle with no records shows nothing. Each principle's edit page gains a practice log: every past answer for that principle, newest first — date, task title, and the answer — paged 30 at a time from the local cache.
+
+**Improved**
+- **The motive gate gains "never thought of it".** The single shared gate (fullscreen and in-page forms alike) now offers Yes / Never thought of it / No — Yes stays the vermilion primary, the other two are outline buttons, and any answer passes. Recorded values keep the existing event kind, subject and source; the Oneness page's motive section now shows all three shares for today and all time, and pre-1.75 history (Yes/No only) falls into its natural buckets.
+- **Events now sync incrementally, and lists never scan raw events.** Event refresh previously re-downloaded the whole event table on every open; it now pulls only what is newer than a stored watermark (with a one-hour overlap window forgiven by de-duplication). Principle ratios render from a tiny persisted aggregate that is recomputed when the cache changes — never by scanning events during list rendering — so the lists stay fast no matter how many years of practice accumulate.
+
+Not yet verified on a real device: the finish-page question end to end (all three answers, the link removal landing in the cloud), the main-principle lines, ratios appearing after the first answer, three-bucket motive ratios, and the 1.74.0 to 1.75.0 in-app update chain. Not in this release: the Oneness trend chart (v1.76), diary filters (v1.77), the floating card's extend button (v1.78).
+
 ### v1.74.0 — 2026-11-10
 
 **Why:** Some things do not need a pair of hands — they need a result. From this version a task can be handed to the author's personal AI assistant: it picks the task up in the background, works on it, and stops before the final step (sending, submitting, ordering), marking it "Awaiting your OK"; only after the user confirms does it take that last step, and it never marks a task done by itself. The cloud `tasks` table gained `assignee` (default `self`) and `ai_state` columns ahead of this release (migration read back, all 165 rows intact). This release is the full app side; the cloud-side pickup loop that actually works the tasks is a separate follow-up. Build commit `5b5b09d` · [compare v1.73.0...v1.74.0](https://github.com/gty3310/knowdo/compare/v1.73.0...v1.74.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -92,18 +107,6 @@ Not yet verified on a real device: creating and reassigning AI tasks, the filter
 Checked, no code change needed: the Zhixing index's per-day completion for read habits already treats any value above 0 as done (habitDayRate's default branch — there is no value==1 check anywhere), so counts above 1 still complete the day; the drift count and the rest of ZhixingCalc are untouched (zero diff in this release).
 
 Not yet verified on a real device: the reading card and its counts on a live account, multi-reading days from both the reading page and the morning block, in-page text editing, the cloud habit_texts patch landing by itself and then not overriding a later hand edit, and the 1.72.0 to 1.73.0 in-app update chain. Not done: the floating card's extend button (moved to v1.74).
-
-### v1.72.0 — 2026-11-09
-
-**Why:** Extending a timer is where selfishness slips in most easily, so from this version every extension first asks one question — "pure motive, no selfishness" — and an answer (Yes or No, both proceed) is required before any time is added. Every answer is kept and aggregated into a ratio on the Oneness page. The data model has three layers: one canonical principle in Know (created in the cloud before this release), carriers linked through zhi_links (its type checks widened beforehand to six types including habit, probe-verified), and one append-only event stream (the new zhi_events table) — pages never store the ratio, they aggregate events. The pre-extension state self-check this replaces had already been removed on 2026-10-28 (commit `76d0c00`); the gate takes that same interception point, the guard-inquiry self-check and self_checks are unchanged, and the drift count is unaffected because motive answers never enter self_checks or guard events. The Zhixing index, scheduling and the guard are untouched. Build commit `5c1e5f2` · [compare v1.71.0...v1.72.0](https://github.com/gty3310/knowdo/compare/v1.71.0...v1.72.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A motive gate before every extension.** All extension entries — the end-of-timer check page, the subtask check page, the half-way page's extend area, and the "+15 min" chips on the Tasks tab and in the calendar — first show the self-question with two buttons, Yes and No; either answer proceeds to the usual duration choice, and there is no skip or close. One shared implementation (MotiveGate): embedded in the check pages, a full-screen activity for the tab/calendar chips, ready to be reused by the floating card's future extend button. Within one check-page visit, consecutive extensions ask only once.
-- **Every answer kept as an event.** Local-first into the same persisted pending-op queue the Know tab uses, then uploaded to zhi_events as an idempotent upsert keyed by a client UUID — offline answers and restarts lose nothing, and nothing is written to self_checks.
-- **The ratio on the Oneness page.** A new section after the index formula: today's and all-time shares of Yes (e.g. "Today yes 3 of 4 (75%)"), rendered instantly from the local event cache and refreshed by merging the cloud events; tapping the title opens the principle in Know.
-- **Principles can link habits.** The principle editor gains a Habits link section (candidates are the existing habit definitions), written through the same canonical-form + local-cache + queue path as task links; the canonical type order simply gains "habit" alphabetically.
-
-Not yet verified on a real device: the gate at all five entries, event upload and pull-back merging with the Oneness numbers, habit linking from the principle editor, the title tap-through, and the 1.71.0 to 1.72.0 in-app update chain. Not done: linked principles shown on the habit side, and automatic link cleanup when a habit is deleted.
 
 ## Build
 
