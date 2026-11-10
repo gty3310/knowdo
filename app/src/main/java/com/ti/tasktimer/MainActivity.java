@@ -80,6 +80,9 @@ public class MainActivity extends Activity {
     private TextView fabView;
     private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
     private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
+    // ---- v1.74.0 行页「做任务的人」筛选：0 全部 / 1 我本人 / 2 我的 AI（只作用于本页呈现，不持久化） ----
+    private int assigneeFilter = 0;
+    private final TextView[] asgFilterChips = new TextView[3];
     // ---- v1.57.0 行页：日期主轴排序＋「未排期」小标 ----
     private String listLogicToday; // 本轮渲染用的逻辑今天（Rollover 口径），renderTable 每轮刷新
     private final java.util.Set<String> todayBlockIds = new java.util.HashSet<>(); // 今日日程里有块的 taskId（不限分屏形态，只读 schedule）
@@ -528,6 +531,27 @@ public class MainActivity extends Activity {
         planEntry.setPadding(dp(16), dp(10), dp(16), dp(10));
         planEntry.setOnClickListener(v -> startActivity(new Intent(this, TodayPlanActivity.class)));
         content.addView(planEntry);
+
+        // 「做任务的人」筛选（v1.74.0，F4）：任务表上方一行小 chip（与展开区
+        // chip 同款样式），全部／我本人／我的 AI；只过滤本页呈现（含下方历史
+        // 分组），不改数据、不影响其他页；状态只在本次打开期间保持。
+        LinearLayout asgFilterRow = new LinearLayout(this);
+        asgFilterRow.setOrientation(LinearLayout.HORIZONTAL);
+        asgFilterRow.setGravity(Gravity.CENTER_VERTICAL);
+        asgFilterRow.setPadding(dp(16), dp(2), dp(16), dp(8));
+        final String[] asgFilterNames = {Strings.en() ? "All" : "全部",
+                Strings.en() ? "Mine" : "我本人", Strings.en() ? "My AI" : "我的 AI"};
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            asgFilterChips[i] = chip(asgFilterNames[i], i == assigneeFilter, v -> {
+                if (assigneeFilter == idx) return;
+                assigneeFilter = idx;
+                paintAsgFilter();
+                renderTable();
+            });
+            asgFilterRow.addView(asgFilterChips[i]);
+        }
+        content.addView(asgFilterRow);
 
         // 内容区分屏行（v1.18.0）：左＝表格区（权重 1），右＝日历容器（默认藏）。
         // 日历不再盖在 root 上：它只占日程页内容区、永远在底部三 Tab 之上；
@@ -1479,6 +1503,7 @@ public class MainActivity extends Activity {
                 java.util.Collections.reverseOrder());
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.doneDates == null) continue;
+            if (!assigneeFilterMatch(t)) continue; // 历史分组同筛选口径（F4）
             for (String d : t.doneDates) {
                 if (d != null && d.compareTo(today) < 0) {
                     byDate.computeIfAbsent(d, k -> new ArrayList<>()).add(t);
@@ -1506,6 +1531,7 @@ public class MainActivity extends Activity {
      */
     private java.util.List<TaskItem> listPageSorted() {
         java.util.List<TaskItem> v = store.visibleSorted();
+        if (assigneeFilter != 0) v.removeIf(t -> !assigneeFilterMatch(t)); // F4 筛选只作用于本页
         final String lt = listLogicToday != null ? listLogicToday : Rollover.logicalToday(this);
         v.sort((a, b) -> {
             int da = a.isDoneToday() ? 1 : 0, db = b.isDoneToday() ? 1 : 0;
@@ -2145,6 +2171,33 @@ public class MainActivity extends Activity {
             });
         }
         b.show();
+    }
+
+    /** 「做任务的人」筛选 chip 选中态重画（与 chip() 的 filled/outline 样式一致）。 */
+    private void paintAsgFilter() {
+        for (int i = 0; i < asgFilterChips.length; i++) {
+            TextView c = asgFilterChips[i];
+            if (c == null) continue;
+            boolean on = i == assigneeFilter;
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setCornerRadius(dp(17));
+            if (on) {
+                g.setColor(Ui.accent(this));
+                c.setTextColor(Ui.onAccent(this));
+            } else {
+                g.setColor(Ui.surface(this));
+                g.setStroke(1, Ui.line(this));
+                c.setTextColor(Ui.text(this));
+            }
+            c.setBackground(g);
+        }
+    }
+
+    /** 筛选口径（F4）：全部=都看；我本人=只 self；我的 AI=只 ai。 */
+    private boolean assigneeFilterMatch(TaskItem t) {
+        if (assigneeFilter == 1) return !t.isAi();
+        if (assigneeFilter == 2) return t.isAi();
+        return true;
     }
 
     private TextView chip(String label, boolean filled, View.OnClickListener cl) {

@@ -132,9 +132,26 @@ public final class SbSync {
         //    （如点完成）只在磁盘上；拿同步开始时的内存快照合并再整表 save，会把改动盖回旧值，
         //    且第 4 步的差异比较也基于旧快照，完成根本推不上云。
         Map<String, TaskItem> merged;
+        Map<String, String> noteBase = loadNoteBase(c);
+        Map<String, String> remoteNotes = new HashMap<>();
+        for (Map.Entry<String, TaskItem> e : remote.entrySet()) {
+            remoteNotes.put(e.getKey(), nz(e.getValue().note));
+        }
         synchronized (STORE_LOCK) {
             store.load();
+            Map<String, TaskItem> localById = new HashMap<>();
+            for (TaskItem t : store.tasks) localById.put(t.id, t);
             merged = mergeTasks(remote, store.tasks);
+            // F5 字段级防冲（v1.74.0）：整行胜者之上再叠一层——ai_state 以云端
+            // 为准回拉、note 三方合并，云端巡查追加的结果段与用户在手机上改的
+            // 其他字段互不覆盖（整行覆盖正是这里要防的，见 mergeAiFields）
+            for (Map.Entry<String, TaskItem> e : merged.entrySet()) {
+                TaskItem local = localById.get(e.getKey());
+                TaskItem rem = remote.get(e.getKey());
+                if (local != null && rem != null) {
+                    mergeAiFields(e.getValue(), local, rem, noteBase.get(e.getKey()));
+                }
+            }
             store.tasks.clear();
             store.tasks.addAll(merged.values());
             store.save();
@@ -162,6 +179,21 @@ public final class SbSync {
             }
         }
         saveSig(c, remoteMs);
+        // note 基线随收敛推进（F5）：本轮推上云的以推送值为准（服务端即将持有
+        // 它），没推的以拉取时的云端原文为准——基线永远是「已知的云端 note」，
+        // 本地独有的追加留在本地 note 里、靠前缀规则在下轮合并中继续存活
+        {
+            Set<String> pushedIds = new HashSet<>();
+            for (TaskItem t : toPush) pushedIds.add(t.id);
+            for (Map.Entry<String, TaskItem> e : merged.entrySet()) {
+                if (pushedIds.contains(e.getKey()) || !remoteNotes.containsKey(e.getKey())) {
+                    noteBase.put(e.getKey(), nz(e.getValue().note));
+                } else {
+                    noteBase.put(e.getKey(), remoteNotes.get(e.getKey()));
+                }
+            }
+            saveNoteBase(c, noteBase);
+        }
 
         // 5) user_state：schedule/gcal 缓存、guard_events 合并、timer_state 对账与补写
         syncUserState(c, uid);
@@ -1035,6 +1067,11 @@ public final class SbSync {
                     if (s0 != null && local.updatedAtMs > s0 && remote.updatedAtMs <= local.updatedAtMs) {
                         return false;
                     }
+                    // F5（v1.74.0）：整行替换前先做字段级合并——云端刚推进的
+                    // ai_state 与追加的 note 结果段不得被本地旧值冲回，本地对
+                    // note 的未同步追加也不得被整行替换吞掉（与全量同步同口径）
+                    Map<String, String> nb0 = loadNoteBase(c);
+                    mergeAiFields(remote, local, remote, nb0.get(local.id));
                     store.tasks.set(store.tasks.indexOf(local), remote);
                 } else {
                     return false;
@@ -1043,6 +1080,10 @@ public final class SbSync {
                 Map<String, Long> sig = loadSig(c);
                 sig.put(remote.id, remote.updatedAtMs);
                 saveSig(c, sig);
+                // note 基线跟上这行已落地的云端原文（合并增量靠前缀规则在本地存活）
+                Map<String, String> nb = loadNoteBase(c);
+                nb.put(remote.id, nz(row.optString("note", "")));
+                saveNoteBase(c, nb);
             }
             // 远端可能刚改了某任务的闹钟：按合并后的本地状态重排一次
             AlarmScheduler.rescheduleAll(c, store);
@@ -1109,6 +1150,8 @@ public final class SbSync {
      * 刚从磁盘重读的最新版，不会盖掉别人的新改动）→ 回读校验 status/done_dates，
      * 对不上重写一次（自愈）；两次都不过就留给下轮全量同步兜底。
      * 时间戳是手机时钟与服务器时钟混比、不可靠，所以「要不要推」按内容定，不按时间定。
+     * v1.74.0（F5）：upsert 前先与云端最新行做字段级合并（mergeAiFields）——
+     * 一致性判断与回读校验的字段集同步扩到 ai_state/note，云端巡查的推进不被整行盖回。
      */
     public static void pushOneVerified(Context c, TaskStore store, String taskId) {
         if (!Supa.isLoggedIn(c) || taskId == null) return;
@@ -1116,6 +1159,7 @@ public final class SbSync {
         boolean hasAlarm = prefs(c).getBoolean("has_alarm", false);
         boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
         boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
+        boolean hasAi = prefs(c).getBoolean("has_ai_cols", false);
         try {
             for (int attempt = 0; attempt < 2; attempt++) {
                 TaskItem local;
@@ -1127,15 +1171,43 @@ public final class SbSync {
                 JSONArray rows = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
                 if (rows.length() > 0) {
                     TaskItem remote = SbMapper.fromRow(rows.getJSONObject(0), null);
+                    // F5（v1.74.0）：整行 upsert 之前先把云端最新行与本地做字段级
+                    // 合并再落盘——本地这次只想推 status/done_dates，云端巡查刚
+                    // 推进的 ai_state 与追加的 note 结果段不得被本地旧行盖掉；
+                    // 合并结果写回本地后，upsert 的就是收敛后的行
+                    if (remote != null) {
+                        Map<String, String> nb1 = loadNoteBase(c);
+                        String beforeNote = nz(local.note);
+                        String beforeState = local.aiState;
+                        mergeAiFields(local, local, remote, nb1.get(taskId));
+                        if (!nz(local.note).equals(beforeNote)
+                                || !eqStr(local.aiState, beforeState)) {
+                            synchronized (STORE_LOCK) {
+                                store.load();
+                                TaskItem cur = store.byId(taskId);
+                                if (cur != null) {
+                                    cur.note = local.note;
+                                    cur.aiState = local.aiState;
+                                    cur.assignee = local.assignee;
+                                    store.save();
+                                }
+                            }
+                        }
+                    }
                     if (remote != null && eqStr(remote.status, local.status)
                             && remote.autoStart == local.autoStart
-                            && remote.doneDates.equals(local.doneDates)) {
+                            && remote.doneDates.equals(local.doneDates)
+                            && eqStr(remote.aiState, local.aiState)
+                            && nz(remote.note).equals(nz(local.note))) {
                         alignSigAndTime(c, store, local, rows.getJSONObject(0));
+                        Map<String, String> nb2 = loadNoteBase(c);
+                        nb2.put(taskId, nz(remote.note));
+                        saveNoteBase(c, nb2);
                         return; // 云端已是这份内容，收工
                     }
                 }
                 JSONArray payload = new JSONArray();
-                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode));
+                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
                 Supa.restUpsert(c, "tasks", "id", payload);
                 // 回读校验
                 JSONArray chk = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
@@ -1144,6 +1216,10 @@ public final class SbSync {
                     if (back != null && eqStr(back.status, local.status)
                             && back.doneDates.equals(local.doneDates)) {
                         alignSigAndTime(c, store, local, chk.getJSONObject(0));
+                        // 推送成功：云端 note 已是本地（合并后）这份，基线跟上
+                        Map<String, String> nb3 = loadNoteBase(c);
+                        nb3.put(taskId, nz(local.note));
+                        saveNoteBase(c, nb3);
                         return;
                     }
                 }
@@ -1235,6 +1311,84 @@ public final class SbSync {
             for (Map.Entry<String, Long> e : sig.entrySet()) o.put(e.getKey(), e.getValue());
             prefs(c).edit().putString("sig_" + Supa.userId(c), o.toString()).apply();
         } catch (Exception ignored) { }
+    }
+
+    // ---------------- F5 字段级防冲（v1.74.0） ----------------
+    /**
+     * 「上次同步时云端已知的 note」基线（与 sig 同存 prefs，键 note_base_<uid>，
+     * id→note 原文）。整行新者胜的合并分不清「用户改了 note」与「云端（Muse
+     * 巡查给 AI 任务追加结果段）改了 note」，三方合并必须有一份基线做锚：
+     * 本地与基线比＝用户动没动过，远端与基线比＝云端动没动过。基线在每次
+     * 全量同步收敛后、定向写成功后、Realtime 行落地后随之更新为收敛值。
+     */
+    private static Map<String, String> loadNoteBase(Context c) {
+        Map<String, String> base = new HashMap<>();
+        String s = prefs(c).getString("note_base_" + Supa.userId(c), null);
+        if (s == null) return base;
+        try {
+            JSONObject o = new JSONObject(s);
+            java.util.Iterator<String> it = o.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                base.put(k, o.optString(k, ""));
+            }
+        } catch (Exception ignored) { }
+        return base;
+    }
+
+    private static void saveNoteBase(Context c, Map<String, String> base) {
+        try {
+            JSONObject o = new JSONObject();
+            for (Map.Entry<String, String> e : base.entrySet()) {
+                o.put(e.getKey(), e.getValue() == null ? "" : e.getValue());
+            }
+            prefs(c).edit().putString("note_base_" + Supa.userId(c), o.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    /**
+     * note 三方合并：base＝上次同步基线、local＝本地现值、remote＝云端现值。
+     * 返回合并结果；两边都改写且拼不出（真分叉改写）返回 null，调用方回退
+     * 整行胜者口径。规则：一边没动→取另一边；一边是另一边的前缀→取长者
+     * （纯追加）；两边都只在基线后追加→基线＋云端增量＋本地增量（都不丢）。
+     */
+    static String mergeNote3Way(String base, String local, String remote) {
+        String b = nz(base), l = nz(local), r = nz(remote);
+        if (l.equals(r)) return l;
+        if (l.equals(b)) return r;      // 本地没动 note → 云端说了算
+        if (r.equals(b)) return l;      // 云端没动 note → 本地说了算
+        if (r.startsWith(l)) return r;  // 一边是另一边前缀：追加关系，取长者
+        if (l.startsWith(r)) return l;
+        if (!b.isEmpty() && r.startsWith(b) && l.startsWith(b)) {
+            String rs = r.substring(b.length()), ls = l.substring(b.length());
+            if (rs.contains(ls)) return r;
+            if (ls.contains(rs)) return l;
+            return b + rs + (rs.endsWith("\n") || rs.isEmpty() ? "" : "\n") + ls;
+        }
+        return null;
+    }
+
+    /**
+     * AI 两字段的字段级合并（整行胜者之上叠加，winner 被原地修正）：
+     * - assignee 本地刚翻过（与云端不同）＝用户的主动改动未上云：assignee /
+     *   ai_state / note 三样都以本地为准（状态由 F1 口径在编辑层已置好）。
+     * - 否则 ai_state 以云端为准（状态只由云端巡查推进，本地旧值不得冲回），
+     *   note 走三方合并（云端追加的结果段与用户改的其他字段互不覆盖）。
+     */
+    private static void mergeAiFields(TaskItem winner, TaskItem local, TaskItem remote,
+                                      String baseNote) {
+        if (winner == null || local == null || remote == null) return;
+        if (!eqStr(nz(local.assignee), nz(remote.assignee))) {
+            winner.assignee = local.assignee;
+            winner.aiState = local.aiState;
+            winner.note = local.note;
+            return;
+        }
+        winner.aiState = remote.aiState;
+        String merged = mergeNote3Way(baseNote, local.note, remote.note);
+        if (merged != null) winner.note = merged;
     }
 
     /** 服务端有没有 deadline_time / actual_minutes 两列（每次全量同步探一次，开销一行 limit=0）。 */
