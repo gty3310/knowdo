@@ -470,22 +470,26 @@ public final class HabitPage {
     }
 
     // ---------------- 习惯卡 ----------------
-    // ---------------- 自读行（v1.49.0） ----------------
+    // ---------------- 自读卡（v1.49.0 单行；v1.73.0 卡片化） ----------------
     /**
-     * read 型在习惯页只是一行：习惯名＋类型小字，**不显示任何完成状态**、不带打卡格；
-     * 点行进朗读页读全文，长按走既有编辑（改名/全文/提醒/删除，编辑里跳过 target）。
-     * 完成只记在 logs 里（朗读页点「读过了」写），本行不读 logs、天然无状态。
+     * read 型在习惯页是一张正经卡片（v1.73.0）：第一行习惯名＋类型小字，第二行直接
+     * 写累计遍数与今天遍数——它是个特殊习惯，要找得到、认得出（用户 2026-11-09 亲定）。
+     * 遍数口径只有一处：累计＝HabitData.readTotalCount（logs 全部日期之和），
+     * 今天＝逻辑日今天的 logs 值（无记录为 0）。不带打卡格；
+     * 点卡片进朗读页读全文，长按走既有编辑（改名/全文/提醒/删除，编辑里跳过 target）。
      */
     private View readRow(final HabitData.Habit h) {
-        LinearLayout row = new LinearLayout(act);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(12), dp(11), dp(12), dp(11));
-        row.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(11), dp(12), dp(11));
+        card.setBackground(roundStroke(Ui.surface(act), Ui.line(act), dp(12)));
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         rlp.topMargin = dp(8);
 
+        LinearLayout nameRow = new LinearLayout(act);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        nameRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView name = new TextView(act);
         name.setText(h.name);
         name.setTextSize(14.5f);
@@ -493,7 +497,7 @@ public final class HabitPage {
         name.setTextColor(Ui.text(act));
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        nameRow.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView kind = new TextView(act);
         kind.setText(s("自读", "Reading"));
@@ -503,15 +507,27 @@ public final class HabitPage {
         LinearLayout.LayoutParams klp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         klp.leftMargin = dp(10);
-        row.addView(kind, klp);
+        nameRow.addView(kind, klp);
+        card.addView(nameRow);
 
-        row.setOnClickListener(v -> {
+        long total = HabitData.readTotalCount(root, h.id);
+        Long todayVal = HabitData.logValue(root, DayUtil.today(), h.id);
+        long today = todayVal == null ? 0 : todayVal;
+        TextView counts = new TextView(act);
+        counts.setText(s("累计 " + total + " 遍 · 今天 " + today + " 遍",
+                "Total " + total + " readings · today " + today));
+        counts.setTextSize(12.5f);
+        counts.setTextColor(today > 0 ? Ui.sub(act) : Ui.accent(act));
+        counts.setPadding(0, dp(5), 0, 0);
+        card.addView(counts);
+
+        card.setOnClickListener(v -> {
             android.content.Intent i = new android.content.Intent(act, ReadActivity.class);
             i.putExtra(ReadActivity.EXTRA_HABIT_ID, h.id);
             act.startActivity(i);
         });
-        row.setOnLongClickListener(v -> { editHabitDialog(h); return true; });
-        return wrapWithMargin(row, rlp);
+        card.setOnLongClickListener(v -> { editHabitDialog(h); return true; });
+        return wrapWithMargin(card, rlp);
     }
 
     // ---------------- 记日记行（v1.48.0） ----------------
@@ -1453,7 +1469,7 @@ public final class HabitPage {
                 break;
             }
             case HabitData.TYPE_READ: {
-                fParamBox.addView(small(s("要读的全文（每天点开这个习惯读一遍，读完点「读过了」；可先空着，之后在编辑里补）", "The full text to read (open the habit daily, read it, tap Read — may be left empty and filled in later via Edit)"), 12));
+                fParamBox.addView(small(s("要读的全文（每天点开这个习惯读一遍，读完点「读完一遍」记一遍；可先空着，之后在编辑里补）", "The full text to read (open the habit daily, read it, tap \"Finished one reading\" to count one — may be left empty and filled in later via Edit)"), 12));
                 fRemindTextInput = new EditText(act);
                 fRemindTextInput.setText(cRemindText);
                 fRemindTextInput.setHint(s("如：自警文……", "e.g. your morning admonition…"));
