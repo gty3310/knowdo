@@ -101,6 +101,7 @@ public final class SbSync {
         boolean hasAlarm = probeAlarmCols(c);
         boolean hasSub = probeSubtaskCols(c);
         boolean hasAlarmMode = probeAlarmModeCol(c);
+        boolean hasAi = probeAiCols(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -111,7 +112,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 synchronized (STORE_LOCK) {
                     store.load(); // 先拿磁盘最新状态再对齐时间戳，别用旧快照整表盖盘（v1.14.0 修复）
@@ -148,7 +149,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             synchronized (STORE_LOCK) {
                 store.load(); // 同上：对齐前先重读，且仅当条目未被更新的本地改动动过时才对齐
@@ -1066,6 +1067,16 @@ public final class SbSync {
         boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
         for (TaskItem t : store.tasks) {
             if (t.deleted || !t.autoStart) continue;
+            if (t.isAi()) {
+                // 给 AI 做的任务永不计时（v1.74.0）：云端误置 auto_start 时只清标记、
+                // 回写收工，绝不进 startTimer——与其它入口的不可开始口径一致
+                SyncManager.markAutoStartHandled(c, t.id);
+                t.autoStart = false;
+                t.touch();
+                store.save();
+                pushOneQuiet(c, store, t, hasExtra, hasAlarm, hasSub);
+                continue;
+            }
             if (SyncManager.autoStartHandled(c, t.id)) {
                 // 已处理过但云端标记还在（另一端可能写回旧版）：清掉防反复
                 t.autoStart = false;
@@ -1264,6 +1275,17 @@ public final class SbSync {
             has = true;
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_alarm_mode", has).apply();
+        return has;
+    }
+
+    /** 服务端有没有谁来做两列 assignee / ai_state（v1.74.0，与附加列同法探测）。 */
+    private static boolean probeAiCols(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=assignee,ai_state&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_ai_cols", has).apply();
         return has;
     }
 

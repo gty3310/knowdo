@@ -126,6 +126,7 @@ public final class TaskEditSheet {
         final String[] deadlineHolder = {src.deadline};       // "YYYY-MM-DD"
         final boolean[] startDirty = {false};
         final String[] priority = {normPriority(src.priority)};
+        final String[] assignee = {TaskItem.normAssignee(src.assignee)};
         final String[] repeat = {"daily".equals(src.repeat) ? "daily" : "none"};
         final String[] alarmMode = {TaskItem.normAlarmMode(src.alarmMode)};
         final Set<String> scenarios = new LinkedHashSet<>(src.scenarios);
@@ -246,6 +247,40 @@ public final class TaskEditSheet {
             lockNote.setTextColor(Ui.sub(ctx));
             col.addView(lockNote);
         }
+
+        // 谁来做（v1.74.0）：与表单其他行同款 chip 小按钮（不用大分段条，用户亲定）；
+        // 默认「给我自己做」。选 AI 时时长可不填、保存后由云端 AI 助手接单。
+        col.addView(label(ctx, en ? "Who does it" : "谁来做"));
+        LinearLayout asgRow = new LinearLayout(ctx);
+        asgRow.setOrientation(LinearLayout.HORIZONTAL);
+        final TextView[] asgChips = new TextView[2];
+        final String[] asgVals = {TaskItem.ASSIGN_SELF, TaskItem.ASSIGN_AI};
+        final String[] asgNames = {en ? "I'll do it" : "给我自己做", en ? "AI does it" : "给 AI 做"};
+        final TextView asgNote = new TextView(ctx);
+        asgNote.setText(en
+                ? "Once you save, the AI assistant picks it up in the background — it won't take your schedule or time budget."
+                : "提交后 AI 会在幕后开工，不占你的日程");
+        asgNote.setTextSize(12);
+        asgNote.setTextColor(Ui.sub(ctx));
+        asgNote.setPadding(0, dp(ctx, 4), 0, 0);
+        final Runnable refreshAsg = () -> {
+            boolean ai = TaskItem.ASSIGN_AI.equals(assignee[0]);
+            asgNote.setVisibility(ai ? View.VISIBLE : View.GONE);
+            durIn.setHint(ai ? (en ? "Can be left blank" : "可不填") : "");
+        };
+        for (int i = 0; i < 2; i++) {
+            final int idx = i;
+            asgChips[i] = chip(ctx, asgNames[i], asgVals[i].equals(assignee[0]));
+            asgChips[i].setOnClickListener(v -> {
+                assignee[0] = asgVals[idx];
+                for (int j = 0; j < 2; j++) setChip(asgChips[j], j == idx);
+                refreshAsg.run();
+            });
+            asgRow.addView(asgChips[i]);
+        }
+        col.addView(asgRow);
+        col.addView(asgNote);
+        refreshAsg.run();
 
         // 重要性
         col.addView(label(ctx, en ? "Importance" : "重要性"));
@@ -642,10 +677,15 @@ public final class TaskEditSheet {
             }
             int dur = creating ? 30 : src.durationMinutes;
             if (!subtaskLocked) {
-                try {
-                    int m = Integer.parseInt(durIn.getText().toString().trim());
-                    if (m > 0) dur = m;
-                } catch (NumberFormatException ignored) { }
+                String durRaw = durIn.getText().toString().trim();
+                if (TaskItem.ASSIGN_AI.equals(assignee[0]) && durRaw.isEmpty()) {
+                    dur = 0; // 给 AI 做不用估时长：留空按 0 存，不报错（v1.74.0）
+                } else {
+                    try {
+                        int m = Integer.parseInt(durRaw);
+                        if (m > 0) dur = m;
+                    } catch (NumberFormatException ignored) { }
+                }
             }
             final TaskItem target;
             if (creating) {
@@ -657,6 +697,16 @@ public final class TaskEditSheet {
                 target.title = name;
             }
             target.priority = priority[0];
+            // 谁来做（v1.74.0，F1 状态口径）：改成 AI（含新建）且尚无状态→queued；
+            // 已是 AI 且已有状态（done/question/working/await_confirm）不回退；
+            // 改回自己→aiState 清空。target 是按 id 重取的最新副本，云端刚推进的
+            // 状态就在它身上，不会被本层旧快照冲掉。
+            target.assignee = assignee[0];
+            if (TaskItem.ASSIGN_AI.equals(assignee[0])) {
+                if (target.aiState == null) target.aiState = "queued";
+            } else {
+                target.aiState = null;
+            }
             target.repeat = repeat[0];
             if (!subtaskLocked) target.durationMinutes = dur;
             target.alarmMode = alarmMode[0];
@@ -686,8 +736,9 @@ public final class TaskEditSheet {
 
             // 日历新建排块：开始时间仍设着、且日期就是今天才排（用户在层里清掉时间
             // 或改到别的日子，就只建任务、不排块）；时间以保存后的开始时间为准。
+            // 给 AI 做的任务不排块（v1.74.0：不进自动排程的同一口径）。
             final String savedStart = target.nextStartAt;
-            if (creating && scheduleBlock && savedStart != null && savedStart.length() >= 16
+            if (creating && scheduleBlock && !target.isAi() && savedStart != null && savedStart.length() >= 16
                     && savedStart.substring(0, 10).equals(TaskItem.today())) {
                 int startMin0 = 0;
                 try {

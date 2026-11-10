@@ -40,6 +40,36 @@ public class TaskItem {
     public boolean alarmMuted() {
         return ALARM_SILENT.equals(alarmMode) || ALARM_OFF.equals(alarmMode);
     }
+    // ---- 谁来做（v1.74.0）：self 给我自己做（默认）/ ai 给 AI 做 ----
+    // ai 任务由作者的 AI 助手在云端接单：不可计时、不进排程/时间账/滚入/开始提醒、
+    // 不计知行指数任务分项（各消费端的排除口径都认 isAi() 这一个判定）。
+    public String assignee = "self";   // self / ai
+    // AI 任务状态（云端巡查推进，App 只写初始值与展示）：null 不适用 /
+    // queued 排队中 / working 进行中 / await_confirm 待确认 / question 有问题 / done 已做完
+    public String aiState;
+    public static final String ASSIGN_SELF = "self";
+    public static final String ASSIGN_AI = "ai";
+
+    /** assignee 归一化：未知值一律按 self。 */
+    public static String normAssignee(String a) {
+        return ASSIGN_AI.equals(a) ? ASSIGN_AI : ASSIGN_SELF;
+    }
+
+    public boolean isAi() { return ASSIGN_AI.equals(assignee); }
+
+    /** aiState 展示文案；null/未知值返回 null（调用方只画「AI」标记本身）。 */
+    public static String aiStateLabel(String s, boolean en) {
+        if (s == null) return null;
+        switch (s) {
+            case "queued": return en ? "Queued" : "排队中";
+            case "working": return en ? "In progress" : "进行中";
+            case "await_confirm": return en ? "Awaiting your OK" : "待确认";
+            case "question": return en ? "Has a question" : "有问题";
+            case "done": return en ? "Done by AI" : "已做完";
+            default: return null;
+        }
+    }
+
     public String repeat = "none";     // none / daily
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
@@ -127,6 +157,8 @@ public class TaskItem {
         o.put("alarmOnTimerEnd", alarmOnTimerEnd);
         o.put("alarmMode", alarmMode == null ? ALARM_FOLLOW : alarmMode);
         o.put("repeat", repeat);
+        o.put("assignee", assignee == null ? ASSIGN_SELF : assignee);
+        o.put("aiState", aiState == null ? JSONObject.NULL : aiState);
         o.put("durationMinutes", durationMinutes);
         o.put("actualMinutes", actualMinutes);
         o.put("priority", priority == null ? JSONObject.NULL : priority);
@@ -195,6 +227,10 @@ public class TaskItem {
         t.alarmOnTimerEnd = o.optBoolean("alarmOnTimerEnd", false);
         t.alarmMode = normAlarmMode(o.optString("alarmMode", ALARM_FOLLOW));
         t.repeat = o.optString("repeat", "none");
+        // 老本地数据无此两字段时 optString 给默认：assignee=self、aiState=null
+        t.assignee = normAssignee(o.optString("assignee", ASSIGN_SELF));
+        t.aiState = o.isNull("aiState") ? null : o.optString("aiState", null);
+        if (t.aiState != null && t.aiState.isEmpty()) t.aiState = null;
         t.durationMinutes = o.optInt("durationMinutes", 30);
         t.actualMinutes = o.optInt("actualMinutes", 0);
 

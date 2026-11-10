@@ -252,6 +252,7 @@ public final class ZhixingCalc {
         int done = 0, total = 0;
         for (TaskItem t : tasks) {
             if (t == null || t.deleted) continue;
+            if (t.isAi()) continue; // 给 AI 做的任务不进任务完成分项：分子分母都排除（v1.74.0）
             if ("daily".equals(t.repeat)) {
                 String d = from;
                 while (d.compareTo(to) <= 0 && d.compareTo(today) <= 0) {
@@ -285,7 +286,7 @@ public final class ZhixingCalc {
                             JSONObject b = blocks.optJSONObject(i);
                             if (b == null) continue;
                             TaskItem t = byId.get(b.optString("taskId", ""));
-                            if (t == null || t.deleted) continue;
+                            if (t == null || t.deleted || t.isAi()) continue;
                             String key = "daily".equals(t.repeat) ? t.id + "@" + d : t.id;
                             if (seen.add(key)) {
                                 total++;
@@ -520,6 +521,7 @@ public final class ZhixingCalc {
         // 漏项里补未完成的到期任务（排在习惯漏记前面展示时由页面决定顺序）
         for (TaskItem t : tasks) {
             if (t == null || t.deleted) continue;
+            if (t.isAi()) continue; // AI 任务的到期不是用户的漏项（v1.74.0，与任务分项同口径）
             boolean due = "daily".equals(t.repeat)
                     ? !(t.doneDates != null && t.doneDates.contains(date))
                     : (date.equals(t.deadline) && !"done".equals(t.status));

@@ -1324,6 +1324,7 @@ public class TodayPlanActivity extends Activity {
         List<TaskItem> out = new ArrayList<>();
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.isDoneToday()) continue;
+            if (t.isAi()) continue; // 给 AI 做的任务不进今天安排候选（v1.74.0）
             boolean daily = "daily".equals(t.repeat);
             boolean due = t.deadline != null && logicToday != null
                     && t.deadline.compareTo(logicToday) <= 0;
@@ -1543,6 +1544,7 @@ public class TodayPlanActivity extends Activity {
         List<TaskItem> out = new ArrayList<>();
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.isDoneToday()) continue;
+            if (t.isAi()) continue; // 给 AI 做的任务不进本页（含「其他重要任务」区，v1.74.0）
             if ("daily".equals(t.repeat)) continue;
             if (TaskItem.priorityRank(t.priority) > TaskItem.priorityRank("important")) continue;
             if (mainIds.contains(t.id)) continue;
@@ -1871,12 +1873,24 @@ public class TodayPlanActivity extends Activity {
             c.setBackground(roundStroke(Color.TRANSPARENT, Ui.line(this), 20));
             c.setTextColor(Ui.text(this));
         }
+        // setChipSel 用的样式与此一处同源（v1.74.0 提案卡「谁来做」切换重画）
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.leftMargin = dp(5);
         c.setLayoutParams(lp);
         c.setOnClickListener(click);
         return c;
+    }
+
+    /** chip 选中态重画（与 chip() 的 on/off 样式一致）：提案卡「谁来做」切换用。 */
+    private void setChipSel(TextView c, boolean on) {
+        if (on) {
+            c.setBackground(round(Ui.text(this), 20));
+            c.setTextColor(Color.WHITE);
+        } else {
+            c.setBackground(roundStroke(Color.TRANSPARENT, Ui.line(this), 20));
+            c.setTextColor(Ui.text(this));
+        }
     }
 
     /** 还剩可点改：新时长＝已用＋新还剩（与主页「还剩」同一口径）；有子任务时总时长由子任务定，去展开里改。 */
@@ -2235,6 +2249,37 @@ public class TodayPlanActivity extends Activity {
             card.addView(addStateText(s("已收起，继续聊", "Set aside — keep chatting")));
             return;
         }
+        // 谁来做（v1.74.0，F2）：「跟 AI 一起添加任务」面板是独立表单、不落
+        // TaskEditSheet，在提案卡上同步加这一行——整批一个选择，与编辑层同款
+        // 小 chip；默认给我自己做，选 AI 的整批置 assignee=ai、ai_state=queued。
+        final boolean[] addAsAi = {false};
+        LinearLayout asgRow = new LinearLayout(this);
+        asgRow.setOrientation(LinearLayout.HORIZONTAL);
+        asgRow.setGravity(Gravity.CENTER_VERTICAL);
+        asgRow.setPadding(0, dp(10), 0, 0);
+        TextView asgLabel = new TextView(this);
+        asgLabel.setText(s("谁来做", "Who does it"));
+        asgLabel.setTextSize(13);
+        asgLabel.setTextColor(Ui.sub(this));
+        asgRow.addView(asgLabel);
+        final TextView asgSelf = chip(s("给我自己做", "I'll do it"), true, null);
+        final TextView asgAi = chip(s("给 AI 做", "AI does it"), false, null);
+        asgSelf.setOnClickListener(v -> {
+            addAsAi[0] = false;
+            setChipSel(asgSelf, true);
+            setChipSel(asgAi, false);
+        });
+        asgAi.setOnClickListener(v -> {
+            addAsAi[0] = true;
+            setChipSel(asgSelf, false);
+            setChipSel(asgAi, true);
+        });
+        LinearLayout.LayoutParams asgLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        asgLp.leftMargin = dp(8);
+        asgRow.addView(asgSelf, asgLp);
+        asgRow.addView(asgAi, asgLp);
+        card.addView(asgRow);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(0, dp(10), 0, 0);
@@ -2246,7 +2291,7 @@ public class TodayPlanActivity extends Activity {
         ok.setPadding(dp(14), dp(7), dp(14), dp(7));
         ok.setBackground(round(Ui.text(this), 8));
         ok.setOnClickListener(v -> {
-            int n = applyAddProposal(m);
+            int n = applyAddProposal(m, addAsAi[0]);
             if (n > 0) {
                 m.propState = ChatStore.PROP_APPLIED;
                 fillAddCard(card, m);
@@ -2455,8 +2500,10 @@ public class TodayPlanActivity extends Activity {
     }
 
     /** 点「就这样添加」：全部经 TaskStore 正常通道建任务（deadline＝逻辑今天），
-     *  聊天里补一条系统行，本页清单刷新（新卡按冻结序口径追加末尾、时间账重算）。 */
-    private int applyAddProposal(ChatStore.Msg m) {
+     *  聊天里补一条系统行，本页清单刷新（新卡按冻结序口径追加末尾、时间账重算）。
+     *  asAi＝提案卡上选了「给 AI 做」（v1.74.0）：整批置 assignee=ai＋ai_state=queued，
+     *  deadline 仍写逻辑今天（语义＝希望今天做完），但不进本页候选/排程（F3 口径）。 */
+    private int applyAddProposal(ChatStore.Msg m, boolean asAi) {
         List<String[]> tasks = parseAddTasks(m.proposal);
         if (tasks.isEmpty()) return 0;
         store.load();
@@ -2467,6 +2514,10 @@ public class TodayPlanActivity extends Activity {
             catch (Exception ignored) { item.durationMinutes = 30; }
             item.priority = t[2];
             item.deadline = logicToday;
+            if (asAi) {
+                item.assignee = TaskItem.ASSIGN_AI;
+                item.aiState = "queued";
+            }
             item.touch();
             store.add(item);
             n++;
@@ -2474,8 +2525,11 @@ public class TodayPlanActivity extends Activity {
         StartReminder.reschedule(this, store);
         GuardRules.kickSync(this);
         ChatStore.Msg done = new ChatStore.Msg("assistant",
-                s("已添加 " + n + " 件，都在今天的清单里了",
-                  "Added " + n + " — they're on today's list"));
+                asAi
+                        ? s("已添加 " + n + " 件给 AI 做，在任务列表里看它们的状态",
+                            "Added " + n + " for the AI — watch their status in the task list")
+                        : s("已添加 " + n + " 件，都在今天的清单里了",
+                            "Added " + n + " — they're on today's list"));
         aiMsgs.add(done);
         renderAiMsg(done);
         aiScrollToBottom();

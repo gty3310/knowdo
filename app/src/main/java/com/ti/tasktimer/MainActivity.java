@@ -1717,8 +1717,10 @@ public class MainActivity extends Activity {
 
         // 分屏形态专属（v1.18.0）：行首 play 按钮——点一下直接开始/暂停这个任务，
         // 不必展开、不必回主页；走的还是 onPlay（与展开区主 chip 同一路径、同一切换语义）。
+        // 给 AI 做的任务不画 play 钮（v1.74.0：不可计时）；正在计时的任务若被改成
+        // AI 仍要能暂停，那种边角保留按钮（isRunningThis/isPausedThis 时照画）。
         TextView playBtn = null;
-        if (calOpen) {
+        if (calOpen && (!t.isAi() || isRunningThis || isPausedThis)) {
             playBtn = new TextView(this);
             playBtn.setText(isRunningThis ? "⏸" : "▶");
             playBtn.setTextSize(14);
@@ -1762,7 +1764,8 @@ public class MainActivity extends Activity {
         if (expanded) colV.addView(expansionView(t, done, isRunningThis, isPausedThis));
         // 分屏拖拽（v1.18.0）：未完成、且未排进今日计划的行可横拖进右侧日历。
         // 观察式监听只旁观手势、不接管行内点击/勾选/长按（见 RowDragObserver）。
-        if (calOpen && calendarPanel != null && !done && !splitScheduled.containsKey(t.id)) {
+        // 给 AI 做的任务不拖（v1.74.0：拖进日历＝排进日程，与不进排程口径冲突）。
+        if (calOpen && calendarPanel != null && !done && !t.isAi() && !splitScheduled.containsKey(t.id)) {
             RowDragObserver obs = new RowDragObserver(t, rowRoot);
             attachDragObserver(row, obs, playBtn);
         }
@@ -1845,6 +1848,19 @@ public class MainActivity extends Activity {
                     lv.setEllipsize(android.text.TextUtils.TruncateAt.END);
                     lv.setPadding(dp(21), dp(1), dp(16), 0);
                     cellInner.addView(lv);
+                }
+                if (t.isAi()) {
+                    // 给 AI 做的标记（v1.74.0，F3）：朱砂「AI」＋状态小字，与关联
+                    // 小字同位同法（只显示、不可点，整行点击仍是展开）
+                    String st = TaskItem.aiStateLabel(t.aiState, Strings.en());
+                    TextView av = new TextView(this);
+                    av.setText(st == null ? "AI" : "AI · " + st);
+                    av.setTextSize(11);
+                    av.setTextColor(Ui.accent(this));
+                    av.setMaxLines(1);
+                    av.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    av.setPadding(dp(21), dp(1), dp(16), 0);
+                    cellInner.addView(av);
                 }
                 cell.addView(cellInner);
                 cell.addView(prioDot(t.priority)); // v1.58.0：优先级圆点（替代原 ★ 前缀，四档全标）
@@ -1990,7 +2006,13 @@ public class MainActivity extends Activity {
         chips.setPadding(0, dp(10), 0, 0);
         String primary = isRunningThis ? Strings.chipPause()
                 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
-        chips.addView(chip(primary, true, v -> onPlay(t)));
+        if (t.isAi() && !isRunningThis && !isPausedThis) {
+            // 给 AI 做的任务不可开始计时（v1.74.0）：展开区主钮换成状态钮，点它只提示
+            chips.addView(chip("AI", true, v -> toast(Strings.en()
+                    ? "This task is for the AI to do" : "这是给 AI 做的任务")));
+        } else {
+            chips.addView(chip(primary, true, v -> onPlay(t)));
+        }
         chips.addView(chip(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(this, store, t,
                 taskEditHost())));
         chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
@@ -2278,14 +2300,20 @@ public class MainActivity extends Activity {
      *  原任务直接停表落盘，不经暂停卡。 */
     private void resetTask(final TaskItem t) {
         StartBaseline.markReset(this, t.id); // 重置＝抵扣基数清零（v1.21.1），必须在起表前打戳
-        startTaskTimer(t);
-        toast("已重置，从 0 重新开始：" + t.title);
+        if (startTaskTimer(t)) toast("已重置，从 0 重新开始：" + t.title);
     }
 
-    private void startTaskTimer(TaskItem t) {
+    /** 开始计时的总闸（onPlay 的开始/切换、立刻开始、重置都汇到这里）。
+     *  给 AI 做的任务在这里拦下（v1.74.0）：只提示一句、不进计时，返回 false。 */
+    private boolean startTaskTimer(TaskItem t) {
+        if (t.isAi()) {
+            toast(Strings.en() ? "This task is for the AI to do" : "这是给 AI 做的任务");
+            return false;
+        }
         // v1.26.0：截图只走无障碍通道，开始计时不再请求任何录屏授权，直接开表；
         // 无障碍没就绪时守卫本次静默不采样（分流在 TimerService→无障碍服务入口）
         doStartTaskTimer(t);
+        return true;
     }
 
     private void doStartTaskTimer(TaskItem t) {

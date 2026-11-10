@@ -40,6 +40,7 @@ public class StartReminder {
         long bestMs = Long.MAX_VALUE;
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.isDoneToday()) continue;
+            if (t.isAi()) continue; // 给 AI 做的任务不弹开始提醒（v1.74.0）
             long ms = t.nextStartMs();
             if (ms > now && ms < bestMs) {
                 bestMs = ms;
