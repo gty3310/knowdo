@@ -149,8 +149,8 @@ public final class ZhixingPage {
         col.addView(motiveAll);
         final Runnable paintMotive = () -> {
             int[] st = MotiveGate.stats(act);
-            motiveToday.setText(motiveLine(s("今日", "Today"), st[0], st[1]));
-            motiveAll.setText(motiveLine(s("累计", "All time"), st[2], st[3]));
+            motiveToday.setText(motiveLine3(s("今日", "Today"), st[0], st[1], st[2]));
+            motiveAll.setText(motiveLine3(s("累计", "All time"), st[3], st[4], st[5]));
         };
         paintMotive.run();
         ZhiPage.refreshEvents(act, paintMotive);
@@ -252,6 +252,22 @@ public final class ZhixingPage {
         int pct = (int) Math.round(yes * 100.0 / total);
         if (Strings.en()) return label + " yes " + yes + " of " + total + " (" + pct + "%)";
         return label + " 有 " + yes + " 次／共 " + total + " 次（" + pct + "%）";
+    }
+
+    /** 动机三档一行（v1.75.0）：有／没考虑／没有 各带占比，分母＝三档之和。 */
+    private String motiveLine3(String label, int yes, int mid, int no) {
+        int total = yes + mid + no;
+        if (total <= 0) return label + (Strings.en() ? " no records yet" : " 暂无记录");
+        if (Strings.en()) {
+            return label + " yes " + yes + " (" + pctOf(yes, total) + "%) · unconsidered "
+                    + mid + " (" + pctOf(mid, total) + "%) · no " + no + " (" + pctOf(no, total) + "%)";
+        }
+        return label + " 有 " + yes + "（" + pctOf(yes, total) + "%）· 没考虑 " + mid
+                + "（" + pctOf(mid, total) + "%）· 没有 " + no + "（" + pctOf(no, total) + "%）";
+    }
+
+    private static int pctOf(int part, int total) {
+        return total <= 0 ? 0 : (int) Math.round(part * 100.0 / total);
     }
 
     // ---------------- 构成行 ----------------

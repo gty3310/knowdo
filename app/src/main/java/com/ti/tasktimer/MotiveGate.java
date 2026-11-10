@@ -19,8 +19,10 @@ import java.util.Calendar;
  * 加时动机门（v1.72.0）：每次加时之前先过一层自问——正文只放一句
  * 「动机至善，私心了无」，下面「有」「没有」两个按钮，点任何一个都放行进
  * 原来的选加时时长步；不点不能继续（本层没有关闭/跳过入口）。
+ * v1.75.0：中间加第三个选项「没考虑」（用户亲定：答应/加时前没想过这句
+ * 的，要如实有这一档），三档点哪个都放行。
  * 每次回答记一条事件进 zhi_events（subject＝这条原则本体、kind＝motive_check、
- * value＝有/没有、source＝加时），写入走知页的本地先行＋待同步队列
+ * value＝有/没考虑/没有、source＝加时），写入走知页的本地先行＋待同步队列
  * （ZhiPage.recordEventExternal）：本地落盘即视为已答、立即放行，断网不丢、
  * 不卡加时流程；绝不写 user_state.self_checks（那是另一套口径）。
  * 本类是全软件唯一的动机门实现：检查页在页内嵌（buildInto），页外入口
@@ -33,14 +35,20 @@ public final class MotiveGate {
     public static final String QUESTION = "动机至善，私心了无";
     public static final String KIND = "motive_check";
     public static final String VALUE_YES = "有";
+    public static final String VALUE_MID = "没考虑";
     public static final String VALUE_NO = "没有";
 
     private MotiveGate() { }
 
     /** 记一次回答：本地先行落盘＋排进待同步队列，立即返回，不等网络。 */
     public static void recordAnswer(Context c, boolean yes) {
+        recordAnswer(c, yes ? VALUE_YES : VALUE_NO);
+    }
+
+    /** 记一次回答（三档原文）：本地先行落盘＋排进待同步队列，立即返回。 */
+    public static void recordAnswer(Context c, String value) {
         ZhiPage.recordEventExternal(c, ZhiPage.T_PRINCIPLE, PRINCIPLE_ID, KIND,
-                yes ? VALUE_YES : VALUE_NO, "加时");
+                value, "加时");
     }
 
     /** 页外入口：拉起全屏动机门，过门后由门内直接给当前计时加 addSec 秒并关门。 */
@@ -51,8 +59,9 @@ public final class MotiveGate {
     }
 
     /**
-     * 在给定纵向容器里渲染自问一层（容器由调用方先清空/备好）：正文一句＋两按钮，
-     * 朱砂只点在「有」上。点任一：先记事件（本地落盘），再回调 onward。
+     * 在给定纵向容器里渲染自问一层（容器由调用方先清空/备好）：正文一句＋三按钮，
+     * 朱砂只点在「有」上（v1.75.0：「没考虑」「没有」同为描边）。点任一：先记
+     * 事件（本地落盘），再回调 onward。
      */
     public static void buildInto(final Activity act, LinearLayout col, final Runnable onward) {
         TextView q = new TextView(act);
@@ -64,14 +73,21 @@ public final class MotiveGate {
         q.setPadding(0, dp(act, 28), 0, dp(act, 30));
         col.addView(q);
         col.addView(gateButton(act, VALUE_YES, true, () -> {
-            recordAnswer(act, true);
+            recordAnswer(act, VALUE_YES);
             if (onward != null) onward.run();
         }));
         android.view.View sp = new android.view.View(act);
         sp.setLayoutParams(new LinearLayout.LayoutParams(1, dp(act, 12)));
         col.addView(sp);
+        col.addView(gateButton(act, VALUE_MID, false, () -> {
+            recordAnswer(act, VALUE_MID);
+            if (onward != null) onward.run();
+        }));
+        android.view.View sp2 = new android.view.View(act);
+        sp2.setLayoutParams(new LinearLayout.LayoutParams(1, dp(act, 12)));
+        col.addView(sp2);
         col.addView(gateButton(act, VALUE_NO, false, () -> {
-            recordAnswer(act, false);
+            recordAnswer(act, VALUE_NO);
             if (onward != null) onward.run();
         }));
     }
@@ -100,11 +116,13 @@ public final class MotiveGate {
     }
 
     /**
-     * 比例聚合（只读本地事件缓存）：{今日有, 今日共, 累计有, 累计共}，
-     * 只算 kind＝motive_check 且 subject 是本原则的事件；今日按设备本地日期界。
+     * 比例聚合（只读本地事件缓存）：{今日有, 今日没考虑, 今日没有,
+     * 累计有, 累计没考虑, 累计没有}，只算 kind＝motive_check 且 subject 是
+     * 本原则的事件；今日按设备本地日期界。v1.75.0 前的历史事件只有有/没有
+     * 两档，自然落进对应桶。
      */
     public static int[] stats(Context c) {
-        int ty = 0, tt = 0, ay = 0, at = 0;
+        int ty = 0, tm = 0, tn = 0, ay = 0, am = 0, an = 0;
         try {
             JSONArray arr = ZhiPage.eventsCache(c);
             String today = DayUtil.today();
@@ -113,21 +131,20 @@ public final class MotiveGate {
                 if (e == null) continue;
                 if (!KIND.equals(e.optString("kind", ""))) continue;
                 if (!PRINCIPLE_ID.equals(e.optString("subject_id", ""))) continue;
-                boolean yes = VALUE_YES.equals(e.optString("value", ""));
-                at++;
-                if (yes) ay++;
+                String v = e.optString("value", "");
+                int bucket = VALUE_YES.equals(v) ? 0 : VALUE_MID.equals(v) ? 1 : 2;
+                if (bucket == 0) ay++; else if (bucket == 1) am++; else an++;
                 long ms = e.optLong("tsMs", 0);
                 if (ms > 0) {
                     Calendar cal = Calendar.getInstance();
                     cal.setTimeInMillis(ms);
                     if (DayUtil.fmt(cal).equals(today)) {
-                        tt++;
-                        if (yes) ty++;
+                        if (bucket == 0) ty++; else if (bucket == 1) tm++; else tn++;
                     }
                 }
             }
         } catch (Exception ignored) { }
-        return new int[]{ty, tt, ay, at};
+        return new int[]{ty, tm, tn, ay, am, an};
     }
 
     private static int dp(Activity act, int v) {
