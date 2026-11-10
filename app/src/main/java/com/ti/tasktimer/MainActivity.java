@@ -219,6 +219,9 @@ public class MainActivity extends Activity {
                 LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
             }
         } catch (Exception ignored) { }
+        // 每日成绩单定格（v1.76.0）：跨过日界后的首次活动把昨天及此前未定格的
+        // 日期逐日定格（本地先行＋后台线程，ScoreDaily 内部自守卫，重复调无副作用）
+        try { ScoreDaily.sealAsync(this); } catch (Exception ignored) { }
         // 晨间首填（v1.16.0；v1.17.0 起另有晨间门首触全屏拉起，本入口保留）：
         // 开关开着且当前 session 未完成 → 先进晨间页，填完才回来
         // （排在衔接守卫之前：晨间页回来后 onResume 会再走一遍正常流程）
