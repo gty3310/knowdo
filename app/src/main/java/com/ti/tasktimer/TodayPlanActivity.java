@@ -72,6 +72,11 @@ public class TodayPlanActivity extends Activity {
     private String healNote;
     /** 页内自检行（v1.70.0，F4）：常驻页头，报已载入任务数／今日日程段数／本页卡片数。 */
     private TextView selfCheckView;
+    // v1.77.0 临时诊断：今天安排空白定位，修复版移除（buildUi 局部变量最小限度提升为字段，只为取高度，不改其任何参数）
+    private LinearLayout dbgRoot, dbgHead, dbgCol, dbgFoot;
+    private ScrollView dbgScroll;
+    private TextView dbgBtn, dbgStartBtn, dbgView;
+    private String dbgL1;
     /** 最近一次 refreshCardsOnly 实际画出的卡片＋兜底行数（F4 自检行取数）。 */
     private int lastCardCount = 0;
     private View barUsed, barOver, barRest;
@@ -218,11 +223,13 @@ public class TodayPlanActivity extends Activity {
 
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
+        dbgRoot = root; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.bg(this));
 
         // ---- 吸顶时间账 ----
         LinearLayout head = new LinearLayout(this);
+        dbgHead = head; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         head.setOrientation(LinearLayout.VERTICAL);
         head.setPadding(dp(18), dp(8), dp(18), dp(6));
         TextView title = new TextView(this);
@@ -296,6 +303,13 @@ public class TodayPlanActivity extends Activity {
         selfCheckView.setPadding(0, dp(3), 0, 0);
         head.addView(selfCheckView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // v1.77.0 临时诊断：今天安排空白定位，修复版移除（自检行之下一行 DBG 小字，报各层实际高度）
+        dbgView = new TextView(this);
+        dbgView.setTextSize(10);
+        dbgView.setTextColor(Ui.sub(this));
+        dbgView.setPadding(0, dp(3), 0, 0);
+        head.addView(dbgView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(head, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View headLine = new View(this);
@@ -305,8 +319,10 @@ public class TodayPlanActivity extends Activity {
 
         // ---- 滚动区 ----
         ScrollView scroll = new ScrollView(this);
+        dbgScroll = scroll; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         scroll.setFillViewport(true);
         LinearLayout col = new LinearLayout(this);
+        dbgCol = col; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(4), dp(18), dp(22));
         scroll.addView(col, new ScrollView.LayoutParams(
@@ -473,9 +489,11 @@ public class TodayPlanActivity extends Activity {
 
         // ---- 固定底 ----
         LinearLayout foot = new LinearLayout(this);
+        dbgFoot = foot; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         foot.setOrientation(LinearLayout.VERTICAL);
         foot.setPadding(dp(18), dp(6), dp(18), dp(10));
         TextView btn = new TextView(this);
+        dbgBtn = btn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         btn.setText(s("排进今天的日程", "Plan into today"));
         btn.setTextSize(13);
         btn.setGravity(Gravity.CENTER);
@@ -511,6 +529,7 @@ public class TodayPlanActivity extends Activity {
         foot.addView(footGap, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
         TextView startBtn = new TextView(this);
+        dbgStartBtn = startBtn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         startBtn.setText(s("开始今天", "Start today"));
         startBtn.setTextSize(13);
         startBtn.setGravity(Gravity.CENTER);
@@ -535,6 +554,57 @@ public class TodayPlanActivity extends Activity {
         plp.gravity = Gravity.BOTTOM;
         frame.addView(aiPanel, plp);
         setContentView(frame);
+        // v1.77.0 临时诊断：今天安排空白定位，修复版移除（L1＝首帧布局后取样，L2＝800ms 后再取样，抓先画好又塌掉）
+        root.post(() -> {
+            try {
+                dbgL1 = sampleDbg();
+                if (dbgView != null) dbgView.setText("DBG L1 " + dbgL1 + " | L2 -");
+            } catch (Exception ignored) { }
+            root.postDelayed(() -> {
+                try {
+                    if (dbgView != null) {
+                        dbgView.setText("DBG L1 " + (dbgL1 != null ? dbgL1 : "-")
+                                + " | L2 " + sampleDbg());
+                    }
+                } catch (Exception ignored) { }
+            }, 800);
+        });
+    }
+
+    // v1.77.0 临时诊断：今天安排空白定位，修复版移除（全程兜底，取不到记 -1，诊断代码绝不许成为新的崩溃源）
+    private String sampleDbg() {
+        try {
+            int win = -1;
+            try { win = getWindow().getDecorView().getHeight(); } catch (Exception ignored) { }
+            int cardsH = -1, cardN = -1, card0 = -1;
+            try {
+                if (cardsBox != null) {
+                    cardsH = cardsBox.getHeight();
+                    cardN = cardsBox.getChildCount();
+                    if (cardN > 0) card0 = cardsBox.getChildAt(0).getHeight();
+                }
+            } catch (Exception ignored) { }
+            float den = -1f, fs = -1f;
+            try {
+                den = getResources().getDisplayMetrics().density;
+                fs = getResources().getConfiguration().fontScale;
+            } catch (Exception ignored) { }
+            int panelVis = 0;
+            try { panelVis = (aiPanel != null && aiPanel.getVisibility() == View.VISIBLE) ? 1 : 0; }
+            catch (Exception ignored) { }
+            return String.format(java.util.Locale.US,
+                    "win=%d root=%d head=%d scroll=%d col=%d cards=%dx%d card0=%d foot=%d btn=%d start=%d panel=%d/%d den=%.2f fs=%.2f",
+                    win, dbgH(dbgRoot), dbgH(dbgHead), dbgH(dbgScroll), dbgH(dbgCol),
+                    cardsH, cardN, card0, dbgH(dbgFoot), dbgH(dbgBtn), dbgH(dbgStartBtn),
+                    panelVis, dbgH(aiPanel), den, fs);
+        } catch (Exception e) {
+            return "sample-failed";
+        }
+    }
+
+    // v1.77.0 临时诊断：今天安排空白定位，修复版移除
+    private static int dbgH(View v) {
+        try { return v == null ? -1 : v.getHeight(); } catch (Exception e) { return -1; }
     }
 
     /** 描边浅底的轻钮（v1.55.0 加任务两钮用，比底部大钮轻一档）。 */

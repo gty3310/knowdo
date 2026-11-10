@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1770 = new Entry("v1.77.0", "2026-11-10");
+        e1770.add(new Group(s("改进", "Improved"),
+                s("这一版是定位用的：今天安排页页头多了一行小字，报这一页各区域的实际高度",
+                  "This release is for pinpointing a fault: the Plan today header gains a small line reporting the actual heights of this page's regions")));
+        e1770.why = s("这一页的空白修过一次没打中，这次先把证据拿全，再动手修",
+                "This page's blankness was fixed once and missed — this time we gather the evidence first, then fix");
+        e1770.tryIt = s("打开今天安排页，把整页截一张图发给我——图里那行小字会告诉我们空白出在哪一层",
+                "Open Plan today and send a screenshot of the whole page — the small line in it will tell us which layer the blankness sits in");
+        out.add(e1770);
+
         Entry e1760 = new Entry("v1.76.0", "2026-11-10");
         e1760.add(new Group(s("新增", "New"),
                 s("合一页的分数能点了：进去看走势曲线，一个月按天看、一年按周看",
