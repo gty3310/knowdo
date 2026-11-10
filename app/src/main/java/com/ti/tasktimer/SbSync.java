@@ -369,12 +369,12 @@ public final class SbSync {
                 JSONObject cloudPatch = (hasPatch && !urow.isNull("cloud_patch"))
                         ? urow.optJSONObject("cloud_patch") : null;
                 if (!HabitData.hasLocal(c) && remoteHabit != null) {
-                    HabitData.adopt(c, applyCloudPatch(new JSONObject(remoteHabit.toString()), cloudPatch));
+                    HabitData.adopt(c, applyCloudPatch(c, new JSONObject(remoteHabit.toString()), cloudPatch));
                     HabitReminder.rescheduleAll(c);
                 } else if (HabitData.hasLocal(c)) {
                     JSONObject localHabit = HabitData.load(c);
                     JSONObject mergedHabit = HabitData.merge(localHabit, remoteHabit);
-                    mergedHabit = applyCloudPatch(mergedHabit, cloudPatch); // 合并后、落本地/回写前应用补丁（v1.52.0）
+                    mergedHabit = applyCloudPatch(c, mergedHabit, cloudPatch); // 合并后、落本地/回写前应用补丁（v1.52.0）
                     if (!HabitData.contentEquals(mergedHabit, localHabit)) {
                         HabitData.saveQuiet(c, mergedHabit);
                         HabitReminder.rescheduleAll(c);
@@ -514,11 +514,17 @@ public final class SbSync {
      * 背景：HabitData.merge 是定案的本机优先——同 id 习惯定义、同日期日记都以本机为准，
      * 所以从云端直改的习惯 type、往已有日期续写的日记都会被下一次合并覆盖回滚；补丁在
      * 合并之后改 merged，merged 一落本机即成本机新值，此后合并天然保持。
-     * 结构：{habit_types:{habitId:type}, diary_appends:[{date,marker,text}]}。
-     * 幂等：type 是赋值、重复应用无副作用；日记续写以 marker 子串判重，已含则跳过。
+     * 结构：{habit_types:{habitId:type}, diary_appends:[{date,marker,text}],
+     *        habit_texts:{habitId:全文}}（habit_texts 为 v1.73.0 第三类）。
+     * 幂等：type 是赋值、重复应用无副作用；日记续写以 marker 子串判重，已含则跳过；
+     * habit_texts 防冲掉用户手改——同一 habitId 的同一份补丁文本只应用一次：
+     * 本地 SharedPreferences 记 habitId→已应用文本的 SHA-256，补丁文本与标记一致
+     * 则跳过（用户之后的手改不被冲掉），补丁文本变了（新内容）才再应用一次并
+     * 更新标记；本机 remindText 已与补丁文本相同时只补标记、不动数据；本机没有
+     * 该习惯则跳过、不新建。这是「本机主动接受补丁」，本机优先口径不变。
      * 任何异常静默跳过（返回原 merged），绝不阻断正常同步；cloud_patch 列只读不写。
      */
-    private static JSONObject applyCloudPatch(JSONObject merged, JSONObject patch) {
+    private static JSONObject applyCloudPatch(Context c, JSONObject merged, JSONObject patch) {
         if (merged == null || patch == null) return merged;
         try {
             JSONObject types = patch.optJSONObject("habit_types");
@@ -552,8 +558,58 @@ public final class SbSync {
                     diary.put(date, cur.isEmpty() ? text : cur + "\n\n" + text);
                 }
             }
+            JSONObject texts = patch.optJSONObject("habit_texts");
+            if (texts != null && texts.length() > 0) {
+                JSONArray habitsArr = merged.optJSONArray("habits");
+                if (habitsArr != null) {
+                    for (int i = 0; i < habitsArr.length(); i++) {
+                        JSONObject h = habitsArr.optJSONObject(i);
+                        if (h == null) continue;
+                        String hid = h.optString("id", "");
+                        if (hid.isEmpty() || !texts.has(hid) || texts.isNull(hid)) continue;
+                        String want = texts.optString(hid, "");
+                        String wantHash = textHash(want);
+                        if (want.equals(h.optString("remindText", ""))) {
+                            // 本机已是这份文本：只补已应用标记，不动数据
+                            if (!wantHash.equals(appliedTextHash(c, hid))) {
+                                saveAppliedTextHash(c, hid, wantHash);
+                            }
+                            continue;
+                        }
+                        // 这份补丁文本已经应用过一次：用户之后的手改不许再被它冲掉
+                        if (wantHash.equals(appliedTextHash(c, hid))) continue;
+                        h.put("remindText", want); // 只改 remindText 一个字段，其余一律不动
+                        saveAppliedTextHash(c, hid, wantHash);
+                    }
+                }
+            }
         } catch (Exception ignored) { }
         return merged;
+    }
+
+    // habit_texts 已应用标记（v1.73.0）：SharedPreferences 存 habitId→已应用补丁文本的哈希
+    private static final String PREF_PATCH_APPLIED = "cloud_patch_applied";
+
+    private static String textHash(String s) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] d = md.digest(s.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return "h" + s.hashCode() + ":" + s.length();
+        }
+    }
+
+    private static String appliedTextHash(Context c, String habitId) {
+        return c.getSharedPreferences(PREF_PATCH_APPLIED, Context.MODE_PRIVATE)
+                .getString("habit_text_" + habitId, "");
+    }
+
+    private static void saveAppliedTextHash(Context c, String habitId, String hash) {
+        c.getSharedPreferences(PREF_PATCH_APPLIED, Context.MODE_PRIVATE)
+                .edit().putString("habit_text_" + habitId, hash).apply();
     }
 
     /** Realtime 推来的 user_state 行：缓存 schedule/gcal、合并守卫事件、应用计时状态。不在这里回写。 */
