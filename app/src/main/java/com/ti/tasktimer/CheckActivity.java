@@ -36,6 +36,16 @@ public class CheckActivity extends Activity {
     private Runnable primaryAction; // 回车触发的主按钮动作（当前阶段的主按钮）
     private Runnable keyQ, keyW, keyE; // 结束页前三个加时选项
     private ChatPanel endChatPanel; // 结束页内嵌聊天区（v1.24.0，只在 showEnd 里建）
+    // 加时动机门（v1.72.0）：本页本次是否已过门、门后要回去的选时长步、过半页加时区状态
+    private boolean motivePassed;
+    private Runnable extendBack;
+    // 原则陪跑问询（v1.75.0，F3）：本页（本次完成）是否已答、答了什么——
+    // 答过就只显已记态，同一次完成不重复问；页重建（加时回选时长步）也记得。
+    private boolean principleAnswered;
+    private String principleAnswerValue = "";
+    private LinearLayout halfAddBox;
+    private int halfAddedMin;
+    private TextView halfAddedLine;
 
     // 跨设备跟随（v1.7.0）：另一端已处理（结束/加时/换任务）时，本页若还在显就关掉，别停在过期状态上
     private final android.content.BroadcastReceiver timerRemoteReceiver =
@@ -175,34 +185,51 @@ public class CheckActivity extends Activity {
         spacer();
         // 加时间（v1.39.0）：与结束页同一套 extendTimer 机制；点完不关页、可连点
         // 累加，累计分钟显示在本区下方；不加也能照常点「想好了，继续」。
-        final int[] addedMin = {0};
-        final TextView addedLine = new TextView(this);
-        addedLine.setTextSize(15);
-        addedLine.setTextColor(Ui.sub(this));
-        addedLine.setGravity(Gravity.CENTER);
-        addedLine.setVisibility(View.GONE);
+        // v1.72.0：加时区独立装进 halfAddBox——第一次点加时先过动机门，门只换
+        // 这一块，上面写办法的输入框原样不动；过门后加时区重画，照常点按钮累计。
+        halfAddedMin = 0;
+        halfAddBox = new LinearLayout(this);
+        halfAddBox.setOrientation(LinearLayout.VERTICAL);
+        halfAddBox.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(halfAddBox);
+        buildHalfAddArea();
+        spacer();
+        Button go = bigButton(Strings.chkGo(), true, null);
+        go.setOnClickListener(v -> {
+            String ev = "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim();
+            if (halfAddedMin > 0) ev += "，加时 " + halfAddedMin + " 分钟";
+            TimerState.logEvent(this, ev);
+            finish();
+        });
+        pinFooter(go);
+    }
+
+    /** 过半页加时区的内容（标签＋两行小按钮＋自定义行＋累计行），全部装在 halfAddBox 里。 */
+    private void buildHalfAddArea() {
+        halfAddBox.removeAllViews();
         TextView addLabel = new TextView(this);
         addLabel.setText(Strings.chkHalfAddLabel());
         addLabel.setTextSize(16);
         addLabel.setTextColor(Ui.sub(this));
         addLabel.setGravity(Gravity.CENTER);
-        root.addView(addLabel);
-        spacerSmall();
+        halfAddBox.addView(addLabel);
+        halfAddBox.addView(spacerView(10));
         // +50% 与结束页同一基数：当前段总时长（TimerState.totalSec）的一半，
         // 整数分钟除、至少 1 分钟（与 showEnd 的 halfSec 完全同式）。
         int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
         final int halfAddMin = Math.max(1, totalMin / 2);
         LinearLayout row1 = halfAddRow();
-        row1.addView(halfAddButton(Strings.chkPlus1(), 60, addedMin, addedLine));
-        row1.addView(halfAddButton(Strings.chkPlus3(), 180, addedMin, addedLine));
-        row1.addView(halfAddButton(Strings.chkPlus5(), 300, addedMin, addedLine));
-        root.addView(row1);
-        spacerSmall();
+        row1.addView(halfAddButton(Strings.chkPlus1(), 60));
+        row1.addView(halfAddButton(Strings.chkPlus3(), 180));
+        row1.addView(halfAddButton(Strings.chkPlus5(), 300));
+        halfAddBox.addView(row1);
+        halfAddBox.addView(spacerView(10));
         LinearLayout row2 = halfAddRow();
-        row2.addView(halfAddButton(Strings.chkPlus10(), 600, addedMin, addedLine));
-        row2.addView(halfAddButton(Strings.chkPlus50(halfAddMin), halfAddMin * 60, addedMin, addedLine));
-        root.addView(row2);
-        spacerSmall();
+        row2.addView(halfAddButton(Strings.chkPlus10(), 600));
+        row2.addView(halfAddButton(Strings.chkPlus50(halfAddMin), halfAddMin * 60));
+        halfAddBox.addView(row2);
+        halfAddBox.addView(spacerView(10));
         final EditText custom = new EditText(this);
         custom.setHint(Strings.chkCustomHint());
         custom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -210,29 +237,46 @@ public class CheckActivity extends Activity {
         custom.setTextColor(Ui.text(this));
         custom.setHintTextColor(Ui.sub(this));
         custom.setGravity(Gravity.CENTER);
-        root.addView(custom);
+        halfAddBox.addView(custom);
         Button customBtn = bigButton(Strings.chkCustomBtn(), false, null);
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
                 if (min > 0) {
-                    doHalfAdd(min * 60, addedMin, addedLine);
+                    if (!motivePassed) { gateHalf(); return; }
+                    doHalfAdd(min * 60);
                     custom.setText("");
                 }
             } catch (NumberFormatException ignored) { }
         });
-        root.addView(customBtn);
-        spacerSmall();
-        root.addView(addedLine);
-        spacer();
-        Button go = bigButton(Strings.chkGo(), true, null);
-        go.setOnClickListener(v -> {
-            String ev = "过半检查[" + taskName() + "]：做不完，办法=" + input.getText().toString().trim();
-            if (addedMin[0] > 0) ev += "，加时 " + addedMin[0] + " 分钟";
-            TimerState.logEvent(this, ev);
-            finish();
+        halfAddBox.addView(customBtn);
+        halfAddBox.addView(spacerView(10));
+        halfAddedLine = new TextView(this);
+        halfAddedLine.setTextSize(15);
+        halfAddedLine.setTextColor(Ui.sub(this));
+        halfAddedLine.setGravity(Gravity.CENTER);
+        if (halfAddedMin > 0) {
+            halfAddedLine.setText(Strings.chkAddedTotal(halfAddedMin));
+            halfAddedLine.setVisibility(View.VISIBLE);
+        } else {
+            halfAddedLine.setVisibility(View.GONE);
+        }
+        halfAddBox.addView(halfAddedLine);
+    }
+
+    private View spacerView(int h) {
+        View v = new View(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(h)));
+        return v;
+    }
+
+    /** 过半页的动机门（v1.72.0）：只换加时区这一块，不动写办法的输入框。 */
+    private void gateHalf() {
+        halfAddBox.removeAllViews();
+        MotiveGate.buildInto(this, halfAddBox, () -> {
+            motivePassed = true;
+            buildHalfAddArea();
         });
-        pinFooter(go);
     }
 
     /** 写办法页加时按钮行（一行并排，与本页大按钮同一视觉语言、格内字号略收）。 */
@@ -244,23 +288,25 @@ public class CheckActivity extends Activity {
         return row;
     }
 
-    private Button halfAddButton(String text, final int addSec, final int[] addedMin,
-                                 final TextView addedLine) {
+    private Button halfAddButton(String text, final int addSec) {
         Button b = bigButton(text, false, null);
         b.setTextSize(17);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(56), 1f);
         lp.setMargins(dp(3), 0, dp(3), 0);
         b.setLayoutParams(lp);
-        b.setOnClickListener(v -> doHalfAdd(addSec, addedMin, addedLine));
+        b.setOnClickListener(v -> {
+            if (!motivePassed) { gateHalf(); return; }
+            doHalfAdd(addSec);
+        });
         return b;
     }
 
     /** 写办法页加时动作：走结束页同一 extendTimer 机制，只是不关页、累计就地更新。 */
-    private void doHalfAdd(int addSec, int[] addedMin, TextView addedLine) {
+    private void doHalfAdd(int addSec) {
         TimerService.extendTimer(this, addSec);
-        addedMin[0] += addSec / 60;
-        addedLine.setText(Strings.chkAddedTotal(addedMin[0]));
-        addedLine.setVisibility(View.VISIBLE);
+        halfAddedMin += addSec / 60;
+        halfAddedLine.setText(Strings.chkAddedTotal(halfAddedMin));
+        halfAddedLine.setVisibility(View.VISIBLE);
     }
 
     /** 整个任务完成：回写完成状态＋停表＋衔接守卫（结束页与子任务页共用）。 */
@@ -304,7 +350,11 @@ public class CheckActivity extends Activity {
         pinFooter(next);
         spacer();
         Button extend = bigButton(Strings.subExtend(), false, null);
-        extend.setOnClickListener(v -> showSubExtend());
+        extend.setOnClickListener(v -> {
+            // 子任务页有独立的「加时」意图按钮：先过动机门，过门才进选时长步（v1.72.0）
+            if (motivePassed) showSubExtend();
+            else gateThen(this::showSubExtend);
+        });
         root.addView(extend);
         spacer();
         Button skip = bigButton(Strings.subSkip(), false, null);
@@ -326,6 +376,7 @@ public class CheckActivity extends Activity {
         clear();
         primaryAction = null;
         keyQ = keyW = keyE = null;
+        extendBack = this::showSubExtend;
         title(Strings.subExtend());
         subtitle(Strings.subCheckSub(taskName(), TimerState.subIndex(this) + 1,
                 TimerState.subCount(this), TimerState.subTitle(this)));
@@ -339,13 +390,13 @@ public class CheckActivity extends Activity {
         int subMin = currentSubMinutes();
         final int halfSec = Math.max(1, subMin / 2) * 60;
         root.addView(extendButton(Strings.chkPlus50(Math.max(1, subMin / 2)), halfSec, "Q"));
-        keyQ = () -> doExtend(halfSec);
+        keyQ = () -> gatedExtend(halfSec);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
-        keyW = () -> doExtend(300);
+        keyW = () -> gatedExtend(300);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
-        keyE = () -> doExtend(600);
+        keyE = () -> gatedExtend(600);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus15(), 900, null));
         spacerSmall();
@@ -361,7 +412,7 @@ public class CheckActivity extends Activity {
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
-                if (min > 0) doExtend(min * 60);
+                if (min > 0) gatedExtend(min * 60);
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
@@ -383,6 +434,7 @@ public class CheckActivity extends Activity {
     private void showEnd() {
         clear();
         keyQ = keyW = keyE = null;
+        extendBack = this::showEnd;
         // 结束页催促（v1.21.1）：页面真展示出来了——经响铃页转入的结束在此武装
         // 升级链（锚点＝展示时刻）；直达路径在 fire 时已武装，这里只续排无-op
         EndNag.noteEndPageShown(this);
@@ -392,6 +444,7 @@ public class CheckActivity extends Activity {
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
         addAspiration();
+        addPrincipleCheck();
         addChatZone();
         Runnable doneAct = this::completeWholeTask;
         Button done = bigButton(Strings.chkDone(), true, "Enter");
@@ -409,13 +462,13 @@ public class CheckActivity extends Activity {
         int totalMin = Math.max(1, TimerState.totalSec(this) / 60);
         final int halfSec = Math.max(1, totalMin / 2) * 60;
         root.addView(extendButton(Strings.chkPlus50(Math.max(1, totalMin / 2)), halfSec, "Q"));
-        keyQ = () -> doExtend(halfSec);
+        keyQ = () -> gatedExtend(halfSec);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus5(), 300, "W"));
-        keyW = () -> doExtend(300);
+        keyW = () -> gatedExtend(300);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus10(), 600, "E"));
-        keyE = () -> doExtend(600);
+        keyE = () -> gatedExtend(600);
         spacerSmall();
         root.addView(extendButton(Strings.chkPlus15(), 900, null));
         spacerSmall();
@@ -431,10 +484,84 @@ public class CheckActivity extends Activity {
         customBtn.setOnClickListener(v -> {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
-                if (min > 0) doExtend(min * 60);
+                if (min > 0) gatedExtend(min * 60);
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
+    }
+
+    /**
+     * 原则陪跑问询（v1.75.0，F3）：结束页在志与聊天区之间加一段——当前任务的
+     * 主原则（名＋一句话版）＋一句「这件事上，你做到这条了吗」＋三个按钮
+     * （做到了／没做到／没考虑）。**不强制**：不答直接点「做完了」照常完成、
+     * 不留记录、不阻塞任何流程；答了走 ZhiPage.recordPrincipleCheck（事件
+     * 入待同步队列、本地先行；「没考虑」同时撤掉这条误判关联）。本页本次
+     * 只问一次（答后换已记态）；没有主原则的任务整段不出现。
+     */
+    private void addPrincipleCheck() {
+        final String taskId = TimerState.taskId(this);
+        if (taskId == null || taskId.isEmpty()) return;
+        final ZhiPage.TaskPrinciple tp = ZhiPage.mainPrincipleForTask(this, taskId);
+        if (tp == null || tp.name == null || tp.name.isEmpty()) return;
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        root.addView(box);
+        buildPrincipleCheck(box, tp, taskId);
+    }
+
+    private void buildPrincipleCheck(final LinearLayout box,
+                                     final ZhiPage.TaskPrinciple tp, final String taskId) {
+        box.removeAllViews();
+        if (principleAnswered) {
+            TextView done = new TextView(this);
+            done.setText((Strings.en() ? "Principle noted · " : "已记下 · ") + principleAnswerValue);
+            done.setTextSize(14);
+            done.setTextColor(Ui.sub(this));
+            done.setGravity(Gravity.CENTER);
+            done.setPadding(0, dp(4), 0, dp(14));
+            box.addView(done);
+            return;
+        }
+        TextView name = new TextView(this);
+        name.setText(tp.name);
+        name.setTextSize(19);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        name.setGravity(Gravity.CENTER);
+        box.addView(name);
+        if (tp.line != null && !tp.line.isEmpty()) {
+            TextView line = new TextView(this);
+            line.setText(tp.line);
+            line.setTextSize(14);
+            line.setTextColor(Ui.sub(this));
+            line.setGravity(Gravity.CENTER);
+            line.setPadding(0, dp(5), 0, 0);
+            box.addView(line);
+        }
+        TextView q = new TextView(this);
+        q.setText(Strings.en() ? "On this task, did you live up to it?"
+                : "这件事上，你做到这条了吗");
+        q.setTextSize(15);
+        q.setTextColor(Ui.text(this));
+        q.setGravity(Gravity.CENTER);
+        q.setPadding(0, dp(12), 0, dp(10));
+        box.addView(q);
+        String[] values = {ZhiPage.PC_DONE, ZhiPage.PC_MISSED, ZhiPage.PC_NOCARE};
+        String[] labels = {Strings.en() ? "Did it" : ZhiPage.PC_DONE,
+                Strings.en() ? "Didn't" : ZhiPage.PC_MISSED,
+                Strings.en() ? "Didn't think of it" : ZhiPage.PC_NOCARE};
+        for (int i = 0; i < values.length; i++) {
+            final String val = values[i];
+            Button b = bigButton(labels[i], i == 0, null);
+            b.setOnClickListener(v -> {
+                ZhiPage.recordPrincipleCheck(CheckActivity.this, tp.id, taskId, val);
+                principleAnswered = true;
+                principleAnswerValue = val;
+                buildPrincipleCheck(box, tp, taskId);
+            });
+            box.addView(b);
+            spacerSmall();
+        }
     }
 
     /**
@@ -468,8 +595,30 @@ public class CheckActivity extends Activity {
 
     private Button extendButton(String text, final int addSec, String kbd) {
         Button b = bigButton(text, false, kbd);
-        b.setOnClickListener(v -> doExtend(addSec));
+        b.setOnClickListener(v -> gatedExtend(addSec));
         return b;
+    }
+
+    /**
+     * 加时动机门（v1.72.0）：未过门时把本页换成自问层（MotiveGate 同一层组件）——
+     * 点「有/没有」先记一条动机事件（本地先行、立即放行），随后回到原来的
+     * 选时长步（extendBack 指向的阶段）重新选时长，这次点选本身不执行。
+     * 门内没有关闭/跳过入口；键盘 Q/W/E 在门层同样不生效（keyQ 等已清空）。
+     */
+    private void gateThen(final Runnable backToChoices) {
+        clear();
+        primaryAction = null;
+        keyQ = keyW = keyE = null;
+        MotiveGate.buildInto(this, root, () -> {
+            motivePassed = true;
+            backToChoices.run();
+        });
+    }
+
+    /** 选了时长先过门：已过门直接执行原加时；没过门先过门、回选时长步重选。 */
+    private void gatedExtend(int addSec) {
+        if (motivePassed) { doExtend(addSec); return; }
+        gateThen(extendBack);
     }
 
     private void doExtend(int addSec) {

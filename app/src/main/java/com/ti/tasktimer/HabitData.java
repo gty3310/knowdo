@@ -58,7 +58,7 @@ public final class HabitData {
     public static final String TYPE_REMIND = "remind"; // 每日提醒型（v1.28.0）
     public static final String TYPE_WEEKLY = "weekly"; // 每周目标反思（v1.47.0，专属数据在 WeeklyData）
     public static final String TYPE_DIARY = "diary"; // 记日记（v1.48.0，文本就是本类 diary 全局日记，与晨间页共用）
-    public static final String TYPE_READ = "read"; // 自读（v1.49.0，全文存 remindText，点开朗读页读、点「读过了」记完成）
+    public static final String TYPE_READ = "read"; // 自读（v1.49.0，全文存 remindText；v1.73.0 起 logs 值＝当天读的遍数，点「读完一遍」+1）
 
     private HabitData() {}
 
@@ -277,6 +277,46 @@ public final class HabitData {
                 if (day.length() == 0) logs.remove(date);
             }
         } catch (Exception ignored) { }
+    }
+
+    // ---------------- 自读遍数（v1.73.0） ----------------
+    /**
+     * 自读（read 型）的遍数计数：logs 的值即「那天读的遍数」，不再是 0/1 完成位。
+     * 累计遍数＝全部日期上的值之和；完成口径不变——某天值 >0 即那天完成
+     * （ZhixingCalc.habitDayRate 对 read 走 default 分支，本就是 v>0→100，
+     * 不依赖值恰为 1；值 >1 仍算完成）。
+     * 朗读页（ReadActivity）与晨间页（MorningActivity.readBlock）加/减遍数
+     * 只走这一组方法，不许各写一份。
+     */
+    public static long readTotalCount(JSONObject root, String habitId) {
+        long total = 0;
+        try {
+            JSONObject logs = root.optJSONObject("logs");
+            if (logs == null) return 0;
+            java.util.Iterator<String> it = logs.keys();
+            while (it.hasNext()) {
+                Long v = logValue(root, it.next(), habitId);
+                if (v != null && v > 0) total += v;
+            }
+        } catch (Exception ignored) { }
+        return total;
+    }
+
+    /** 读完一遍：某天的遍数 +1（没有记录从 0 起），返回加完后的当天遍数。 */
+    public static long addReadPass(JSONObject root, String date, String habitId) {
+        Long cur = logValue(root, date, habitId);
+        long next = (cur == null ? 0 : cur) + 1;
+        putLog(root, date, habitId, next);
+        return next;
+    }
+
+    /** 减一遍（误点纠正）：某天的遍数 -1，减到 0 时移除该日记录；返回减完后的当天遍数。 */
+    public static long removeReadPass(JSONObject root, String date, String habitId) {
+        Long cur = logValue(root, date, habitId);
+        if (cur == null || cur <= 0) return 0;
+        if (cur == 1) { removeLog(root, date, habitId); return 0; }
+        putLog(root, date, habitId, cur - 1);
+        return cur - 1;
     }
 
     // ---------------- 一次性数据修复（v1.66.0） ----------------

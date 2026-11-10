@@ -19,6 +19,8 @@ import java.util.TimeZone;
  * 子任务列 subtasks（jsonb，v1.11.0）同法：hasSubtaskCols 单独探测，没列时本地保全。
  * 任务级 alarm 模式列 alarm_mode（v1.20.0）同法：hasAlarmModeCol 单独探测，
  * 服务端没列时不进云端、合并时从本地同 id 任务保全；补列后自动纳入同步。
+ * 谁来做两列 assignee / ai_state（v1.74.0）同法：hasAiCols 单独探测，
+ * 服务端没列时不进云端、合并时从本地同 id 任务保全；补列后自动纳入同步。
  */
 public final class SbMapper {
     private SbMapper() {}
@@ -109,6 +111,12 @@ public final class SbMapper {
     public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
                                    boolean hasAlarmCols, boolean hasSubtaskCols,
                                    boolean hasAlarmModeCol) throws Exception {
+        return toRow(t, userId, hasExtraCols, hasAlarmCols, hasSubtaskCols, hasAlarmModeCol, false);
+    }
+
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols, boolean hasSubtaskCols,
+                                   boolean hasAlarmModeCol, boolean hasAiCols) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -148,6 +156,10 @@ public final class SbMapper {
         }
         if (hasAlarmModeCol) {
             o.put("alarm_mode", TaskItem.normAlarmMode(t.alarmMode));
+        }
+        if (hasAiCols) {
+            o.put("assignee", TaskItem.normAssignee(t.assignee));
+            o.put("ai_state", t.aiState == null ? JSONObject.NULL : t.aiState);
         }
         return o;
     }
@@ -208,6 +220,18 @@ public final class SbMapper {
         } else if (preserveFrom != null) {
             // 服务端没这列（或本行没带）：从本地同 id 任务保全，同步合并不得冲掉
             t.alarmMode = TaskItem.normAlarmMode(preserveFrom.alarmMode);
+        }
+        if (o.has("assignee")) {
+            t.assignee = TaskItem.normAssignee(o.isNull("assignee") ? null
+                    : o.optString("assignee", null));
+        } else if (preserveFrom != null) {
+            t.assignee = TaskItem.normAssignee(preserveFrom.assignee);
+        }
+        if (o.has("ai_state")) {
+            t.aiState = o.isNull("ai_state") ? null : o.optString("ai_state", null);
+            if (t.aiState != null && t.aiState.isEmpty()) t.aiState = null;
+        } else if (preserveFrom != null) {
+            t.aiState = preserveFrom.aiState;
         }
         return t;
     }

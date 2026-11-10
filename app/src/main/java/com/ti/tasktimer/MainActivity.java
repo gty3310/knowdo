@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private boolean appliedEn;
     private TextView nowTitleView;
     private TextView nowRemainView;
+    private TextView nowPrincipleView;
     private TextView accountView;   // 今日时间账（v1.23.0，任务页最上方）
     private TextView overflowView;  // 时间账下方的点名行（排不下的必干），无溢出时藏
     private TextView dueView;       // 时间账下的到期小字行（v1.26.2），无到期非必做时藏
@@ -80,6 +81,9 @@ public class MainActivity extends Activity {
     private TextView fabView;
     private boolean listDragging; // 主页行正被拖向日历时，整表重画让路（拖完再画）
     private final java.util.Map<String, Integer> splitScheduled = new java.util.HashMap<>(); // 分屏时今日已排：taskId → 最早开始分钟
+    // ---- v1.74.0 行页「做任务的人」筛选：0 全部 / 1 我本人 / 2 我的 AI（只作用于本页呈现，不持久化） ----
+    private int assigneeFilter = 0;
+    private final TextView[] asgFilterChips = new TextView[3];
     // ---- v1.57.0 行页：日期主轴排序＋「未排期」小标 ----
     private String listLogicToday; // 本轮渲染用的逻辑今天（Rollover 口径），renderTable 每轮刷新
     private final java.util.Set<String> todayBlockIds = new java.util.HashSet<>(); // 今日日程里有块的 taskId（不限分屏形态，只读 schedule）
@@ -215,6 +219,9 @@ public class MainActivity extends Activity {
                 LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
             }
         } catch (Exception ignored) { }
+        // 每日成绩单定格（v1.76.0）：跨过日界后的首次活动把昨天及此前未定格的
+        // 日期逐日定格（本地先行＋后台线程，ScoreDaily 内部自守卫，重复调无副作用）
+        try { ScoreDaily.sealAsync(this); } catch (Exception ignored) { }
         // 晨间首填（v1.16.0；v1.17.0 起另有晨间门首触全屏拉起，本入口保留）：
         // 开关开着且当前 session 未完成 → 先进晨间页，填完才回来
         // （排在衔接守卫之前：晨间页回来后 onResume 会再走一遍正常流程）
@@ -487,6 +494,16 @@ public class MainActivity extends Activity {
         nowRemainView.setPadding(dp(10), 0, 0, 0);
         strip.addView(nowRemainView);
         content.addView(strip);
+        // 当前任务的主原则细行（v1.75.0，F2）：贴在当前任务细条下方，只在
+        // 计时/暂停中且该任务有主原则时出现，refreshStatus 每秒顺手刷新。
+        nowPrincipleView = new TextView(this);
+        nowPrincipleView.setTextSize(12);
+        nowPrincipleView.setTextColor(skinSub());
+        nowPrincipleView.setSingleLine(true);
+        nowPrincipleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        nowPrincipleView.setPadding(dp(16), 0, dp(16), dp(6));
+        nowPrincipleView.setVisibility(View.GONE);
+        content.addView(nowPrincipleView);
         View stripLine = new View(this);
         stripLine.setBackgroundColor(skinLine());
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
@@ -528,6 +545,27 @@ public class MainActivity extends Activity {
         planEntry.setPadding(dp(16), dp(10), dp(16), dp(10));
         planEntry.setOnClickListener(v -> startActivity(new Intent(this, TodayPlanActivity.class)));
         content.addView(planEntry);
+
+        // 「做任务的人」筛选（v1.74.0，F4）：任务表上方一行小 chip（与展开区
+        // chip 同款样式），全部／我本人／我的 AI；只过滤本页呈现（含下方历史
+        // 分组），不改数据、不影响其他页；状态只在本次打开期间保持。
+        LinearLayout asgFilterRow = new LinearLayout(this);
+        asgFilterRow.setOrientation(LinearLayout.HORIZONTAL);
+        asgFilterRow.setGravity(Gravity.CENTER_VERTICAL);
+        asgFilterRow.setPadding(dp(16), dp(2), dp(16), dp(8));
+        final String[] asgFilterNames = {Strings.en() ? "All" : "全部",
+                Strings.en() ? "Mine" : "我本人", Strings.en() ? "My AI" : "我的 AI"};
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            asgFilterChips[i] = chip(asgFilterNames[i], i == assigneeFilter, v -> {
+                if (assigneeFilter == idx) return;
+                assigneeFilter = idx;
+                paintAsgFilter();
+                renderTable();
+            });
+            asgFilterRow.addView(asgFilterChips[i]);
+        }
+        content.addView(asgFilterRow);
 
         // 内容区分屏行（v1.18.0）：左＝表格区（权重 1），右＝日历容器（默认藏）。
         // 日历不再盖在 root 上：它只占日程页内容区、永远在底部三 Tab 之上；
@@ -1235,8 +1273,37 @@ public class MainActivity extends Activity {
         if (liveLeftView != null && TimerState.isRunning(this)) {
             liveLeftView.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
         }
+        updateNowPrinciple();
         updateDrawerAccount();
         refreshTimeAccount();
+    }
+
+    /** 主原则展示文案（v1.75.0，F2）：「原则 · 名：一句话（等 N 条）」；
+     * 无主原则/名解析不到返回 null（调用方整行不画）。 */
+    private String mainPrincipleText(String taskId) {
+        ZhiPage.TaskPrinciple tp = ZhiPage.mainPrincipleForTask(this, taskId);
+        if (tp == null || tp.name == null || tp.name.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append(Strings.en() ? "Principle · " : "原则 · ").append(tp.name);
+        if (tp.line != null && !tp.line.isEmpty()) sb.append("：").append(tp.line);
+        if (tp.total > 1) sb.append(Strings.en() ? " (+" + (tp.total - 1) + " more)"
+                : "（等 " + tp.total + " 条）");
+        return sb.toString();
+    }
+
+    /** 当前任务细条下的主原则行：只在计时/暂停中出现，跟随当前任务。 */
+    private void updateNowPrinciple() {
+        if (nowPrincipleView == null) return;
+        String tid = null;
+        if (TimerState.isRunning(this)) tid = TimerState.taskId(this);
+        else if (TimerState.pausedTaskId(this) != null) tid = TimerState.pausedTaskId(this);
+        String txt = tid == null || tid.isEmpty() ? null : mainPrincipleText(tid);
+        if (txt == null) {
+            nowPrincipleView.setVisibility(View.GONE);
+        } else {
+            nowPrincipleView.setText(txt);
+            nowPrincipleView.setVisibility(View.VISIBLE);
+        }
     }
 
     /**
@@ -1479,6 +1546,7 @@ public class MainActivity extends Activity {
                 java.util.Collections.reverseOrder());
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.doneDates == null) continue;
+            if (!assigneeFilterMatch(t)) continue; // 历史分组同筛选口径（F4）
             for (String d : t.doneDates) {
                 if (d != null && d.compareTo(today) < 0) {
                     byDate.computeIfAbsent(d, k -> new ArrayList<>()).add(t);
@@ -1506,6 +1574,7 @@ public class MainActivity extends Activity {
      */
     private java.util.List<TaskItem> listPageSorted() {
         java.util.List<TaskItem> v = store.visibleSorted();
+        if (assigneeFilter != 0) v.removeIf(t -> !assigneeFilterMatch(t)); // F4 筛选只作用于本页
         final String lt = listLogicToday != null ? listLogicToday : Rollover.logicalToday(this);
         v.sort((a, b) -> {
             int da = a.isDoneToday() ? 1 : 0, db = b.isDoneToday() ? 1 : 0;
@@ -1717,8 +1786,10 @@ public class MainActivity extends Activity {
 
         // 分屏形态专属（v1.18.0）：行首 play 按钮——点一下直接开始/暂停这个任务，
         // 不必展开、不必回主页；走的还是 onPlay（与展开区主 chip 同一路径、同一切换语义）。
+        // 给 AI 做的任务不画 play 钮（v1.74.0：不可计时）；正在计时的任务若被改成
+        // AI 仍要能暂停，那种边角保留按钮（isRunningThis/isPausedThis 时照画）。
         TextView playBtn = null;
-        if (calOpen) {
+        if (calOpen && (!t.isAi() || isRunningThis || isPausedThis)) {
             playBtn = new TextView(this);
             playBtn.setText(isRunningThis ? "⏸" : "▶");
             playBtn.setTextSize(14);
@@ -1762,7 +1833,8 @@ public class MainActivity extends Activity {
         if (expanded) colV.addView(expansionView(t, done, isRunningThis, isPausedThis));
         // 分屏拖拽（v1.18.0）：未完成、且未排进今日计划的行可横拖进右侧日历。
         // 观察式监听只旁观手势、不接管行内点击/勾选/长按（见 RowDragObserver）。
-        if (calOpen && calendarPanel != null && !done && !splitScheduled.containsKey(t.id)) {
+        // 给 AI 做的任务不拖（v1.74.0：拖进日历＝排进日程，与不进排程口径冲突）。
+        if (calOpen && calendarPanel != null && !done && !t.isAi() && !splitScheduled.containsKey(t.id)) {
             RowDragObserver obs = new RowDragObserver(t, rowRoot);
             attachDragObserver(row, obs, playBtn);
         }
@@ -1782,8 +1854,8 @@ public class MainActivity extends Activity {
                 FrameLayout cell = new FrameLayout(this);
                 cell.setLayoutParams(new LinearLayout.LayoutParams(colPx(c),
                         LinearLayout.LayoutParams.WRAP_CONTENT));
-                v.setLayoutParams(new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+                v.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
                 String titleText = t.title
                         + (isPausedThis ? Strings.pausedTag() : "");
                 Integer plannedMin = (calOpen && !done) ? splitScheduled.get(t.id) : null;
@@ -1828,7 +1900,38 @@ public class MainActivity extends Activity {
                     expandedTaskId = expanded ? null : t.id;
                     renderTable();
                 });
-                cell.addView(v);
+                // 标题与关联小字（v1.71.0，F4）竖排进内层：小字读知页本地缓存，
+                // 有关联才画、没有就整行不出现、绝不等数据阻塞列表渲染；只显示不可点
+                LinearLayout cellInner = new LinearLayout(this);
+                cellInner.setOrientation(LinearLayout.VERTICAL);
+                cellInner.setLayoutParams(new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+                cellInner.addView(v);
+                String linkLine = ZhiPage.taskLinkLine(this, t.id);
+                if (linkLine != null) {
+                    TextView lv = new TextView(this);
+                    lv.setText(linkLine);
+                    lv.setTextSize(11);
+                    lv.setTextColor(Ui.sub(this));
+                    lv.setMaxLines(1);
+                    lv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    lv.setPadding(dp(21), dp(1), dp(16), 0);
+                    cellInner.addView(lv);
+                }
+                if (t.isAi()) {
+                    // 给 AI 做的标记（v1.74.0，F3）：朱砂「AI」＋状态小字，与关联
+                    // 小字同位同法（只显示、不可点，整行点击仍是展开）
+                    String st = TaskItem.aiStateLabel(t.aiState, Strings.en());
+                    TextView av = new TextView(this);
+                    av.setText(st == null ? "AI" : "AI · " + st);
+                    av.setTextSize(11);
+                    av.setTextColor(Ui.accent(this));
+                    av.setMaxLines(1);
+                    av.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    av.setPadding(dp(21), dp(1), dp(16), 0);
+                    cellInner.addView(av);
+                }
+                cell.addView(cellInner);
                 cell.addView(prioDot(t.priority)); // v1.58.0：优先级圆点（替代原 ★ 前缀，四档全标）
                 TextView chev = new TextView(this);
                 chev.setText("›");
@@ -1943,6 +2046,19 @@ public class MainActivity extends Activity {
         note.setOnClickListener(v -> dialogNote(t));
         exp.addView(note);
 
+        // 主原则（v1.75.0，F2）：展开时看得见这件任务最贴切的那条原则——
+        // 名＋一句话版，多条时「等 N 条」带过；无原则关联整行不出现。
+        // 数据走知页本地缓存，只读不阻塞渲染。
+        String mpLine = mainPrincipleText(t.id);
+        if (mpLine != null) {
+            TextView mp = new TextView(this);
+            mp.setText(mpLine);
+            mp.setTextSize(13);
+            mp.setTextColor(Ui.text(this));
+            mp.setPadding(0, dp(7), 0, 0);
+            exp.addView(mp);
+        }
+
         // 每日重复任务：已用与段数都只算今天（v1.65.0，todayCountForTask 内部已含
         // 「打开段是今天开的」那一段，与 todayMsForTask 同口径，不再另加）；
         // 非每日任务保持全历史累计＋打开段 +1
@@ -1972,28 +2088,20 @@ public class MainActivity extends Activity {
         chips.setPadding(0, dp(10), 0, 0);
         String primary = isRunningThis ? Strings.chipPause()
                 : isPausedThis ? Strings.chipResume() : Strings.chipStart();
-        chips.addView(chip(primary, true, v -> onPlay(t)));
+        if (t.isAi() && !isRunningThis && !isPausedThis) {
+            // 给 AI 做的任务不可开始计时（v1.74.0）：展开区主钮换成状态钮，点它只提示
+            chips.addView(chip("AI", true, v -> toast(Strings.en()
+                    ? "This task is for the AI to do" : "这是给 AI 做的任务")));
+        } else {
+            chips.addView(chip(primary, true, v -> onPlay(t)));
+        }
         chips.addView(chip(Strings.chipEdit(), false, v -> TaskEditSheet.showEdit(this, store, t,
-                new TaskEditSheet.Host() {
-                    @Override public void onSaved(TaskItem saved, boolean created) {
-                        adapter.notifyDataSetChanged();
-                        refreshStatus();
-                    }
-                    @Override public void onStartNow(TaskItem saved, boolean created) {
-                        adapter.notifyDataSetChanged();
-                        refreshStatus();
-                        startTaskNow(saved);
-                    }
-                    @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
-                    @Override public void onResetTimer(TaskItem task) { resetTask(task); }
-                })));
+                taskEditHost())));
         chips.addView(chip(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
         if (isRunningThis) {
-            chips.addView(chip(Strings.chipPlus15(), false, v -> {
-                TimerService.extendTimer(MainActivity.this, 15 * 60);
-                toast(Strings.en() ? "Extended by 15 minutes" : "已加时 15 分钟");
-                handler.postDelayed(() -> { renderTable(); refreshStatus(); }, 650);
-            }));
+            // +15 先过加时动机门（v1.72.0）：门内答完直接加时，回本页时 onResume 会重画
+            chips.addView(chip(Strings.chipPlus15(), false, v ->
+                    MotiveGate.launchExtend(MainActivity.this, 15 * 60)));
         }
         chips.addView(chip(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
             if (done) { t.markUndone(); StartBaseline.clearCompleted(MainActivity.this, t.id); }
@@ -2119,6 +2227,33 @@ public class MainActivity extends Activity {
             });
         }
         b.show();
+    }
+
+    /** 「做任务的人」筛选 chip 选中态重画（与 chip() 的 filled/outline 样式一致）。 */
+    private void paintAsgFilter() {
+        for (int i = 0; i < asgFilterChips.length; i++) {
+            TextView c = asgFilterChips[i];
+            if (c == null) continue;
+            boolean on = i == assigneeFilter;
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setCornerRadius(dp(17));
+            if (on) {
+                g.setColor(Ui.accent(this));
+                c.setTextColor(Ui.onAccent(this));
+            } else {
+                g.setColor(Ui.surface(this));
+                g.setStroke(1, Ui.line(this));
+                c.setTextColor(Ui.text(this));
+            }
+            c.setBackground(g);
+        }
+    }
+
+    /** 筛选口径（F4）：全部=都看；我本人=只 self；我的 AI=只 ai。 */
+    private boolean assigneeFilterMatch(TaskItem t) {
+        if (assigneeFilter == 1) return !t.isAi();
+        if (assigneeFilter == 2) return t.isAi();
+        return true;
     }
 
     private TextView chip(String label, boolean filled, View.OnClickListener cl) {
@@ -2274,14 +2409,20 @@ public class MainActivity extends Activity {
      *  原任务直接停表落盘，不经暂停卡。 */
     private void resetTask(final TaskItem t) {
         StartBaseline.markReset(this, t.id); // 重置＝抵扣基数清零（v1.21.1），必须在起表前打戳
-        startTaskTimer(t);
-        toast("已重置，从 0 重新开始：" + t.title);
+        if (startTaskTimer(t)) toast("已重置，从 0 重新开始：" + t.title);
     }
 
-    private void startTaskTimer(TaskItem t) {
+    /** 开始计时的总闸（onPlay 的开始/切换、立刻开始、重置都汇到这里）。
+     *  给 AI 做的任务在这里拦下（v1.74.0）：只提示一句、不进计时，返回 false。 */
+    private boolean startTaskTimer(TaskItem t) {
+        if (t.isAi()) {
+            toast(Strings.en() ? "This task is for the AI to do" : "这是给 AI 做的任务");
+            return false;
+        }
         // v1.26.0：截图只走无障碍通道，开始计时不再请求任何录屏授权，直接开表；
         // 无障碍没就绪时守卫本次静默不采样（分流在 TimerService→无障碍服务入口）
         doStartTaskTimer(t);
+        return true;
     }
 
     private void doStartTaskTimer(TaskItem t) {
@@ -2298,6 +2439,36 @@ public class MainActivity extends Activity {
      *  只去掉暂停分支——正在计时的就是它＝已经开始了，不重启也不弹暂停卡；
      *  暂停中的就是它＝按剩余继续（同 onPlay 的继续分支）；其余走 startTaskTimer
      *  （直接切换/全新开始同 ▶）。调用前宿主已按 onSaved 口径刷新过界面。 */
+    /** 任务编辑层宿主（行内「编辑」与知页任务关联行共用同一套：保存刷新、
+     *  立刻开始走 startTaskNow、专注规则/重置计时走既有对话框）。 */
+    private TaskEditSheet.Host taskEditHost() {
+        return new TaskEditSheet.Host() {
+            @Override public void onSaved(TaskItem saved, boolean created) {
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+            }
+            @Override public void onStartNow(TaskItem saved, boolean created) {
+                adapter.notifyDataSetChanged();
+                refreshStatus();
+                startTaskNow(saved);
+            }
+            @Override public void onFocusRule(TaskItem task) { dialogFocus(task); }
+            @Override public void onResetTimer(TaskItem task) { resetTask(task); }
+        };
+    }
+
+    /** 知页人名/原则的任务关联行点开任务（v1.71.0，F3）：与行内编辑同一个编辑层、同宿主。 */
+    public void openTaskEditorFromZhi(TaskItem t) {
+        TaskEditSheet.showEdit(this, store, t, taskEditHost());
+    }
+
+    /** 合一页动机比例节标题跳知页原则（v1.72.0，F3）：先切到知页签（switchTab 内
+     *  会建 zhiPage 并刷新），再让知页打开这条原则的编辑页。 */
+    public void openZhiPrinciple(String principleId) {
+        switchTab(TAB_ZHI);
+        if (zhiPage != null) zhiPage.openPrincipleById(principleId);
+    }
+
     private void startTaskNow(TaskItem t) {
         if (TimerState.isRunning(this)) {
             if (t.id.equals(TimerState.taskId(this))) return;

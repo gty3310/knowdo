@@ -340,9 +340,12 @@ public class MorningActivity extends Activity {
      * 自读型的晨间行（v1.49.0 只读昨日行；v1.66.0 合并改版）：旧版这里只读展示
      * 「昨天读没读」，读全文要去习惯页/朗读页，晨间页里出现两处自读呈现。本版合并
      * 成一处（用户 2026-11-04 亲定）：昨日状态小字＋今天这篇的全文（先显示 20 行、
-     * 超了给展开按钮）＋文下「读完了」按钮——点按经 putLog 记 session 日（今天）
-     * 完成、再点撤销，与提醒型今日块、习惯页、朗读页同一条 putLog 路径、同一个
-     * 完成口径。仍不进 A 节必答（aDone 跳过 read——读没读如实记达成率，不拦开启今天）。
+     * 超了给展开按钮）＋文下「读完了」按钮。
+     * v1.73.0：遍数计数与朗读页同一实现（HabitData.addReadPass/removeReadPass）——
+     * 「读完了」点一次给 session 日（今天）+1 遍，同日多遍多计；旧版的点按切换撤销
+     * 改成长按减一遍（误点纠正）。块内同时显示累计遍数（readTotalCount）。
+     * 完成口径不变（值 >0 即完成）。仍不进 A 节必答（aDone 跳过 read——读没读
+     * 如实记达成率，不拦开启今天）。
      */
     private View readBlock(final HabitData.Habit h, Long yesterdayVal) {
         LinearLayout box = new LinearLayout(this);
@@ -368,6 +371,9 @@ public class MorningActivity extends Activity {
         if (yDone) yst.setTextColor(Ui.green(this));
         yst.setPadding(0, dp(3), 0, 0);
         box.addView(yst);
+        final TextView countsLine = small("", 12);
+        countsLine.setPadding(0, dp(2), 0, 0);
+        box.addView(countsLine);
         final TextView full = new TextView(this);
         full.setText(h.remindText == null || h.remindText.isEmpty()
                 ? s("（还没写要读的全文，去习惯页点习惯名补上）", "(No reading text yet — add it from the habits page)") : h.remindText);
@@ -398,16 +404,26 @@ public class MorningActivity extends Activity {
         final TextView btn = ynButton("");
         Runnable paint = () -> {
             Long v = HabitData.logValue(root, session, h.id);
-            boolean read = v != null && v > 0;
-            btn.setText(read ? s("读完了 ✓ · 点一下撤销", "Finished ✓ · tap to undo") : s("读完了", "Finished reading"));
+            long todayN = v == null ? 0 : v;
+            boolean read = todayN > 0;
+            btn.setText(read
+                    ? s("读完了 ✓ · 今天已读 " + todayN + " 遍（点按再加一遍，长按减一遍）",
+                        "Finished ✓ · " + todayN + " today (tap to add one, long-press to take one back)")
+                    : s("读完了", "Finished reading"));
             paintYn(btn, read, Ui.green(this));
+            countsLine.setText(s("累计 " + HabitData.readTotalCount(root, h.id) + " 遍",
+                    "Total " + HabitData.readTotalCount(root, h.id) + " readings"));
         };
         btn.setOnClickListener(v -> {
-            Long cur = HabitData.logValue(root, session, h.id);
-            if (cur != null && cur > 0) HabitData.removeLog(root, session, h.id);
-            else HabitData.putLog(root, session, h.id, 1L);
+            HabitData.addReadPass(root, session, h.id); // 与朗读页同一计数实现：点一次 +1 遍
             HabitData.save(MorningActivity.this, root); // 边点边存：暂停/被杀不丢
             paint.run();
+        });
+        btn.setOnLongClickListener(v -> {
+            HabitData.removeReadPass(root, session, h.id); // 误点纠正：减一遍（减到 0 移除记录）
+            HabitData.save(MorningActivity.this, root);
+            paint.run();
+            return true;
         });
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);

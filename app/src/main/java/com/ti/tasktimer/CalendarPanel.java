@@ -1178,11 +1178,9 @@ new TaskEditSheet.Host() {
 })));
 chips.addView(chipCal(Strings.chipAlarm(), false, v -> dialogAlarm(t)));
 if (isRunningThis) {
-chips.addView(chipCal(Strings.chipPlus15(), false, v -> {
-TimerService.extendTimer(ctx, 15 * 60);
-toast(Strings.en() ? "Extended by 15 minutes" : "已加时 15 分钟");
-handler.postDelayed(this::afterTaskEdited, 650);
-}));
+// +15 先过加时动机门（v1.72.0）：门内答完直接加时，回面板时 panelStart 会重画
+chips.addView(chipCal(Strings.chipPlus15(), false, v ->
+MotiveGate.launchExtend(host, 15 * 60)));
 }
 chips.addView(chipCal(done ? Strings.chipUndone() : Strings.chipDone(), false, v -> {
 TaskItem c = freshCopyOf(t);

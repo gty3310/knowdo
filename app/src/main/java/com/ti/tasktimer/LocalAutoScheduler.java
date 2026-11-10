@@ -86,7 +86,9 @@ public final class LocalAutoScheduler {
     public static List<Candidate> snapshot(TaskStore store) {
         List<Candidate> out = new ArrayList<>();
         if (store == null) return out;
-        for (TaskItem t : store.tasks) if (!t.deleted) out.add(new Candidate(t));
+        // 给 AI 做的任务不进任何排程候选（v1.74.0）：自动填空档、快速重排、
+        // 今天安排页的排程输入都从这一份快照取，排除收口在此一处
+        for (TaskItem t : store.tasks) if (!t.deleted && !t.isAi()) out.add(new Candidate(t));
         return out;
     }
 

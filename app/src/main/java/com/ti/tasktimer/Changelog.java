@@ -36,6 +36,124 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1770 = new Entry("v1.77.0", "2026-11-10");
+        e1770.add(new Group(s("改进", "Improved"),
+                s("这一版是定位用的：今天安排页页头多了一行小字，报这一页各区域的实际高度",
+                  "This release is for pinpointing a fault: the Plan today header gains a small line reporting the actual heights of this page's regions")));
+        e1770.why = s("这一页的空白修过一次没打中，这次先把证据拿全，再动手修",
+                "This page's blankness was fixed once and missed — this time we gather the evidence first, then fix");
+        e1770.tryIt = s("打开今天安排页，把整页截一张图发给我——图里那行小字会告诉我们空白出在哪一层",
+                "Open Plan today and send a screenshot of the whole page — the small line in it will tell us which layer the blankness sits in");
+        out.add(e1770);
+
+        Entry e1760 = new Entry("v1.76.0", "2026-11-10");
+        e1760.add(new Group(s("新增", "New"),
+                s("合一页的分数能点了：进去看走势曲线，一个月按天看、一年按周看",
+                  "The score on the Oneness page is tappable now: a trend curve inside — by day for a month, by week for a year"),
+                s("曲线可以切换：知行指数、原则践行、动机至善，三条轮着看",
+                  "Three curves to switch between: the unity index, principle practice, and purity of motive")));
+        e1760.add(new Group(s("改进", "Improved"),
+                s("每天的分数会定格存成一张「成绩单」，曲线只读成绩单，攒再久也不卡",
+                  "Each day's score is frozen into a daily report card; the curve reads only those, so it never slows down however much piles up")));
+        e1760.why = s("分数不只看今天，也要看见自己这一路是怎么走过来的",
+                "A score is not only about today — it should show the road you have walked to get here");
+        e1760.tryIt = s("点合一页圆圈里的分数，手指在曲线上滑，看每一周的构成",
+                "Tap the score in the ring on the Oneness page and slide along the curve to see what each week is made of");
+        out.add(e1760);
+
+        Entry e1750 = new Entry("v1.75.0", "2026-11-10");
+        e1750.add(new Group(s("新增", "New"),
+                s("任务完成时会问一句：这件事上，你做到关联的原则了吗——做到了、没做到、没考虑，各记各的",
+                  "When a task finishes, you are asked whether you lived up to its linked principle — did it, didn't, or never thought of it; each answer is kept its own way"),
+                s("「知」的原则列表每条旁边能看到知行合一比例，点进去能看历次践行记录",
+                  "Each principle in Know now shows its unity-of-knowing-and-doing ratio right in the list, and tapping in shows its practice history")));
+        e1750.add(new Group(s("改进", "Improved"),
+                s("加时前的动机自问多了「没考虑」一档，合一页的比例按三档显示",
+                  "The motive self-question before extending gains a third choice — never thought of it — and the Oneness page now breaks the ratio into three"),
+                s("答「没考虑」会撤掉不贴切的原则关联，AI 以后不再这么配",
+                  "Answering that you never thought of it removes an ill-fitting principle link, so the AI will not pair them that way again")));
+        e1750.why = s("原则不是挂在墙上的，是要在每件事上照见自己做没做到",
+                "A principle is not meant to hang on the wall — it is there to mirror, in each task, whether you actually lived it");
+        e1750.tryIt = s("做完一个有关联原则的任务，在完成页答一次，再去原则页看比例变化",
+                "Finish a task that has a linked principle, answer once on the finish page, then open the Principles list to see the ratio move");
+        out.add(e1750);
+
+        Entry e1740 = new Entry("v1.74.0", "2026-11-10");
+        e1740.add(new Group(s("新增", "New"),
+                s("建任务时可以选「给 AI 做」，提交后作者的 AI 助手会在幕后接单开工",
+                  "A new task can be marked \"For the AI\": once saved, the author's AI assistant picks it up and works on it in the background"),
+                s("行页顶部多了「做任务的人」筛选：全部／我本人／我的 AI",
+                  "The Do tab gains a who-does-it filter at the top: All / Mine / My AI")));
+        e1740.add(new Group(s("改进", "Improved"),
+                s("AI 任务带朱砂标记和状态，不排进日程、不占时间账",
+                  "AI tasks carry a vermilion marker and a status; they never enter your schedule or your time budget")));
+        e1740.why = s("有些事不必亲手做，交出去，你只看结果、拍板最后一步",
+                "Some things need not be done by hand — hand them over, review the result, and decide only the final step");
+        e1740.tryIt = s("新建一个任务选「给 AI 做」，过几分钟回来看它变成「进行中」",
+                "Create a task, choose \"AI does it\", and come back in a few minutes to see it turn \"In progress\"");
+        out.add(e1740);
+
+        Entry e1730 = new Entry("v1.73.0", "2026-11-10");
+        e1730.add(new Group(s("新增", "New"),
+                s("自读类习惯在习惯页有了正经的卡片，能直接看到累计读了多少遍",
+                  "Reading habits get a proper card on the Habits tab, with the total number of readings right on it"),
+                s("阅读页点「读完一遍」就累计一遍，同一天读几遍记几遍",
+                  "On the reading page, each tap of \"Finished one reading\" counts one — read it several times in a day and it counts that many")));
+        e1730.add(new Group(s("改进", "Improved"),
+                s("自读全文可以在阅读页直接编辑",
+                  "The reading text can now be edited right on the reading page"),
+                s("云端协助整理的自读全文会自动同步到手机",
+                  "A reading text tidied up in the cloud now syncs to the phone on its own")));
+        e1730.why = s("「每日自读」是个特殊习惯，要找得到、能编辑、记得住一共读了多少遍",
+                "The daily self-reading is a special habit: it must be findable, editable, and remember how many times it has been read in all");
+        e1730.tryIt = s("打开习惯页点「每日自读」，读完点「读完一遍」，看累计遍数加一；晨间页的自读块上也能看到累计遍数",
+                "Open the Habits tab and tap your daily reading; when you finish, tap \"Finished one reading\" and watch the total go up by one — the morning page's reading block shows the total too");
+        out.add(e1730);
+
+        Entry e1720 = new Entry("v1.72.0", "2026-11-09");
+        e1720.add(new Group(s("新增", "New"),
+                s("加时之前，先问一句动机",
+                  "Before extending, one question about motive"),
+                s("每次加时之前，会先出现一句自问「动机至善，私心了无」，点「有」或「没有」都能继续加时",
+                  "Before every extension a self-question appears — pure motive, no selfishness — and tapping Yes or No both let you go on to extend"),
+                s("每次的回答都会记下来，在「合一」页能看到「有」的比例（今日与累计）",
+                  "Every answer is kept, and the Oneness page shows the share of Yes, today and all time"),
+                s("「知」里的原则现在可以和习惯关联",
+                  "Principles in Know can now be linked to habits")));
+        e1720.why = s("加时是最容易掺私心的地方，先问一句动机再加时；回答攒成比例，就能看见自己有多少次是真心在做",
+                "Extending is where selfishness slips in most easily, so ask about motive first; gathered into a ratio, the answers show how often the work is truly wholehearted");
+        e1720.tryIt = s("随便开始一个任务，计时结束或在检查页点加时，先回答自问再选加时时长；然后打开底部「合一」页看比例；在「知」的原则页打开「动机至善，私心了无」可以给它关联一个习惯",
+                "Start any task; when it ends, or when you extend from a check page, answer the question first, then pick how long; then open the Oneness tab at the bottom to see the ratio; on the Know tab, open the principle Pure motive, no selfishness to link it to a habit");
+        out.add(e1720);
+
+        Entry e1710 = new Entry("v1.71.0", "2026-11-06");
+        e1710.add(new Group(s("新增", "New"),
+                s("在任务的编辑页最下面多了「关联」：能把这个任务连到某个人、某条原则，可连多个",
+                  "Task edit pages gain a Links section at the bottom: link a task to a person or a principle - as many as you like"),
+                s("反过来，在人名和原则的页面里也能看到它挂着哪些任务，点一下就打开",
+                  "The other way round too: a person's or a principle's page lists its tasks, and tapping one opens it"),
+                s("任务卡上会带一行小字，写着它关联了谁、哪条原则",
+                  "Task cards carry a small line naming the people and principles they are linked to")));
+        e1710.why = s("任务不再是孤立的一条条：它连着的人和原则，就是你做这件事的来由——把它们连起来，知和行才对得上账",
+                "A task never stands alone: the people and principles behind it are why you do it - linking them is how knowing and doing line up");
+        e1710.tryIt = s("打开《轴心时代》的编辑页，在关联区搜「予然」连上；再去知页打开杨予然，看任务在不在他名下",
+                "Open the Axial Age task's edit page, search for the person in the Links section and link him; then open that person on the Know tab and check the task is listed under him");
+        out.add(e1710);
+
+        Entry e1700 = new Entry("v1.70.0", "2026-11-06");
+        e1700.add(new Group(s("修复", "Fixed"),
+                s("这一页的毛病修了：以前会只剩页头、任务卡画不出来，现在整页按硬尺寸重画",
+                  "This page is fixed: it could end up showing only the header with the task cards missing - the whole page is now drawn with hard layout sizes"),
+                s("页头下面多了一行小字：载入了多少任务、多少段日程、画了多少张卡，一眼能看出数据到没到",
+                  "A small line under the header now shows how many tasks loaded, how many blocks today has, and how many cards were drawn - you can tell at a glance whether the data arrived"),
+                s("万一哪一区画不出来，会在原地写明并能点一下重试，不会再整页静默空白",
+                  "If a section ever fails to draw, it now says so in place and retries on tap instead of leaving the whole page silently blank")));
+        e1700.why = s("你打开今天安排只剩页头、下面全空白——查清了数据都在、坏在画法，这版把整页重画，还让它自己会报信",
+                "You opened Plan today to a header over a blank page - the data was all there, the drawing was at fault; this release redraws the whole page and makes it report its own state");
+        e1700.tryIt = s("打开今天安排页，看页头下那行小字三个数对不对（任务数应是你的任务总数、日程段数应是今天排的段数）；任务卡应全部出现",
+                "Open Plan today and check the three numbers in the small line under the header (tasks should be your total task count, blocks the number of blocks planned for today); all the task cards should show");
+        out.add(e1700);
+
         Entry e1690 = new Entry("v1.69.0", "2026-11-05");
         e1690.add(new Group(s("改进", "Improved"),
                 s("检查变密了：随机 10–20 秒查一次（原来 15–45 秒）",

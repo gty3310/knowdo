@@ -90,9 +90,10 @@ public final class ZhixingPage {
         center.addView(cap);
         ringBox.addView(center, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        // 点圆环进指数详情页（一周/一月/一年回算，v1.28.0 feature 5）
+        // 点圆环进走势页（v1.76.0，每日成绩单曲线）；旧指数详情页（一周/一月/
+        // 一年回算，v1.28.0）从走势页底部入口仍可达
         ringBox.setOnClickListener(v -> act.startActivity(
-                new android.content.Intent(act, ZhixingDetailActivity.class)));
+                new android.content.Intent(act, TrendActivity.class)));
         col.addView(ringBox, rlp);
 
         TextView delta = new TextView(act);
@@ -106,7 +107,7 @@ public final class ZhixingPage {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         dlp.topMargin = dp(6);
         col.addView(delta, dlp);
-        TextView hint = small(s("点圆环看详情 · 一周 / 一月 / 一年", "Tap the ring for details · week / month / year"), 11);
+        TextView hint = small(s("点圆环看走势 · 一个月按天 / 一年按周", "Tap the ring for the trend · daily for a month / weekly for a year"), 11);
         hint.setGravity(Gravity.CENTER);
         col.addView(hint);
         TextView define = small(s("知 ＝ 立下的志与承诺 · 行 ＝ 实际做到的事", "Knowing = what you aspired to and promised · Doing = what you actually did"), 11.5f);
@@ -131,6 +132,29 @@ public final class ZhixingPage {
             cold.setGravity(Gravity.CENTER);
             col.addView(cold);
         }
+
+        // ---- 动机自问比例（v1.72.0，F3） ----
+        // 数据＝zhi_events 本地缓存里这条原则的 motive_check 事件：进页面先用本地
+        // 数即时画，再拉云端合并刷新这两行（拉取失败静默用本地数）。只读展示，
+        // 不碰知行指数的任何算法。点标题跳知页这条原则。
+        View motiveTitle = sectionTitle(MotiveGate.QUESTION);
+        motiveTitle.setOnClickListener(v -> {
+            if (act instanceof MainActivity) {
+                ((MainActivity) act).openZhiPrinciple(MotiveGate.PRINCIPLE_ID);
+            }
+        });
+        col.addView(motiveTitle);
+        final TextView motiveToday = small("", 13);
+        final TextView motiveAll = small("", 13);
+        col.addView(motiveToday);
+        col.addView(motiveAll);
+        final Runnable paintMotive = () -> {
+            int[] st = MotiveGate.stats(act);
+            motiveToday.setText(motiveLine3(s("今日", "Today"), st[0], st[1], st[2]));
+            motiveAll.setText(motiveLine3(s("累计", "All time"), st[3], st[4], st[5]));
+        };
+        paintMotive.run();
+        ZhiPage.refreshEvents(act, paintMotive);
 
         // ---- 本周构成 ----
         col.addView(sectionTitle(s("本周构成", "This week's makeup")));
@@ -221,6 +245,30 @@ public final class ZhixingPage {
             note.setPadding(0, dp(8), 0, 0);
             col.addView(note);
         }
+    }
+
+    /** 动机比例一行：今日/累计 有 X 次／共 Y 次（Z%）；没有记录时显示 0／0。 */
+    private String motiveLine(String label, int yes, int total) {
+        if (total <= 0) return label + " 0／0";
+        int pct = (int) Math.round(yes * 100.0 / total);
+        if (Strings.en()) return label + " yes " + yes + " of " + total + " (" + pct + "%)";
+        return label + " 有 " + yes + " 次／共 " + total + " 次（" + pct + "%）";
+    }
+
+    /** 动机三档一行（v1.75.0）：有／没考虑／没有 各带占比，分母＝三档之和。 */
+    private String motiveLine3(String label, int yes, int mid, int no) {
+        int total = yes + mid + no;
+        if (total <= 0) return label + (Strings.en() ? " no records yet" : " 暂无记录");
+        if (Strings.en()) {
+            return label + " yes " + yes + " (" + pctOf(yes, total) + "%) · unconsidered "
+                    + mid + " (" + pctOf(mid, total) + "%) · no " + no + " (" + pctOf(no, total) + "%)";
+        }
+        return label + " 有 " + yes + "（" + pctOf(yes, total) + "%）· 没考虑 " + mid
+                + "（" + pctOf(mid, total) + "%）· 没有 " + no + "（" + pctOf(no, total) + "%）";
+    }
+
+    private static int pctOf(int part, int total) {
+        return total <= 0 ? 0 : (int) Math.round(part * 100.0 / total);
     }
 
     // ---------------- 构成行 ----------------

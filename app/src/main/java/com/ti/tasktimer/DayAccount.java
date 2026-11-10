@@ -45,6 +45,7 @@ public final class DayAccount {
         if (store != null) {
             for (TaskItem t : store.tasks) {
                 if (t.deleted) continue;
+                if (t.isAi()) continue; // 给 AI 做的任务不占用户的时间账（v1.74.0，主账与到期小账都不进）
                 if (t.isDoneToday()) continue;
                 if ("must".equals(t.priority)) {
                     sum += Math.max(1, t.durationMinutes);
