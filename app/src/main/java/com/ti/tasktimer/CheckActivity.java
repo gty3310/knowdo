@@ -39,6 +39,10 @@ public class CheckActivity extends Activity {
     // 加时动机门（v1.72.0）：本页本次是否已过门、门后要回去的选时长步、过半页加时区状态
     private boolean motivePassed;
     private Runnable extendBack;
+    // 原则陪跑问询（v1.75.0，F3）：本页（本次完成）是否已答、答了什么——
+    // 答过就只显已记态，同一次完成不重复问；页重建（加时回选时长步）也记得。
+    private boolean principleAnswered;
+    private String principleAnswerValue = "";
     private LinearLayout halfAddBox;
     private int halfAddedMin;
     private TextView halfAddedLine;
@@ -440,6 +444,7 @@ public class CheckActivity extends Activity {
         title(Strings.chkEndTitle());
         subtitle(Strings.chkEndSub(taskName()));
         addAspiration();
+        addPrincipleCheck();
         addChatZone();
         Runnable doneAct = this::completeWholeTask;
         Button done = bigButton(Strings.chkDone(), true, "Enter");
@@ -483,6 +488,80 @@ public class CheckActivity extends Activity {
             } catch (NumberFormatException ignored) { }
         });
         root.addView(customBtn);
+    }
+
+    /**
+     * 原则陪跑问询（v1.75.0，F3）：结束页在志与聊天区之间加一段——当前任务的
+     * 主原则（名＋一句话版）＋一句「这件事上，你做到这条了吗」＋三个按钮
+     * （做到了／没做到／没考虑）。**不强制**：不答直接点「做完了」照常完成、
+     * 不留记录、不阻塞任何流程；答了走 ZhiPage.recordPrincipleCheck（事件
+     * 入待同步队列、本地先行；「没考虑」同时撤掉这条误判关联）。本页本次
+     * 只问一次（答后换已记态）；没有主原则的任务整段不出现。
+     */
+    private void addPrincipleCheck() {
+        final String taskId = TimerState.taskId(this);
+        if (taskId == null || taskId.isEmpty()) return;
+        final ZhiPage.TaskPrinciple tp = ZhiPage.mainPrincipleForTask(this, taskId);
+        if (tp == null || tp.name == null || tp.name.isEmpty()) return;
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        root.addView(box);
+        buildPrincipleCheck(box, tp, taskId);
+    }
+
+    private void buildPrincipleCheck(final LinearLayout box,
+                                     final ZhiPage.TaskPrinciple tp, final String taskId) {
+        box.removeAllViews();
+        if (principleAnswered) {
+            TextView done = new TextView(this);
+            done.setText((Strings.en() ? "Principle noted · " : "已记下 · ") + principleAnswerValue);
+            done.setTextSize(14);
+            done.setTextColor(Ui.sub(this));
+            done.setGravity(Gravity.CENTER);
+            done.setPadding(0, dp(4), 0, dp(14));
+            box.addView(done);
+            return;
+        }
+        TextView name = new TextView(this);
+        name.setText(tp.name);
+        name.setTextSize(19);
+        name.setTypeface(Typeface.SERIF, Typeface.BOLD);
+        name.setTextColor(Ui.text(this));
+        name.setGravity(Gravity.CENTER);
+        box.addView(name);
+        if (tp.line != null && !tp.line.isEmpty()) {
+            TextView line = new TextView(this);
+            line.setText(tp.line);
+            line.setTextSize(14);
+            line.setTextColor(Ui.sub(this));
+            line.setGravity(Gravity.CENTER);
+            line.setPadding(0, dp(5), 0, 0);
+            box.addView(line);
+        }
+        TextView q = new TextView(this);
+        q.setText(Strings.en() ? "On this task, did you live up to it?"
+                : "这件事上，你做到这条了吗");
+        q.setTextSize(15);
+        q.setTextColor(Ui.text(this));
+        q.setGravity(Gravity.CENTER);
+        q.setPadding(0, dp(12), 0, dp(10));
+        box.addView(q);
+        String[] values = {ZhiPage.PC_DONE, ZhiPage.PC_MISSED, ZhiPage.PC_NOCARE};
+        String[] labels = {Strings.en() ? "Did it" : ZhiPage.PC_DONE,
+                Strings.en() ? "Didn't" : ZhiPage.PC_MISSED,
+                Strings.en() ? "Didn't think of it" : ZhiPage.PC_NOCARE};
+        for (int i = 0; i < values.length; i++) {
+            final String val = values[i];
+            Button b = bigButton(labels[i], i == 0, null);
+            b.setOnClickListener(v -> {
+                ZhiPage.recordPrincipleCheck(CheckActivity.this, tp.id, taskId, val);
+                principleAnswered = true;
+                principleAnswerValue = val;
+                buildPrincipleCheck(box, tp, taskId);
+            });
+            box.addView(b);
+            spacerSmall();
+        }
     }
 
     /**

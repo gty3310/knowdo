@@ -26,6 +26,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -1089,6 +1090,7 @@ public final class ZhiPage {
                 arr.put(e);
                 saveEventsCache(c, arr);
             }
+            if (KIND_PRINCIPLE_CHECK.equals(kind)) recomputePrincipleStats(c);
             JSONObject op = new JSONObject();
             op.put("k", "event_add");
             op.put("eventId", UUID.randomUUID().toString());
@@ -1097,14 +1099,29 @@ public final class ZhiPage {
         } catch (Exception ignored) { }
         flushLinkOps(c);
     }
-    /** 拉云端事件并入本地缓存（合一页刷新比例用）：失败静默保留本地数，done 总回主线程。 */
+    private static final String EVENTS_WM_KEY = "events_wm";
+    /**
+     * 拉云端事件并入本地缓存（合一页/原则页刷新比例用）：失败静默保留本地数，
+     * done 总回主线程。v1.75.0 起增量拉取：按上次拉到的时间水位只取新增
+     * （水位回退 1 小时作重叠窗，防多端时钟差漏拉；重叠部分靠 eventKey 去重），
+     * 合并后水位推进到本批最大 ts。首次（无水位）才全量。
+     */
     public static void refreshEvents(final Context c, final Runnable done) {
         final Context app = c.getApplicationContext();
         new Thread(() -> {
             try {
                 if (Supa.isLoggedIn(app)) {
-                    JSONArray rows = Supa.restGet(app, TB_EVENTS
-                            + "?select=ts,subject_type,subject_id,kind,value,source&order=ts.asc");
+                    SharedPreferences zp = app.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+                    String wm = zp.getString(EVENTS_WM_KEY, "");
+                    String path = TB_EVENTS
+                            + "?select=ts,subject_type,subject_id,kind,value,source&order=ts.asc";
+                    if (!wm.isEmpty()) {
+                        long wmMs = parseIsoMs(wm);
+                        String from = wmMs > 0 ? isoOfMs(Math.max(0, wmMs - 3600_000L)) : wm;
+                        path += "&ts=gte." + URLEncoder.encode(from, "UTF-8");
+                    }
+                    JSONArray rows = Supa.restGet(app, path);
+                    String maxTs = wm;
                     synchronized (ZhiPage.class) {
                         JSONArray arr = eventsCache(app);
                         Set<String> seen = new HashSet<>();
@@ -1117,6 +1134,7 @@ public final class ZhiPage {
                             JSONObject r = rows.getJSONObject(i);
                             JSONObject e = new JSONObject();
                             String ts = r.optString("ts", "");
+                            if (!ts.isEmpty() && ts.compareTo(maxTs) > 0) maxTs = ts;
                             e.put("ts", ts);
                             e.put("tsMs", parseIsoMs(ts));
                             e.put("subject_type", r.optString("subject_type", ""));
@@ -1128,6 +1146,10 @@ public final class ZhiPage {
                         }
                         if (changed) saveEventsCache(app, arr);
                     }
+                    if (!maxTs.isEmpty() && !maxTs.equals(wm)) {
+                        zp.edit().putString(EVENTS_WM_KEY, maxTs).apply();
+                    }
+                    recomputePrincipleStats(app);
                 }
             } catch (Exception ignored) {
                 // 拉取失败：静默用本地缓存（合一页口径），不弹错
@@ -1136,6 +1158,106 @@ public final class ZhiPage {
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(done);
             }
         }).start();
+    }
+
+    // ---------------- 原则陪跑（v1.75.0）：principle_check 事件与聚合 ----------------
+    public static final String KIND_PRINCIPLE_CHECK = "principle_check";
+    public static final String PC_DONE = "做到了";
+    public static final String PC_MISSED = "没做到";
+    public static final String PC_NOCARE = "没考虑";
+    private static final String PSTAT_KEY = "principle_stats";
+
+    /**
+     * 原则践行聚合重算：扫本地事件缓存，把每条原则的 {做到了, 没做到} 计数
+     * 落盘成一份小汇总（'没考虑'不进统计）。只在缓存变更时调用（记事件后、
+     * 增量拉取合并后）；列表渲染只读这份汇总，绝不逐条扫原始事件现算。
+     */
+    public static void recomputePrincipleStats(Context c) {
+        try {
+            JSONObject map = new JSONObject();
+            JSONArray arr = eventsCache(c);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject e = arr.optJSONObject(i);
+                if (e == null || !KIND_PRINCIPLE_CHECK.equals(e.optString("kind", ""))) continue;
+                String v = e.optString("value", "");
+                boolean doneIt = PC_DONE.equals(v);
+                if (!doneIt && !PC_MISSED.equals(v)) continue;
+                String pid = e.optString("subject_id", "");
+                if (pid.isEmpty()) continue;
+                JSONArray pair = map.optJSONArray(pid);
+                if (pair == null) { pair = new JSONArray(); pair.put(0); pair.put(0); }
+                pair.put(doneIt ? 0 : 1, pair.optInt(doneIt ? 0 : 1) + 1);
+                map.put(pid, pair);
+            }
+            c.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+                    .putString(PSTAT_KEY, map.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    /** 某原则的 {做到了, 没做到}（读聚合汇总；汇总还没建过时先重算一次）。 */
+    public static int[] principleCheckStats(Context c, String principleId) {
+        try {
+            String raw = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                    .getString(PSTAT_KEY, null);
+            if (raw == null) {
+                recomputePrincipleStats(c);
+                raw = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                        .getString(PSTAT_KEY, "{}");
+            }
+            JSONArray pair = new JSONObject(raw).optJSONArray(principleId);
+            if (pair == null) return new int[]{0, 0};
+            return new int[]{pair.optInt(0), pair.optInt(1)};
+        } catch (Exception ignored) { return new int[]{0, 0}; }
+    }
+
+    /** 任务的「主原则」：关联了多条原则时取关联缓存顺序里的第一条（links 无
+     *  created_at 可用，沿 taskLinkNames 的既有顺序口径）；total＝该任务关联
+     *  的原则总数。无原则关联返回 null。line＝一句话版（正文首行；标题即
+     *  正文首行时为空）。 */
+    public static final class TaskPrinciple {
+        public String id = "", name = "", line = "";
+        public int total;
+    }
+    public static TaskPrinciple mainPrincipleForTask(Context c, String taskId) {
+        List<Principle> prs = null;
+        TaskPrinciple out = null;
+        int total = 0;
+        for (Link l : linksCache(c)) {
+            if (!l.involves(T_TASK, taskId)) continue;
+            if (!T_PRINCIPLE.equals(l.otherType(T_TASK, taskId))) continue;
+            String oid = l.otherId(T_TASK, taskId);
+            total++;
+            if (out == null) {
+                out = new TaskPrinciple();
+                out.id = oid;
+                if (prs == null) prs = principlesCache(c);
+                for (Principle p : prs) {
+                    if (!p.id.equals(oid)) continue;
+                    out.name = displayOf(p);
+                    String fl = firstLine(p.body);
+                    out.line = fl.equals(out.name) ? "" : fl;
+                    break;
+                }
+            }
+        }
+        if (out == null) return null;
+        out.total = total;
+        return out;
+    }
+
+    /**
+     * 完成页问询记账（v1.75.0，F3）：事件走既有 event_add 队列（本地先行、
+     * 幂等补传），source＝'task_done:<taskId>'；答「没考虑」＝这条关联是
+     * 误判——经既有待同步队列解除该任务与该原则的这一条关联（本地先行），
+     * 且该事件不进 F4 的比例分母（聚合时按 value 排除）。
+     */
+    public static void recordPrincipleCheck(Context c, String principleId,
+                                            String taskId, String value) {
+        recordEventExternal(c, T_PRINCIPLE, principleId, KIND_PRINCIPLE_CHECK,
+                value, "task_done:" + taskId);
+        if (PC_NOCARE.equals(value)) {
+            removeLinkExternal(c, T_TASK, taskId, T_PRINCIPLE, principleId);
+        }
     }
     private static long parseIsoMs(String iso) {
         try { return java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli(); }
@@ -1572,6 +1694,12 @@ public final class ZhiPage {
         box.addView(title);
         String prev = firstLine(p.body);
         if (!prev.isEmpty() && !prev.equals(displayOf(p))) box.addView(bodyPreview(p.body));
+        String ratio = principleRatioText(p.id);
+        if (ratio != null) {
+            TextView rv = tv(ratio, 12, subC());
+            rv.setPadding(0, dp(3), 0, 0);
+            box.addView(rv);
+        }
         FlowLayout meta = metaRow();
         addTagChips(meta, p.tags);
         for (String pid : linkedIds(T_PRINCIPLE, p.id, T_PERSON)) {
@@ -1604,6 +1732,12 @@ public final class ZhiPage {
             stv.setPadding(dp(8), 0, 0, 0);
             row.addView(stv);
         }
+        String ratio = principleRatioText(p.id);
+        if (ratio != null) {
+            TextView rv = tv(ratio, 11.5f, subC());
+            rv.setPadding(dp(8), 0, 0, 0);
+            row.addView(rv);
+        }
         if (!p.tags.isEmpty()) {
             TextView tg = tv(TextUtils.join(" ", p.tags), 11, weakC());
             tg.setMaxLines(1);
@@ -1611,6 +1745,17 @@ public final class ZhiPage {
         }
         row.setOnClickListener(v -> openEdit(T_PRINCIPLE, p.id));
         return row;
+    }
+
+    /** 知行合一比例小字（v1.75.0，F4）：「践行 X/Y · Z%」，Y＝做到了＋没做到
+     * （'没考虑'不进分母）；只读聚合汇总渲染，Y=0 返回 null（不显，保持干净）。 */
+    private String principleRatioText(String principleId) {
+        int[] st = principleCheckStats(act, principleId);
+        int y = st[0] + st[1];
+        if (y <= 0) return null;
+        int pct = (int) Math.round(st[0] * 100.0 / y);
+        return s("践行 " + st[0] + "/" + y + " · " + pct + "%",
+                "Practiced " + st[0] + "/" + y + " · " + pct + "%");
     }
 
     // ---- 问题 ----
@@ -2194,6 +2339,7 @@ public final class ZhiPage {
         editStack.add(ref);
         es = stateFromModel(ref);
         editing = true;
+        principleHistShown = 30;
         page = pageOfType(type);
         renderEdit();
     }
@@ -2349,6 +2495,7 @@ public final class ZhiPage {
         editStack.add(ref);
         es = stateFromModel(ref);
         editing = true;
+        principleHistShown = 30;
         page = pageOfType(type);
         renderEdit();
     }
@@ -2367,6 +2514,7 @@ public final class ZhiPage {
         editStack.add(ref);
         es = stateFromModel(ref);
         editing = true;
+        principleHistShown = 30;
         renderEdit();
     }
     /** 任务关联行点开（v1.71.0，F3）：经 MainActivity 的宿主开任务编辑层（立刻开始／
@@ -2582,6 +2730,11 @@ public final class ZhiPage {
             for (String other : sectionsFor(type)) col.addView(linkSection(other));
         }
 
+        // ---- 践行记录（v1.75.0，F4：仅原则编辑页） ----
+        if (T_PRINCIPLE.equals(type) && st.ref.id != null) {
+            col.addView(principleHistorySection(st.ref.id));
+        }
+
         // ---- 删除 ----
         if (st.ref.id != null) {
             TextView del = tv(s("删除", "Delete"), 13.5f, Ui.danger(act));
@@ -2590,6 +2743,84 @@ public final class ZhiPage {
             del.setOnClickListener(v -> confirmDeleteItem());
             col.addView(del);
         }
+    }
+
+    // 践行记录已展开条数（v1.75.0）：进编辑页重置 30，下滑「更多」逐页 +30
+    private int principleHistShown = 30;
+
+    /** 原则编辑页「践行记录」区（v1.75.0，F4）：该原则的 principle_check 事件
+     * 倒序（'没考虑'是误判撤关联、不算践行，不列），每条＝日期＋任务名＋
+     * 做到了/没做到；本地事件缓存内分页，首屏 30 条。 */
+    private View principleHistorySection(final String pid) {
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        List<JSONObject> mine = new ArrayList<>();
+        try {
+            JSONArray arr = eventsCache(act);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject e = arr.optJSONObject(i);
+                if (e == null) continue;
+                if (!KIND_PRINCIPLE_CHECK.equals(e.optString("kind", ""))) continue;
+                if (!pid.equals(e.optString("subject_id", ""))) continue;
+                if (PC_NOCARE.equals(e.optString("value", ""))) continue;
+                mine.add(e);
+            }
+        } catch (Exception ignored) { }
+        java.util.Collections.sort(mine,
+                (a, b) -> Long.compare(b.optLong("tsMs", 0), a.optLong("tsMs", 0)));
+        TextView h = tv(s("践 行 记 录", "Practice log")
+                + (mine.isEmpty() ? "" : "（" + mine.size() + "）"), 11.5f, weakC());
+        h.setLetterSpacing(0.3f);
+        h.setPadding(0, dp(18), 0, dp(4));
+        box.addView(h);
+        if (mine.isEmpty()) {
+            TextView none = tv(s("还没有记录。做完有关联这条原则的任务，在完成页答一次就会记下",
+                    "No records yet — answer once on a linked task's finish page"), 12.5f, subC());
+            none.setPadding(0, dp(3), 0, 0);
+            box.addView(none);
+            return box;
+        }
+        int show = Math.min(principleHistShown, mine.size());
+        for (int i = 0; i < show; i++) {
+            JSONObject e = mine.get(i);
+            long ms = e.optLong("tsMs", 0);
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            if (ms > 0) cal.setTimeInMillis(ms);
+            String dateTxt = ms > 0 ? dateLabel(DayUtil.fmt(cal)) : "";
+            String taskName = s("任务", "Task");
+            String src = e.optString("source", "");
+            if (src.startsWith("task_done:")) {
+                TaskItem t = taskById(src.substring("task_done:".length()));
+                if (t != null && !t.title.isEmpty()) taskName = t.title;
+            }
+            boolean doneIt = PC_DONE.equals(e.optString("value", ""));
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(6), 0, dp(6));
+            TextView dv = tv(dateTxt, 12, subC());
+            dv.setPadding(0, 0, dp(10), 0);
+            row.addView(dv);
+            TextView nv = tv(taskName, 13, inkC());
+            nv.setMaxLines(1);
+            nv.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(nv, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView vv = tv(doneIt ? PC_DONE : PC_MISSED, 13, doneIt ? inkC() : redC());
+            row.addView(vv);
+            box.addView(row);
+        }
+        if (mine.size() > show) {
+            TextView more = tv(s("更多", "More"), 13, redC());
+            more.setGravity(Gravity.CENTER);
+            more.setPadding(0, dp(10), 0, dp(2));
+            more.setOnClickListener(v -> {
+                collectDraft();
+                principleHistShown += 30;
+                renderEdit();
+            });
+            box.addView(more);
+        }
+        return box;
     }
 
     private String[] sectionsFor(String type) {

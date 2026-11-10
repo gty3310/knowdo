@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private boolean appliedEn;
     private TextView nowTitleView;
     private TextView nowRemainView;
+    private TextView nowPrincipleView;
     private TextView accountView;   // 今日时间账（v1.23.0，任务页最上方）
     private TextView overflowView;  // 时间账下方的点名行（排不下的必干），无溢出时藏
     private TextView dueView;       // 时间账下的到期小字行（v1.26.2），无到期非必做时藏
@@ -490,6 +491,16 @@ public class MainActivity extends Activity {
         nowRemainView.setPadding(dp(10), 0, 0, 0);
         strip.addView(nowRemainView);
         content.addView(strip);
+        // 当前任务的主原则细行（v1.75.0，F2）：贴在当前任务细条下方，只在
+        // 计时/暂停中且该任务有主原则时出现，refreshStatus 每秒顺手刷新。
+        nowPrincipleView = new TextView(this);
+        nowPrincipleView.setTextSize(12);
+        nowPrincipleView.setTextColor(skinSub());
+        nowPrincipleView.setSingleLine(true);
+        nowPrincipleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        nowPrincipleView.setPadding(dp(16), 0, dp(16), dp(6));
+        nowPrincipleView.setVisibility(View.GONE);
+        content.addView(nowPrincipleView);
         View stripLine = new View(this);
         stripLine.setBackgroundColor(skinLine());
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
@@ -1259,8 +1270,37 @@ public class MainActivity extends Activity {
         if (liveLeftView != null && TimerState.isRunning(this)) {
             liveLeftView.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
         }
+        updateNowPrinciple();
         updateDrawerAccount();
         refreshTimeAccount();
+    }
+
+    /** 主原则展示文案（v1.75.0，F2）：「原则 · 名：一句话（等 N 条）」；
+     * 无主原则/名解析不到返回 null（调用方整行不画）。 */
+    private String mainPrincipleText(String taskId) {
+        ZhiPage.TaskPrinciple tp = ZhiPage.mainPrincipleForTask(this, taskId);
+        if (tp == null || tp.name == null || tp.name.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append(Strings.en() ? "Principle · " : "原则 · ").append(tp.name);
+        if (tp.line != null && !tp.line.isEmpty()) sb.append("：").append(tp.line);
+        if (tp.total > 1) sb.append(Strings.en() ? " (+" + (tp.total - 1) + " more)"
+                : "（等 " + tp.total + " 条）");
+        return sb.toString();
+    }
+
+    /** 当前任务细条下的主原则行：只在计时/暂停中出现，跟随当前任务。 */
+    private void updateNowPrinciple() {
+        if (nowPrincipleView == null) return;
+        String tid = null;
+        if (TimerState.isRunning(this)) tid = TimerState.taskId(this);
+        else if (TimerState.pausedTaskId(this) != null) tid = TimerState.pausedTaskId(this);
+        String txt = tid == null || tid.isEmpty() ? null : mainPrincipleText(tid);
+        if (txt == null) {
+            nowPrincipleView.setVisibility(View.GONE);
+        } else {
+            nowPrincipleView.setText(txt);
+            nowPrincipleView.setVisibility(View.VISIBLE);
+        }
     }
 
     /**
@@ -2002,6 +2042,19 @@ public class MainActivity extends Activity {
         note.setTextColor(hasNote ? Ui.text(this) : Ui.sub(this));
         note.setOnClickListener(v -> dialogNote(t));
         exp.addView(note);
+
+        // 主原则（v1.75.0，F2）：展开时看得见这件任务最贴切的那条原则——
+        // 名＋一句话版，多条时「等 N 条」带过；无原则关联整行不出现。
+        // 数据走知页本地缓存，只读不阻塞渲染。
+        String mpLine = mainPrincipleText(t.id);
+        if (mpLine != null) {
+            TextView mp = new TextView(this);
+            mp.setText(mpLine);
+            mp.setTextSize(13);
+            mp.setTextColor(Ui.text(this));
+            mp.setPadding(0, dp(7), 0, 0);
+            exp.addView(mp);
+        }
 
         // 每日重复任务：已用与段数都只算今天（v1.65.0，todayCountForTask 内部已含
         // 「打开段是今天开的」那一段，与 todayMsForTask 同口径，不再另加）；
