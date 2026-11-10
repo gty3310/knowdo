@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1760 = new Entry("v1.76.0", "2026-11-10");
+        e1760.add(new Group(s("新增", "New"),
+                s("合一页的分数能点了：进去看走势曲线，一个月按天看、一年按周看",
+                  "The score on the Oneness page is tappable now: a trend curve inside — by day for a month, by week for a year"),
+                s("曲线可以切换：知行指数、原则践行、动机至善，三条轮着看",
+                  "Three curves to switch between: the unity index, principle practice, and purity of motive")));
+        e1760.add(new Group(s("改进", "Improved"),
+                s("每天的分数会定格存成一张「成绩单」，曲线只读成绩单，攒再久也不卡",
+                  "Each day's score is frozen into a daily report card; the curve reads only those, so it never slows down however much piles up")));
+        e1760.why = s("分数不只看今天，也要看见自己这一路是怎么走过来的",
+                "A score is not only about today — it should show the road you have walked to get here");
+        e1760.tryIt = s("点合一页圆圈里的分数，手指在曲线上滑，看每一周的构成",
+                "Tap the score in the ring on the Oneness page and slide along the curve to see what each week is made of");
+        out.add(e1760);
+
         Entry e1750 = new Entry("v1.75.0", "2026-11-10");
         e1750.add(new Group(s("新增", "New"),
                 s("任务完成时会问一句：这件事上，你做到关联的原则了吗——做到了、没做到、没考虑，各记各的",
