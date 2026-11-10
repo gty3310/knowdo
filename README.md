@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.76.0)
+## Features (Android, v1.77.0)
 
-Current version: **v1.76.0**.
+Current version: **v1.77.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.77.0 — 2026-11-10
+
+**Why:** On the user's phone (1.75.0) the Plan today page is still blank in a very specific way: the header accounts and the self-check line are right, and the self-check even counts 9 cards — the cards are built and added — yet the whole scrolling region is invisible, the footer's two dark buttons are missing as well, only the footer's first row (Add task / Add with AI) sits under the header, and the blank area does not scroll at all. The v1.70 repair theory (containers collapsing for lack of explicit LayoutParams) stands falsified: the current buildUi passes explicit params everywhere and the page is still blank. So this release does not guess another fix — it gathers evidence. Build commit `b9d40cc` · [compare v1.76.0...v1.77.0](https://github.com/gty3310/knowdo/compare/v1.76.0...v1.77.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **A DBG line in the Plan today header (temporary).** Under the self-check line, a new 10sp line prints the measured pixel heights of every layer of the page: window (decor view), root, header, scroll view, content column, the cards box as height×child-count, the first card (-1 when there is none), the footer and its two big buttons, and the AI panel as visibility/height — plus display density and font scale. It samples twice, once posted after the first layout (L1) and again 800 ms later (L2), to catch a page that first draws and then collapses. One screenshot from the affected phone will show exactly which layer is at fault. The implementation only promotes buildUi's local variables for those views to fields so their heights can be read (the AI panel and the cards box already were fields); no existing view's size, params or visibility changes, no refresh logic changes, and the sampling is fully try/catch-guarded with -1 for anything unreadable, so the diagnostic can never become a new crash source. The fix release that follows will remove this line.
+
+Not yet verified on a real device: the DBG readings on the affected phone — collecting them is the point of this release. Not in this release: the actual Plan-today fix (next, once the screenshot localises it), diary filters (moved to v1.78), the floating card's extend button (moved to v1.79).
+
 ### v1.76.0 — 2026-11-10
 
 **Why:** A score that only ever shows today cannot show a road. The user approved a trend page for the Oneness tab — tap the number inside the ring and see the curve: a month by days, a year by weeks — with one firm condition: it must never get slow, so the data needs a proper home of its own. This release builds that home first: every day's score is frozen into a one-row "daily report card", and the curve only ever reads those rows. Build commit `f3b99ab` · [compare v1.75.0...v1.76.0](https://github.com/gty3310/knowdo/compare/v1.75.0...v1.76.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -89,21 +98,6 @@ Not yet verified on a real device: the ring tap into the trend page, month and y
 - **Events now sync incrementally, and lists never scan raw events.** Event refresh previously re-downloaded the whole event table on every open; it now pulls only what is newer than a stored watermark (with a one-hour overlap window forgiven by de-duplication). Principle ratios render from a tiny persisted aggregate that is recomputed when the cache changes — never by scanning events during list rendering — so the lists stay fast no matter how many years of practice accumulate.
 
 Not yet verified on a real device: the finish-page question end to end (all three answers, the link removal landing in the cloud), the main-principle lines, ratios appearing after the first answer, three-bucket motive ratios, and the 1.74.0 to 1.75.0 in-app update chain. Not in this release: the Oneness trend chart (v1.76), diary filters (v1.77), the floating card's extend button (v1.78).
-
-### v1.74.0 — 2026-11-10
-
-**Why:** Some things do not need a pair of hands — they need a result. From this version a task can be handed to the author's personal AI assistant: it picks the task up in the background, works on it, and stops before the final step (sending, submitting, ordering), marking it "Awaiting your OK"; only after the user confirms does it take that last step, and it never marks a task done by itself. The cloud `tasks` table gained `assignee` (default `self`) and `ai_state` columns ahead of this release (migration read back, all 165 rows intact). This release is the full app side; the cloud-side pickup loop that actually works the tasks is a separate follow-up. Build commit `5b5b09d` · [compare v1.73.0...v1.74.0](https://github.com/gty3310/knowdo/compare/v1.73.0...v1.74.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **"Who does it" in the task editor.** The edit sheet (including new-task creation) gains a row between duration and priority — two ordinary small chips, "I'll do it" / "AI does it", defaulting to yourself. Choosing AI makes the duration optional (stored as 0, no error) and shows a hint: "Once saved, the AI starts on it in the background — it won't take your schedule." Saving an AI task (or switching one to AI) sets its state to Queued; a state the cloud has already advanced is never rolled back, and switching back to yourself clears the state. The Today Plan page's "Add tasks with AI" panel — a separate form that never reaches the edit sheet — carries the same choice on its proposal card, one choice for the whole batch.
-- **Vermilion marker and status on the Do tab.** An AI task shows a small vermilion line under its title — "AI", or "AI · In progress" (Queued / In progress / Awaiting your OK / Has a question / Done by AI). Display only, never tappable. Because AI tasks are excluded from the Today Plan candidates, they never appear as cards there.
-- **A who-does-it filter on the Do tab.** A small chip row under the Today Plan entry — All / Mine / My AI, All by default — filters only what this page shows (task rows and the history groups below alike). It changes no data, affects no other page, and lasts only while the page is open.
-
-**Improved**
-- **AI tasks stay out of your time, enforced point by point.** They cannot be timed: no start key on the row, the expanded primary button becomes a status chip, and every start path funnels through one gate that refuses them with a hint. They never enter the auto-scheduler (one skip at the candidate source, which also covers quick reschedule and the Today Plan's scheduling input), never appear among Today Plan candidates or its "other important tasks", cannot be dragged into the calendar, take no time budget (DayAccount), never roll over to the next day, never raise a planned-start reminder, and a cloud auto-start signal for one is cleared without starting the timer. The Zhixing index's task-completion component excludes them from numerator and denominator alike — the only place its task rules change; habits and the drift count are untouched.
-- **Sync no longer lets stale rows clobber AI progress.** Task sync in this app is whole-row (newest `updatedAtMs` wins, whole-row upserts) — fine until the cloud side starts advancing `ai_state` and appending results into `note`: a phone pushing an older whole row would wipe both. On top of the existing merge, the three merge points (full sync, realtime rows, verified single writes) now merge these fields individually: `ai_state` is pulled from the cloud as authoritative, and `note` goes through a three-way merge against the last synced cloud note (one side untouched → the other side wins; pure appends on both sides → both survive; a true rewrite fork falls back to the whole-row winner). A local assignee switch — the user's own deliberate change — still wins outright.
-
-Not yet verified on a real device: creating and reassigning AI tasks, the filter, every exclusion above, the field-level sync merge against live cloud-side progress, and the 1.73.0 to 1.74.0 in-app update chain. Not done: the cloud pickup loop (starts after this release); the floating card's extend button (moved to v1.78).
 
 ## Build
 

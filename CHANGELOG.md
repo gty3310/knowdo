@@ -2,6 +2,26 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.77.0] - 2026-11-10（versionCode 116）
+
+今天安排页空白——布局几何诊断版（临时）
+
+为什么：用户真机（1.75.0）今天安排页仍空白：页头账目与自检行正常、自检行报「9 cards」（refreshCardsOnly 确实构建并 addView 了 9 张卡），但滚动区内容（时段条／可支配／任务卡）全不可见、页脚两个深色大钮也不见、只有页脚第一行（Add task／Add with AI）贴在页头下方；用户确认空白处划不动。v1.70 的 LayoutParams 塌陷理论已被证伪（现行 buildUi 已全量显式参数仍旧空白）。本版不猜修法、只取证：把页面各层实际高度写进页头，用户一张截图即可定位塌在哪一层；定位后的修复版会移除本诊断行。
+
+发布提交：`b9d40cc`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.76.0...v1.77.0 比较](https://github.com/gty3310/knowdo/compare/v1.76.0...v1.77.0)
+
+### 改进
+
+- 今天安排页布局几何诊断（临时）：`TodayPlanActivity` 页头自检行下新增一行 DBG 小字（10sp），两段取样——L1＝buildUi 完成后 root.post 首帧布局后、L2＝postDelayed 800ms 后（抓「先画好又塌掉」）；字段（全部 px 整数）：`win`（decorView 高）／`root`／`head`／`scroll`／`col`（滚动内容列）／`cards`（cardsBox 高×子数）／`card0`（第一张卡高，无卡记 -1）／`foot`／`btn`（排进今天的日程）／`start`（开始今天）／`panel`（aiPanel 可见性 VISIBLE=1/GONE=0／高）／`den`（density 两位小数）／`fs`（fontScale 两位小数）。实现只把 buildUi 的局部变量 root/head/scroll/col/foot/btn/startBtn 最小限度提升为字段（aiPanel、cardsBox 本就是字段），不改任何既有视图的尺寸、参数、可见性与任何刷新逻辑；取样全程 try/catch 兜底、取不到记 -1；onResume 的 refreshAll 不写此行，L1/L2 不被覆盖。
+
+### 核查（红线）
+
+- 只动 `TodayPlanActivity.java` 与 `Changelog.java`（外加发布必需的 build.gradle／CHANGELOG.md／README.md）；ZhixingCalc 零改动（`git diff 2d244d4..b9d40cc -- ZhixingCalc.java` 输出 0 行）；未碰 MainActivity／CalendarPanel；refreshAll／分段护栏／自检行既有逻辑一字未改。
+
+试用：打开今天安排页，把整页截一张图发回来——DBG 行那串数字会直接指出空白出在哪一层。
+
+未做：今天安排页的真正修复（等诊断截图定位后单独发版，届时移除 DBG 行）；日记筛选顺延 v1.78、悬浮卡加时顺延 v1.79。
+
 ## [1.76.0] - 2026-11-10（versionCode 115）
 
 合一曲线图＋每日成绩单
