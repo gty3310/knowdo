@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1740 = new Entry("v1.74.0", "2026-11-10");
+        e1740.add(new Group(s("新增", "New"),
+                s("建任务时可以选「给 AI 做」，提交后作者的 AI 助手会在幕后接单开工",
+                  "A new task can be marked \"For the AI\": once saved, the author's AI assistant picks it up and works on it in the background"),
+                s("行页顶部多了「做任务的人」筛选：全部／我本人／我的 AI",
+                  "The Do tab gains a who-does-it filter at the top: All / Mine / My AI")));
+        e1740.add(new Group(s("改进", "Improved"),
+                s("AI 任务带朱砂标记和状态，不排进日程、不占时间账",
+                  "AI tasks carry a vermilion marker and a status; they never enter your schedule or your time budget")));
+        e1740.why = s("有些事不必亲手做，交出去，你只看结果、拍板最后一步",
+                "Some things need not be done by hand — hand them over, review the result, and decide only the final step");
+        e1740.tryIt = s("新建一个任务选「给 AI 做」，过几分钟回来看它变成「进行中」",
+                "Create a task, choose \"AI does it\", and come back in a few minutes to see it turn \"In progress\"");
+        out.add(e1740);
+
         Entry e1730 = new Entry("v1.73.0", "2026-11-10");
         e1730.add(new Group(s("新增", "New"),
                 s("自读类习惯在习惯页有了正经的卡片，能直接看到累计读了多少遍",
