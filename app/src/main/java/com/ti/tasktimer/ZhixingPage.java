@@ -90,9 +90,10 @@ public final class ZhixingPage {
         center.addView(cap);
         ringBox.addView(center, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        // 点圆环进指数详情页（一周/一月/一年回算，v1.28.0 feature 5）
+        // 点圆环进走势页（v1.76.0，每日成绩单曲线）；旧指数详情页（一周/一月/
+        // 一年回算，v1.28.0）从走势页底部入口仍可达
         ringBox.setOnClickListener(v -> act.startActivity(
-                new android.content.Intent(act, ZhixingDetailActivity.class)));
+                new android.content.Intent(act, TrendActivity.class)));
         col.addView(ringBox, rlp);
 
         TextView delta = new TextView(act);
@@ -106,7 +107,7 @@ public final class ZhixingPage {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         dlp.topMargin = dp(6);
         col.addView(delta, dlp);
-        TextView hint = small(s("点圆环看详情 · 一周 / 一月 / 一年", "Tap the ring for details · week / month / year"), 11);
+        TextView hint = small(s("点圆环看走势 · 一个月按天 / 一年按周", "Tap the ring for the trend · daily for a month / weekly for a year"), 11);
         hint.setGravity(Gravity.CENTER);
         col.addView(hint);
         TextView define = small(s("知 ＝ 立下的志与承诺 · 行 ＝ 实际做到的事", "Knowing = what you aspired to and promised · Doing = what you actually did"), 11.5f);
