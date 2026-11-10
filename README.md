@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.72.0)
+## Features (Android, v1.73.0)
 
-Current version: **v1.72.0**.
+Current version: **v1.73.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,22 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.73.0 — 2026-11-10
+
+**Why:** The daily self-reading is a special habit, and the user ruled it must be three things: findable on the Habits tab, editable where it is read, and counted in total readings — not just done or not done per day. This release is that one change, implemented generically for the "read" habit type (no real habit id or passage text appears in code or commits). The canonical full text already sits in the cloud patch area (user_state.cloud_patch.habit_texts); this version teaches the app that field so the text lands on the phone by itself. Build commit `e8d0718` · [compare v1.72.0...v1.73.0](https://github.com/gty3310/knowdo/compare/v1.72.0...v1.73.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Reading habits get a real card.** On the Habits tab a read-type habit is now a proper card — its name, a "Reading" tag, and a second line "Total N readings · today M" — instead of a bare, status-less row. Tapping the card opens the reading page and a long-press keeps the existing editor; no other habit type's rendering changed.
+- **Readings are counted, not just checked off.** A read habit's daily log value is now the number of readings that day, through one shared counting implementation in HabitData (total across all dates, add one, take one back). The reading page's button is now "Finished one reading": every tap adds one to today (several readings in a day count several), saves and syncs through the existing habit_data path, stays on the page and refreshes the "Total · today" line at once; a long-press takes one back to correct a mis-tap. The morning page's reading block counts exactly the same way and shows the all-time total. Historical one-per-day records (four days of 1) naturally add up to a lifetime total of 4.
+- **Edit the text where you read it.** The reading page gains an Edit entry at the top right — a multi-line editor that saves back into HabitData local-first, so an offline save lands locally and syncs later, never losing text. The Habits tab's existing read-type editor stays, and both edit the same remindText.
+
+**Improved**
+- **The cloud patch learns a third key: habit_texts.** SbSync.applyCloudPatch now applies {habitId: full text} onto a habit's remindText, still after the usual local-first merge and through the existing save/write-back path; a habit that does not exist locally is skipped, never created. So a later hand edit is never clobbered, the same patch text for the same habit is applied only once — a local SharedPreferences marker keeps the SHA-256 of the applied text per habit; an unchanged patch is skipped, a changed patch text applies once more and updates the marker, and a local text already equal to the patch only backfills the marker. The habit_types and diary_appends patch behaviours are unchanged.
+
+Checked, no code change needed: the Zhixing index's per-day completion for read habits already treats any value above 0 as done (habitDayRate's default branch — there is no value==1 check anywhere), so counts above 1 still complete the day; the drift count and the rest of ZhixingCalc are untouched (zero diff in this release).
+
+Not yet verified on a real device: the reading card and its counts on a live account, multi-reading days from both the reading page and the morning block, in-page text editing, the cloud habit_texts patch landing by itself and then not overriding a later hand edit, and the 1.72.0 to 1.73.0 in-app update chain. Not done: the floating card's extend button (moved to v1.74).
+
 ### v1.72.0 — 2026-11-09
 
 **Why:** Extending a timer is where selfishness slips in most easily, so from this version every extension first asks one question — "pure motive, no selfishness" — and an answer (Yes or No, both proceed) is required before any time is added. Every answer is kept and aggregated into a ratio on the Oneness page. The data model has three layers: one canonical principle in Know (created in the cloud before this release), carriers linked through zhi_links (its type checks widened beforehand to six types including habit, probe-verified), and one append-only event stream (the new zhi_events table) — pages never store the ratio, they aggregate events. The pre-extension state self-check this replaces had already been removed on 2026-10-28 (commit `76d0c00`); the gate takes that same interception point, the guard-inquiry self-check and self_checks are unchanged, and the drift count is unaffected because motive answers never enter self_checks or guard events. The Zhixing index, scheduling and the guard are untouched. Build commit `5c1e5f2` · [compare v1.71.0...v1.72.0](https://github.com/gty3310/knowdo/compare/v1.71.0...v1.72.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -86,18 +102,6 @@ Not yet verified on a real device: the gate at all five entries, event upload an
 - **Deleting a task cleans its links.** Every delete entry (list long-press, task editor, Plan today, chat panel) funnels into the single TaskStore.remove tombstone path, which now also removes the task's links from the local cache and queues their unlink ops on the same queue; a cleanup failure never blocks the deletion itself.
 
 Not yet verified on a real device: linking and unlinking from the task editor (including offline queueing and later flush), the Tasks section on person/principle pages with its done marks and tap-to-open, the linked-names line on task rows and Plan-today cards, link cleanup on task deletion, and the 1.70.0 to 1.71.0 in-app update chain.
-
-### v1.70.0 — 2026-11-06
-
-**Why:** On the morning of 2026-11-06 the user opened Plan today on v1.69.0 and got a header over a blank page: the ledger and the two small add buttons rendered, but the whole scroll area (hours strip, free-time row, task cards, other-important section) and the footer's two big buttons never appeared. The cloud side was read back first and cleared: the stored schedule for 2026-11-06 holds 23 blocks (06:00–21:59), every taskId resolves against the tasks table (138 rows), and the header's "13h 4m planned" was computed on-device from those very blocks — the local schedule cache was fresh; the fault is in drawing, not data or network. Same family as the v1.67 AI-panel collapse: several containers in this hand-built page were added with no LayoutParams and never recovered from a zero-height first frame. This release reworks TodayPlanActivity only; scheduling semantics (candidateOrder, the ×1.5 rule, autoFill merging, grey cards, the frozen card order, the ledger math, the open-page self-check) and the v1.67 AI-panel fix were audited and left untouched, as were all other pages. Build commit `b220a13` · [compare v1.69.0...v1.70.0](https://github.com/gty3310/knowdo/compare/v1.69.0...v1.70.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Plan today redrawn with hard layout sizes.** A full buildUi audit gave every container and control explicit LayoutParams: header title, ledger columns, the three progress-bar segments, notes, the head and footer themselves, the ScrollView (now fillViewport) and its column at MATCH_PARENT width, the hours-strip row and scale, the free-time row, the Tasks section header, the cards box, the overflow note, the other-tasks box, the add row and both big footer buttons — plus the dynamic pieces on the render path (other-section header, card internals, chip rows, digit-editor rows). Card roots already carried explicit params and were left as they were.
-- **A self-check line under the header.** Always visible: tasks loaded (undeleted) · blocks scheduled today · cards actually drawn, refreshed on every full refresh; if any number is 0 the line turns vermilion. A screenshot of that one line now tells whether the data never arrived or the drawing failed.
-- **No more silent blanks.** The full refresh is section-guarded: ledger, hours strip, task cards and other-important tasks each run in their own try/catch, a failing section leaves a vermilion "this section didn't draw — tap to retry" note in place (tapping re-runs the whole refresh) and reports the exception (section, class, message) to the tester log, without taking the rest of the page down.
-- **Tasks and schedule back each other up.** When there are no candidate tasks but today's schedule has blocks, the page draws one read-only row per block (start–end plus task title, resolved locally; unresolvable blocks are skipped and counted) instead of staying empty. Only when both are empty does the empty state show — and if the phone holds no undeleted tasks at all, it says the data hasn't arrived yet rather than claiming there is nothing to plan.
-
-Not yet verified on a real device: Plan today rendering in full on the phone (self-check line numbers matching the real task total and today's block count, all cards and both footer buttons visible), the section-failure note and its tap-to-retry path, the schedule-block fallback rows on a day with blocks but no candidates, and the 1.69.0 to 1.70.0 in-app update chain.
 
 ## Build
 
