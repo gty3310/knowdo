@@ -318,17 +318,12 @@ public class TodayPlanActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         // ---- 滚动区 ----
-        ScrollView scroll = new ScrollView(this);
-        dbgScroll = scroll; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
-        scroll.setFillViewport(true);
+        // v1.78.0 整页重写：不再用「权重 0 高的 ScrollView + 固定底」，整页就是一个
+        // ScrollView，内容自然撑高，不依赖窗口可用高度（部分机型上滚动区被压成 0 高）。
         LinearLayout col = new LinearLayout(this);
         dbgCol = col; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(4), dp(18), dp(22));
-        scroll.addView(col, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         // 今日时段
         LinearLayout secRow = new LinearLayout(this);
@@ -491,7 +486,7 @@ public class TodayPlanActivity extends Activity {
         LinearLayout foot = new LinearLayout(this);
         dbgFoot = foot; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         foot.setOrientation(LinearLayout.VERTICAL);
-        foot.setPadding(dp(18), dp(6), dp(18), dp(10));
+        foot.setPadding(dp(18), dp(8), dp(18), dp(4));
         TextView btn = new TextView(this);
         dbgBtn = btn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         btn.setText(s("排进今天的日程", "Plan into today"));
@@ -523,11 +518,13 @@ public class TodayPlanActivity extends Activity {
         foot.addView(addRowGap, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
 
-        foot.addView(btn, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout mainRow = new LinearLayout(this);
+        mainRow.setOrientation(LinearLayout.HORIZONTAL);
+        mainRow.addView(btn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         View footGap = new View(this);
-        foot.addView(footGap, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
+        mainRow.addView(footGap, new LinearLayout.LayoutParams(
+                dp(10), ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView startBtn = new TextView(this);
         dbgStartBtn = startBtn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         startBtn.setText(s("开始今天", "Start today"));
@@ -537,14 +534,25 @@ public class TodayPlanActivity extends Activity {
         startBtn.setPadding(0, dp(7), 0, dp(7));
         startBtn.setBackground(round(Ui.text(this), 10));
         startBtn.setOnClickListener(v -> onStartToday());
-        foot.addView(startBtn, new LinearLayout.LayoutParams(
+        mainRow.addView(startBtn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        foot.addView(mainRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // v1.78.0：操作按钮挪到页顶（账本之下），任务内容在其下
         root.addView(foot, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(col, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // v1.55.0：整页包一层 FrameLayout，AI 聊天面板作底部浮层（近全屏高）
         FrameLayout frame = new FrameLayout(this);
-        frame.addView(root, new FrameLayout.LayoutParams(
+        ScrollView pageScroll = new ScrollView(this);
+        dbgScroll = pageScroll; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
+        pageScroll.setFillViewport(true);
+        pageScroll.setBackgroundColor(Ui.bg(this));
+        pageScroll.addView(root, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        frame.addView(pageScroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         aiPanel = buildAiPanel();
         aiPanel.setVisibility(View.GONE);
