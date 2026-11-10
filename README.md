@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.75.0)
+## Features (Android, v1.76.0)
 
-Current version: **v1.75.0**.
+Current version: **v1.76.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.76.0 — 2026-11-10
+
+**Why:** A score that only ever shows today cannot show a road. The user approved a trend page for the Oneness tab — tap the number inside the ring and see the curve: a month by days, a year by weeks — with one firm condition: it must never get slow, so the data needs a proper home of its own. This release builds that home first: every day's score is frozen into a one-row "daily report card", and the curve only ever reads those rows. Build commit `f3b99ab` · [compare v1.75.0...v1.76.0](https://github.com/gty3310/knowdo/compare/v1.75.0...v1.76.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **The Oneness trend page.** Tapping the unity index ring now opens a trend page (the old week/month/year index-detail page is still reachable from a link at its foot). Two rows of small buttons switch the metric — unity index, principle practice, purity of motive — and the range — month (one point per day, last 30 logical days) or year (one point per week, last 52 weeks; the index averages the week's daily values, the two ratios pool the week's counts before dividing, and a week or day with no denominator simply breaks the line instead of faking a zero). The curve is drawn on a plain Canvas, vermilion line over a whisper of fill, three dashed reference lines and nothing else; sliding a finger along it moves a hollow vermilion marker and updates the card below — the day or week, its score, and what it is made of — above a mean / best / lowest strip for what is on screen.
+- **A daily report card behind it.** Once a day rolls over, the app freezes yesterday (and any earlier day not yet frozen) into one row: the day's unity index and its three parts from the existing single-day computation, the motive gate's three answer counts, and the principles' did-it / didn't counts, all bucketed by logical day. The first run back-fills up to 370 days from whatever local history exists; days with no records at all get no row. Freezing is local-first — the row lands in an on-device snapshot cache and is queued for upload — then upserts into a dedicated cloud table keyed by (user, date), so re-freezing a day corrects the same row instead of duplicating it. The trend page renders only from that snapshot and refreshes it with one bounded pull; it never scans raw events.
+
+**Notes**
+- The index math itself is untouched (the calculator file has an empty diff this release); today's point on the curve is computed live and only freezes once the day is over.
+
+Not yet verified on a real device: the ring tap into the trend page, month and year curves against real history, back-fill on first launch, offline freezing and later upload, and the 1.75.0 to 1.76.0 in-app update chain. Not in this release: diary filters (v1.77), the floating card's extend button (v1.78).
+
 ### v1.75.0 — 2026-11-10
 
 **Why:** A principle on a list changes nothing; a principle that meets you at the end of each task might. The cloud-side assistant now pairs each new task with its single most fitting principle, and this release is the app side of that companionship: the principle is visible where you work, you are asked about it when the task ends, and every answer becomes part of that principle's track record. The motive gate's self-question also gains the honest third answer the user asked for — "never thought of it". Build commit `9bbf655` · [compare v1.74.0...v1.75.0](https://github.com/gty3310/knowdo/compare/v1.74.0...v1.75.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -91,22 +104,6 @@ Not yet verified on a real device: the finish-page question end to end (all thre
 - **Sync no longer lets stale rows clobber AI progress.** Task sync in this app is whole-row (newest `updatedAtMs` wins, whole-row upserts) — fine until the cloud side starts advancing `ai_state` and appending results into `note`: a phone pushing an older whole row would wipe both. On top of the existing merge, the three merge points (full sync, realtime rows, verified single writes) now merge these fields individually: `ai_state` is pulled from the cloud as authoritative, and `note` goes through a three-way merge against the last synced cloud note (one side untouched → the other side wins; pure appends on both sides → both survive; a true rewrite fork falls back to the whole-row winner). A local assignee switch — the user's own deliberate change — still wins outright.
 
 Not yet verified on a real device: creating and reassigning AI tasks, the filter, every exclusion above, the field-level sync merge against live cloud-side progress, and the 1.73.0 to 1.74.0 in-app update chain. Not done: the cloud pickup loop (starts after this release); the floating card's extend button (moved to v1.78).
-
-### v1.73.0 — 2026-11-10
-
-**Why:** The daily self-reading is a special habit, and the user ruled it must be three things: findable on the Habits tab, editable where it is read, and counted in total readings — not just done or not done per day. This release is that one change, implemented generically for the "read" habit type (no real habit id or passage text appears in code or commits). The canonical full text already sits in the cloud patch area (user_state.cloud_patch.habit_texts); this version teaches the app that field so the text lands on the phone by itself. Build commit `e8d0718` · [compare v1.72.0...v1.73.0](https://github.com/gty3310/knowdo/compare/v1.72.0...v1.73.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Reading habits get a real card.** On the Habits tab a read-type habit is now a proper card — its name, a "Reading" tag, and a second line "Total N readings · today M" — instead of a bare, status-less row. Tapping the card opens the reading page and a long-press keeps the existing editor; no other habit type's rendering changed.
-- **Readings are counted, not just checked off.** A read habit's daily log value is now the number of readings that day, through one shared counting implementation in HabitData (total across all dates, add one, take one back). The reading page's button is now "Finished one reading": every tap adds one to today (several readings in a day count several), saves and syncs through the existing habit_data path, stays on the page and refreshes the "Total · today" line at once; a long-press takes one back to correct a mis-tap. The morning page's reading block counts exactly the same way and shows the all-time total. Historical one-per-day records (four days of 1) naturally add up to a lifetime total of 4.
-- **Edit the text where you read it.** The reading page gains an Edit entry at the top right — a multi-line editor that saves back into HabitData local-first, so an offline save lands locally and syncs later, never losing text. The Habits tab's existing read-type editor stays, and both edit the same remindText.
-
-**Improved**
-- **The cloud patch learns a third key: habit_texts.** SbSync.applyCloudPatch now applies {habitId: full text} onto a habit's remindText, still after the usual local-first merge and through the existing save/write-back path; a habit that does not exist locally is skipped, never created. So a later hand edit is never clobbered, the same patch text for the same habit is applied only once — a local SharedPreferences marker keeps the SHA-256 of the applied text per habit; an unchanged patch is skipped, a changed patch text applies once more and updates the marker, and a local text already equal to the patch only backfills the marker. The habit_types and diary_appends patch behaviours are unchanged.
-
-Checked, no code change needed: the Zhixing index's per-day completion for read habits already treats any value above 0 as done (habitDayRate's default branch — there is no value==1 check anywhere), so counts above 1 still complete the day; the drift count and the rest of ZhixingCalc are untouched (zero diff in this release).
-
-Not yet verified on a real device: the reading card and its counts on a live account, multi-reading days from both the reading page and the morning block, in-page text editing, the cloud habit_texts patch landing by itself and then not overriding a later hand edit, and the 1.72.0 to 1.73.0 in-app update chain. Not done: the floating card's extend button (moved to v1.74).
 
 ## Build
 
