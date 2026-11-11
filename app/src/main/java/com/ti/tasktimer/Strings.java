@@ -356,6 +356,14 @@ public final class Strings {
     public static String tabHabits() { return s("习惯", "Habits"); }
     public static String tabZhixing() { return s("合一", "Oneness"); }
     public static String tabChat() { return s("聊聊", "Chat"); }
+
+    // ---------------- 致良知六组页顶格言（v1.82.0，用户定案六句，出处不上屏） ----------------
+    public static String zhiMottoZhi() { return s("志不立，天下无可成之事", "Without a settled resolve, nothing can be accomplished"); }
+    public static String zhiMottoMing() { return s("知善知恶是良知", "Knowing good and evil is liangzhi"); }
+    public static String zhiMottoJie() { return s("诸恶莫作，众善奉行", "Do no evil, practice all good"); }
+    public static String zhiMottoCha() { return s("吾日三省吾身", "Each day I examine myself in three ways"); }
+    public static String zhiMottoWen() { return s("敏而好学，不耻下问", "Eager to learn, unashamed to ask"); }
+    public static String zhiMottoRen() { return s("泛爱众，而亲仁", "Love all broadly, draw near to the humane"); }
     public static String grpMorning() { return s("晨间", "Morning"); }
     public static String rowMorning() { return s("晨间首填（每天先填习惯）", "Morning check-in (fill habits first)"); }
     public static String rowMorningSub() {

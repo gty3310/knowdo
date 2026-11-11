@@ -1426,6 +1426,11 @@ public final class ZhiPage {
             seg.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         }
 
+        // 组格言（v1.82.0）：每组页顶一小行，弱化色小字，在组标题（切换条）下方、内容上方
+        TextView motto = tv(groupMotto(), 11.5f, weakC());
+        motto.setPadding(dp(2), dp(10), 0, 0);
+        col.addView(motto);
+
         // 价值观列表页（志组的下钻）：给一行返回志组
         if (page == PAGE_VALUE) {
             TextView backV = tv("‹ " + s("志", "Aspiration"), 13, subC());
@@ -1651,6 +1656,17 @@ public final class ZhiPage {
         if (root != null && !editing && !diaryDetail) renderList();
     }
     private int selPage() { return page == PAGE_VALUE ? PAGE_ZHIASP : page; }
+    /** 六组页顶格言（Strings 双语）；价值观列表是志组的下钻，用志组格言。 */
+    private String groupMotto() {
+        switch (page) {
+            case PAGE_MING: return Strings.zhiMottoMing();
+            case PAGE_JIE: return Strings.zhiMottoJie();
+            case PAGE_CHA: return Strings.zhiMottoCha();
+            case PAGE_QUESTION: return Strings.zhiMottoWen();
+            case PAGE_PERSON: return Strings.zhiMottoRen();
+            default: return Strings.zhiMottoZhi();
+        }
+    }
     private String pageName() {
         return page == PAGE_VALUE ? s("价值观", "Values") : s(PAGE_NAMES[page], PAGE_NAMES_EN[page]);
     }

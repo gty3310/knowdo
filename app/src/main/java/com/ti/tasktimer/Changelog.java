@@ -41,7 +41,9 @@ public final class Changelog {
                 s("「知」页改版为「致良知」——志、明、戒、察、问、人六组，习惯并入戒组",
                   "The Know page is now Liangzhi, in six groups — Aspiration, Mind, Precepts, Reflect, Questions, People — with habits folded into Precepts"),
                 s("志与价值观成为聊聊的底色——AI 回答时会以你的志和价值观为准",
-                  "Your aspiration and values are now the AI's backdrop in Chat — its answers are held to them")));
+                  "Your aspiration and values are now the AI's backdrop in Chat — its answers are held to them"),
+                s("六组页顶各有一句格言",
+                  "Each of the six groups opens with a line of maxim")));
         e1820.add(new Group(s("改进", "Improved"),
                 s("底部签去掉「习惯」，习惯到「知」页戒组里找；每日自读与每周目标反思移到志组",
                   "The Habits tab is gone — find habits under Precepts on the Know page; Daily Self-Reading and the Weekly Goal Review moved to Aspiration")));
