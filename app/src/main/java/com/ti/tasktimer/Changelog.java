@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1820 = new Entry("v1.82.0", "2026-11-11");
+        e1820.add(new Group(s("新增", "New"),
+                s("「知」页改版为「致良知」——志、明、戒、察、问、人六组，习惯并入戒组",
+                  "The Know page is now Liangzhi, in six groups — Aspiration, Mind, Precepts, Reflect, Questions, People — with habits folded into Precepts"),
+                s("志与价值观成为聊聊的底色——AI 回答时会以你的志和价值观为准",
+                  "Your aspiration and values are now the AI's backdrop in Chat — its answers are held to them")));
+        e1820.add(new Group(s("改进", "Improved"),
+                s("底部签去掉「习惯」，习惯到「知」页戒组里找；每日自读与每周目标反思移到志组",
+                  "The Habits tab is gone — find habits under Precepts on the Know page; Daily Self-Reading and the Weekly Goal Review moved to Aspiration")));
+        e1820.why = s("「知」原来只是个收藏夹，习惯又单住一页；并到一处、按致良知的六个面摆开，知道什么、守什么、做了没做到，才能在一页里对上账",
+                "Know used to be a mere collection and habits lived on their own page; brought together in the six faces of Liangzhi, what you know, what you hold to, and what you actually did can finally be checked against each other on one page");
+        e1820.tryIt = s("打开底部「知」页签：①顶部看志与价值观，点块里改志、点价值观那一行进去写你的价值观 ②点「戒」，守与行两段里习惯卡都在，打卡、加减跟以前一样 ③点「志」，每日自读与每周目标反思的卡在这里 ④点「察」，日记上方有写日记状态卡，下面还有动机与「过」 ⑤去「聊聊」问一句，回答会带着你的志与价值观的底色",
+                "Open the Know tab: 1) at the top are your aspiration and values — tap the block to edit the aspiration, tap the values row to write your values 2) tap Precepts: habit cards sit in Hold back and Act, checking in and counting work as before 3) tap Aspiration: the Daily Self-Reading and Weekly Goal Review cards live there 4) tap Reflect: the diary status card sits above the diary, with Motive and Faults below 5) ask something in Chat — the reply carries your aspiration and values as its backdrop");
+        out.add(e1820);
+
         Entry e1810 = new Entry("v1.81.0", "2026-11-11");
         e1810.add(new Group(s("改进", "Improved"),
                 s("行页排序认跳过——跳过今天的重复任务按效期排到下一次，今天真正到期的排最前",
