@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1800 = new Entry("v1.80.0", "2026-11-11");
+        e1800.add(new Group(s("新增", "New"),
+                s("分神处置「盖住 3 分钟」——问询页选完宽限，时间一到那个软件被盖住 3 分钟",
+                  "A new drift response, Block for 3 minutes — pick a grace length on the inquiry page, and when it runs out that app is covered for 3 minutes"),
+                s("设置页「提前解封」——每天一次，只能在设置页解",
+                  "Unblock early in Settings — once a day, and only from Settings")));
+        e1800.add(new Group(s("改进", "Improved"),
+                s("问询页改版——不再问做到了/没有，选「最后再看多久」即可；宽限时长 1/3/5 分钟",
+                  "The inquiry page is redone — it no longer asks whether you did right; just pick how long a last look you want: 1, 3 or 5 minutes")));
+        e1800.why = s("选宽限就说明心里清楚是在分神，与其再问一遍对错，不如把处置做实：宽限一到就盖住，躲不开、也不必硬碰硬退掉",
+                "Choosing a grace already says you know you are drifting — instead of asking right or wrong again, make the response real: when the grace runs out the app is covered, no dodging it and no need to force-quit it either");
+        e1800.tryIt = s("更新后在任务中打开一个会触发问询的软件：①看问询页是不是只剩「最后再看多久」四个钮 ②点「再看 1 分钟」，等 1 分钟到点，看那个软件被盖住、盖屏上有倒计时 ③把那个软件切到后台再切回来，看盖屏还在；切去别的软件不受影响 ④去设置页看「提前解封」，点一次解封，再看它变成「今天已解封过」",
+                "After updating, open an app that triggers the inquiry during a task: 1) check the inquiry page now only has the four last-look buttons 2) tap 1 more minute, wait for the minute to run out, and see that app covered with a countdown on the cover 3) switch that app away and back — the cover is still there; other apps are unaffected 4) open Settings, find Unblock early, unblock once, then see it turn into Already used today");
+        out.add(e1800);
+
         Entry e1790 = new Entry("v1.79.0", "2026-11-11");
         e1790.add(new Group(s("新增", "New"),
                 s("重复任务可以「跳过今天」——今天安排页的卡片上点「跳过」，今天就不做、也不算没完成，明天照常出现；点错了在「其他重要任务」里点「恢复」捞回来",
