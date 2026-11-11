@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.81.0)
+## Features (Android, v1.82.0)
 
-Current version: **v1.81.0**.
+Current version: **v1.82.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,22 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.82.0 — 2026-11-11
+
+**Why:** Know becomes Liangzhi. The user's design: the Know page is rebuilt as six groups — Aspiration, Mind, Precepts, Reflect, Questions, People — the Habits tab goes away and habits move into Precepts, and the aspiration plus values form an editable system prompt, the backdrop the built-in chat AI answers against. Build commit `986efc8` · [compare v1.81.0...v1.82.0](https://github.com/gty3310/knowdo/compare/v1.81.0...v1.82.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Six groups on the Know page.** Aspiration holds a Prompt block (the aspiration — tap to edit, same editor as Settings — and a values row leading to a values-only list, stored as principles of a new kind "value"; nothing is prefilled) plus the Daily Self-Reading and Weekly Goal Review cards. Mind holds thinking principles. Reflect holds the diary (with the diary habit's today card above it), a one-line motive tally for today, and Faults: the last 30 days of "missed" principle checks and drift self-checks, read-only, newest first. Questions and People move over unchanged. Each group opens with a maxim line in small muted type (six lines chosen by the user, bilingual via Strings).
+- **Aspiration and values as the chat AI's backdrop.** Every chat send now appends the aspiration and the value titles to the system prompt, freshly read each time; if both are empty, nothing is appended. The model chain and all other prompt parts are untouched.
+- **Precepts: habits move in, cards untouched.** Precepts splits into Hold back (at-most habits) and Act (action principles plus all remaining habits), with the add-a-habit entry kept in the group. The habit cards and every button on them are rendered by the very same HabitPage code as before (readRow / diaryRow / weeklyRow / habitCard / compactRow, unchanged) — embedded by section, routed read/weekly to Aspiration, diary to Reflect, max to Hold back, the rest to Act. The morning page, the morning gate and the unity index's habit scoring do not change.
+
+**Removed**
+- **The Habits tab.** The bottom bar goes from five tabs to four — Act / Know / Oneness / Chat; the Know tab keeps its name. Habit reminder notifications now deep-link into the Know page's Precepts group.
+
+Data changes: exactly one — the cloud CHECK on zhi_principles.kind now also allows "value" (migration executed and read back; a probe row was inserted, read back and deleted). Everything else — habit data, the zhi tables' shapes, weekly data, sync rules — is untouched, as are the unity index, the day account and the morning pages (zero-line diffs, machine-checked).
+
+Not yet verified on a real device: the six groups end to end (habit check-ins inside Precepts, the read card in Aspiration, the diary status card in Reflect), the values-only list and editor, the chat backdrop in a live conversation, the habit-reminder deep link landing on Precepts, and the 1.81.0 to 1.82.0 in-app update chain. Not in this release: diary filters and the calendar re-plan line removal, the floating card changes, the semantic engine split, and the always-on floating window.
+
 ### v1.81.0 — 2026-11-11
 
 **Why:** A repeating task skipped for today should stop posing as today's work in the task list. The user's spec: in the list, a skipped task carries a "(skipped)" mark beside its due date, and the ranking sorts by effective date — once skipped, the task's next real occurrence is what counts, so what is truly due today sits at the very top. Only the task-list page changes; everything else keeps its existing rules. Build commit `55fe1a3` · [compare v1.80.0...v1.81.0](https://github.com/gty3310/knowdo/compare/v1.80.0...v1.81.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -84,24 +100,6 @@ Not yet verified on a real device: the mark and the new ordering after an actual
 - **The inquiry page.** The self-check row is gone; in its place, "A last look — how long?" with four buttons: Block now, 1, 3 or 5 more minutes. Tapping any of them records the drift exactly as the old "No" answer did — the focus score's drift count reads that same record, and its formula is untouched this release (the calculator file has an empty diff). Return to task, false alarm and chat are unchanged.
 
 Not yet verified on a real device: the reworked inquiry page, grace expiry into the cover in both guard modes, Block now, cover behaviour when switching apps, suppression of new inquiries while covered, the once-a-day Settings unblock, reboot persistence, and the 1.79.0 to 1.80.0 in-app update chain. Not in this release: diary filters, the calendar re-plan line removal, the floating card's button row, the semantic engine split, and the always-on floating window — all queued behind this one by the user's call.
-
-### v1.79.0 — 2026-11-11
-
-**Why:** Daily repeating things sometimes need a day off — deleting them is too much, forcing through drags the day (and the score) down — so repeating tasks gain a "skip today": not done today, not counted as missed, back tomorrow as usual. The same release pins the page's four action buttons in one row at the bottom (they used to live at the top, a full scroll away), fixes the Add-tasks-with-AI panel opening to just its title line, and removes the two diagnostic lines 1.77 added to localise the blank-page fault (closed in 1.78 and verified on the user's phone). Build commit `4ee2e8e` · [compare v1.78.0...v1.79.0](https://github.com/gty3310/knowdo/compare/v1.78.0...v1.79.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Skip today for repeating tasks.** Cards in Plan today carry a Skip button for repeating tasks (next to Done / Delete). Skipping takes the task out of today's candidates and scheduling input (one shared snapshot filters it by logical day), deletes its already-planned blocks for today — locally at once, and in the cloud through a read-modify-write-back-verified removal — so the time returns to the ledger, and parks the task in Other important tasks with a Skipped marker and a Restore button; restoring clears the skip without re-planning blocks. A skipped date counts neither as done nor as missed in the unity index's task score (the one approved scoring addition this release) and does not count toward today's must-do time. The skip set lives beside the done set (`skippedDates`; cloud column `skipped_dates`, the same date-array type as `done_dates`, added by a migration verified lossless over all 168 rows) and syncs with the same merge rules and old-backend probing as the other optional columns.
-
-**Improved**
-- **Four buttons, one row, pinned to the bottom.** Add task / Add with AI / Plan into today / Start today are now a single equal-width row in a bottom bar floating over the page (a FrameLayout bottom layer — no weight-based height splitting anywhere in the page structure), on screen wherever the page is scrolled; the content column pads itself by the bar's real height plus 12dp so the last card is never covered, and with the page's adjustResize the bar rides above the keyboard. The old in-page button rows are gone. The time ledger still scrolls with the page — only the bar sticks (the user's call).
-
-**Fixed**
-- **The Add-tasks-with-AI panel opens whole again.** On the user's phone (1.78.0) the panel showed only its title row floating mid-page — no chat area, no input row, and a height plainly not 92%. The cause is the same family as the 1.77 blank page, whose DBG numbers were measured on that phone: a height-0-plus-weight scroll view can collapse to nothing while a wrap-content sibling inflates to fill the parent. Inside the panel, the weighted chat scroll view collapsed and the header — a wrap-content row with vertically centred content — inflated to the panel's full height, which put the title in the panel's middle and pushed the input row off the panel's bottom edge. The chat area now gets an explicit height: when the panel is built, the header and input row are measured at the current font scale, and the scroll area takes what is left of the panel's 92%-of-screen height — no weight distribution anywhere. Chat and proposal-card logic untouched; spacing around the header, message list and input row tidied to the app's usual measure.
-
-**Removed**
-- **The two diagnostic lines at the top of Plan today** — the 1.77 DBG line and the 1.70 self-check line ("Loaded … tasks · … blocks · … cards") — together with all their code (height fields, the sampler, the self-check updater). The per-section guard rails and their vermilion fallback rows stay.
-
-Not yet verified on a real device: skip/restore end to end, the pinned bar over a keyboard, and the AI panel fix — the on-host emulator could not bring its system UI up in this environment (no hardware acceleration, throttled CPU; its package service kept dropping during boot), so the panel fix in particular awaits the emulator or the user's phone; an instrumented diagnostic build that logs the panel's layer heights is kept ready for that check. Not in this release: diary filters and the calendar split-view re-plan line removal (v1.80), the floating card's add-time button (v1.81).
 
 ## Build
 
