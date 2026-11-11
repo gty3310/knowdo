@@ -42,9 +42,11 @@ import java.util.TimeZone;
 import java.util.UUID;
 
 /**
- * 知页（底部第二签）：「知」分四页——原则（zhi_principles，kind 分思维
- * think／行为 act）、问题（zhi_questions，status 待问 pending／已问 asked）、
- * 人名（zhi_people）、日记（v1.60.0 补的第四页签）；条目经 zhi_links 关联
+ * 知页（底部第二签）：v1.82.0 改版为「致良知」六组——志（我的志＋价值观
+ * kind=value＋自读/每周目标反思的习惯卡）、明（思维原则 think）、戒（守＝max 型
+ * 习惯、行＝行为原则 act＋其余习惯）、察（日记＋动机＋过）、问（zhi_questions，
+ * status 待问 pending／已问 asked）、人（zhi_people）；习惯卡由 HabitPage 分区
+ * 嵌入渲染（同一套代码）。条目经 zhi_links 关联
  * （关联对按类型名字母序存规范形：diary &lt; habit &lt; person &lt; principle
  * &lt; question &lt; task；v1.72.0 起习惯也可被关联，id＝habit_data 里的习惯 id）。
  * 日记不搬家：文本仍住 HabitData 的 diary 映射，读走 HabitData.diary／
@@ -79,12 +81,19 @@ public final class ZhiPage {
     static final String TB_LINKS = "zhi_links";
     static final String TB_EVENTS = "zhi_events";   // 通用事件流（v1.72.0）：不进四表拉取，单独读写
 
-    private static final int PAGE_PRINCIPLE = 0;
-    private static final int PAGE_QUESTION = 1;
-    private static final int PAGE_PERSON = 2;
-    private static final int PAGE_DIARY = 3;
-    private static final String[] PAGE_NAMES = {"原则", "问题", "人名", "日记"};
-    private static final String[] PAGE_NAMES_EN = {"Principles", "Questions", "People", "Diary"};
+    // v1.82.0 六组页序：志／明／戒／察／问／人；PAGE_VALUE 是志组点「价值观」进入的
+    // 隐藏列表页（不在切换条里，回退高亮「志」）。PAGE_DIARY 保留为察组的别名
+    // （日记的家在察组，旧引用按别名走）。
+    public static final int PAGE_ZHIASP = 0;
+    public static final int PAGE_MING = 1;
+    public static final int PAGE_JIE = 2;
+    public static final int PAGE_CHA = 3;
+    public static final int PAGE_QUESTION = 4;
+    public static final int PAGE_PERSON = 5;
+    public static final int PAGE_VALUE = 6;
+    private static final int PAGE_DIARY = PAGE_CHA;
+    private static final String[] PAGE_NAMES = {"志", "明", "戒", "察", "问", "人"};
+    private static final String[] PAGE_NAMES_EN = {"Aspiration", "Mind", "Precepts", "Reflect", "Questions", "People"};
 
     private static final String PREF = "zhi_cache";
     private static final String MODE_PREF = "zhi2_mode";
@@ -141,7 +150,7 @@ public final class ZhiPage {
     // 页顶一次性提示（如冲突后「这条已在别处更新」），refresh 时清掉
     private String topNotice;
     // 星筛选（三页各一份，v1.67.0）：0 不筛／1 只看一星／2 只看二星
-    private final int[] starSel = {0, 0, 0};
+    private final int[] starSel = new int[7];
     // 日记重要性（本地 DiaryImportance 快照＋详情页当前选择）
     private JSONObject diaryImpRoot;
     private int diaryImpSel;
@@ -151,8 +160,8 @@ public final class ZhiPage {
     private final Map<String, Runnable> rtPending = new HashMap<>();
 
     // 列表状态（三页各自一份）
-    private int page = PAGE_PRINCIPLE;
-    private final String[] queries = {"", "", "", ""};
+    private int page = PAGE_ZHIASP;
+    private final String[] queries = {"", "", "", "", "", "", ""};
     private final List<Set<String>> tagSel = new ArrayList<>();
     private FrameLayout root;
     private LinearLayout resultsCol;
@@ -186,7 +195,7 @@ public final class ZhiPage {
         this.act = act;
         this.container = container;
         this.wikiHost = () -> { if (Supa.isLoggedIn(this.act)) fetch(); };
-        for (int i = 0; i < 3; i++) tagSel.add(new HashSet<>());
+        for (int i = 0; i < 7; i++) tagSel.add(new HashSet<>());
         loadCache();
         // 「知」四表 Realtime（v1.67.0）：云端有变更（含别处写入）→ 防抖重拉对应表
         SupaRealtime.setZhiListener(table -> onRealtimeZhi(table));
@@ -284,6 +293,10 @@ public final class ZhiPage {
         renderCurrent();          // 先画缓存（或空区），不白屏
         fetch();                  // 切回知页强制重拉四表（逐表独立成败）
         flushQueue();             // 顺手补传待同步队列（回前台触发点之一）
+        // 察组的「过/动机」读 zhi_events 本地缓存：进页增量补拉，到达后只重画结果区
+        refreshEvents(act, () -> {
+            if (!editing && !diaryDetail && page == PAGE_CHA && resultsCol != null) renderResults();
+        });
     }
 
     private void renderCurrent() {
@@ -555,7 +568,7 @@ public final class ZhiPage {
     }
     private List<String> pageTags() {
         List<String> out = new ArrayList<>();
-        if (page == PAGE_PRINCIPLE) {
+        if (page == PAGE_MING || page == PAGE_JIE || page == PAGE_VALUE) {
             for (Principle p : principles) for (String tg : p.tags) if (!out.contains(tg)) out.add(tg);
         } else if (page == PAGE_QUESTION) {
             for (Question q : questions) for (String tg : q.tags) if (!out.contains(tg)) out.add(tg);
@@ -1269,7 +1282,8 @@ public final class ZhiPage {
     /** 外部跳入（合一页比例节标题，v1.72.0）：切到原则页签并打开这条原则的
      *  编辑页；本地模型里还没有这条时只停在原则列表，不硬开空页。 */
     public void openPrincipleById(String id) {
-        page = PAGE_PRINCIPLE;
+        Principle _p = principleById(id);
+        page = _p != null ? pageForKind(_p.kind) : PAGE_MING;
         if (principleById(id) == null) { renderList(); return; }
         pushEdit(T_PRINCIPLE, id);
     }
@@ -1322,7 +1336,7 @@ public final class ZhiPage {
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(20), dp(18), dp(24));
-        col.addView(serif(s("知", "Know"), 23, inkC(), true));
+        col.addView(serif(s("致良知", "Liangzhi"), 23, inkC(), true));
         TextView hint = tv(s("先登录，这里才有你的知", "Sign in first — your principles and questions live here"), 15, inkC());
         hint.setPadding(0, dp(22), 0, 0);
         col.addView(hint);
@@ -1357,11 +1371,7 @@ public final class ZhiPage {
         r.addView(scroll, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        col.addView(serif(s("知", "Know"), 23, inkC(), true));
-        TextView sub = tv(s("想明白的、要照着做的、还没问出口的，都放在这里",
-                "What you have figured out, what you mean to live by, and what you still want to ask"), 12, subC());
-        sub.setPadding(0, dp(4), 0, 0);
-        col.addView(sub);
+        col.addView(serif(s("致良知", "Liangzhi"), 23, inkC(), true));
 
         if (fetchFailed) {
             TextView t = tv(s("连不上，暂时看不到你的知", "Can't connect — your entries are out of reach for now"), 15, inkC());
@@ -1394,7 +1404,7 @@ public final class ZhiPage {
             col.addView(off);
         }
 
-        // 四段切换：原则 / 问题 / 人名 / 日记
+        // 六组切换：志 / 明 / 戒 / 察 / 问 / 人（v1.82.0）
         LinearLayout seg = new LinearLayout(act);
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setBackground(roundBg(washC(), 0, 9));
@@ -1405,10 +1415,10 @@ public final class ZhiPage {
         col.addView(seg, segLp);
         for (int i = 0; i < PAGE_NAMES.length; i++) {
             final int idx = i;
-            TextView t = tv(s(PAGE_NAMES[i], PAGE_NAMES_EN[i]), 13, idx == page ? inkC() : subC());
+            TextView t = tv(s(PAGE_NAMES[i], PAGE_NAMES_EN[i]), 13, idx == selPage() ? inkC() : subC());
             t.setGravity(Gravity.CENTER);
             t.setPadding(0, dp(7), 0, dp(7));
-            if (idx == page) {
+            if (idx == selPage()) {
                 t.setBackground(roundBg(cardC(), 0, 7));
                 t.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
             }
@@ -1416,9 +1426,18 @@ public final class ZhiPage {
             seg.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         }
 
-        // 搜索（输字只重画结果区，不丢焦点）
+        // 价值观列表页（志组的下钻）：给一行返回志组
+        if (page == PAGE_VALUE) {
+            TextView backV = tv("‹ " + s("志", "Aspiration"), 13, subC());
+            backV.setPadding(0, dp(10), 0, 0);
+            backV.setOnClickListener(v -> { page = PAGE_ZHIASP; renderList(); });
+            col.addView(backV);
+        }
+
+        // 搜索（输字只重画结果区，不丢焦点）；志组不搜索
         final EditText search = new EditText(act);
-        search.setHint(s("搜索" + PAGE_NAMES[page] + "…", "Search…"));
+        if (page == PAGE_ZHIASP) search.setVisibility(View.GONE);
+        search.setHint(s("搜索" + pageName() + "…", "Search…"));
         search.setText(queries[page]);
         search.setTextSize(13.5f);
         search.setSingleLine(true);
@@ -1438,8 +1457,8 @@ public final class ZhiPage {
         });
 
         // 筛选行（v1.67.0）：最前面永远钉 ★★ 与 ★（独立星筛选维度，与 tag 筛选
-        // 是 AND；tag 之间仍 OR）；点已选中的星取消。日记页无筛选行。
-        if (page != PAGE_DIARY) {
+        // 是 AND；tag 之间仍 OR）；点已选中的星取消。志组与察组无筛选行。
+        if (page != PAGE_ZHIASP && page != PAGE_CHA) {
             FlowLayout flow = new FlowLayout(act, dp(6), dp(6));
             LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -1481,7 +1500,7 @@ public final class ZhiPage {
         col.addView(tools, tLp);
         countView = tv("", 11.5f, weakC());
         tools.addView(countView);
-        if (page != PAGE_DIARY) {   // 日记页工具行只有计数（无复制、无卡片/列表双模式）
+        if (page != PAGE_ZHIASP && page != PAGE_CHA) {   // 志组/察组工具行只有计数（无复制、无卡片/列表双模式）
         View spacer = new View(act);
         tools.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
         TextView copy = tv(s("复制", "Copy"), 12, inkC());
@@ -1533,15 +1552,15 @@ public final class ZhiPage {
         fabLp.rightMargin = dp(18);
         fabLp.bottomMargin = dp(18);
         fabBtn.setOnClickListener(v -> openNew(pageType()));
-        if (page != PAGE_DIARY) r.addView(fabBtn, fabLp);   // 日记不在这里新建（晨间页与习惯页才是写日记的入口）
+        if (page != PAGE_CHA && page != PAGE_ZHIASP) r.addView(fabBtn, fabLp);   // 日记不在这里新建；志组不新建条目（价值观经志组块进入）
         fab = fabBtn;
 
         renderResults();
     }
 
     private String pageType() {
-        return page == PAGE_PRINCIPLE ? T_PRINCIPLE : page == PAGE_QUESTION ? T_QUESTION
-                : page == PAGE_DIARY ? T_DIARY : T_PERSON;
+        return page == PAGE_QUESTION ? T_QUESTION : page == PAGE_PERSON ? T_PERSON
+                : page == PAGE_CHA ? T_DIARY : T_PRINCIPLE;
     }
 
     private boolean hitTags(List<String> tags) {
@@ -1560,7 +1579,8 @@ public final class ZhiPage {
     }
     /** 当前页对应的表若没拉到最新（stale）返回表名；关联表 stale 对所有页都算。 */
     private String staleTableForPage() {
-        String t = page == PAGE_PRINCIPLE ? TB_PRINCIPLES : page == PAGE_QUESTION ? TB_QUESTIONS
+        String t = (page == PAGE_MING || page == PAGE_JIE || page == PAGE_VALUE) ? TB_PRINCIPLES
+                : page == PAGE_QUESTION ? TB_QUESTIONS
                 : page == PAGE_PERSON ? TB_PEOPLE : null;
         if (t != null && staleTables.contains(t)) return t;
         if (staleTables.contains(TB_LINKS)) return TB_LINKS;
@@ -1568,8 +1588,12 @@ public final class ZhiPage {
     }
     private List<Principle> filteredPrinciples() {
         String q = queries[page].trim();
+        // v1.82.0 按组分 kind：明=think、戒=act、价值观列表=value（其它页不走这里）
+        String kindFilter = page == PAGE_JIE ? "act" : page == PAGE_VALUE ? "value"
+                : page == PAGE_MING ? "think" : null;
         List<Principle> out = new ArrayList<>();
         for (Principle p : principles) {
+            if (kindFilter != null && !kindFilter.equals(p.kind)) continue;
             if (!hitTags(p.tags)) continue;
             if (!hitImportance(p.importance)) continue;
             if (!q.isEmpty() && !(p.title.contains(q) || p.body.contains(q))) continue;
@@ -1609,10 +1633,180 @@ public final class ZhiPage {
         resultsCol.removeAllViews();
         groupHeads.clear();
         if (rail != null) { rail.removeAllViews(); rail.setVisibility(View.GONE); }
-        if (page == PAGE_PRINCIPLE) renderPrincipleResults();
+        if (page == PAGE_ZHIASP) renderZhiAspResults();
+        else if (page == PAGE_JIE) renderJieResults();
+        else if (page == PAGE_CHA) renderChaResults();
         else if (page == PAGE_QUESTION) renderQuestionResults();
-        else if (page == PAGE_DIARY) renderDiaryResults();
-        else renderPeopleResults();
+        else if (page == PAGE_PERSON) renderPeopleResults();
+        else renderPrincipleResults();   // 明组与价值观列表：原则列表（按 kind 分组过滤）
+    }
+
+
+    // ---------------- v1.82.0「致良知」六组 ----------------
+
+    /** 深链/外部指定打开某个组（MainActivity 的习惯提醒 → 戒组走这里）。 */
+    public void showGroup(int g) {
+        if (g < 0 || g >= PAGE_NAMES.length) return;
+        page = g;
+        if (root != null && !editing && !diaryDetail) renderList();
+    }
+    private int selPage() { return page == PAGE_VALUE ? PAGE_ZHIASP : page; }
+    private String pageName() {
+        return page == PAGE_VALUE ? s("价值观", "Values") : s(PAGE_NAMES[page], PAGE_NAMES_EN[page]);
+    }
+
+    /** 嵌入一个 HabitPage 分区：卡片与全部交互（打卡、加减、读完一遍、点卡编辑等）
+     *  都是 HabitPage 原类原方法渲染的（readRow/diaryRow/weeklyRow/habitCard/
+     *  compactRow，未改一字），这里只给容器并指定分区。 */
+    private void embedHabits(int section) {
+        FrameLayout frame = new FrameLayout(act);
+        resultsCol.addView(frame);
+        HabitPage hp = new HabitPage(act, frame);
+        hp.setSection(section);
+        hp.refresh();
+    }
+    private boolean sectionHasHabits(int section) {
+        JSONObject r = HabitData.load(act);
+        for (HabitData.Habit hb : HabitData.habits(r)) if (HabitPage.sectionOf(hb) == section) return true;
+        return false;
+    }
+
+    // ---- 志组：Prompt 块（志＋价值观）＋自读卡＋每周目标反思卡 ----
+    private void renderZhiAspResults() {
+        countView.setText("");
+        LinearLayout prompt = new LinearLayout(act);
+        prompt.setOrientation(LinearLayout.VERTICAL);
+        prompt.setBackground(roundBg(cardC(), inkC(), 12));
+        prompt.setPadding(dp(16), dp(14), dp(16), dp(14));
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        pLp.topMargin = dp(12);
+        resultsCol.addView(prompt, pLp);
+        String asp = Aspiration.get(act);
+        TextView aspV = serif(asp.isEmpty() ? s("我的志", "My aspiration") : asp, 16.5f, inkC(), true);
+        aspV.setLineSpacing(0, 1.3f);
+        prompt.addView(aspV);
+        List<String> vals = new ArrayList<>();
+        for (Principle p : principles) if ("value".equals(p.kind)) vals.add(p.title);
+        LinearLayout vrow = new LinearLayout(act);
+        vrow.setOrientation(LinearLayout.HORIZONTAL);
+        vrow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams vLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        vLp.topMargin = dp(10);
+        prompt.addView(vrow, vLp);
+        vrow.addView(tv(s("价值观", "Values"), 12.5f, subC()));
+        TextView vtxt = tv(vals.isEmpty() ? "＋" : TextUtils.join(" · ", vals), 13.5f, redC());
+        vtxt.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        vtxt.setPadding(dp(10), 0, 0, 0);
+        vrow.addView(vtxt);
+        prompt.setOnClickListener(v -> editAspiration());
+        vrow.setOnClickListener(v -> { page = PAGE_VALUE; renderList(); });
+        // 每日自读卡＋每周目标反思卡：呈现归属搬到志组，卡片本体仍是 HabitPage 原卡
+        if (sectionHasHabits(HabitPage.SECTION_ZHI)) embedHabits(HabitPage.SECTION_ZHI);
+    }
+
+    /** 志的编辑：与设置页同一个编辑口（同标题/同提示/同存法 Aspiration.setLocal＋同步）。 */
+    private void editAspiration() {
+        final EditText input = new EditText(act);
+        input.setText(Aspiration.get(act));
+        input.setHint(Strings.aspEditHint());
+        input.setMinLines(3);
+        input.setGravity(Gravity.TOP);
+        input.setTextSize(17);
+        input.setTextColor(inkC());
+        input.setHintTextColor(subC());
+        new AlertDialog.Builder(act)
+                .setTitle(Strings.aspEditTitle())
+                .setView(input)
+                .setPositiveButton(s("保存", "Save"), (d, w) -> {
+                    Aspiration.setLocal(act, input.getText().toString());
+                    toast(Strings.aspSaved());
+                    AccountUi.runSync(act, new TaskStore(act), () -> refresh(), false);
+                    renderResults();
+                })
+                .setNegativeButton(s("取消", "Cancel"), null)
+                .show();
+    }
+
+    // ---- 戒组：守（max 习惯）＋行（行为原则＋其余习惯＋新建习惯入口） ----
+    private void renderJieResults() {
+        if (sectionHasHabits(HabitPage.SECTION_JIE_GUARD)) {
+            resultsCol.addView(groupLabel(s("守 · 止持", "Hold back")));
+            embedHabits(HabitPage.SECTION_JIE_GUARD);
+        }
+        resultsCol.addView(groupLabel(s("行 · 作持", "Act")));
+        List<Principle> list = filteredPrinciples();   // 本组已按 kind=act 过滤
+        countView.setText(s(list.size() + " 条", list.size() + " entries"));
+        if (!list.isEmpty()) {
+            boolean card = "card".equals(modeOf(page));
+            for (final Principle p : list) resultsCol.addView(card ? principleCard(p) : principleRow(p));
+        }
+        // 其余习惯卡＋「＋ 添加习惯」：无其余习惯时也渲染（只出添加入口）
+        embedHabits(HabitPage.SECTION_JIE_DO);
+    }
+
+    // ---- 察组：日记（状态卡在上方）＋动机今日一行＋过（近 30 天没做到，只读） ----
+    private void renderChaResults() {
+        resultsCol.addView(groupLabel(s("日 记", "Diary")));
+        if (sectionHasHabits(HabitPage.SECTION_CHA)) embedHabits(HabitPage.SECTION_CHA);
+        renderDiaryResults();
+        int[] ms = MotiveGate.stats(act);
+        if (ms[3] + ms[4] + ms[5] > 0) {
+            resultsCol.addView(groupLabel(s("动 机", "Motive")));
+            TextView line = tv(s("今日 有 " + ms[0] + " · 没考虑 " + ms[1] + " · 没有 " + ms[2],
+                    "Today: yes " + ms[0] + " · unconsidered " + ms[1] + " · no " + ms[2]), 13.5f, inkC());
+            line.setPadding(dp(2), 0, 0, 0);
+            resultsCol.addView(line);
+        }
+        renderFaultList();
+    }
+
+    /** 「过」只读列表：原则完成页问询的「没做到」＋自检分神（didRight=false），近 30 天倒序。 */
+    private void renderFaultList() {
+        long from = System.currentTimeMillis() - 30L * 24 * 3600 * 1000;
+        List<Object[]> rows = new ArrayList<>();   // {tsMs, 文案}
+        try {
+            JSONArray evs = eventsCache(act);
+            for (int i = 0; i < evs.length(); i++) {
+                JSONObject e = evs.optJSONObject(i);
+                if (e == null || !KIND_PRINCIPLE_CHECK.equals(e.optString("kind", ""))) continue;
+                if (!PC_MISSED.equals(e.optString("value", ""))) continue;
+                long ts = e.optLong("tsMs", 0);
+                if (ts < from) continue;
+                Principle p = principleById(e.optString("subject_id", ""));
+                rows.add(new Object[]{ts, s("没做到", "Missed") + (p != null ? " · " + p.title : "")});
+            }
+        } catch (Exception ignored) { }
+        try {
+            JSONArray sc = SelfChecks.loadArray(act);
+            for (int i = 0; i < sc.length(); i++) {
+                JSONObject e = sc.optJSONObject(i);
+                if (e == null || e.isNull("didRight") || e.optBoolean("didRight", true)) continue;
+                long ts = e.optLong("ts", 0);
+                if (ts < from) continue;
+                String label = s("分神", "Drifted");
+                TaskItem t = taskById(e.optString("taskId", ""));
+                if (t != null) label += " · " + t.title;
+                rows.add(new Object[]{ts, label});
+            }
+        } catch (Exception ignored) { }
+        if (rows.isEmpty()) return;
+        rows.sort((a, b) -> Long.compare((Long) b[0], (Long) a[0]));
+        resultsCol.addView(groupLabel(s("过", "Faults")));
+        for (Object[] r : rows) {
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(2), dp(7), dp(2), dp(7));
+            TextView t = tv((String) r[1], 13.5f, inkC());
+            row.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            row.addView(tv(faultDateLabel((Long) r[0]), 11.5f, weakC()));
+            resultsCol.addView(row);
+        }
+    }
+    private String faultDateLabel(long tsMs) {
+        return new SimpleDateFormat("MM-dd", Locale.US).format(new Date(tsMs));
     }
 
     private TextView groupLabel(String t) {
@@ -1666,13 +1860,7 @@ public final class ZhiPage {
         if (list.isEmpty()) { resultsCol.addView(emptyHint()); return; }
         boolean card = "card".equals(modeOf(page));
         if (card) {
-            for (String kind : new String[]{"think", "act"}) {
-                List<Principle> group = new ArrayList<>();
-                for (Principle p : list) if (kind.equals(p.kind)) group.add(p);
-                if (group.isEmpty()) continue;
-                resultsCol.addView(groupLabel(kind.equals("think") ? s("思维原则", "Thinking") : s("行为原则", "Action")));
-                for (final Principle p : group) resultsCol.addView(principleCard(p));
-            }
+            for (final Principle p : list) resultsCol.addView(principleCard(p));
         } else {
             for (final Principle p : list) resultsCol.addView(principleRow(p));
         }
@@ -1682,7 +1870,7 @@ public final class ZhiPage {
         LinearLayout kindRow = new LinearLayout(act);
         kindRow.setOrientation(LinearLayout.HORIZONTAL);
         kindRow.setGravity(Gravity.CENTER_VERTICAL);
-        kindRow.addView(tv("think".equals(p.kind) ? s("思维", "Thinking") : s("行为", "Action"), 10.5f, redC()));
+        kindRow.addView(tv(kindLabel(p.kind), 10.5f, redC()));
         if (p.importance > 0) {
             View ksp = new View(act);
             kindRow.addView(ksp, new LinearLayout.LayoutParams(0, 1, 1));
@@ -1718,7 +1906,7 @@ public final class ZhiPage {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(2), dp(9), dp(2), dp(9));
         View dot = new View(act);
-        boolean think = "think".equals(p.kind);
+        boolean think = "think".equals(p.kind) || "value".equals(p.kind);
         dot.setBackground(circleBg(think ? redC() : weakC(), 0));
         row.addView(dot, new LinearLayout.LayoutParams(dp(8), dp(8)));
         TextView title = tv(displayOf(p), 14.5f, inkC());
@@ -2340,16 +2528,16 @@ public final class ZhiPage {
         es = stateFromModel(ref);
         editing = true;
         principleHistShown = 30;
-        page = pageOfType(type);
+        page = T_PRINCIPLE.equals(type) ? pageForKind(es.kind) : pageOfType(type);
         renderEdit();
     }
 
     // ---------------- 复制筛选结果 ----------------
     private void copyFiltered() {
         List<String> lines = new ArrayList<>();
-        if (page == PAGE_PRINCIPLE) {
+        if (page == PAGE_MING || page == PAGE_JIE || page == PAGE_VALUE) {
             for (Principle p : filteredPrinciples()) {
-                lines.add(("think".equals(p.kind) ? "思维" : "行为") + "｜" + displayOf(p)
+                lines.add(kindLabel(p.kind) + "｜" + displayOf(p)
                         + "｜" + oneLine(p.body) + "｜" + TextUtils.join("，", p.tags));
             }
         } else if (page == PAGE_QUESTION) {
@@ -2457,8 +2645,16 @@ public final class ZhiPage {
                 : T_TASK.equals(type) ? s("任务", "Task") : s("人名", "Person");
     }
     private int pageOfType(String type) {
-        return T_PRINCIPLE.equals(type) ? PAGE_PRINCIPLE : T_QUESTION.equals(type) ? PAGE_QUESTION
-                : T_DIARY.equals(type) ? PAGE_DIARY : PAGE_PERSON;
+        return T_PRINCIPLE.equals(type) ? PAGE_MING : T_QUESTION.equals(type) ? PAGE_QUESTION
+                : T_DIARY.equals(type) ? PAGE_CHA : PAGE_PERSON;
+    }
+    /** 原则按 kind 落组：思维→明、行为→戒、价值→价值观列表。 */
+    private int pageForKind(String kind) {
+        return "act".equals(kind) ? PAGE_JIE : "value".equals(kind) ? PAGE_VALUE : PAGE_MING;
+    }
+    private String kindLabel(String kind) {
+        return "think".equals(kind) ? s("思维", "Thinking")
+                : "value".equals(kind) ? s("价值", "Value") : s("行为", "Action");
     }
 
     private EditState stateFromModel(Ref ref) {
@@ -2496,7 +2692,7 @@ public final class ZhiPage {
         es = stateFromModel(ref);
         editing = true;
         principleHistShown = 30;
-        page = pageOfType(type);
+        page = T_PRINCIPLE.equals(type) ? pageForKind(es.kind) : pageOfType(type);
         renderEdit();
     }
     private void openNew(String type) {
@@ -2506,7 +2702,11 @@ public final class ZhiPage {
         editStack.add(ref);
         es = stateFromModel(ref);
         editing = true;
-        page = pageOfType(type);
+        if (T_PRINCIPLE.equals(type)) {
+            // 新建原则的 kind 由入口组定：戒组→行为、价值观列表→价值、其余→思维
+            es.kind = page == PAGE_JIE ? "act" : page == PAGE_VALUE ? "value" : "think";
+            page = pageForKind(es.kind);
+        } else page = pageOfType(type);
         renderEdit();
     }
     private void pushEdit(String type, String id) {
@@ -2632,8 +2832,8 @@ public final class ZhiPage {
         } else {
             if (T_PRINCIPLE.equals(type)) {
                 col.addView(fieldLabel(s("类 型", "Kind")));
-                col.addView(twoChoice(new String[]{"think", "act"},
-                        new String[]{s("思维", "Thinking"), s("行为", "Action")}, st.kind,
+                col.addView(twoChoice(new String[]{"think", "act", "value"},
+                        new String[]{s("思维", "Thinking"), s("行为", "Action"), s("价值", "Value")}, st.kind,
                         v -> st.kind = v));
             }
             col.addView(fieldLabel(s("标 题", "Title")));
