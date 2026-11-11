@@ -88,26 +88,26 @@ public class MainActivity extends Activity {
     private String listLogicToday; // 本轮渲染用的逻辑今天（Rollover 口径），renderTable 每轮刷新
     private final java.util.Set<String> todayBlockIds = new java.util.HashSet<>(); // 今日日程里有块的 taskId（不限分屏形态，只读 schedule）
     // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」；
-    // v1.50.0 五签：第一签改名「行」，第二签新增「知」，其余顺延 ----
+    // v1.50.0 五签：第一签改名「行」，第二签新增「知」，其余顺延；
+    // v1.82.0 四签：行／知／知行／聊聊（习惯签下线，习惯并入知页「戒」组） ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
     /** 守卫问询页「和 AI 聊聊」带过来的上下文任务 id（配合 EXTRA_OPEN_TAB=TAB_CHAT 用）。 */
     public static final String EXTRA_CHAT_TASK = "chat_task_id";
     public static final int TAB_SCHEDULE = 0;
     public static final int TAB_ZHI = 1;
-    public static final int TAB_HABITS = 2;
-    public static final int TAB_ZHIXING = 3;
-    public static final int TAB_CHAT = 4;
+    public static final int TAB_ZHIXING = 2;
+    public static final int TAB_CHAT = 3;
+    /** v1.82.0：习惯提醒深链指定知页分组（值＝ZhiPage 的组序，如 PAGE_JIE）；配合 EXTRA_OPEN_TAB=TAB_ZHI 使用。 */
+    public static final String EXTRA_ZHI_GROUP = "zhi_group";
     private int currentTab = TAB_SCHEDULE;
     private FrameLayout scheduleWrap;
     private FrameLayout zhiContainer;
-    private FrameLayout habitContainer;
     private FrameLayout zhixingContainer;
     private FrameLayout chatContainer;
-    private final View[] tabCells = new View[5];
-    private final TextView[] tabLabels = new TextView[5];
-    private final ImageView[] tabIcons = new ImageView[5];
+    private final View[] tabCells = new View[4];
+    private final TextView[] tabLabels = new TextView[4];
+    private final ImageView[] tabIcons = new ImageView[4];
     private ZhiPage zhiPage;
-    private HabitPage habitPage;
     private ZhixingPage zhixingPage;
     private ChatPanel chatPanel;
     /** onCreate 本轮是否刚呈现了建议设置页：onResume 第一轮给它让行，之后再补弹更新日志（v1.26.3）。 */
@@ -160,10 +160,11 @@ public class MainActivity extends Activity {
         // 聊聊未读红点：主线变更时刷新角标，进聊聊页签即清零
         ChatStore.addChangeListener(chatListener);
         refreshChatBadge();
-        // 通知点开可直达某个 Tab（习惯提醒 → 习惯页）
+        // 通知点开可直达某个 Tab（习惯提醒 → 知页戒组）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
             applyChatTaskExtra(getIntent());
+            applyZhiGroupExtra(getIntent());
         }
     }
 
@@ -174,7 +175,16 @@ public class MainActivity extends Activity {
         if (intent != null && intent.hasExtra(EXTRA_OPEN_TAB)) {
             switchTab(intent.getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
             applyChatTaskExtra(intent);
+            applyZhiGroupExtra(intent);
         }
+    }
+
+    /** 习惯提醒深链（v1.82.0）：切到知页后定位到「戒」组（只消费一次）。 */
+    private void applyZhiGroupExtra(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_ZHI_GROUP)) return;
+        int g = intent.getIntExtra(EXTRA_ZHI_GROUP, -1);
+        intent.removeExtra(EXTRA_ZHI_GROUP);
+        if (g >= 0 && zhiPage != null) zhiPage.showGroup(g);
     }
 
     /** 问询页「和 AI 聊聊」带来的上下文任务：切到聊聊页签后把它设成在聊的任务（只消费一次）。 */
@@ -419,10 +429,6 @@ public class MainActivity extends Activity {
         zhiContainer = new FrameLayout(this);
         zhiContainer.setVisibility(View.GONE);
         pages.addView(zhiContainer, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        habitContainer = new FrameLayout(this);
-        habitContainer.setVisibility(View.GONE);
-        pages.addView(habitContainer, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         zhixingContainer = new FrameLayout(this);
         zhixingContainer.setVisibility(View.GONE);
@@ -689,9 +695,9 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Ui.dark(this) ? Ui.surface(this) : Ui.bg(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
-        String[] labels = {Strings.tabSchedule(), Strings.tabZhi(), Strings.tabHabits(),
+        String[] labels = {Strings.tabSchedule(), Strings.tabZhi(),
                 Strings.tabZhixing(), Strings.tabChat()};
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < labels.length; i++) {
             final int idx = i;
             // 外层 FrameLayout 是为了给「聊聊」页签留一个右上角角标位（v1.27.0），
             // 内层是竖排（图标在上、文字在下）。
@@ -747,15 +753,13 @@ public class MainActivity extends Activity {
         paintTabs();
     }
 
-    // v1.63.0 底部五签正式图标：顺序与 TAB_* 常量一致（行/知/习惯/知行/聊聊）
+    // v1.63.0 底部签正式图标：顺序与 TAB_* 常量一致（v1.82.0 起四签：行/知/知行/聊聊）
     private static final int[] TAB_ICON_SEL = {
             R.drawable.ic_01_act_selected, R.drawable.ic_02_knowledge_selected,
-            R.drawable.ic_03_habits_selected, R.drawable.ic_04_unity_selected,
-            R.drawable.ic_05_chat_selected};
+            R.drawable.ic_04_unity_selected, R.drawable.ic_05_chat_selected};
     private static final int[] TAB_ICON_UNSEL = {
             R.drawable.ic_01_act_unselected, R.drawable.ic_02_knowledge_unselected,
-            R.drawable.ic_03_habits_unselected, R.drawable.ic_04_unity_unselected,
-            R.drawable.ic_05_chat_unselected};
+            R.drawable.ic_04_unity_unselected, R.drawable.ic_05_chat_unselected};
 
     private void paintTabs() {
         for (int i = 0; i < tabLabels.length; i++) {
@@ -778,7 +782,6 @@ public class MainActivity extends Activity {
         }
         if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
         if (zhiContainer != null) zhiContainer.setVisibility(tab == TAB_ZHI ? View.VISIBLE : View.GONE);
-        if (habitContainer != null) habitContainer.setVisibility(tab == TAB_HABITS ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
         if (chatContainer != null) chatContainer.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
         paintTabs();
@@ -790,9 +793,6 @@ public class MainActivity extends Activity {
         if (tab == TAB_ZHI) {
             if (zhiPage == null) zhiPage = new ZhiPage(this, zhiContainer);
             zhiPage.refresh();
-        } else if (tab == TAB_HABITS) {
-            if (habitPage == null) habitPage = new HabitPage(this, habitContainer);
-            habitPage.refresh();
         } else if (tab == TAB_ZHIXING) {
             if (zhixingPage == null) zhixingPage = new ZhixingPage(this, zhixingContainer);
             zhixingPage.refresh(store);

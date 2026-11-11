@@ -9,7 +9,7 @@ import android.content.Intent;
 
 import org.json.JSONObject;
 
-/** 习惯提醒接收器（v1.16.0）：到点发一条本地通知，点开进知行习惯页；随后全量续排。 */
+/** 习惯提醒接收器（v1.16.0）：到点发一条本地通知，点开进知页「戒」组（v1.82.0 起习惯并入知页）；随后全量续排。 */
 public class HabitReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -20,7 +20,8 @@ public class HabitReceiver extends BroadcastReceiver {
             if (h != null && h.reminder != null) {
                 AlertHelper.createChannels(context);
                 Intent open = new Intent(context, MainActivity.class);
-                open.putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_HABITS);
+                open.putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_ZHI);
+                open.putExtra(MainActivity.EXTRA_ZHI_GROUP, ZhiPage.PAGE_JIE);
                 open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 PendingIntent pi = PendingIntent.getActivity(context, 71000 + Math.abs(h.id.hashCode() % 5000),
                         open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
