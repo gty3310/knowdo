@@ -323,7 +323,9 @@ public class TodayPlanActivity extends Activity {
         LinearLayout col = new LinearLayout(this);
         dbgCol = col; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(18), dp(4), dp(18), dp(22));
+        // 底部 padding 先给一个约数（吸底钮栏高＋12dp），首帧布局后在 buildUi
+        // 文末按钮栏实际高精确重设（v1.79.0）
+        col.setPadding(dp(18), dp(4), dp(18), dp(76));
 
         // 今日时段
         LinearLayout secRow = new LinearLayout(this);
@@ -482,65 +484,8 @@ public class TodayPlanActivity extends Activity {
         col.addView(otherBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 固定底 ----
-        LinearLayout foot = new LinearLayout(this);
-        dbgFoot = foot; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
-        foot.setOrientation(LinearLayout.VERTICAL);
-        foot.setPadding(dp(18), dp(8), dp(18), dp(4));
-        TextView btn = new TextView(this);
-        dbgBtn = btn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
-        btn.setText(s("排进今天的日程", "Plan into today"));
-        btn.setTextSize(13);
-        btn.setGravity(Gravity.CENTER);
-        btn.setTextColor(Color.WHITE);
-        btn.setPadding(0, dp(7), 0, dp(7));
-        btn.setBackground(round(Ui.text(this), 10));
-        btn.setOnClickListener(v -> onPlanIntoToday());
-
-        // v1.55.0：加任务两钮——比底部大钮轻一档（描边浅底），排在大钮上方
-        LinearLayout addRow = new LinearLayout(this);
-        addRow.setOrientation(LinearLayout.HORIZONTAL);
-        TextView addBtn = lightBtn(s("添加任务", "Add task"));
-        addBtn.setOnClickListener(v -> TaskEditSheet.showCreateWithDeadline(
-                this, store, logicToday, editHost));
-        TextView aiBtn = lightBtn(s("跟 AI 一起添加任务", "Add with AI"));
-        aiBtn.setOnClickListener(v -> openAiPanel());
-        addRow.addView(addBtn, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        View addGap = new View(this);
-        addRow.addView(addGap, new LinearLayout.LayoutParams(
-                dp(10), ViewGroup.LayoutParams.WRAP_CONTENT));
-        addRow.addView(aiBtn, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        foot.addView(addRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        View addRowGap = new View(this);
-        foot.addView(addRowGap, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(8)));
-
-        LinearLayout mainRow = new LinearLayout(this);
-        mainRow.setOrientation(LinearLayout.HORIZONTAL);
-        mainRow.addView(btn, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        View footGap = new View(this);
-        mainRow.addView(footGap, new LinearLayout.LayoutParams(
-                dp(10), ViewGroup.LayoutParams.WRAP_CONTENT));
-        TextView startBtn = new TextView(this);
-        dbgStartBtn = startBtn; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
-        startBtn.setText(s("开始今天", "Start today"));
-        startBtn.setTextSize(13);
-        startBtn.setGravity(Gravity.CENTER);
-        startBtn.setTextColor(Color.WHITE);
-        startBtn.setPadding(0, dp(7), 0, dp(7));
-        startBtn.setBackground(round(Ui.text(this), 10));
-        startBtn.setOnClickListener(v -> onStartToday());
-        mainRow.addView(startBtn, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        foot.addView(mainRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // v1.78.0：操作按钮挪到页顶（账本之下），任务内容在其下
-        root.addView(foot, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // v1.79.0：四个操作钮不再进滚动内容，改走 frame 底部浮层（buildBtnBar，
+        // 在下方 frame 组装处挂上）；滚动内容到任务区为止。
         root.addView(col, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -554,6 +499,14 @@ public class TodayPlanActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         frame.addView(pageScroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // v1.79.0 吸底四钮栏：frame 内的底部浮层（Gravity.BOTTOM），不进滚动
+        // 内容、不靠 LinearLayout 权重分配高度（避开 v1.77 的三段高度病）。
+        // z 序在 AI 面板之下：面板打开时盖住钮栏即可（openAiPanel 有 bringToFront）。
+        final LinearLayout btnBar = buildBtnBar();
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        barLp.gravity = Gravity.BOTTOM;
+        frame.addView(btnBar, barLp);
         aiPanel = buildAiPanel();
         aiPanel.setVisibility(View.GONE);
         int panelH = (int) (getResources().getDisplayMetrics().heightPixels * 0.92);
@@ -562,6 +515,9 @@ public class TodayPlanActivity extends Activity {
         plp.gravity = Gravity.BOTTOM;
         frame.addView(aiPanel, plp);
         setContentView(frame);
+        // 内容列底部让位：钮栏实际高＋12dp，最后一张卡不被吸底栏挡住
+        btnBar.post(() -> col.setPadding(dp(18), dp(4), dp(18),
+                btnBar.getHeight() + dp(12)));
         // v1.77.0 临时诊断：今天安排空白定位，修复版移除（L1＝首帧布局后取样，L2＝800ms 后再取样，抓先画好又塌掉）
         root.post(() -> {
             try {
@@ -613,6 +569,66 @@ public class TodayPlanActivity extends Activity {
     // v1.77.0 临时诊断：今天安排空白定位，修复版移除
     private static int dbgH(View v) {
         try { return v == null ? -1 : v.getHeight(); } catch (Exception e) { return -1; }
+    }
+
+    /** 深底主钮（原页顶大钮的样式，v1.79.0 起用于吸底栏的两个主动作）。 */
+    private TextView darkBtn(String text) {
+        TextView v = new TextView(this);
+        v.setText(text);
+        v.setTextSize(13);
+        v.setGravity(Gravity.CENTER);
+        v.setTextColor(Color.WHITE);
+        v.setPadding(0, dp(7), 0, dp(7));
+        v.setBackground(round(Ui.text(this), 10));
+        v.setSingleLine(true);
+        v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        return v;
+    }
+
+    /**
+     * 吸底四钮栏（v1.79.0）：添加任务（浅）／跟 AI 一起添加任务（浅）／排进今天
+     * 的日程（深）／开始今天（深），四钮等宽一排、单行不折行；点击行为与原
+     * addRow 两钮、btn、startBtn 逐一相同（监听原样搬来）。栏体是 FrameLayout
+     * 里的底部浮层，高度只由内容决定，不参与任何权重分配；顶部一条细线与
+     * 滚动内容分界。本页 windowSoftInputMode=adjustResize（Manifest 既有），
+     * 键盘弹起时窗口收缩、钮栏随之贴在键盘上方。
+     */
+    private LinearLayout buildBtnBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setBackgroundColor(Ui.bg(this));
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        bar.addView(line, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(14), dp(8), dp(14), dp(10));
+        TextView addBtn = lightBtn(s("添加任务", "Add task"));
+        addBtn.setSingleLine(true);
+        addBtn.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addBtn.setOnClickListener(v -> TaskEditSheet.showCreateWithDeadline(
+                this, store, logicToday, editHost));
+        TextView aiBtn = lightBtn(s("跟 AI 一起添加任务", "Add with AI"));
+        aiBtn.setTextSize(12);
+        aiBtn.setSingleLine(true);
+        aiBtn.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        aiBtn.setOnClickListener(v -> openAiPanel());
+        TextView planBtn = darkBtn(s("排进今天的日程", "Plan into today"));
+        planBtn.setTextSize(12);
+        planBtn.setOnClickListener(v -> onPlanIntoToday());
+        TextView startBtn = darkBtn(s("开始今天", "Start today"));
+        startBtn.setOnClickListener(v -> onStartToday());
+        TextView[] btns = {addBtn, aiBtn, planBtn, startBtn};
+        for (int i = 0; i < btns.length; i++) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) lp.leftMargin = dp(8);
+            row.addView(btns[i], lp);
+        }
+        bar.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return bar;
     }
 
     /** 描边浅底的轻钮（v1.55.0 加任务两钮用，比底部大钮轻一档）。 */
