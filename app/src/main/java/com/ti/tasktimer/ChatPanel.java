@@ -954,6 +954,28 @@ public class ChatPanel {
 
     // ---------------- 上下文注入 ----------------
 
+    /**
+     * AI 底色（v1.82.0）：志（Aspiration）＋价值观（知页 kind=value 的原则标题）
+     * 拼成的一段。志与价值观是用户给自己 AI 的 system prompt——每次发送现拼现取，
+     * 两样都空就不加这一段。只拼「志：…／价值观：…」两行，不含任何写死内容。
+     */
+    private String baseToneSection() {
+        String asp = Aspiration.get(act);
+        StringBuilder vals = new StringBuilder();
+        try {
+            for (ZhiPage.Principle p : ZhiPage.principlesCache(act)) {
+                if (!"value".equals(p.kind)) continue;
+                if (vals.length() > 0) vals.append("、");
+                vals.append(p.title);
+            }
+        } catch (Exception ignored) { }
+        if (asp.isEmpty() && vals.length() == 0) return "";
+        StringBuilder b = new StringBuilder("\n\n这是用户的志与价值观，是他为人处世的底色，你的言行要与之相合：\n");
+        if (!asp.isEmpty()) b.append("志：").append(asp).append("\n");
+        if (vals.length() > 0) b.append("价值观：").append(vals).append("\n");
+        return b.toString();
+    }
+
     /** 每次发送都现拼 system：任务字段与今日已用取当下最新值，多轮聊着数据不旧。 */
     private String buildSystemPrompt() {
         store.load();
@@ -962,6 +984,7 @@ public class ChatPanel {
           .append("用用户说话的语言回复；语气平静、简短、具体，不说教，不用夸张的鼓励，先听他说卡在哪里，必要时只追问一句。")
           .append("用户没做好的任务，多半不是不想做，是任务本身没想清楚：太大、太糊、或者时机不对。你的活是陪他想清楚，而不是替他做。");
         sb.append("\n\n").append(en() ? MANUAL_EN : MANUAL_ZH);
+        sb.append(baseToneSection());
         if (taskId == null) {
             sb.append("\n\n这次用户没有带具体任务，想到什么聊什么。下面是他今天的任务（改/删时从这里选真实 taskId，不要主动逐条点评）：\n");
             List<TaskItem> vis = store.visibleSorted();
