@@ -519,6 +519,30 @@ public class SettingsActivity extends Activity {
                         : "全屏提示页（晨间页、守卫问询、选下一个任务、静音叫回）被划走、还没处理完时，"
                         + "隔多久再弹回来。你的个人设置，存云端同步",
                 arrowBtn(PromptRepop.label(PromptRepop.seconds(this)) + " ›"), v -> pickRepop());
+        // 分神处置（v1.80.0）：宽限到点后三档，与问询页选择行读写同一份设置
+        {
+            String cur = ScreenGuardPrefs.graceAction(this);
+            row(Strings.setGraceAction(), null,
+                    arrowBtn(graceActionShort(cur) + " ›"), v -> pickGraceAction());
+        }
+        // 盖住时长（v1.80.0）：固定 3 分钟，只显示不设项
+        row(Strings.setBlockLen(), null, null, null);
+        // 提前解封（v1.80.0）：只在正被盖住时出现；每天限 1 次，只能在这里解
+        if (AppBlock.isActive(this)) {
+            String blockedName = AppLister.labelOf(this, AppBlock.activePkg(this));
+            if (ScreenGuardPrefs.unblockUsedToday(this)) {
+                row(Strings.setUnblock(),
+                        blockedName + " · " + Strings.unblockUsed(), null, null);
+            } else {
+                row(Strings.setUnblock(), blockedName,
+                        arrowBtn(Strings.unblockBtn() + " ›"), v -> {
+                            AppBlock.clear(this);
+                            ScreenGuardPrefs.markUnblockUsed(this);
+                            toast(Strings.unblockedToast());
+                            buildUi();
+                        });
+            }
+        }
         // 测试者模式（内部 key diag_mode，v1.24.1 由暂名「测试模式」正式改名，用户钦定）：
         // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
         Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));
@@ -782,6 +806,32 @@ public class SettingsActivity extends Activity {
                     buildUi();
                 })
                 .setNegativeButton(en ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    // 分神处置短名（v1.80.0）：设置行右侧显示当前值用
+    private static String graceActionShort(String act) {
+        if (ScreenGuardPrefs.ACTION_QUIT.equals(act)) return Strings.graceActQuit();
+        if (ScreenGuardPrefs.ACTION_BACKGROUND.equals(act)) return Strings.graceActBg();
+        return Strings.graceActBlock();
+    }
+
+    /** 分神处置三选（v1.80.0）：仿 pickRepop 的弹窗选择器，选后写设置并整页重绘。 */
+    private void pickGraceAction() {
+        final String[] acts = {ScreenGuardPrefs.ACTION_QUIT, ScreenGuardPrefs.ACTION_BACKGROUND,
+                ScreenGuardPrefs.ACTION_BLOCK};
+        String[] labels = {Strings.graceActQuit(), Strings.graceActBg(), Strings.graceActBlock()};
+        String cur = ScreenGuardPrefs.graceAction(this);
+        int checked = 0;
+        for (int i = 0; i < acts.length; i++) if (acts[i].equals(cur)) checked = i;
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.setGraceAction())
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    ScreenGuardPrefs.setGraceAction(this, acts[which]);
+                    d.dismiss();
+                    buildUi(); // 整页重绘，右侧值更新
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
                 .show();
     }
 
