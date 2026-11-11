@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1810 = new Entry("v1.81.0", "2026-11-11");
+        e1810.add(new Group(s("改进", "Improved"),
+                s("行页排序认跳过——跳过今天的重复任务按效期排到下一次，今天真正到期的排最前",
+                  "The task list sorts by effective date — a repeating task skipped today moves to its next occurrence, so what is truly due today comes first"),
+                s("行页里被跳过的任务在截止日旁标「（跳过）」",
+                  "A skipped task is marked (skipped) next to its due date in the task list")));
+        e1810.why = s("跳过之后它如果还占着今天的位置，列表看起来就像今天还要做它；按效期排位，打开行页先看到的就是今天真正要做的事",
+                "If a skipped task still sat in today's place, the list would look as if it were still on for today; sorting by effective date means the list opens with what today really asks of you");
+        e1810.tryIt = s("在今天安排页对一件每日任务点「跳过今天」，再回行页看：它的截止日旁多了「（跳过）」，位置也排到了今天真正到期的任务后面",
+                "Skip a daily task for today on the Plan today page, then look at the task list: it is marked (skipped) by its due date, and it now sits behind the tasks truly due today");
+        out.add(e1810);
+
         Entry e1800 = new Entry("v1.80.0", "2026-11-11");
         e1800.add(new Group(s("新增", "New"),
                 s("分神处置「盖住 3 分钟」——问询页选完宽限，时间一到那个软件被盖住 3 分钟",
