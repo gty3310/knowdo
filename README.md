@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.79.0)
+## Features (Android, v1.80.0)
 
-Current version: **v1.79.0**.
+Current version: **v1.80.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.80.0 — 2026-11-11
+
+**Why:** The user settled the drift response in one pass and made it the top priority: when the guard catches you drifting, picking a grace length already admits the drift — so the inquiry page stops asking "did you do right?" altogether. What it asks now is how long a last look you want, and what happens when it runs out: the app is covered for a fixed 3 minutes (other apps stay usable; the cover returns the moment you switch back). Early release exists exactly once a day and only from Settings. Build commit `e4cbe14` · [compare v1.79.0...v1.80.0](https://github.com/gty3310/knowdo/compare/v1.79.0...v1.80.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Block for 3 minutes.** The at-expiry response grows from two choices to three — quit the app, background only, or block it: a full-screen cover in the inquiry page's own style showing the app's name, a large countdown and the current task, with no unblock control anywhere on it. The cover state survives process death and reboot (an exact alarm clears it at the deadline), the two guard modes share the one setting, and an old two-way choice migrates across (a stored "quit" stays quit, "background" stays background; never touched it and the new default is block). The 3 minutes are a constant, not a setting.
+- **Unblock early, in Settings.** While an app is covered, Settings shows the covered app's name with an Unblock row — tap it and the cover lifts, and that was today's one use; afterwards the row just says so. A static row records the fixed block length.
+
+**Improved**
+- **The inquiry page.** The self-check row is gone; in its place, "A last look — how long?" with four buttons: Block now, 1, 3 or 5 more minutes. Tapping any of them records the drift exactly as the old "No" answer did — the focus score's drift count reads that same record, and its formula is untouched this release (the calculator file has an empty diff). Return to task, false alarm and chat are unchanged.
+
+Not yet verified on a real device: the reworked inquiry page, grace expiry into the cover in both guard modes, Block now, cover behaviour when switching apps, suppression of new inquiries while covered, the once-a-day Settings unblock, reboot persistence, and the 1.79.0 to 1.80.0 in-app update chain. Not in this release: diary filters, the calendar re-plan line removal, the floating card's button row, the semantic engine split, and the always-on floating window — all queued behind this one by the user's call.
+
 ### v1.79.0 — 2026-11-11
 
 **Why:** Daily repeating things sometimes need a day off — deleting them is too much, forcing through drags the day (and the score) down — so repeating tasks gain a "skip today": not done today, not counted as missed, back tomorrow as usual. The same release pins the page's four action buttons in one row at the bottom (they used to live at the top, a full scroll away), fixes the Add-tasks-with-AI panel opening to just its title line, and removes the two diagnostic lines 1.77 added to localise the blank-page fault (closed in 1.78 and verified on the user's phone). Build commit `4ee2e8e` · [compare v1.78.0...v1.79.0](https://github.com/gty3310/knowdo/compare/v1.78.0...v1.79.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -92,15 +105,6 @@ Not yet verified on a real device: skip/restore end to end, the pinned bar over 
 - **A safety net under task data (unrelated to the blank page, listed honestly).** TaskStore loading now skips a single corrupt task instead of emptying the whole list, and if the entire file fails to parse it is first renamed to a `.corrupt` backup before starting empty — one bad record can no longer take every task down with it, and the original file survives for inspection.
 
 Not yet verified on a real device: whether the page now renders end to end on the affected phone (the DBG line is kept precisely so this can be checked), and the 1.77.0 to 1.78.0 in-app update chain. Not in this release: diary filters (v1.79), the floating card's extend button (v1.80); whether the new button placement and non-sticky ledger stay is the user's call once the page is confirmed visible.
-
-### v1.77.0 — 2026-11-10
-
-**Why:** On the user's phone (1.75.0) the Plan today page is still blank in a very specific way: the header accounts and the self-check line are right, and the self-check even counts 9 cards — the cards are built and added — yet the whole scrolling region is invisible, the footer's two dark buttons are missing as well, only the footer's first row (Add task / Add with AI) sits under the header, and the blank area does not scroll at all. The v1.70 repair theory (containers collapsing for lack of explicit LayoutParams) stands falsified: the current buildUi passes explicit params everywhere and the page is still blank. So this release does not guess another fix — it gathers evidence. Build commit `b9d40cc` · [compare v1.76.0...v1.77.0](https://github.com/gty3310/knowdo/compare/v1.76.0...v1.77.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **A DBG line in the Plan today header (temporary).** Under the self-check line, a new 10sp line prints the measured pixel heights of every layer of the page: window (decor view), root, header, scroll view, content column, the cards box as height×child-count, the first card (-1 when there is none), the footer and its two big buttons, and the AI panel as visibility/height — plus display density and font scale. It samples twice, once posted after the first layout (L1) and again 800 ms later (L2), to catch a page that first draws and then collapses. One screenshot from the affected phone will show exactly which layer is at fault. The implementation only promotes buildUi's local variables for those views to fields so their heights can be read (the AI panel and the cards box already were fields); no existing view's size, params or visibility changes, no refresh logic changes, and the sampling is fully try/catch-guarded with -1 for anything unreadable, so the diagnostic can never become a new crash source. The fix release that follows will remove this line.
-
-Not yet verified on a real device: the DBG readings on the affected phone — collecting them is the point of this release. Not in this release: the actual Plan-today fix (next, once the screenshot localises it), diary filters (moved to v1.78), the floating card's extend button (moved to v1.79).
 
 ## Build
 

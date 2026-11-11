@@ -2,6 +2,33 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.80.0] - 2026-11-11（versionCode 119）
+
+分神封软件：问询页改版＋处置三档「盖住 3 分钟」
+
+为什么：用户 2026-11-11 午后改定并插队为最优先——分神被抓时问询页不再问「做到了/没有」：选宽限本身就代表承认分神了。再定处置：宽限一到，那个软件被盖住固定 3 分钟（切去别的软件不受影响，切回才盖）；提前解封每天限一次、且只能到设置页里解。页面文字极简、不解释功能，视觉沿 GuardActivity 现有做法。
+
+发布提交：`e4cbe14`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.79.0...v1.80.0 比较](https://github.com/gty3310/knowdo/compare/v1.79.0...v1.80.0)
+
+### 新增
+
+- 盖住 3 分钟（F2）：处置枚举由布尔改三档——quit 退掉这个软件／background 只放到后台／block 盖住 3 分钟（`ScreenGuardPrefs.graceAction`，名单模式与内容模式共用同一份；问询页选择行只在内容模式显示，名单模式在设置页改）。迁移口径：旧布尔 `grace_action_quit` 已存过值时 true→quit、false→background，首次读迁移并删旧键；两键皆无（从未改过此项）→ 新默认 block（用户定案）。盖住实现＝新 `AppBlock`（状态 block_pkg/block_until 存 screenguard_state）＋新全屏页 `BlockActivity`（标题「{软件名} 先歇一会儿」＋倒计时大字＋当前任务＋「回到任务」，无任何解封入口，风格同 GuardActivity）＋新 `BlockEnforcer` 精确闹钟（REQ 785，到点清状态；BootReceiver 开机 ensureScheduled 续排/补清）。盖住时长固定 3 分钟是常量 `AppBlock.BLOCK_MS`，不做设置项。封禁对象永不含本包。
+- 设置页提前解封（F3）：守卫组新增「宽限到点后」三选行（弹窗选择器，写同一份枚举）、「盖住时长 3 分钟」静态行；仅在正被盖住时出现「提前解封」行（显被盖软件名）：未用过→点行即 AppBlock.clear＋记当日已用；已用过→行上只显「今天已解封过」、无钮。每日限额按设备日历日记账（unblock_date/unblock_used）。
+
+### 改进
+
+- 问询页改版（F1，`GuardActivity`）：删掉「刚才在做该做的事吗」自检行及整套自检代码（标题问句、副文案、志不动）；动作区改「最后再看多久」四钮——马上封（0）/再看 1 分钟（60）/再看 3 分钟（180）/再看 5 分钟（300），两排 scRow 与处置选择行同款式（52dp、选中朱砂填充）。内容模式处置选择行由两钮扩三钮走新枚举；原「给我 30 秒/60 秒」钮删除。「立即回到任务」「误判放行」「和 AI 聊聊」不变。
+
+### 分神记录衔接（红线核查）
+
+- 分神计数口径零改动：`ZhixingCalc` 本版 diff 为空。旧版问询页点「没有」走 SelfChecks.begin+answer(didRight=false)，是 drift 计数的数据来源；新版点任一宽限钮（含马上封）时，处理函数先经 `GuardActivity.recordDriftOnce()` 记一次完全同构的记录（kind=drift、didRight=false、state=null、同绑当前任务），每次问询只记一次——计数衔接点在此，口径不变。「立即回到任务」与「误判放行」不记分神（与旧版点「做到了」同为不记；旧版显式点「做到了」留一条 didRight=true 记录的入口随自检行删除消失，计数公式只读 false 侧，故不影响）。`SelfChecks.begin` 全仓仍只有 GuardActivity 一处调用。
+- 宽限到点执行：内容模式 `VerdictEngine.applyEnforcement` 在原 fg 复查之后、pressHome 之前新增 block 分支（AppBlock.start＋GuardEvents.add 新 detail「宽限到点处理（盖住 3 分钟）：仍停留在「{appName}」，blocked 3m」，category 沿用触发类别、score=1f，其余 detail 一字未改；TimerState 日志一句）；「马上封」走新 `contentEnforceNow`→同一 applyEnforcement 的 assumeOnPkg 变体（跳过 fg 复查：答题时自家问询页在前台，复查必误判）。名单模式 `FocusGuard` 宽限到期由原「执行跳回」改调新 `applyListEnforcement` 三档共用（block 只写 TimerState 日志，不记 GuardEvents——名单模式历来不记分神事件，保持）；「马上封」走新 `chooseGraceImmediate`（cooldown 8 秒＋同一执行）。
+- 抑制条件：盖住期间（block 未到期）内容守卫 onResult 顶部新增返回——前台正是被盖软件时不再触发问询；名单 tick 与无障碍窗口事件各调 `AppBlock.checkForeground`：前台回到被盖软件拉起盖屏并短路本拍，前台离开到第三个软件时收起盖屏；盖住过期在 checkForeground 内顺手清状态。
+
+未做：日记筛选与日历蓝字整行删除（原排本版，用户改定顺延）、悬浮卡按钮行、语义引擎外置、悬浮窗常驻与长按完全隐藏，均不在本版。
+
+试用：任务中打开会触发问询的软件，点「再看 1 分钟」等到点看盖屏；切走再切回看盖屏还在；去设置页用一次提前解封。
+
 ## [1.79.0] - 2026-11-11（versionCode 118）
 
 跳过今天＋吸底四钮栏＋AI 面板修复＋删诊断行
