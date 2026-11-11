@@ -36,6 +36,21 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1780 = new Entry("v1.78.0", "2026-11-11");
+        e1780.add(new Group(s("修复", "Fixed"),
+                s("「今天安排」页打开后中间一片空白、任务卡不显示的问题修好了——整页改成从上往下排的一个滚动页，内容自己撑开，不再被压没",
+                  "The Plan today page opening to a blank middle with no task cards is fixed — the whole page is now one scrolling column that sizes itself, so nothing gets squeezed away")));
+        e1780.add(new Group(s("改进", "Improved"),
+                s("「排进今天的日程」「开始今天」挪到页面上方并排一行，进页面就能点，时间账跟着页面一起滚",
+                  "Plan into today and Start today moved to the top side by side, reachable the moment the page opens; the time ledger scrolls along with the page"),
+                s("任务数据多一层保险：某一条任务数据损坏时只跳过那一条；整份数据读不出来时先把原文件备份一份再继续",
+                  "Task data gains a safety net: one corrupt task is skipped on its own, and if the whole file cannot be read it is backed up first before anything else happens")));
+        e1780.why = s("1.77 的诊断数字显示原分栏结构把中间区域压没了，这版换成整页滚动",
+                "The 1.77 diagnostics showed the old split layout was crushing the middle area flat, so this version switches to a single scrolling page");
+        e1780.tryIt = s("更新后打开「今天安排」，从上往下滑，看时段条和任务卡片是否都显示出来、能不能滑到底",
+                "After updating, open Plan today and scroll down — check the time strip and task cards all show, and that you can scroll to the bottom");
+        out.add(e1780);
+
         Entry e1770 = new Entry("v1.77.0", "2026-11-10");
         e1770.add(new Group(s("改进", "Improved"),
                 s("这一版是定位用的：今天安排页页头多了一行小字，报这一页各区域的实际高度",
