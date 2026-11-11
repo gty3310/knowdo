@@ -76,6 +76,26 @@ public final class HabitPage {
         this.container = container;
     }
 
+    // ---- 分区嵌入（v1.82.0）：习惯页签下线，卡片原样搬进知页各组 ----
+    // 同一个 HabitPage 类、同一套卡片构建与交互代码（readRow/diaryRow/weeklyRow/
+    // habitCard/compactRow 一行未改）；嵌入时按 section 只显示本区习惯、且不画
+    // 页头/说明/整页滚动外壳（知页自带整页 ScrollView）。
+    public static final int SECTION_ALL = 0;       // 整页模式（原习惯页形态，保留）
+    public static final int SECTION_ZHI = 1;       // 知页·志组：read / weekly
+    public static final int SECTION_JIE_GUARD = 2; // 知页·戒组「守」：max
+    public static final int SECTION_JIE_DO = 3;    // 知页·戒组「行」：其余（新建习惯入口也在这里）
+    public static final int SECTION_CHA = 4;       // 知页·察组：diary 今日状态卡
+    private int section = SECTION_ALL;
+    public void setSection(int s) { section = s; }
+
+    /** 习惯路由表（v1.82.0）：read/weekly→志、diary→察、max→戒·守、其余→戒·行。 */
+    public static int sectionOf(HabitData.Habit hb) {
+        if (HabitData.TYPE_READ.equals(hb.type) || HabitData.TYPE_WEEKLY.equals(hb.type)) return SECTION_ZHI;
+        if (HabitData.TYPE_DIARY.equals(hb.type)) return SECTION_CHA;
+        if (HabitData.TYPE_MAX.equals(hb.type)) return SECTION_JIE_GUARD;
+        return SECTION_JIE_DO;
+    }
+
     private int dp(int v) { return (int) (v * act.getResources().getDisplayMetrics().density + 0.5f); }
     private static String s(String zh, String en) { return Strings.en() ? en : zh; }
     private void toast(String t) { Toast.makeText(act, t, Toast.LENGTH_SHORT).show(); }
@@ -88,15 +108,23 @@ public final class HabitPage {
         dispScope = HabitDisplay.scope(act);
         compactMode = loadCompactMode();
         container.removeAllViews();
-        ScrollView scroll = new ScrollView(act);
-        scroll.setBackgroundColor(Ui.bg(act));
+        final boolean full = section == SECTION_ALL;
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(18), dp(20), dp(18), dp(24));
-        scroll.addView(col);
-        container.addView(scroll, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        if (full) {
+            col.setPadding(dp(18), dp(20), dp(18), dp(24));
+            ScrollView scroll = new ScrollView(act);
+            scroll.setBackgroundColor(Ui.bg(act));
+            scroll.addView(col);
+            container.addView(scroll, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        } else {
+            // 嵌入模式：外层（知页）已有整页 ScrollView 与页边距，这里只出栏目本身
+            container.addView(col, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+        }
 
+        if (full) {
         TextView title = new TextView(act);
         title.setText(s("习惯记录", "Habits"));
         title.setTextSize(23);
@@ -128,10 +156,14 @@ public final class HabitPage {
             act.startActivity(i);
         });
         col.addView(morningEdit, melp);
+        }
 
         List<HabitData.Habit> habits = HabitData.habits(root);
-        maybeSuggestion(col, habits);
-        if (!habits.isEmpty()) {
+        // 嵌入模式只留本区习惯；卡片构建/交互仍是下面同一套代码，未改一字
+        List<HabitData.Habit> shown = new ArrayList<>();
+        for (HabitData.Habit hb : habits) if (section == SECTION_ALL || sectionOf(hb) == section) shown.add(hb);
+        if (full) maybeSuggestion(col, habits);
+        if (full && !shown.isEmpty()) {
             TextView legend = small(s("习惯按目标分五类：至少型 做到≥目标（达标 100%）· 至多型 发生≤目标（超标扣分）· "
                     + "数值型 每天填数按比例 · 累积型 一件件攒总数 · 每日提醒 每天读过就算完成。点习惯名改目标与提醒，点年格补记。",
                     "Five kinds: At-least (hit the target = 100%) · At-most (over = points off) · "
@@ -145,19 +177,20 @@ public final class HabitPage {
             llp.topMargin = dp(10);
             col.addView(legend, llp);
         }
-        for (HabitData.Habit h : habits) {
+        for (HabitData.Habit h : shown) {
             if (HabitData.TYPE_READ.equals(h.type)) col.addView(readRow(h));
             else if (HabitData.TYPE_DIARY.equals(h.type)) col.addView(diaryRow(h));
             else if (HabitData.TYPE_WEEKLY.equals(h.type)) col.addView(weeklyRow(h));
             else col.addView(compactMode ? compactRow(h) : habitCard(h));
         }
-        if (habits.isEmpty()) {
+        if (full && shown.isEmpty()) {
             TextView empty = small(s("还没有习惯。点下面「＋ 添加习惯」，从默认习惯库里选一个开始记。",
                     "No habits yet. Tap \"+ Add a habit\" below and pick one from the library."), 13);
             empty.setPadding(0, dp(18), 0, 0);
             col.addView(empty);
         }
 
+        if (full || section == SECTION_JIE_DO) {
         TextView addBtn = new TextView(act);
         addBtn.setText(s("＋ 添加习惯", "＋ Add a habit"));
         addBtn.setTextSize(15);
@@ -176,6 +209,7 @@ public final class HabitPage {
         addBtn.setOnClickListener(v -> { formOpen = !formOpen; if (formOpen) formStep = 1; refresh(); });
         col.addView(addBtn, alp);
         if (formOpen) col.addView(buildForm());
+        }
     }
 
     // ---------------- 卡片模式（展开/精简，feature 3） ----------------
