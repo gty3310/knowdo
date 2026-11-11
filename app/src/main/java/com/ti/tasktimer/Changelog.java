@@ -36,6 +36,25 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1790 = new Entry("v1.79.0", "2026-11-11");
+        e1790.add(new Group(s("新增", "New"),
+                s("重复任务可以「跳过今天」——今天安排页的卡片上点「跳过」，今天就不做、也不算没完成，明天照常出现；点错了在「其他重要任务」里点「恢复」捞回来",
+                  "Repeating tasks can skip today — tap Skip on a card in Plan today and it rests for today without counting as missed, back as usual tomorrow; tapped by mistake? Bring it back with Restore in Other important tasks")));
+        e1790.add(new Group(s("改进", "Improved"),
+                s("添加任务／跟 AI 一起添加任务／排进今天的日程／开始今天 四个按钮并成一排，固定在页面最下方，页面滚到哪都在；键盘弹起时它会贴在键盘上方",
+                  "Add task / Add with AI / Plan into today / Start today now sit in one row pinned to the bottom of the page, there wherever you scroll; when the keyboard opens, the bar rests right above it")));
+        e1790.add(new Group(s("修复", "Fixed"),
+                s("「跟 AI 一起添加任务」面板打开后只剩标题、聊天区和输入框不显示的问题",
+                  "The Add tasks with AI panel opening to just its title, with the chat area and input box missing")));
+        e1790.add(new Group(s("移除", "Removed"),
+                s("页面顶部的两行诊断小字",
+                  "The two small diagnostic lines at the top of the page")));
+        e1790.why = s("跳过是给每天重复的事留一个「今天先放一放」的出口，不必删除也不必硬撑；按钮吸底是省得每次都要滑到页面顶上找",
+                "Skip gives daily repeating things a way to rest for a day — no deleting it, no forcing through; the pinned bar saves scrolling back to the top to find the buttons every time");
+        e1790.tryIt = s("更新后打开「今天安排」：①给太极或读经典点一次「跳过」，看它今天消失、分数不变，明天还来 ②滑到页面底部，看四个按钮还钉在屏幕最下方 ③点「跟 AI 一起添加任务」，看聊天框和输入框都在，能打字",
+                "After updating, open Plan today: 1) tap Skip once on Taiji or Read the classics — it vanishes for today, your score unchanged, and it is back tomorrow 2) scroll to the bottom and see the four buttons still pinned to the bottom of the screen 3) tap Add tasks with AI and check the chat box and input box are both there and you can type");
+        out.add(e1790);
+
         Entry e1780 = new Entry("v1.78.0", "2026-11-11");
         e1780.add(new Group(s("修复", "Fixed"),
                 s("「今天安排」页打开后中间一片空白、任务卡不显示的问题修好了——整页改成从上往下排的一个滚动页，内容自己撑开，不再被压没",
