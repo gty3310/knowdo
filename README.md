@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.80.0)
+## Features (Android, v1.81.0)
 
-Current version: **v1.80.0**.
+Current version: **v1.81.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.81.0 — 2026-11-11
+
+**Why:** A repeating task skipped for today should stop posing as today's work in the task list. The user's spec: in the list, a skipped task carries a "(skipped)" mark beside its due date, and the ranking sorts by effective date — once skipped, the task's next real occurrence is what counts, so what is truly due today sits at the very top. Only the task-list page changes; everything else keeps its existing rules. Build commit `55fe1a3` · [compare v1.80.0...v1.81.0](https://github.com/gty3310/knowdo/compare/v1.80.0...v1.81.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **The task list sorts by effective date.** A repeating task skipped today now sorts by its next occurrence (tomorrow for a daily task) instead of today, so tasks genuinely due today rank above it. The shared ordering behind the floating window, the next-task page and chat is untouched, and so are Plan today and the unity index — the index has excluded skipped dates since 1.79; this release only teaches the list itself.
+- **Skipped tasks are marked in the list.** A task skipped for today shows "(skipped)" right after its due-date text on the task-list page.
+
+Not yet verified on a real device: the mark and the new ordering after an actual skip on the phone, and the 1.80.0 to 1.81.0 in-app update chain. Not in this release: diary filters and the calendar re-plan line removal, the floating card changes, the semantic engine split, and the always-on floating window.
+
 ### v1.80.0 — 2026-11-11
 
 **Why:** The user settled the drift response in one pass and made it the top priority: when the guard catches you drifting, picking a grace length already admits the drift — so the inquiry page stops asking "did you do right?" altogether. What it asks now is how long a last look you want, and what happens when it runs out: the app is covered for a fixed 3 minutes (other apps stay usable; the cover returns the moment you switch back). Early release exists exactly once a day and only from Settings. Build commit `e4cbe14` · [compare v1.79.0...v1.80.0](https://github.com/gty3310/knowdo/compare/v1.79.0...v1.80.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -92,19 +102,6 @@ Not yet verified on a real device: the reworked inquiry page, grace expiry into 
 - **The two diagnostic lines at the top of Plan today** — the 1.77 DBG line and the 1.70 self-check line ("Loaded … tasks · … blocks · … cards") — together with all their code (height fields, the sampler, the self-check updater). The per-section guard rails and their vermilion fallback rows stay.
 
 Not yet verified on a real device: skip/restore end to end, the pinned bar over a keyboard, and the AI panel fix — the on-host emulator could not bring its system UI up in this environment (no hardware acceleration, throttled CPU; its package service kept dropping during boot), so the panel fix in particular awaits the emulator or the user's phone; an instrumented diagnostic build that logs the panel's layer heights is kept ready for that check. Not in this release: diary filters and the calendar split-view re-plan line removal (v1.80), the floating card's add-time button (v1.81).
-
-### v1.78.0 — 2026-11-11
-
-**Why:** On the user's phone (1.75.0) the Plan today page renders its header and then nothing: the cards are built — the self-check line counts 9 of them — yet the whole scrolling region is invisible and does not scroll, and the footer's two big buttons are missing too. The prime suspect is the old split layout, a height-0-plus-weight scroll view whose geometry can crush the middle of the page flat. This release adopts a reviewed outside fix: the page becomes a single scrolling column whose content sizes itself. The 1.77 DBG diagnostic line stays in for one more release, so the numbers can still testify whether the new structure holds. Build commit `43b20da` · [compare v1.77.0...v1.78.0](https://github.com/gty3310/knowdo/compare/v1.77.0...v1.78.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Plan today is one scrolling page now.** The inner height-0/weight scroll view is gone; header, buttons and content column all live inside one full-screen scroll view (fillViewport) and the content takes its natural height. The AI add-panel remains an overlay, and the refresh, guard-rail and self-check logic is untouched — the change is confined to the page's view structure.
-
-**Improved**
-- **The two big buttons moved to the top.** "Plan into today" and "Start today" now sit side by side in one row right under the header, reachable the moment the page opens; the time ledger scrolls along with the page instead of sticking.
-- **A safety net under task data (unrelated to the blank page, listed honestly).** TaskStore loading now skips a single corrupt task instead of emptying the whole list, and if the entire file fails to parse it is first renamed to a `.corrupt` backup before starting empty — one bad record can no longer take every task down with it, and the original file survives for inspection.
-
-Not yet verified on a real device: whether the page now renders end to end on the affected phone (the DBG line is kept precisely so this can be checked), and the 1.77.0 to 1.78.0 in-app update chain. Not in this release: diary filters (v1.79), the floating card's extend button (v1.80); whether the new button placement and non-sticky ledger stay is the user's call once the page is confirmed visible.
 
 ## Build
 
