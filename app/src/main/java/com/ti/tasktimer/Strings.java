@@ -325,6 +325,26 @@ public final class Strings {
     public static String scDid() { return s("做到了", "Yes, I was"); }
     public static String scNot() { return s("没有", "No"); }
 
+    // ---------------- 分神封软件（v1.80.0） ----------------
+    public static String lastLookQ() { return s("最后再看多久", "A last look — how long?"); }
+    public static String graceBlockNow() { return s("马上封", "Block now"); }
+    public static String graceLook1() { return s("再看 1 分钟", "1 more minute"); }
+    public static String graceLook3() { return s("再看 3 分钟", "3 more minutes"); }
+    public static String graceLook5() { return s("再看 5 分钟", "5 more minutes"); }
+    public static String graceActionQ() { return s("宽限到点后，这个软件：", "When the grace runs out, this app:"); }
+    public static String graceActQuit() { return s("退掉这个软件", "Quit this app"); }
+    public static String graceActBg() { return s("只放到后台", "Background only"); }
+    public static String graceActBlock() { return s("盖住 3 分钟", "Block for 3 minutes"); }
+    public static String blockTitle(String app) { return s(app + " 先歇一会儿", app + " is taking a break"); }
+    public static String blockTaskLine(String t) { return s("当前任务：「" + t + "」", "Current task: \u201c" + t + "\u201d"); }
+    public static String backToTask() { return s("回到任务", "Back to the task"); }
+    public static String setGraceAction() { return s("宽限到点后", "When the grace runs out"); }
+    public static String setBlockLen() { return s("盖住时长 3 分钟", "Block length: 3 minutes"); }
+    public static String setUnblock() { return s("提前解封", "Unblock early"); }
+    public static String unblockBtn() { return s("解封", "Unblock"); }
+    public static String unblockUsed() { return s("今天已解封过", "Already used today"); }
+    public static String unblockedToast() { return s("已解封", "Unblocked"); }
+
     // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }

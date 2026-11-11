@@ -19,7 +19,9 @@ import java.util.List;
 
 /**
  * 专注守卫全屏问询页：计时中打开了无关软件时弹出。
- * 按钮：立即回到任务（跳回主软件/当前任务页）/ 给我 30 秒 / 给我 60 秒（到期自动跳回）/ 这是误判，本次放行。
+ * 按钮：立即回到任务（跳回主软件/当前任务页）/「最后再看多久」四钮（马上封／
+ * 再看 1、3、5 分钟，点任一钮即记一次分神，宽限到点按处置设置执行）/
+ * 这是误判，本次放行 / 和 AI 聊聊。（v1.80.0 起本页不再有自检行。）
  */
 public class GuardActivity extends Activity {
     public static final String EXTRA_PKG = "fg_pkg";
@@ -34,10 +36,9 @@ public class GuardActivity extends Activity {
     private boolean contentMode;
     private String category = "";
 
-    // 磨练自检（v1.12.0）：第一问的点选状态与本页的自检记录 id（首次点选时才建条）
-    private String scEventId;
-    private int scDidSel = -1;
-    private final List<Button> scDidBtns = new ArrayList<>();
+    // 分神记录（v1.80.0）：点任一宽限钮＝承认分神，在这里记一次等价于旧
+    // 「没有」的自检记录（didRight=false）；每次问询只记一次
+    private boolean driftRecorded;
 
     // 宽限到点处理方式（v1.21.3，仅 content 模式）：true=退掉这个软件（默认），false=只放到后台
     private boolean graceQuit = true;
@@ -71,7 +72,7 @@ public class GuardActivity extends Activity {
         root.setBackgroundColor(Color.rgb(247, 243, 236));
         int pad = dp(28);
         root.setPadding(pad, dp(56), pad, pad);
-        // 整页可滚动（v1.25.0 修复）：本页内容＝标题＋多行说明＋立志行＋自检一问
+        // 整页可滚动（v1.25.0 修复）：本页内容＝标题＋多行说明＋立志行＋宽限钮
         // ＋多个按钮，总高在小屏/大字体下可能超出一屏；裸 LinearLayout 直接
         // setContentView、无 ScrollView 时，超出的底部按钮会被挤出屏幕且滑不到。
         // 套上 ScrollView 后任何内容组合下所有按钮都可达；fillViewport 让短内容
@@ -119,7 +120,6 @@ public class GuardActivity extends Activity {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         }
 
-        buildSelfCheck(root);
 
         // 应答按钮区
         actionsBox = new LinearLayout(this);
@@ -137,22 +137,19 @@ public class GuardActivity extends Activity {
 
         if (contentMode) buildGraceModeRow(actionsBox);
 
-        Button g30 = bigButton("给我 30 秒收尾", Color.rgb(21, 101, 192));
-        g30.setOnClickListener(v -> {
-            if (contentMode) VerdictEngine.contentGrace(this, category, 30);
-            else FocusGuard.chooseGrace(this, fgPkg, 30);
-            finish();
-        });
-        actionsBox.addView(g30);
-        spacer(actionsBox, 12);
+        TextView lastLook = new TextView(this);
+        lastLook.setText(Strings.lastLookQ());
+        lastLook.setTextSize(17);
+        lastLook.setTextColor(Color.rgb(31, 47, 42));
+        lastLook.setPadding(0, dp(4), 0, dp(8));
+        actionsBox.addView(lastLook);
 
-        Button g60 = bigButton("给我 60 秒收尾", Color.rgb(21, 101, 192));
-        g60.setOnClickListener(v -> {
-            if (contentMode) VerdictEngine.contentGrace(this, category, 60);
-            else FocusGuard.chooseGrace(this, fgPkg, 60);
-            finish();
-        });
-        actionsBox.addView(g60);
+        LinearLayout gr1 = scRow(actionsBox);
+        gr1.addView(graceButton(Strings.graceBlockNow(), 0));
+        gr1.addView(graceButton(Strings.graceLook1(), 60));
+        LinearLayout gr2 = scRow(actionsBox);
+        gr2.addView(graceButton(Strings.graceLook3(), 180));
+        gr2.addView(graceButton(Strings.graceLook5(), 300));
         spacer(actionsBox, 24);
 
         Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
@@ -233,45 +230,29 @@ public class GuardActivity extends Activity {
         }
     }
 
-    // ---------------- 磨练自检（v1.12.0） ----------------
+    // ---------------- 分神记录＋宽限钮（v1.80.0） ----------------
     /**
-     * 问询页顶部自检区：「刚才在做该做的事吗？」[做到了][没有]。
-     * 点了即时记录，不点不拦任何原有动作——下面的回到任务/宽限/放行照常可用。
-     * （原第二问「现在的状态」六个 chips 已随状态自检一并撤销。）
+     * 点任一宽限钮（包括「马上封」）即承认分神：先记一次自检记录
+     * （SelfChecks.begin+answer，didRight=false，与旧版在问询页点「没有」
+     * 逐字段等价——知行指数的分神计数就靠这条记录衔接），每次问询只记
+     * 一次；再按所选时长安排宽限。「立即回到任务」「误判放行」不记分神。
      */
-    private void buildSelfCheck(LinearLayout root) {
-        TextView q1 = new TextView(this);
-        q1.setText(Strings.scDidRightQ());
-        q1.setTextSize(17);
-        q1.setTextColor(Color.rgb(31, 47, 42));
-        root.addView(q1);
-        LinearLayout r1 = scRow(root);
-        Button did = scButton(Strings.scDid());
-        did.setOnClickListener(v -> {
-            scDidSel = 0;
-            ensureScEvent();
-            SelfChecks.answer(this, scEventId, Boolean.TRUE, null);
-            refreshScStyles();
-        });
-        Button not = scButton(Strings.scNot());
-        not.setOnClickListener(v -> {
-            scDidSel = 1;
-            ensureScEvent();
-            SelfChecks.answer(this, scEventId, Boolean.FALSE, null);
-            refreshScStyles();
-        });
-        scDidBtns.add(did);
-        scDidBtns.add(not);
-        r1.addView(did);
-        r1.addView(not);
-
-        spacer(root, 26);
+    private void recordDriftOnce() {
+        if (driftRecorded) return;
+        driftRecorded = true;
+        String id = SelfChecks.begin(this, "drift", TimerState.taskId(this));
+        SelfChecks.answer(this, id, Boolean.FALSE, null);
     }
 
-    private void ensureScEvent() {
-        if (scEventId == null) {
-            scEventId = SelfChecks.begin(this, "drift", TimerState.taskId(this));
-        }
+    private Button graceButton(String label, final int seconds) {
+        Button b = scButton(label);
+        b.setOnClickListener(v -> {
+            recordDriftOnce();
+            if (contentMode) VerdictEngine.contentGrace(this, category, seconds);
+            else FocusGuard.chooseGrace(this, fgPkg, seconds);
+            finish();
+        });
+        return b;
     }
 
     private LinearLayout scRow(LinearLayout root) {
@@ -307,10 +288,6 @@ public class GuardActivity extends Activity {
             b.setTextColor(Color.rgb(31, 47, 42));
         }
         b.setBackground(g);
-    }
-
-    private void refreshScStyles() {
-        for (int i = 0; i < scDidBtns.size(); i++) styleScButton(scDidBtns.get(i), scDidSel == i);
     }
 
     @Override
