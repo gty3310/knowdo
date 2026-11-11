@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.78.0)
+## Features (Android, v1.79.0)
 
-Current version: **v1.78.0**.
+Current version: **v1.79.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,24 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.79.0 — 2026-11-11
+
+**Why:** Daily repeating things sometimes need a day off — deleting them is too much, forcing through drags the day (and the score) down — so repeating tasks gain a "skip today": not done today, not counted as missed, back tomorrow as usual. The same release pins the page's four action buttons in one row at the bottom (they used to live at the top, a full scroll away), fixes the Add-tasks-with-AI panel opening to just its title line, and removes the two diagnostic lines 1.77 added to localise the blank-page fault (closed in 1.78 and verified on the user's phone). Build commit `4ee2e8e` · [compare v1.78.0...v1.79.0](https://github.com/gty3310/knowdo/compare/v1.78.0...v1.79.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Skip today for repeating tasks.** Cards in Plan today carry a Skip button for repeating tasks (next to Done / Delete). Skipping takes the task out of today's candidates and scheduling input (one shared snapshot filters it by logical day), deletes its already-planned blocks for today — locally at once, and in the cloud through a read-modify-write-back-verified removal — so the time returns to the ledger, and parks the task in Other important tasks with a Skipped marker and a Restore button; restoring clears the skip without re-planning blocks. A skipped date counts neither as done nor as missed in the unity index's task score (the one approved scoring addition this release) and does not count toward today's must-do time. The skip set lives beside the done set (`skippedDates`; cloud column `skipped_dates`, the same date-array type as `done_dates`, added by a migration verified lossless over all 168 rows) and syncs with the same merge rules and old-backend probing as the other optional columns.
+
+**Improved**
+- **Four buttons, one row, pinned to the bottom.** Add task / Add with AI / Plan into today / Start today are now a single equal-width row in a bottom bar floating over the page (a FrameLayout bottom layer — no weight-based height splitting anywhere in the page structure), on screen wherever the page is scrolled; the content column pads itself by the bar's real height plus 12dp so the last card is never covered, and with the page's adjustResize the bar rides above the keyboard. The old in-page button rows are gone. The time ledger still scrolls with the page — only the bar sticks (the user's call).
+
+**Fixed**
+- **The Add-tasks-with-AI panel opens whole again.** On the user's phone (1.78.0) the panel showed only its title row floating mid-page — no chat area, no input row, and a height plainly not 92%. The cause is the same family as the 1.77 blank page, whose DBG numbers were measured on that phone: a height-0-plus-weight scroll view can collapse to nothing while a wrap-content sibling inflates to fill the parent. Inside the panel, the weighted chat scroll view collapsed and the header — a wrap-content row with vertically centred content — inflated to the panel's full height, which put the title in the panel's middle and pushed the input row off the panel's bottom edge. The chat area now gets an explicit height: when the panel is built, the header and input row are measured at the current font scale, and the scroll area takes what is left of the panel's 92%-of-screen height — no weight distribution anywhere. Chat and proposal-card logic untouched; spacing around the header, message list and input row tidied to the app's usual measure.
+
+**Removed**
+- **The two diagnostic lines at the top of Plan today** — the 1.77 DBG line and the 1.70 self-check line ("Loaded … tasks · … blocks · … cards") — together with all their code (height fields, the sampler, the self-check updater). The per-section guard rails and their vermilion fallback rows stay.
+
+Not yet verified on a real device: skip/restore end to end, the pinned bar over a keyboard, and the AI panel fix — the on-host emulator could not bring its system UI up in this environment (no hardware acceleration, throttled CPU; its package service kept dropping during boot), so the panel fix in particular awaits the emulator or the user's phone; an instrumented diagnostic build that logs the panel's layer heights is kept ready for that check. Not in this release: diary filters and the calendar split-view re-plan line removal (v1.80), the floating card's add-time button (v1.81).
+
 ### v1.78.0 — 2026-11-11
 
 **Why:** On the user's phone (1.75.0) the Plan today page renders its header and then nothing: the cards are built — the self-check line counts 9 of them — yet the whole scrolling region is invisible and does not scroll, and the footer's two big buttons are missing too. The prime suspect is the old split layout, a height-0-plus-weight scroll view whose geometry can crush the middle of the page flat. This release adopts a reviewed outside fix: the page becomes a single scrolling column whose content sizes itself. The 1.77 DBG diagnostic line stays in for one more release, so the numbers can still testify whether the new structure holds. Build commit `43b20da` · [compare v1.77.0...v1.78.0](https://github.com/gty3310/knowdo/compare/v1.77.0...v1.78.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,19 +101,6 @@ Not yet verified on a real device: whether the page now renders end to end on th
 - **A DBG line in the Plan today header (temporary).** Under the self-check line, a new 10sp line prints the measured pixel heights of every layer of the page: window (decor view), root, header, scroll view, content column, the cards box as height×child-count, the first card (-1 when there is none), the footer and its two big buttons, and the AI panel as visibility/height — plus display density and font scale. It samples twice, once posted after the first layout (L1) and again 800 ms later (L2), to catch a page that first draws and then collapses. One screenshot from the affected phone will show exactly which layer is at fault. The implementation only promotes buildUi's local variables for those views to fields so their heights can be read (the AI panel and the cards box already were fields); no existing view's size, params or visibility changes, no refresh logic changes, and the sampling is fully try/catch-guarded with -1 for anything unreadable, so the diagnostic can never become a new crash source. The fix release that follows will remove this line.
 
 Not yet verified on a real device: the DBG readings on the affected phone — collecting them is the point of this release. Not in this release: the actual Plan-today fix (next, once the screenshot localises it), diary filters (moved to v1.78), the floating card's extend button (moved to v1.79).
-
-### v1.76.0 — 2026-11-10
-
-**Why:** A score that only ever shows today cannot show a road. The user approved a trend page for the Oneness tab — tap the number inside the ring and see the curve: a month by days, a year by weeks — with one firm condition: it must never get slow, so the data needs a proper home of its own. This release builds that home first: every day's score is frozen into a one-row "daily report card", and the curve only ever reads those rows. Build commit `f3b99ab` · [compare v1.75.0...v1.76.0](https://github.com/gty3310/knowdo/compare/v1.75.0...v1.76.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **The Oneness trend page.** Tapping the unity index ring now opens a trend page (the old week/month/year index-detail page is still reachable from a link at its foot). Two rows of small buttons switch the metric — unity index, principle practice, purity of motive — and the range — month (one point per day, last 30 logical days) or year (one point per week, last 52 weeks; the index averages the week's daily values, the two ratios pool the week's counts before dividing, and a week or day with no denominator simply breaks the line instead of faking a zero). The curve is drawn on a plain Canvas, vermilion line over a whisper of fill, three dashed reference lines and nothing else; sliding a finger along it moves a hollow vermilion marker and updates the card below — the day or week, its score, and what it is made of — above a mean / best / lowest strip for what is on screen.
-- **A daily report card behind it.** Once a day rolls over, the app freezes yesterday (and any earlier day not yet frozen) into one row: the day's unity index and its three parts from the existing single-day computation, the motive gate's three answer counts, and the principles' did-it / didn't counts, all bucketed by logical day. The first run back-fills up to 370 days from whatever local history exists; days with no records at all get no row. Freezing is local-first — the row lands in an on-device snapshot cache and is queued for upload — then upserts into a dedicated cloud table keyed by (user, date), so re-freezing a day corrects the same row instead of duplicating it. The trend page renders only from that snapshot and refreshes it with one bounded pull; it never scans raw events.
-
-**Notes**
-- The index math itself is untouched (the calculator file has an empty diff this release); today's point on the curve is computed live and only freezes once the day is over.
-
-Not yet verified on a real device: the ring tap into the trend page, month and year curves against real history, back-fill on first launch, offline freezing and later upload, and the 1.75.0 to 1.76.0 in-app update chain. Not in this release: diary filters (v1.77), the floating card's extend button (v1.78).
 
 ## Build
 
