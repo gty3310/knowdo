@@ -1591,6 +1591,13 @@ public class MainActivity extends Activity {
     }
 
     private static String listEffDate(TaskItem t, String logicToday) {
+        // 跳过今天（v1.81.0）：被跳过的重复任务今天不算数，有效期算下一次
+        // 出现（每日→明天、每周→下周同一天），今天真正到期的排在它前面。
+        // 任务 repeat 现行取值只有 none/daily，weekly 分支是防御性的。
+        if (t.isSkippedOn(logicToday) && t.repeat != null && !"none".equals(t.repeat)) {
+            if ("daily".equals(t.repeat)) return DayUtil.addDays(logicToday, 1);
+            if ("weekly".equals(t.repeat)) return DayUtil.addDays(logicToday, 7);
+        }
         if ("daily".equals(t.repeat)) return logicToday;
         return t.deadline;
     }
