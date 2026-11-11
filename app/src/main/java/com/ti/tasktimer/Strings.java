@@ -24,6 +24,7 @@ public final class Strings {
     public static String remain() { return s("还剩", "left"); }
     public static String plannedMin(int min) { return en ? min + " min planned" : "计划 " + min + " 分"; }
     public static String pausedTag() { return s("（已暂停）", "(paused)"); }
+    public static String skippedTag() { return s("（跳过）", "(skipped)"); }
     public static String fmtMin(int min) { return en ? min + " min" : min + " 分"; }
     public static String fmtDur(int min) {
         if (min >= 60) {

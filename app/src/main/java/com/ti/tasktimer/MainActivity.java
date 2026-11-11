@@ -1756,9 +1756,12 @@ public class MainActivity extends Activity {
 
     /** Deadline 格（v1.8.0）：只放日期/每日＋截止时刻；开始时间独立成列，不再拼 ▶ 尾巴。 */
     private String deadlineOnlyText(TaskItem t) {
-        if ("daily".equals(t.repeat)) return Strings.dateDaily();
+        // 跳过标记（v1.81.0）：今天被「跳过今天」的任务，日期文字后带「（跳过）」
+        String suffix = t.isSkippedOn(listLogicToday != null ? listLogicToday
+                : Rollover.logicalToday(this)) ? Strings.skippedTag() : "";
+        if ("daily".equals(t.repeat)) return Strings.dateDaily() + suffix;
         if (t.deadline == null) return Strings.dateEmpty();
-        return t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime);
+        return t.deadline.substring(5) + suffix + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime);
     }
 
     private View taskRowView(final TaskItem t) {
