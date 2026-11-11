@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.77.0)
+## Features (Android, v1.78.0)
 
-Current version: **v1.77.0**.
+Current version: **v1.78.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.78.0 — 2026-11-11
+
+**Why:** On the user's phone (1.75.0) the Plan today page renders its header and then nothing: the cards are built — the self-check line counts 9 of them — yet the whole scrolling region is invisible and does not scroll, and the footer's two big buttons are missing too. The prime suspect is the old split layout, a height-0-plus-weight scroll view whose geometry can crush the middle of the page flat. This release adopts a reviewed outside fix: the page becomes a single scrolling column whose content sizes itself. The 1.77 DBG diagnostic line stays in for one more release, so the numbers can still testify whether the new structure holds. Build commit `43b20da` · [compare v1.77.0...v1.78.0](https://github.com/gty3310/knowdo/compare/v1.77.0...v1.78.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Plan today is one scrolling page now.** The inner height-0/weight scroll view is gone; header, buttons and content column all live inside one full-screen scroll view (fillViewport) and the content takes its natural height. The AI add-panel remains an overlay, and the refresh, guard-rail and self-check logic is untouched — the change is confined to the page's view structure.
+
+**Improved**
+- **The two big buttons moved to the top.** "Plan into today" and "Start today" now sit side by side in one row right under the header, reachable the moment the page opens; the time ledger scrolls along with the page instead of sticking.
+- **A safety net under task data (unrelated to the blank page, listed honestly).** TaskStore loading now skips a single corrupt task instead of emptying the whole list, and if the entire file fails to parse it is first renamed to a `.corrupt` backup before starting empty — one bad record can no longer take every task down with it, and the original file survives for inspection.
+
+Not yet verified on a real device: whether the page now renders end to end on the affected phone (the DBG line is kept precisely so this can be checked), and the 1.77.0 to 1.78.0 in-app update chain. Not in this release: diary filters (v1.79), the floating card's extend button (v1.80); whether the new button placement and non-sticky ledger stay is the user's call once the page is confirmed visible.
+
 ### v1.77.0 — 2026-11-10
 
 **Why:** On the user's phone (1.75.0) the Plan today page is still blank in a very specific way: the header accounts and the self-check line are right, and the self-check even counts 9 cards — the cards are built and added — yet the whole scrolling region is invisible, the footer's two dark buttons are missing as well, only the footer's first row (Add task / Add with AI) sits under the header, and the blank area does not scroll at all. The v1.70 repair theory (containers collapsing for lack of explicit LayoutParams) stands falsified: the current buildUi passes explicit params everywhere and the page is still blank. So this release does not guess another fix — it gathers evidence. Build commit `b9d40cc` · [compare v1.76.0...v1.77.0](https://github.com/gty3310/knowdo/compare/v1.76.0...v1.77.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,21 +96,6 @@ Not yet verified on a real device: the DBG readings on the affected phone — co
 - The index math itself is untouched (the calculator file has an empty diff this release); today's point on the curve is computed live and only freezes once the day is over.
 
 Not yet verified on a real device: the ring tap into the trend page, month and year curves against real history, back-fill on first launch, offline freezing and later upload, and the 1.75.0 to 1.76.0 in-app update chain. Not in this release: diary filters (v1.77), the floating card's extend button (v1.78).
-
-### v1.75.0 — 2026-11-10
-
-**Why:** A principle on a list changes nothing; a principle that meets you at the end of each task might. The cloud-side assistant now pairs each new task with its single most fitting principle, and this release is the app side of that companionship: the principle is visible where you work, you are asked about it when the task ends, and every answer becomes part of that principle's track record. The motive gate's self-question also gains the honest third answer the user asked for — "never thought of it". Build commit `9bbf655` · [compare v1.74.0...v1.75.0](https://github.com/gty3310/knowdo/compare/v1.74.0...v1.75.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A principle check on the finish page.** When a task with a linked principle reaches its finish page, the page shows the principle — its name and one-line version — and asks: on this task, did you live up to it? Three answers, three fates: "Did it" records a practice; "Didn't" records a gap and keeps the link; "Never thought of it" means the pairing itself was wrong — the event is kept out of all statistics and the task–principle link is removed (locally first, through the existing sync queue, never by direct cloud delete), so the assistant will not pair them that way again. The question never blocks: finishing without answering is always possible and leaves no record, and it is asked once per completion.
-- **The "main principle" where you work.** A task's earliest-linked principle appears in its expanded row on the Do tab (name + one-liner, "+N more" when there are several) and in a slim line under the now-timing strip while that task runs or is paused. Tasks with no principle show nothing new; all of it renders from the local Know cache with no extra network fetch.
-- **Practice ratios and history for every principle.** The Principles list (cards and rows alike) shows each principle's unity ratio — "Practiced X/Y · Z%" — counting only Did-it over Did-it + Didn't; a principle with no records shows nothing. Each principle's edit page gains a practice log: every past answer for that principle, newest first — date, task title, and the answer — paged 30 at a time from the local cache.
-
-**Improved**
-- **The motive gate gains "never thought of it".** The single shared gate (fullscreen and in-page forms alike) now offers Yes / Never thought of it / No — Yes stays the vermilion primary, the other two are outline buttons, and any answer passes. Recorded values keep the existing event kind, subject and source; the Oneness page's motive section now shows all three shares for today and all time, and pre-1.75 history (Yes/No only) falls into its natural buckets.
-- **Events now sync incrementally, and lists never scan raw events.** Event refresh previously re-downloaded the whole event table on every open; it now pulls only what is newer than a stored watermark (with a one-hour overlap window forgiven by de-duplication). Principle ratios render from a tiny persisted aggregate that is recomputed when the cache changes — never by scanning events during list rendering — so the lists stay fast no matter how many years of practice accumulate.
-
-Not yet verified on a real device: the finish-page question end to end (all three answers, the link removal landing in the cloud), the main-principle lines, ratios appearing after the first answer, three-bucket motive ratios, and the 1.74.0 to 1.75.0 in-app update chain. Not in this release: the Oneness trend chart (v1.76), diary filters (v1.77), the floating card's extend button (v1.78).
 
 ## Build
 
