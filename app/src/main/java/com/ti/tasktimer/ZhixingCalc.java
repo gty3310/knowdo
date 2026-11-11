@@ -258,16 +258,23 @@ public final class ZhixingCalc {
                 while (d.compareTo(to) <= 0 && d.compareTo(today) <= 0) {
                     String key = t.id + "@" + d;
                     if (seen.add(key)) {
-                        total++;
-                        if (t.doneDates != null && t.doneDates.contains(d)) done++;
+                        // 「跳过今天」的那一天既不算完成也不算未完成：分子分母
+                        // 都剔除这个任务的那一天（v1.79.0，本类唯一新增口径）
+                        if (!t.isSkippedOn(d)) {
+                            total++;
+                            if (t.doneDates != null && t.doneDates.contains(d)) done++;
+                        }
                     }
                     d = DayUtil.addDays(d, 1);
                 }
             } else if (t.deadline != null && t.deadline.compareTo(from) >= 0
                     && t.deadline.compareTo(to) <= 0) {
                 if (seen.add(t.id)) {
-                    total++;
-                    if ("done".equals(t.status)) done++;
+                    // 截止日当天被跳过：同每日口径，分子分母都剔除（v1.79.0）
+                    if (!t.isSkippedOn(t.deadline)) {
+                        total++;
+                        if ("done".equals(t.status)) done++;
+                    }
                 }
             }
         }
@@ -287,6 +294,7 @@ public final class ZhixingCalc {
                             if (b == null) continue;
                             TaskItem t = byId.get(b.optString("taskId", ""));
                             if (t == null || t.deleted || t.isAi()) continue;
+                            if (t.isSkippedOn(d)) continue; // 跳过的日期不从日程补入（v1.79.0）
                             String key = "daily".equals(t.repeat) ? t.id + "@" + d : t.id;
                             if (seen.add(key)) {
                                 total++;
@@ -522,6 +530,7 @@ public final class ZhixingCalc {
         for (TaskItem t : tasks) {
             if (t == null || t.deleted) continue;
             if (t.isAi()) continue; // AI 任务的到期不是用户的漏项（v1.74.0，与任务分项同口径）
+            if (t.isSkippedOn(date)) continue; // 跳过的那一天不算漏项（v1.79.0）
             boolean due = "daily".equals(t.repeat)
                     ? !(t.doneDates != null && t.doneDates.contains(date))
                     : (date.equals(t.deadline) && !"done".equals(t.status));

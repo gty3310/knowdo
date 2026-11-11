@@ -83,12 +83,18 @@ public final class LocalAutoScheduler {
         public boolean written; // 是否已落盘（离线/未登录时只算不写，written=false）
     }
 
-    public static List<Candidate> snapshot(TaskStore store) {
+    public static List<Candidate> snapshot(TaskStore store, String logicToday) {
         List<Candidate> out = new ArrayList<>();
         if (store == null) return out;
         // 给 AI 做的任务不进任何排程候选（v1.74.0）：自动填空档、快速重排、
-        // 今天安排页的排程输入都从这一份快照取，排除收口在此一处
-        for (TaskItem t : store.tasks) if (!t.deleted && !t.isAi()) out.add(new Candidate(t));
+        // 今天安排页的排程输入都从这一份快照取，排除收口在此一处。
+        // 「跳过今天」的任务同理不进候选（v1.79.0）：logicToday 为逻辑今天，
+        // 被跳过的只是那一天，次日照常入选。
+        for (TaskItem t : store.tasks) {
+            if (t.deleted || t.isAi()) continue;
+            if (t.isSkippedOn(logicToday)) continue;
+            out.add(new Candidate(t));
+        }
         return out;
     }
 
@@ -373,7 +379,7 @@ public final class LocalAutoScheduler {
     public static Plan computeLocal(Context c, TaskStore store) {
         List<Block> base = blocksOf(SyncManager.latestSchedule(c), TaskItem.today());
         String logicToday = Rollover.logicalToday(c);
-        return plan(snapshot(store), base, DayAccount.nowMinutes(), logicToday,
+        return plan(snapshot(store, logicToday), base, DayAccount.nowMinutes(), logicToday,
                 DayAvail.blockedWall(c, logicToday));
     }
 
@@ -392,7 +398,7 @@ public final class LocalAutoScheduler {
         List<Block> base = blocksOf(SyncManager.latestSchedule(c), TaskItem.today());
         String logicToday = Rollover.logicalToday(c);
         List<Candidate> cands = new ArrayList<>();
-        for (Candidate cd : snapshot(store)) {
+        for (Candidate cd : snapshot(store, logicToday)) {
             if (excludeIds != null && excludeIds.contains(cd.id)) continue;
             cands.add(cd);
         }
@@ -420,7 +426,7 @@ public final class LocalAutoScheduler {
             return;
         }
         final Context app = c.getApplicationContext();
-        final List<Candidate> snap = snapshot(store);
+        final List<Candidate> snap = snapshot(store, Rollover.logicalToday(app));
         new Thread(() -> {
             try {
                 SyncManager.autoFillSchedule(app, snap, "KnowDo App（本地自动排程）");
@@ -458,7 +464,7 @@ public final class LocalAutoScheduler {
         }
         final Context app = c.getApplicationContext();
         final List<Candidate> snap = new ArrayList<>();
-        for (Candidate cd : snapshot(store)) {
+        for (Candidate cd : snapshot(store, Rollover.logicalToday(c))) {
             if (excludeIds != null && excludeIds.contains(cd.id)) continue;
             snap.add(cd);
         }

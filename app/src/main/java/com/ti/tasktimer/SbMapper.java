@@ -21,6 +21,8 @@ import java.util.TimeZone;
  * 服务端没列时不进云端、合并时从本地同 id 任务保全；补列后自动纳入同步。
  * 谁来做两列 assignee / ai_state（v1.74.0）同法：hasAiCols 单独探测，
  * 服务端没列时不进云端、合并时从本地同 id 任务保全；补列后自动纳入同步。
+ * 跳过日期列 skipped_dates（v1.79.0，与 done_dates 同为 date 数组）同法：
+ * hasSkipCol 单独探测，服务端没列时不进云端、合并时从本地同 id 任务保全。
  */
 public final class SbMapper {
     private SbMapper() {}
@@ -117,6 +119,14 @@ public final class SbMapper {
     public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
                                    boolean hasAlarmCols, boolean hasSubtaskCols,
                                    boolean hasAlarmModeCol, boolean hasAiCols) throws Exception {
+        return toRow(t, userId, hasExtraCols, hasAlarmCols, hasSubtaskCols,
+                hasAlarmModeCol, hasAiCols, false);
+    }
+
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols, boolean hasSubtaskCols,
+                                   boolean hasAlarmModeCol, boolean hasAiCols,
+                                   boolean hasSkipCol) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -161,6 +171,9 @@ public final class SbMapper {
             o.put("assignee", TaskItem.normAssignee(t.assignee));
             o.put("ai_state", t.aiState == null ? JSONObject.NULL : t.aiState);
         }
+        if (hasSkipCol) {
+            o.put("skipped_dates", strArr(t.skippedDates));
+        }
         return o;
     }
 
@@ -181,6 +194,12 @@ public final class SbMapper {
         t.status = o.optString("status", "todo");
         t.deleted = o.optBoolean("deleted", false);
         t.doneDates = toStrList(o.optJSONArray("done_dates"));
+        if (o.has("skipped_dates")) {
+            t.skippedDates = toStrList(o.optJSONArray("skipped_dates"));
+        } else if (preserveFrom != null && preserveFrom.skippedDates != null) {
+            // 服务端没这列（旧后端）：从本地同 id 任务保全，同步合并不得冲掉
+            t.skippedDates = new java.util.ArrayList<>(preserveFrom.skippedDates);
+        }
         t.nextStartAt = o.isNull("next_start_at") ? null : tsToNextStart(o.optString("next_start_at", ""));
         t.autoStart = o.optBoolean("auto_start", false);
         t.focusRule = o.optString("focus_rule", "");

@@ -102,6 +102,7 @@ public final class SbSync {
         boolean hasSub = probeSubtaskCols(c);
         boolean hasAlarmMode = probeAlarmModeCol(c);
         boolean hasAi = probeAiCols(c);
+        boolean hasSkip = probeSkipCol(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -112,7 +113,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 synchronized (STORE_LOCK) {
                     store.load(); // 先拿磁盘最新状态再对齐时间戳，别用旧快照整表盖盘（v1.14.0 修复）
@@ -166,7 +167,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             synchronized (STORE_LOCK) {
                 store.load(); // 同上：对齐前先重读，且仅当条目未被更新的本地改动动过时才对齐
@@ -825,6 +826,59 @@ public final class SbSync {
     }
 
     /**
+     * 「跳过今天」删块（v1.79.0）：把某任务今日在云端日程里的块全部摘掉。
+     * 纪律与 updateScheduleBlock 一致：读云端最新 schedule → 只摘这个任务的块
+     * （不整表覆盖别人的改动）→ 写回本地缓存 → upsert → 回读校验。后台线程
+     * 调用；返回 null＝成功、或本来就没有它的块，否则是可读的失败原因。
+     */
+    public static String removeTaskBlocksToday(Context c, String taskId, String updatedBy) {
+        if (!Supa.isLoggedIn(c)) return "未登录 Supabase，删块未上云";
+        try {
+            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            if (us.length() == 0) return null;
+            JSONObject sch = us.getJSONObject(0).optJSONObject("schedule");
+            if (sch == null) return null;
+            if (!TaskItem.today().equals(sch.optString("date", ""))) return null;
+            JSONArray blocks = sch.optJSONArray("blocks");
+            if (blocks == null) return null;
+            JSONArray kept = new JSONArray();
+            boolean hit = false;
+            for (int i = 0; i < blocks.length(); i++) {
+                JSONObject o = blocks.optJSONObject(i);
+                if (o == null) continue;
+                if (taskId.equals(o.optString("taskId", ""))) { hit = true; continue; }
+                kept.put(o);
+            }
+            if (!hit) return null;
+            sch.put("blocks", kept);
+            sch.put("updatedAtMs", System.currentTimeMillis());
+            sch.put("updatedBy", updatedBy);
+            SyncManager.cacheSchedule(c, sch);
+            JSONObject write = new JSONObject();
+            write.put("user_id", Supa.userId(c));
+            write.put("schedule", sch);
+            Supa.restUpsertOne(c, "user_state", "user_id", write);
+            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            if (chk.length() > 0) {
+                JSONObject s2 = chk.getJSONObject(0).optJSONObject("schedule");
+                JSONArray cb = s2 == null ? null : s2.optJSONArray("blocks");
+                if (cb != null) for (int i = 0; i < cb.length(); i++) {
+                    JSONObject o = cb.optJSONObject(i);
+                    if (o != null && taskId.equals(o.optString("taskId", ""))) {
+                        return "已写回但回读还看到这个任务的块";
+                    }
+                }
+            }
+            return null;
+        } catch (Supa.Err e) {
+            if (e.network) return "离线，日程块还没删掉";
+            return "删日程块失败（" + e.status + "）";
+        } catch (Exception e) {
+            return "删日程块失败：" + e.getMessage();
+        }
+    }
+
+    /**
      * 日历页把任务拖进日历（Supabase 模式下的 schedule 唯一写入口之二，纪律与桥时代一致）：
      * 读云端最新 user_state → 只往 blocks 加这一块 → upsert → 回读校验。
      * 云端还没有今天的日程时，就地为今天新建一份只含这一块的日程（拖入即是给今天排）。
@@ -982,7 +1036,7 @@ public final class SbSync {
             String runningId = TimerState.isRunning(c) ? TimerState.taskId(c) : null;
             String logicTodayQ = Rollover.logicalToday(c);
             LocalAutoScheduler.RescheduleOutcome calc = LocalAutoScheduler.computeReschedule(
-                    LocalAutoScheduler.snapshot(store), base, DayAccount.nowMinutes(),
+                    LocalAutoScheduler.snapshot(store, logicTodayQ), base, DayAccount.nowMinutes(),
                     logicTodayQ, runningId, DayAvail.blockedWall(c, logicTodayQ));
             o.locked.addAll(calc.locked);
             o.additions.addAll(calc.additions);
@@ -1160,6 +1214,7 @@ public final class SbSync {
         boolean hasSub = prefs(c).getBoolean("has_subtasks", false);
         boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
         boolean hasAi = prefs(c).getBoolean("has_ai_cols", false);
+        boolean hasSkip = prefs(c).getBoolean("has_skip_col", false);
         try {
             for (int attempt = 0; attempt < 2; attempt++) {
                 TaskItem local;
@@ -1197,6 +1252,7 @@ public final class SbSync {
                     if (remote != null && eqStr(remote.status, local.status)
                             && remote.autoStart == local.autoStart
                             && remote.doneDates.equals(local.doneDates)
+                            && remote.skippedDates.equals(local.skippedDates)
                             && eqStr(remote.aiState, local.aiState)
                             && nz(remote.note).equals(nz(local.note))) {
                         alignSigAndTime(c, store, local, rows.getJSONObject(0));
@@ -1207,14 +1263,15 @@ public final class SbSync {
                     }
                 }
                 JSONArray payload = new JSONArray();
-                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi));
+                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
                 Supa.restUpsert(c, "tasks", "id", payload);
                 // 回读校验
                 JSONArray chk = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
                 if (chk.length() > 0) {
                     TaskItem back = SbMapper.fromRow(chk.getJSONObject(0), null);
                     if (back != null && eqStr(back.status, local.status)
-                            && back.doneDates.equals(local.doneDates)) {
+                            && back.doneDates.equals(local.doneDates)
+                            && back.skippedDates.equals(local.skippedDates)) {
                         alignSigAndTime(c, store, local, chk.getJSONObject(0));
                         // 推送成功：云端 note 已是本地（合并后）这份，基线跟上
                         Map<String, String> nb3 = loadNoteBase(c);
@@ -1440,6 +1497,17 @@ public final class SbSync {
             has = true;
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_ai_cols", has).apply();
+        return has;
+    }
+
+    /** 服务端有没有跳过日期列 skipped_dates（v1.79.0，与附加列同法探测）。 */
+    private static boolean probeSkipCol(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=skipped_dates&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_skip_col", has).apply();
         return has;
     }
 

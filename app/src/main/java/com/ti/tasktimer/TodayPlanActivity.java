@@ -174,7 +174,7 @@ public class TodayPlanActivity extends Activity {
             } catch (Exception ignored) { }
             if (cloudOk) {
                 try {
-                    SyncManager.autoFillSchedule(this, LocalAutoScheduler.snapshot(store),
+                    SyncManager.autoFillSchedule(this, LocalAutoScheduler.snapshot(store, logicToday),
                             "KnowDo App（今天安排页自检补排）");
                 } catch (Exception ignored) { }
             }
@@ -1396,13 +1396,14 @@ public class TodayPlanActivity extends Activity {
 
     /** 今日候选：未删、未完成、（每日重复 ∥ deadline ≤ 逻辑今天），按 candidateOrder 排。 */
     private List<TaskItem> todayCandidates() {
-        List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store);
+        List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store, logicToday);
         java.util.Map<String, LocalAutoScheduler.Candidate> byId = new java.util.HashMap<>();
         for (LocalAutoScheduler.Candidate cd : cands) byId.put(cd.id, cd);
         List<TaskItem> out = new ArrayList<>();
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.isDoneToday()) continue;
             if (t.isAi()) continue; // 给 AI 做的任务不进今天安排候选（v1.74.0）
+            if (t.isSkippedOn(logicToday)) continue; // 跳过今天：今日不进候选（v1.79.0）
             boolean daily = "daily".equals(t.repeat);
             boolean due = t.deadline != null && logicToday != null
                     && t.deadline.compareTo(logicToday) <= 0;
@@ -1460,6 +1461,8 @@ public class TodayPlanActivity extends Activity {
         for (String id : frozenOrder) {
             TaskItem t = store.byId(id);
             if (t == null || t.deleted || t.isDoneToday()) continue;
+            // 跳过今天的从今日区摘下（并退出冻结序；恢复时按候选口径追加末尾，v1.79.0）
+            if (t.isSkippedOn(logicToday)) continue;
             keep.add(id);
             out.add(t);
         }
@@ -1476,7 +1479,7 @@ public class TodayPlanActivity extends Activity {
      */
     private void resortCards() {
         List<TaskItem> list = currentTasks();
-        List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store);
+        List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store, logicToday);
         Map<String, LocalAutoScheduler.Candidate> byId = new HashMap<>();
         for (LocalAutoScheduler.Candidate cd : cands) byId.put(cd.id, cd);
         Comparator<LocalAutoScheduler.Candidate> ord = LocalAutoScheduler.candidateOrder(logicToday);
@@ -1640,6 +1643,18 @@ public class TodayPlanActivity extends Activity {
             return Integer.compare(TaskItem.priorityRank(a.priority),
                     TaskItem.priorityRank(b.priority));
         });
+        // 今日被跳过的任务（v1.79.0）：不论优先级与重复类型都收进本区（恢复的
+        // 入口在这里），排在排好序的常规其他任务之后；已在上表里的不重复加。
+        List<TaskItem> skipped = new ArrayList<>();
+        for (TaskItem t : store.tasks) {
+            if (t.deleted || t.isDoneToday() || t.isAi()) continue;
+            if (!t.isSkippedOn(logicToday)) continue;
+            if (mainIds.contains(t.id)) continue;
+            boolean dup = false;
+            for (TaskItem o : out) if (o.id.equals(t.id)) { dup = true; break; }
+            if (!dup) skipped.add(t);
+        }
+        out.addAll(skipped);
         return out;
     }
 
@@ -1725,6 +1740,12 @@ public class TodayPlanActivity extends Activity {
         nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
         card.addView(nm, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // 被跳过今天的任务（v1.79.0）：带「已跳过」标记，唯一动作是「恢复」
+        if (t.isSkippedOn(logicToday)) {
+            card.addView(chip(s("已跳过", "Skipped"), true, null));
+            card.addView(chip(s("恢复", "Restore"), false, v -> restoreFromOther(t)));
+            return card;
+        }
         card.addView(chip(TaskItem.priorityLabel(t.priority, en()), true, null));
         TextView dl = new TextView(this);
         dl.setText(otherDeadlineLabel(t));
@@ -1901,6 +1922,10 @@ public class TodayPlanActivity extends Activity {
         acts.setOrientation(LinearLayout.HORIZONTAL);
         acts.setGravity(Gravity.END);
         acts.setPadding(0, dp(5), 0, 0);
+        // 「跳过今天」只对重复任务出（v1.79.0）：非重复任务没有「明天照常」一说
+        if (t.repeat != null && !t.repeat.isEmpty() && !"none".equals(t.repeat)) {
+            acts.addView(chip(s("跳过", "Skip"), false, v -> skipFromCard(t)));
+        }
         acts.addView(chip(s("完成", "Done"), false, v -> completeFromCard(t)));
         TextView delChip = chip(s("删除", "Delete"), false, v -> confirmDeleteFromCard(t));
         delChip.setTextColor(Ui.accent(this));
@@ -2026,6 +2051,62 @@ public class TodayPlanActivity extends Activity {
         store.save();
         SbSync.pushDoneAsync(this, t.id);
         refreshAll();
+    }
+
+    /**
+     * 卡上「跳过今天」（v1.79.0）：把逻辑今天记进任务的 skippedDates（本地先行，
+     * 随任务同步上云）→ 今日已排的块先从本地缓存摘掉（页面与时间账立刻生效），
+     * 再后台走 SbSync.removeTaskBlocksToday 把云端那份也摘掉并回读校验，回来
+     * 后把本地缓存再摘一遍防同步回声把块带回来。卡从今日区消失（候选与排程
+     * 都剔除，见 todayCandidates 与 LocalAutoScheduler.snapshot），去「其他
+     * 重要任务」区带「已跳过」标记，可在那里点「恢复」捞回；次日照常出现。
+     */
+    private void skipFromCard(final TaskItem t) {
+        if (logicToday != null && !t.skippedDates.contains(logicToday)) {
+            t.skippedDates.add(logicToday);
+        }
+        removeTodayBlocksLocal(t.id);
+        persistTask(t);
+        new Thread(() -> {
+            String err = SbSync.removeTaskBlocksToday(this, t.id,
+                    "KnowDo App（今天安排页跳过今天）");
+            if (err == null) {
+                runOnUiThread(() -> {
+                    removeTodayBlocksLocal(t.id);
+                    refreshAll();
+                });
+            }
+        }).start();
+    }
+
+    /** 本地日程缓存里摘掉某任务今日的全部块（只动本地缓存，云端走 SbSync 删块）。 */
+    private void removeTodayBlocksLocal(String taskId) {
+        try {
+            JSONObject sch = SyncManager.latestSchedule(this);
+            List<LocalAutoScheduler.Block> blocks = LocalAutoScheduler.blocksOf(
+                    sch, TaskItem.today());
+            List<LocalAutoScheduler.Block> kept = new ArrayList<>();
+            boolean changed = false;
+            for (LocalAutoScheduler.Block b : blocks) {
+                if (taskId.equals(b.taskId)) { changed = true; continue; }
+                kept.add(b);
+            }
+            if (!changed) return;
+            JSONObject ns = LocalAutoScheduler.scheduleJson(TaskItem.today(), kept);
+            ns.put("updatedAtMs", System.currentTimeMillis());
+            ns.put("updatedBy", "KnowDo App（今天安排页跳过今天）");
+            SyncManager.cacheSchedule(this, ns);
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * 「其他重要任务」区里点「恢复」（v1.79.0）：清除今日的 skip，卡回今日区
+     * （按候选口径追加到主清单末尾）；日程块不自动补排，用户可再点
+     * 「排进今天的日程」。
+     */
+    private void restoreFromOther(final TaskItem t) {
+        if (logicToday != null) t.skippedDates.remove(logicToday);
+        persistTask(t);
     }
 
     /**

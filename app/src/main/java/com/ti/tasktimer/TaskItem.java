@@ -85,6 +85,9 @@ public class TaskItem {
     public List<String> allowedApps = new ArrayList<>();
     public String primaryApp;          // 指定的主软件包名：被拦下时跳回它；为空则跳知行「当前任务页」
     public List<String> doneDates = new ArrayList<>();
+    // 跳过日期（v1.79.0）：重复任务点「跳过今天」记下的日期，与 doneDates 并列——
+    // 记在这里的那一天，该任务既不算完成也不算未完成（知行指数与时间账都剔除）。
+    public List<String> skippedDates = new ArrayList<>();
     public boolean deleted = false;
     public long createdAtMs;
     public long updatedAtMs;
@@ -125,6 +128,11 @@ public class TaskItem {
     public boolean isDoneToday() {
         if ("daily".equals(repeat)) return doneDates.contains(today());
         return "done".equals(status);
+    }
+
+    /** 某一天是否被「跳过今天」跳过（v1.79.0）；date 为 null 时恒 false。 */
+    public boolean isSkippedOn(String date) {
+        return date != null && skippedDates != null && skippedDates.contains(date);
     }
 
     public void markDone() {
@@ -180,6 +188,9 @@ public class TaskItem {
         JSONArray dd = new JSONArray();
         for (String s : doneDates) dd.put(s);
         o.put("doneDates", dd);
+        JSONArray skd = new JSONArray();
+        if (skippedDates != null) for (String s : skippedDates) skd.put(s);
+        o.put("skippedDates", skd);
         o.put("deleted", deleted);
         o.put("createdAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(createdAtMs)));
         o.put("updatedAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(updatedAtMs)));
@@ -254,6 +265,9 @@ public class TaskItem {
         if (t.primaryApp != null && t.primaryApp.isEmpty()) t.primaryApp = null;
         JSONArray dd = o.optJSONArray("doneDates");
         if (dd != null) for (int i = 0; i < dd.length(); i++) t.doneDates.add(dd.getString(i));
+        // 老本地数据无此字段时留空表（v1.79.0）
+        JSONArray skd = o.optJSONArray("skippedDates");
+        if (skd != null) for (int i = 0; i < skd.length(); i++) t.skippedDates.add(skd.getString(i));
         t.deleted = o.optBoolean("deleted", false);
         t.createdAtMs = o.optLong("createdAtMs", 0);
         t.updatedAtMs = o.optLong("updatedAtMs", 0);
