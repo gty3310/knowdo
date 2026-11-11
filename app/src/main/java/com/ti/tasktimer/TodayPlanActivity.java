@@ -480,9 +480,9 @@ public class TodayPlanActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         barLp.gravity = Gravity.BOTTOM;
         frame.addView(btnBar, barLp);
-        aiPanel = buildAiPanel();
-        aiPanel.setVisibility(View.GONE);
         int panelH = (int) (getResources().getDisplayMetrics().heightPixels * 0.92);
+        aiPanel = buildAiPanel(panelH);
+        aiPanel.setVisibility(View.GONE);
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, panelH);
         plp.gravity = Gravity.BOTTOM;
@@ -2124,7 +2124,7 @@ public class TodayPlanActivity extends Activity {
     // 清单必须带 knowdo-addtasks 结构块，App 解析成提案卡，用户点「就这样
     // 添加」才经 TaskStore 正常通道建任务（既定提案纪律，AI 不直接落库）。
 
-    private LinearLayout buildAiPanel() {
+    private LinearLayout buildAiPanel(int panelH) {
         LinearLayout p = new LinearLayout(this);
         p.setOrientation(LinearLayout.VERTICAL);
         p.setBackgroundColor(Ui.bg(this));
@@ -2137,7 +2137,7 @@ public class TodayPlanActivity extends Activity {
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(dp(18), dp(10), dp(18), dp(8));
+        head.setPadding(dp(18), dp(10), dp(18), dp(10));
         TextView title = new TextView(this);
         title.setText(s("跟 AI 一起添加任务", "Add tasks with AI"));
         title.setTextSize(15);
@@ -2164,19 +2164,20 @@ public class TodayPlanActivity extends Activity {
         aiScroll = new ScrollView(this);
         aiMsgCol = new LinearLayout(this);
         aiMsgCol.setOrientation(LinearLayout.VERTICAL);
-        aiMsgCol.setPadding(dp(18), dp(6), dp(18), dp(14));
+        aiMsgCol.setPadding(dp(18), dp(10), dp(18), dp(16));
         // v1.67.0：显式给全宽/自适应高——旧版无参 addView 时它在 ScrollView 里的
         // 测量口径含糊，是面板塌陷的嫌疑路径之一（详见 openAiPanel 的兜底注释）
         aiScroll.addView(aiMsgCol, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT));
+        // 高度先占位，inRow 建好后按实测显式算定（见本方法末尾的 v1.79.0 修复）
         p.addView(aiScroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(80)));
 
         LinearLayout inRow = new LinearLayout(this);
         inRow.setOrientation(LinearLayout.HORIZONTAL);
         inRow.setGravity(Gravity.CENTER_VERTICAL);
-        inRow.setPadding(dp(14), dp(8), dp(14), dp(12));
+        inRow.setPadding(dp(14), dp(10), dp(14), dp(14));
         aiInput = new EditText(this);
         aiInput.setHint(s("说说今天想做的事，可以一次说好几件",
                 "Tell me today's tasks — several at once is fine"));
@@ -2198,6 +2199,24 @@ public class TodayPlanActivity extends Activity {
         aiSendBtn.setOnClickListener(v -> onAiSend());
         inRow.addView(aiSendBtn);
         p.addView(inRow);
+        // v1.79.0 修复（AI 面板打开只剩标题行）：聊天滚动区不用「0 高＋权重」。
+        // 同类结构在本机上有实测塌陷记录——v1.77.0 今天安排页的 DBG 数字：
+        // 权重 ScrollView 被压成 0 高、同级 wrap 内容层反而胀满整页高。面板里
+        // 若重演同一条测量路径：aiScroll 塌成 0、head 胀满面板高，head 的
+        // CENTER_VERTICAL 会把标题行顶到面板正中，输入行被挤出面板下沿——
+        // 正是用户真机截图的样子（标题浮在页面中段、聊天区与输入行都不见）。
+        // 改走显式高度：按当前字号实测 head 与输入行（inRow）的高，用面板
+        // 总高减出滚动区的高一次定死，不再经过权重分配。
+        int wSpec = View.MeasureSpec.makeMeasureSpec(
+                getResources().getDisplayMetrics().widthPixels,
+                View.MeasureSpec.EXACTLY);
+        int hSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        head.measure(wSpec, hSpec);
+        inRow.measure(wSpec, hSpec);
+        int scrollH = panelH - head.getMeasuredHeight()
+                - inRow.getMeasuredHeight() - 2; // 两条 1px 分隔线
+        aiScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(dp(80), scrollH)));
         return p;
     }
 
