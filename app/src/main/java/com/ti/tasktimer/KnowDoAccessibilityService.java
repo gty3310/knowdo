@@ -113,6 +113,8 @@ public class KnowDoAccessibilityService extends AccessibilityService {
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                 && event.getPackageName() != null) {
             lastFgPkg = event.getPackageName().toString();
+            // 分神处置盖住（v1.80.0）：前台回到被盖软件→拉起盖屏；切去别的软件→收起盖屏
+            try { AppBlock.checkForeground(this, lastFgPkg); } catch (Exception ignored) { }
         }
     }
 

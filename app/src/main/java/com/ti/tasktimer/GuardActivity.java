@@ -40,8 +40,8 @@ public class GuardActivity extends Activity {
     // 「没有」的自检记录（didRight=false）；每次问询只记一次
     private boolean driftRecorded;
 
-    // 宽限到点处理方式（v1.21.3，仅 content 模式）：true=退掉这个软件（默认），false=只放到后台
-    private boolean graceQuit = true;
+    // 宽限到点处理方式（v1.21.3 布尔 → v1.80.0 三档枚举，仅 content 模式显示选择行）
+    private String graceAction = ScreenGuardPrefs.ACTION_BLOCK;
     private final List<Button> graceModeBtns = new ArrayList<>();
 
     private ScrollView scrollView;
@@ -192,41 +192,42 @@ public class GuardActivity extends Activity {
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
     /**
-     * 选宽限时长时一并选到点怎么办：「退掉这个软件」（默认）或「只放到后台」。
-     * 点选即存进 ScreenGuardPrefs，下次问询默认沿用上次的选择；到点由
-     * VerdictEngine.applyEnforcement 按这个选择执行。
+     * 选宽限时长时一并选到点怎么办：退掉这个软件／只放到后台／盖住 3 分钟
+     * （v1.80.0 起三档，默认盖住）。点选即存进 ScreenGuardPrefs，下次问询
+     * 默认沿用上次的选择；名单模式不显示本行、共用同一份设置（设置页可
+     * 改）；到点由 VerdictEngine.applyEnforcement 按这个选择执行。
      */
     private void buildGraceModeRow(LinearLayout root) {
-        graceQuit = ScreenGuardPrefs.graceActionQuit(this);
+        graceAction = ScreenGuardPrefs.graceAction(this);
         TextView label = new TextView(this);
-        label.setText("宽限到点后，这个软件：");
+        label.setText(Strings.graceActionQ());
         label.setTextSize(17);
         label.setTextColor(Color.rgb(31, 47, 42));
         root.addView(label);
         LinearLayout row = scRow(root);
-        Button quit = scButton("退掉这个软件");
-        quit.setOnClickListener(v -> {
-            graceQuit = true;
-            ScreenGuardPrefs.setGraceActionQuit(this, true);
-            refreshGraceModeStyles();
-        });
-        Button bg = scButton("只放到后台");
-        bg.setOnClickListener(v -> {
-            graceQuit = false;
-            ScreenGuardPrefs.setGraceActionQuit(this, false);
-            refreshGraceModeStyles();
-        });
-        graceModeBtns.add(quit);
-        graceModeBtns.add(bg);
-        row.addView(quit);
-        row.addView(bg);
+        final String[] acts = {ScreenGuardPrefs.ACTION_QUIT, ScreenGuardPrefs.ACTION_BACKGROUND,
+                ScreenGuardPrefs.ACTION_BLOCK};
+        String[] labels = {Strings.graceActQuit(), Strings.graceActBg(), Strings.graceActBlock()};
+        for (int i = 0; i < acts.length; i++) {
+            final String act = acts[i];
+            Button b = scButton(labels[i]);
+            b.setOnClickListener(v -> {
+                graceAction = act;
+                ScreenGuardPrefs.setGraceAction(this, act);
+                refreshGraceModeStyles();
+            });
+            graceModeBtns.add(b);
+            row.addView(b);
+        }
         refreshGraceModeStyles();
         spacer(root, 14);
     }
 
     private void refreshGraceModeStyles() {
+        String[] acts = {ScreenGuardPrefs.ACTION_QUIT, ScreenGuardPrefs.ACTION_BACKGROUND,
+                ScreenGuardPrefs.ACTION_BLOCK};
         for (int i = 0; i < graceModeBtns.size(); i++) {
-            styleScButton(graceModeBtns.get(i), graceQuit == (i == 0));
+            styleScButton(graceModeBtns.get(i), acts[i].equals(graceAction));
         }
     }
 
@@ -248,8 +249,15 @@ public class GuardActivity extends Activity {
         Button b = scButton(label);
         b.setOnClickListener(v -> {
             recordDriftOnce();
-            if (contentMode) VerdictEngine.contentGrace(this, category, seconds);
-            else FocusGuard.chooseGrace(this, fgPkg, seconds);
+            if (seconds == 0) {
+                // 马上封：不等宽限闹钟/下一拍，当场按处置设置执行
+                if (contentMode) VerdictEngine.contentEnforceNow(this, category);
+                else FocusGuard.chooseGraceImmediate(this, fgPkg);
+            } else if (contentMode) {
+                VerdictEngine.contentGrace(this, category, seconds);
+            } else {
+                FocusGuard.chooseGrace(this, fgPkg, seconds);
+            }
             finish();
         });
         return b;

@@ -12,8 +12,8 @@ import java.util.Set;
  * 单张命中只记“嫌疑”；同一类连续命中 2 张才触发问询页（nsfw 可在设置里改成一张即触发）。
  * 触发后：记 GuardEvents（同步进桥）、复用 GuardActivity（content 模式）、
  * 冷却一轮「提示页重弹间隔」（PromptRepop，v1.26.3；原固定 60 秒）不再重复触发。用户在问询页的选择：
- * 立即回到任务 → GuardActions 跳回；给我 30/60 秒 → 该类宽限，并同时选定
- * 到点处理方式（退掉该软件／只放到后台，ScreenGuardPrefs 记选择）；到点由
+ * 立即回到任务 → GuardActions 跳回；选「最后再看多久」→ 该类宽限，并同时选定
+ * 到点处理方式（退掉／只放后台／盖住 3 分钟，ScreenGuardPrefs 记选择）；到点由
  * GraceEnforcer 的精确闹钟主动复查前台执行（不等再次命中），若到期前采样
  * 再次命中同类也走同一个 applyEnforcement；误判放行 → 本次计时内不再判该类。
  */
@@ -69,6 +69,12 @@ public final class VerdictEngine {
 
         Set<String> allowed = p.getStringSet("session_allow_cats", new HashSet<>());
         if (allowed.contains(cat)) return;
+
+        // 盖住期间（v1.80.0）：前台正是被盖住的那个软件时，不再触发问询（盖屏管着它）
+        if (AppBlock.isActive(c)) {
+            String fgNow = currentForeground(c);
+            if (fgNow != null && fgNow.equals(AppBlock.activePkg(c))) return;
+        }
 
         String graceCat = p.getString("grace_cat", null);
         if (cat.equals(graceCat)) {
@@ -160,9 +166,27 @@ public final class VerdictEngine {
         e.apply();
         // 到点主动处理：把闹钟排到 grace_until，不再等采样再次命中（v1.21.3）
         GraceEnforcer.schedule(c);
-        boolean quit = ScreenGuardPrefs.graceActionQuit(c);
+        String act = ScreenGuardPrefs.graceAction(c);
+        String actText = ScreenGuardPrefs.ACTION_BLOCK.equals(act) ? "盖住 3 分钟"
+                : ScreenGuardPrefs.ACTION_QUIT.equals(act) ? "退掉该软件并跳回任务" : "只放到后台";
         TimerState.logEvent(c, "屏幕内容守卫：用户给「" + ContentAnalyzer.label(cat) + "」宽限 " + seconds
-                + " 秒，到点处理：" + (quit ? "退掉该软件并跳回任务" : "只放到后台"));
+                + " 秒，到点处理：" + actText);
+    }
+
+    /**
+     * 「马上封」（v1.80.0）：宽限 0——把宽限状态按刚选完的样子写好，立刻走
+     * 同一份 applyEnforcement（assumeOnPkg：用户正在问询页上答这条，
+     * 前台复查时自家页面在最前，不能按「已离开」误判跳过）。
+     */
+    public static void contentEnforceNow(Context c, String cat) {
+        SharedPreferences p = prefs(c);
+        String pkg = p.getString("inquiry_pkg", null);
+        SharedPreferences.Editor e = p.edit().putString("grace_cat", cat)
+                .putLong("grace_until", System.currentTimeMillis())
+                .remove("inquiry_pkg");
+        if (pkg != null) e.putString("grace_pkg", pkg); else e.remove("grace_pkg");
+        e.apply();
+        applyEnforcement(c, true);
     }
 
     public static void contentAllow(Context c, String cat) {
@@ -183,17 +207,26 @@ public final class VerdictEngine {
      * （注明方式）＋任务日志，用户事后看得见。
      */
     public static void applyEnforcement(Context c) {
+        applyEnforcement(c, false);
+    }
+
+    /**
+     * @param assumeOnPkg true 时（问询页「马上封」当场调用）不做「已不在
+     *        该软件就跳过」的复查：用户正对着问询页答这条，前台是自家
+     *        页面，关掉问询页底下就是当时那个分神软件，按 grace_pkg 执行。
+     */
+    private static void applyEnforcement(Context c, boolean assumeOnPkg) {
         SharedPreferences p = prefs(c);
         String cat = p.getString("grace_cat", null);
         String pkg = p.getString("grace_pkg", null);
         if (cat == null) { GraceEnforcer.cancel(c); return; }
-        boolean quit = ScreenGuardPrefs.graceActionQuit(c);
+        String act = ScreenGuardPrefs.graceAction(c);
         p.edit().remove("grace_cat").remove("grace_until").remove("grace_pkg").apply();
         GraceEnforcer.cancel(c);
 
         String fg = currentForeground(c);
         TaskItem task = currentTask(c);
-        if (pkg != null && (fg == null || !pkg.equals(fg))) {
+        if (!assumeOnPkg && pkg != null && (fg == null || !pkg.equals(fg))) {
             TimerState.logEvent(c, "屏幕内容守卫：宽限到点，复查发现已不在「"
                     + AppLister.labelOf(c, pkg) + "」，不处理");
             return;
@@ -204,8 +237,16 @@ public final class VerdictEngine {
             return;
         }
         String appName = AppLister.labelOf(c, target);
+        if (ScreenGuardPrefs.ACTION_BLOCK.equals(act)) {
+            // 盖住 3 分钟（v1.80.0）：不回家、不跳回，盖屏拉起来盖住它即可
+            AppBlock.start(c, target);
+            GuardEvents.add(c, task, cat, 1f, "宽限到点处理（盖住 3 分钟）：仍停留在「" + appName
+                    + "」，blocked 3m");
+            TimerState.logEvent(c, "屏幕内容守卫：宽限到点，仍在「" + appName + "」，已盖住 3 分钟");
+            return;
+        }
         boolean homed = GuardActions.pressHome(c);
-        if (quit) {
+        if (ScreenGuardPrefs.ACTION_QUIT.equals(act)) {
             GuardActions.redirectToTask(c, task);
             GuardEvents.add(c, task, cat, 1f, "宽限到点处理（退掉软件）：仍停留在「" + appName
                     + "」，已切到后台并跳回任务" + (homed ? "" : "（无障碍不可用，仅完成跳回）"));

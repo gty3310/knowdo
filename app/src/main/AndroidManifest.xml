@@ -133,6 +133,16 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 
+        <!-- 分神处置盖屏（v1.80.0）：与守卫问询页同样的展示属性 -->
+        <activity
+            android:name=".BlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <!-- 加时动机门（v1.72.0）：页外加时入口（行页/日历「+15 分钟」）先过自问再加时 -->
         <activity
             android:name=".MotiveGateActivity"
@@ -257,6 +267,11 @@
         <!-- 宽限到点处理闹钟接收器（v1.21.3）：宽限到期主动复查前台并执行所选处理 -->
         <receiver
             android:name=".GraceEnforceReceiver"
+            android:exported="false" />
+
+        <!-- 盖住到点清状态闹钟接收器（v1.80.0）：盖住 3 分钟到点清掉盖住状态 -->
+        <receiver
+            android:name=".BlockEnforceReceiver"
             android:exported="false" />
 
         <!-- 悬浮窗「关闭」选择页（v1.14.0）：半透明中转页 -->

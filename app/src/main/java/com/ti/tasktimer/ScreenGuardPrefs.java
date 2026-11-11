@@ -70,17 +70,51 @@ public final class ScreenGuardPrefs {
     public static String testTaskTitle(Context c) { return prefs(c).getString("test_task_title", null); }
     public static String testTaskNote(Context c) { return prefs(c).getString("test_task_note", null); }
 
-    // ---- 宽限到点后的处理方式（v1.21.3） ----
+    // ---- 宽限到点后的处理方式（v1.21.3 布尔 → v1.80.0 三档枚举） ----
+    public static final String ACTION_QUIT = "quit";
+    public static final String ACTION_BACKGROUND = "background";
+    public static final String ACTION_BLOCK = "block";
+
     /**
-     * 屏幕内容守卫问询页选宽限时一并选的到点处理：「退掉这个软件」（默认，
-     * quit=true）或「只放到后台」。选一次记一次，下次默认沿用上次的选择。
+     * 三档：quit 退掉这个软件／background 只放到后台／block 盖住 3 分钟。
+     * 名单模式与内容模式共用这一份（问询页选择行与设置页读写同一处）。
+     * 迁移口径：旧布尔 grace_action_quit 已存过值时，true→quit、
+     * false→background，首次读时落新键 grace_action 并删旧键；两个键都
+     * 从未存过（全新安装，或老用户从未改过此项）→ 新默认 block
+     * （用户 2026-11-11 定案：新默认盖住）。
      */
-    public static boolean graceActionQuit(Context c) {
-        return prefs(c).getBoolean("grace_action_quit", true);
+    public static String graceAction(Context c) {
+        SharedPreferences p = prefs(c);
+        String v = p.getString("grace_action", null);
+        if (v != null) return v;
+        if (p.contains("grace_action_quit")) {
+            String m = p.getBoolean("grace_action_quit", true) ? ACTION_QUIT : ACTION_BACKGROUND;
+            p.edit().putString("grace_action", m).remove("grace_action_quit").apply();
+            return m;
+        }
+        return ACTION_BLOCK;
     }
 
-    public static void setGraceActionQuit(Context c, boolean quit) {
-        prefs(c).edit().putBoolean("grace_action_quit", quit).apply();
+    public static void setGraceAction(Context c, String action) {
+        prefs(c).edit().putString("grace_action", action).apply();
+    }
+
+    // ---- 提前解封（v1.80.0）：每天限 1 次，按设备日历日记账 ----
+    /** 今天的提前解封机会是否已用掉（与 unblock_date 比对日历日）。 */
+    public static boolean unblockUsedToday(Context c) {
+        SharedPreferences p = prefs(c);
+        return p.getBoolean("unblock_used", false)
+                && todayStr().equals(p.getString("unblock_date", ""));
+    }
+
+    public static void markUnblockUsed(Context c) {
+        prefs(c).edit().putBoolean("unblock_used", true)
+                .putString("unblock_date", todayStr()).apply();
+    }
+
+    private static String todayStr() {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
     }
 
     // ---- 语义判定（v1.21.4） ----

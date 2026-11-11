@@ -30,6 +30,7 @@ public final class AlertHelper {
     public static final int TYPE_END = 2;
     public static final int TYPE_SUB = 3;
     public static final int NOTIF_GUARD = 201;
+    public static final int NOTIF_BLOCK = 208;
     public static final int NOTIF_TASK_ALARM = 203;
     public static final int NOTIF_NEXT_TASK = 204;
     public static final int NOTIF_RESUME_SILENT = 205;
@@ -428,6 +429,50 @@ public final class AlertHelper {
     public static void cancelGuard(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(NOTIF_GUARD);
+    }
+
+    /**
+     * 分神处置盖屏的统一出口（v1.80.0）：与守卫问询页同一策略（亮屏且可
+     * 悬浮时直接启动，锁屏走全屏通知）。通知文案与盖屏同题，不解释功能。
+     */
+    public static void fireBlock(Context c) {
+        createChannels(c);
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+        boolean interactive = pm != null && pm.isInteractive();
+        boolean locked = kg != null && kg.isKeyguardLocked();
+        if (interactive && !locked && canDrawOverlays(c)) {
+            try {
+                Intent direct = new Intent(c, BlockActivity.class);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(direct);
+                return;
+            } catch (Exception e) {
+                TimerState.logEvent(c, "盖屏直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
+            }
+        }
+        String pkg = AppBlock.activePkg(c);
+        String appName = pkg == null ? "" : AppLister.labelOf(c, pkg);
+        Intent intent = new Intent(c, BlockActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(c, NOTIF_BLOCK, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle(Strings.blockTitle(appName))
+                .setContentText(Strings.blockTaskLine(TimerState.taskTitle(c)))
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setFullScreenIntent(pi, true);
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(NOTIF_BLOCK, b.build());
+    }
+
+    public static void cancelBlock(Context c) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(NOTIF_BLOCK);
     }
 
     /** 屏幕内容守卫问询页的统一出口：复用 GuardActivity（content 模式），策略与应用级守卫一致。 */

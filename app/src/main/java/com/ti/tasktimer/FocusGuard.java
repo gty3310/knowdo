@@ -62,6 +62,29 @@ public final class FocusGuard {
         TimerState.logEvent(c, "专注守卫：用户给「" + AppLister.labelOf(c, pkg) + "」宽限 " + seconds + " 秒");
     }
 
+    /** 「马上封」（v1.80.0）：宽限 0——不等下一拍，立刻按处置设置执行（与宽限到点同一份实现）。 */
+    public static void chooseGraceImmediate(Context c, String pkg) {
+        prefs(c).edit().putLong("cooldown_until", System.currentTimeMillis() + 8_000L).apply();
+        applyListEnforcement(c, pkg, currentTask(c));
+    }
+
+    /** 名单模式宽限到点（或马上封）的处置执行：三档与内容模式共用同一份设置（ScreenGuardPrefs.graceAction）。 */
+    static void applyListEnforcement(Context c, String pkg, TaskItem task) {
+        String act = ScreenGuardPrefs.graceAction(c);
+        String appName = AppLister.labelOf(c, pkg);
+        if (ScreenGuardPrefs.ACTION_BLOCK.equals(act)) {
+            AppBlock.start(c, pkg);
+            TimerState.logEvent(c, "专注守卫：宽限到点，仍在用「" + appName + "」，已盖住 3 分钟");
+        } else if (ScreenGuardPrefs.ACTION_BACKGROUND.equals(act)) {
+            boolean homed = GuardActions.pressHome(c);
+            TimerState.logEvent(c, "专注守卫：宽限到点，仍在用「" + appName + "」，已只放到后台"
+                    + (homed ? "" : "（无障碍不可用，未能执行）"));
+        } else {
+            TimerState.logEvent(c, "专注守卫：宽限到期，仍在用「" + appName + "」，执行跳回");
+            GuardActions.redirectToTask(c, task);
+        }
+    }
+
     public static void chooseAllow(Context c, String pkg) {
         Set<String> s = new HashSet<>(prefs(c).getStringSet("session_allow", new HashSet<>()));
         s.add(pkg);
@@ -93,6 +116,10 @@ public final class FocusGuard {
         String fg = DETECTOR.foregroundPackage(c);
         if (fg == null) return;
 
+        // 盖住期间（v1.80.0）：前台正是被盖的软件→盖屏接管，本拍不再问询；
+        // 前台已离开被盖软件时，checkForeground 顺手收起盖屏
+        if (AppBlock.checkForeground(c, fg)) return;
+
         SharedPreferences p = prefs(c);
         String gracePkg = p.getString("grace_pkg", null);
         long graceUntil = p.getLong("grace_until", 0);
@@ -116,8 +143,7 @@ public final class FocusGuard {
                 if (now >= graceUntil) {
                     clearGrace(c);
                     p.edit().putLong("cooldown_until", now + 8_000L).apply();
-                    TimerState.logEvent(c, "专注守卫：宽限到期，仍在用「" + AppLister.labelOf(c, fg) + "」，执行跳回");
-                    GuardActions.redirectToTask(c, task);
+                    applyListEnforcement(c, fg, task);
                 }
                 return; // 宽限内不重复弹窗
             }
