@@ -70,15 +70,6 @@ public class TodayPlanActivity extends Activity {
     /** 开页自检补排的页顶小字（v1.67.0，F5）：补排/拉不到云端都要明示，不静默空白。 */
     private TextView healNoteView;
     private String healNote;
-    /** 页内自检行（v1.70.0，F4）：常驻页头，报已载入任务数／今日日程段数／本页卡片数。 */
-    private TextView selfCheckView;
-    // v1.77.0 临时诊断：今天安排空白定位，修复版移除（buildUi 局部变量最小限度提升为字段，只为取高度，不改其任何参数）
-    private LinearLayout dbgRoot, dbgHead, dbgCol, dbgFoot;
-    private ScrollView dbgScroll;
-    private TextView dbgBtn, dbgStartBtn, dbgView;
-    private String dbgL1;
-    /** 最近一次 refreshCardsOnly 实际画出的卡片＋兜底行数（F4 自检行取数）。 */
-    private int lastCardCount = 0;
     private View barUsed, barOver, barRest;
     private FrameLayout strip;
     private TextView scaleWake, scaleEnd;
@@ -223,13 +214,11 @@ public class TodayPlanActivity extends Activity {
 
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
-        dbgRoot = root; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.bg(this));
 
         // ---- 吸顶时间账 ----
         LinearLayout head = new LinearLayout(this);
-        dbgHead = head; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         head.setOrientation(LinearLayout.VERTICAL);
         head.setPadding(dp(18), dp(8), dp(18), dp(6));
         TextView title = new TextView(this);
@@ -296,20 +285,6 @@ public class TodayPlanActivity extends Activity {
         healNoteView.setVisibility(View.GONE);
         head.addView(healNoteView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // 页内自检行（v1.70.0，F4）：常驻显示，refreshAll 后更新三个数
-        selfCheckView = new TextView(this);
-        selfCheckView.setTextSize(10.5f);
-        selfCheckView.setTextColor(Ui.sub(this));
-        selfCheckView.setPadding(0, dp(3), 0, 0);
-        head.addView(selfCheckView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // v1.77.0 临时诊断：今天安排空白定位，修复版移除（自检行之下一行 DBG 小字，报各层实际高度）
-        dbgView = new TextView(this);
-        dbgView.setTextSize(10);
-        dbgView.setTextColor(Ui.sub(this));
-        dbgView.setPadding(0, dp(3), 0, 0);
-        head.addView(dbgView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(head, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View headLine = new View(this);
@@ -321,7 +296,6 @@ public class TodayPlanActivity extends Activity {
         // v1.78.0 整页重写：不再用「权重 0 高的 ScrollView + 固定底」，整页就是一个
         // ScrollView，内容自然撑高，不依赖窗口可用高度（部分机型上滚动区被压成 0 高）。
         LinearLayout col = new LinearLayout(this);
-        dbgCol = col; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         col.setOrientation(LinearLayout.VERTICAL);
         // 底部 padding 先给一个约数（吸底钮栏高＋12dp），首帧布局后在 buildUi
         // 文末按钮栏实际高精确重设（v1.79.0）
@@ -492,7 +466,6 @@ public class TodayPlanActivity extends Activity {
         // v1.55.0：整页包一层 FrameLayout，AI 聊天面板作底部浮层（近全屏高）
         FrameLayout frame = new FrameLayout(this);
         ScrollView pageScroll = new ScrollView(this);
-        dbgScroll = pageScroll; // v1.77.0 临时诊断：今天安排空白定位，修复版移除
         pageScroll.setFillViewport(true);
         pageScroll.setBackgroundColor(Ui.bg(this));
         pageScroll.addView(root, new ScrollView.LayoutParams(
@@ -518,57 +491,6 @@ public class TodayPlanActivity extends Activity {
         // 内容列底部让位：钮栏实际高＋12dp，最后一张卡不被吸底栏挡住
         btnBar.post(() -> col.setPadding(dp(18), dp(4), dp(18),
                 btnBar.getHeight() + dp(12)));
-        // v1.77.0 临时诊断：今天安排空白定位，修复版移除（L1＝首帧布局后取样，L2＝800ms 后再取样，抓先画好又塌掉）
-        root.post(() -> {
-            try {
-                dbgL1 = sampleDbg();
-                if (dbgView != null) dbgView.setText("DBG L1 " + dbgL1 + " | L2 -");
-            } catch (Exception ignored) { }
-            root.postDelayed(() -> {
-                try {
-                    if (dbgView != null) {
-                        dbgView.setText("DBG L1 " + (dbgL1 != null ? dbgL1 : "-")
-                                + " | L2 " + sampleDbg());
-                    }
-                } catch (Exception ignored) { }
-            }, 800);
-        });
-    }
-
-    // v1.77.0 临时诊断：今天安排空白定位，修复版移除（全程兜底，取不到记 -1，诊断代码绝不许成为新的崩溃源）
-    private String sampleDbg() {
-        try {
-            int win = -1;
-            try { win = getWindow().getDecorView().getHeight(); } catch (Exception ignored) { }
-            int cardsH = -1, cardN = -1, card0 = -1;
-            try {
-                if (cardsBox != null) {
-                    cardsH = cardsBox.getHeight();
-                    cardN = cardsBox.getChildCount();
-                    if (cardN > 0) card0 = cardsBox.getChildAt(0).getHeight();
-                }
-            } catch (Exception ignored) { }
-            float den = -1f, fs = -1f;
-            try {
-                den = getResources().getDisplayMetrics().density;
-                fs = getResources().getConfiguration().fontScale;
-            } catch (Exception ignored) { }
-            int panelVis = 0;
-            try { panelVis = (aiPanel != null && aiPanel.getVisibility() == View.VISIBLE) ? 1 : 0; }
-            catch (Exception ignored) { }
-            return String.format(java.util.Locale.US,
-                    "win=%d root=%d head=%d scroll=%d col=%d cards=%dx%d card0=%d foot=%d btn=%d start=%d panel=%d/%d den=%.2f fs=%.2f",
-                    win, dbgH(dbgRoot), dbgH(dbgHead), dbgH(dbgScroll), dbgH(dbgCol),
-                    cardsH, cardN, card0, dbgH(dbgFoot), dbgH(dbgBtn), dbgH(dbgStartBtn),
-                    panelVis, dbgH(aiPanel), den, fs);
-        } catch (Exception e) {
-            return "sample-failed";
-        }
-    }
-
-    // v1.77.0 临时诊断：今天安排空白定位，修复版移除
-    private static int dbgH(View v) {
-        try { return v == null ? -1 : v.getHeight(); } catch (Exception e) { return -1; }
     }
 
     /** 深底主钮（原页顶大钮的样式，v1.79.0 起用于吸底栏的两个主动作）。 */
@@ -673,7 +595,7 @@ public class TodayPlanActivity extends Activity {
      * 全页刷新（v1.70.0，F2）：分段护栏——时间账／时段条／任务卡／其他重要任务
      * 逐段独立 try/catch，某段抛错不连累其他段；出错段原位渲染一行朱砂小字
      * 「这一区没画出来，点此重试」（点按重跑 refreshAll），异常同时写测试者
-     * 日志（ErrorReporter，异常类名＋一句话）。末尾更新页内自检行（F4）。
+     * 日志（ErrorReporter，异常类名＋一句话）。
      */
     private void refreshAll() {
         guardSection("ledger", this::refreshLedger, null);
@@ -695,7 +617,6 @@ public class TodayPlanActivity extends Activity {
         } catch (Exception e) {
             logSectionError("freeInput", e);
         }
-        updateSelfCheckLine();
     }
 
     /** 分段护栏执行体：ledger 段成功时顺手清掉占位小字留下的重试点击。 */
@@ -746,24 +667,6 @@ public class TodayPlanActivity extends Activity {
             box.addView(tv, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-    }
-
-    /** 页内自检行（F4）：已载入任务 N（未删）· 今日日程 M 段 · 本页卡片 K 张；
-     * 任一数为 0 时整行转朱砂色，用户截图这一行即可定位数据到没到。 */
-    private void updateSelfCheckLine() {
-        if (selfCheckView == null) return;
-        int n = 0;
-        if (store != null && store.tasks != null) {
-            for (TaskItem t : store.tasks) if (!t.deleted) n++;
-        }
-        int m = LocalAutoScheduler.blocksOf(
-                SyncManager.latestSchedule(this), TaskItem.today()).size();
-        int k = lastCardCount;
-        selfCheckView.setText(en()
-                ? "Loaded " + n + " tasks - " + m + " blocks today - " + k + " cards"
-                : "已载入任务 " + n + " 个 · 今日日程 " + m + " 段 · 本页卡片 " + k + " 张");
-        selfCheckView.setTextColor((n == 0 || m == 0 || k == 0)
-                ? Ui.accent(this) : Ui.sub(this));
     }
 
     private static String trimNum(double v) {
@@ -1553,12 +1456,12 @@ public class TodayPlanActivity extends Activity {
      */
     private void refreshCardsOnly() {
         cardsBox.removeAllViews();
-        lastCardCount = 0;
+        int drawn = 0;
         List<TaskItem> list = currentTasks();
         if (!list.isEmpty()) {
             for (TaskItem t : list) {
                 cardsBox.addView(buildCard(t));
-                lastCardCount++;
+                drawn++;
             }
             return;
         }
@@ -1572,9 +1475,9 @@ public class TodayPlanActivity extends Activity {
                 continue;
             }
             cardsBox.addView(buildBlockRow(b, t));
-            lastCardCount++;
+            drawn++;
         }
-        if (lastCardCount > 0) {
+        if (drawn > 0) {
             if (skipped > 0) {
                 android.util.Log.w("TodayPlan",
                         "block fallback rows skipped (task missing): " + skipped);
