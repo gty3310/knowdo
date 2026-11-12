@@ -37,6 +37,12 @@ public class GuardActivity extends Activity {
     private boolean contentMode;
     private String category = "";
 
+    // 守卫难度三档（v1.83.0）：本次问询的任务、难度与开页前的计数快照
+    private String taskId = "";
+    private String difficulty = ScreenGuardPrefs.DIFF_MEDIUM;
+    private int priorInquiries;
+    private boolean hardQuotaExhausted;
+
     // 分神记录（v1.80.0）：点任一宽限钮＝承认分神，在这里记一次等价于旧
     // 「没有」的自检记录（didRight=false）；每次问询只记一次
     private boolean driftRecorded;
@@ -64,6 +70,16 @@ public class GuardActivity extends Activity {
             String cat = getIntent().getStringExtra(EXTRA_CATEGORY);
             category = cat == null ? "" : cat;
         }
+        // 难度与计数快照（v1.83.0）：问询计数在「新开一页」时记一次——
+        // 同一页被重拉回前台走 onResume/onNewIntent、不再过 onCreate，不重复计；
+        // medium 误判钮显隐看的是开页之前的次数。逻辑日口径在 GuardLedger 内
+        String tid0 = TimerState.taskId(this);
+        taskId = tid0 == null ? "" : tid0;
+        difficulty = ScreenGuardPrefs.guardDifficulty(this);
+        priorInquiries = GuardLedger.inquiryCount(this, taskId);
+        if (savedInstanceState == null) GuardLedger.noteInquiry(this, taskId);
+        hardQuotaExhausted = ScreenGuardPrefs.DIFF_HARD.equals(difficulty)
+                && GuardLedger.hardGraceUsed(this) >= ScreenGuardPrefs.hardGraceQuota(this);
         AlertHelper.cancelGuard(this);
         Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vib != null) vib.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE));
@@ -147,33 +163,40 @@ public class GuardActivity extends Activity {
         actionsBox.addView(switchTask);
         spacer(actionsBox, 16);
 
-        TextView lastLook = new TextView(this);
-        lastLook.setText(Strings.lastLookQ());
-        lastLook.setTextSize(17);
-        lastLook.setTextColor(Color.rgb(31, 47, 42));
-        lastLook.setPadding(0, dp(4), 0, dp(8));
-        actionsBox.addView(lastLook);
+        // 宽限区（v1.83.0 F5）：困难档当日配额已用完时整区不渲染——时长钮
+        // 与处置选择行都不出现，只剩回到任务／切换任务／误判／聊聊
+        if (!hardQuotaExhausted) {
+            TextView lastLook = new TextView(this);
+            lastLook.setText(Strings.lastLookQ());
+            lastLook.setTextSize(17);
+            lastLook.setTextColor(Color.rgb(31, 47, 42));
+            lastLook.setPadding(0, dp(4), 0, dp(8));
+            actionsBox.addView(lastLook);
 
-        LinearLayout gr1 = scRow(actionsBox);
-        gr1.addView(graceButton(Strings.graceBlockNow(), 0));
-        gr1.addView(graceButton(Strings.graceLook1(), 60));
-        LinearLayout gr2 = scRow(actionsBox);
-        gr2.addView(graceButton(Strings.graceLook3(), 180));
-        gr2.addView(graceButton(Strings.graceLook5(), 300));
+            LinearLayout gr1 = scRow(actionsBox);
+            gr1.addView(graceButton(Strings.graceBlockNow(), 0));
+            gr1.addView(graceButton(Strings.graceLook1(), 60));
+            LinearLayout gr2 = scRow(actionsBox);
+            gr2.addView(graceButton(Strings.graceLook3(), 180));
+            gr2.addView(graceButton(Strings.graceLook5(), 300));
 
-        // 处置三档选择行（仅内容模式）自 v1.83.0 起排在宽限时长钮之后（两组互换）
-        if (contentMode) buildGraceModeRow(actionsBox);
+            // 处置三档选择行（仅内容模式）自 v1.83.0 起排在宽限时长钮之后（两组互换）
+            if (contentMode) buildGraceModeRow(actionsBox);
 
-        spacer(actionsBox, 24);
+            spacer(actionsBox, 24);
+        }
 
-        Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
-        allow.setOnClickListener(v -> {
-            if (contentMode) VerdictEngine.contentAllow(this, category);
-            else FocusGuard.chooseAllow(this, fgPkg);
-            finish();
-        });
-        actionsBox.addView(allow);
-        spacer(actionsBox, 12);
+        // 「这是误判」出口（v1.83.0）：三档都有、形式递增——easy 常显点即
+        // 放行；medium 仅同一任务同一逻辑日的第一次问询显示；hard 常显，
+        // 但点后要写解释走 AI 判定（F4，见 onOverturnClicked）
+        boolean showOverturn = !ScreenGuardPrefs.DIFF_MEDIUM.equals(difficulty)
+                || priorInquiries == 0;
+        if (showOverturn) {
+            Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
+            allow.setOnClickListener(v -> onOverturnClicked());
+            actionsBox.addView(allow);
+            spacer(actionsBox, 12);
+        }
 
         // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
         // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
@@ -202,6 +225,13 @@ public class GuardActivity extends Activity {
             diag.setPadding(0, dp(20), 0, 0);
             root.addView(diag);
         }
+    }
+
+    /** 「这是误判」的点击：easy/medium 直接按现行 overturn 口径放行。 */
+    private void onOverturnClicked() {
+        if (contentMode) VerdictEngine.contentAllow(this, category);
+        else FocusGuard.chooseAllow(this, fgPkg);
+        finish();
     }
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
@@ -264,14 +294,34 @@ public class GuardActivity extends Activity {
         b.setOnClickListener(v -> {
             recordDriftOnce();
             if (seconds == 0) {
-                // 马上封：不等宽限闹钟/下一拍，当场按处置设置执行
+                // 马上封：不等宽限闹钟/下一拍，当场按处置设置执行（立即处置，不是宽限，不过呼吸门）
                 if (contentMode) VerdictEngine.contentEnforceNow(this, category);
                 else FocusGuard.chooseGraceImmediate(this, fgPkg);
-            } else if (contentMode) {
-                VerdictEngine.contentGrace(this, category, seconds);
-            } else {
-                FocusGuard.chooseGrace(this, fgPkg, seconds);
+                finish();
+                return;
             }
+            if (ScreenGuardPrefs.DIFF_EASY.equals(difficulty)) {
+                // easy：v1.80 现行行为——点钮即生效；记一次已生效宽限（与其它档共用一本账）
+                if (contentMode) VerdictEngine.contentGrace(this, category, seconds);
+                else FocusGuard.chooseGrace(this, fgPkg, seconds);
+                GuardLedger.noteGrace(this, taskId);
+                finish();
+                return;
+            }
+            // medium / hard：先过深呼吸门——呼吸完成才执行宽限（BreathingActivity
+            // 完成点执行原宽限路径并记账）；呼吸时长按该任务当日已生效宽限次数
+            // 翻倍：15／30／60，封顶 120 秒
+            int n = GuardLedger.graceCount(this, taskId);
+            int breath = Math.min(120, 15 << Math.min(n, 3));
+            GuardBreath.start(this, breath * 1000L);
+            android.content.Intent i = new android.content.Intent(this, BreathingActivity.class);
+            i.putExtra(BreathingActivity.EXTRA_MODE, contentMode ? "content" : "list");
+            i.putExtra(BreathingActivity.EXTRA_PKG, fgPkg);
+            i.putExtra(BreathingActivity.EXTRA_CATEGORY, category);
+            i.putExtra(BreathingActivity.EXTRA_GRACE_SECONDS, seconds);
+            i.putExtra(BreathingActivity.EXTRA_BREATH_SECONDS, breath);
+            i.putExtra(BreathingActivity.EXTRA_TASK_ID, taskId);
+            try { startActivity(i); } catch (Exception ignored) { }
             finish();
         });
         return b;

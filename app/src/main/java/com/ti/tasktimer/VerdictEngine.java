@@ -59,6 +59,9 @@ public final class VerdictEngine {
     }
 
     public static void onResult(Context c, ContentAnalyzer.Result r, TaskItem task, Bitmap frame) {
+        // 深呼吸门进行中（v1.83.0）：呼吸页在前台，采样一律不触发新问询，
+        // 免得呼吸页与问询页互拉（名单模式那侧靠本包豁免，本侧靠这道标记）
+        if (GuardBreath.active(c)) return;
         SharedPreferences p = prefs(c);
         if (r == null || r.category == null) {
             p.edit().remove("last_cat").remove("streak").apply();

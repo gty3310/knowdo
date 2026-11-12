@@ -117,6 +117,34 @@ public final class ScreenGuardPrefs {
                 .format(new java.util.Date());
     }
 
+    // ---- 守卫难度三档（v1.83.0）：easy / medium / hard ----
+    public static final String DIFF_EASY = "easy";
+    public static final String DIFF_MEDIUM = "medium";
+    public static final String DIFF_HARD = "hard";
+
+    /**
+     * 守卫难度（与宽限处置等设置同存 screenguard prefs）：新装、从未设置
+     * 过的老用户一律 medium（用户 2026-11-12 定案），不弹迁移提示。
+     */
+    public static String guardDifficulty(Context c) {
+        String v = prefs(c).getString("guard_difficulty", null);
+        if (DIFF_EASY.equals(v) || DIFF_HARD.equals(v)) return v;
+        return DIFF_MEDIUM;
+    }
+
+    public static void setGuardDifficulty(Context c, String d) {
+        prefs(c).edit().putString("guard_difficulty", d).apply();
+    }
+
+    /** 困难档每日宽限配额（v1.83.0）：可选 {0,1,2,3,5}，默认 1；占用计数在 GuardLedger。 */
+    public static int hardGraceQuota(Context c) {
+        return prefs(c).getInt("hard_grace_quota", 1);
+    }
+
+    public static void setHardGraceQuota(Context c, int n) {
+        prefs(c).edit().putInt("hard_grace_quota", n).apply();
+    }
+
     // ---- 语义判定（v1.21.4） ----
     /**
      * 「语义判定」独立开关（默认开）：守卫粗判拿不准时，本地向量预筛之后

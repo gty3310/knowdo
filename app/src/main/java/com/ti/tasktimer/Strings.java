@@ -347,6 +347,10 @@ public final class Strings {
     public static String unblockUsed() { return s("今天已解封过", "Already used today"); }
     public static String unblockedToast() { return s("已解封", "Unblocked"); }
 
+    // ---------------- 深呼吸门（v1.83.0） ----------------
+    public static String breathIn() { return s("吸气", "Breathe in"); }
+    public static String breathOut() { return s("呼气", "Breathe out"); }
+
     // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }
