@@ -357,6 +357,20 @@ public final class Strings {
     public static String hardJudging() { return s("判定中", "Checking"); }
     public static String hardJudgeRefused() { return s("未通过", "Not accepted"); }
 
+    // ---------------- 设置页两级（v1.83.0） ----------------
+    public static String settingsBack() { return s("‹ 设置", "‹ Settings"); }
+    public static String setGuardDifficulty() { return s("守卫难度", "Guard difficulty"); }
+    public static String diffEasy() { return s("简单", "Easy"); }
+    public static String diffMedium() { return s("中等", "Medium"); }
+    public static String diffHard() { return s("困难", "Hard"); }
+    public static String setHardQuota() { return s("每日宽限次数", "Daily grace limit"); }
+    public static String setHardQuotaSub() { return s("只对困难难度生效", "Applies to Hard only"); }
+    public static String setGrpJudge() { return s("判定与名单", "Verdicts & lists"); }
+    public static String setGrpRemind() { return s("提醒", "Reminders"); }
+    public static String setGrpAcc() { return s("问责", "Accountability"); }
+    public static String setGrpUpdateAbout() { return s("更新与关于", "Updates & about"); }
+    public static String setGrpMore() { return s("更多", "More"); }
+
     // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }

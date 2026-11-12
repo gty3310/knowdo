@@ -18,9 +18,12 @@ import android.widget.Toast;
 import java.util.List;
 
 /**
- * 设置页（v1.8.0 新设）：按「账号／显示／守卫／通用」四组承接原主页顶栏、权限页的全部设置与入口。
+ * 设置页（v1.8.0 新设）：承接原主页顶栏、权限页的全部设置与入口。
  * 红线：只是搬位置——开关都写回各自原有的存储（SyncManager / ScreenGuardPrefs / FloatingWindow /
  * Ui 本地偏好），同步与守卫语义一律不变。
+ * v1.83.0：改两级（学 Opal 设置页）——一级只放 7 个分类入口行（我的志／守卫／
+ * 判定与名单／提醒／问责／更新与关于／更多），不放开关与选项本体；全部设置项
+ * 一个不少地落入二级页，原有各 build* 方法按页复用，语义与默认值全不变。
  * v1.9.0：账号区状态精简为一行、「实时同步」开关整行去掉（云端实时推送常开）。
  * v1.26.0：Drive 桥整套移除——桥文件行、选文件流程与桥状态文案一并删去，
  * 账号组只剩云端账号与立即同步。
@@ -28,6 +31,17 @@ import java.util.List;
 public class SettingsActivity extends Activity {
     private TaskStore store;
     private LinearLayout root;
+
+    // 两级设置（v1.83.0）：一级分类页＋七个二级页，page 记住当前在哪一级
+    private static final int PAGE_TOP = 0;
+    private static final int PAGE_ASP = 1;
+    private static final int PAGE_GUARD = 2;
+    private static final int PAGE_JUDGE = 3;
+    private static final int PAGE_REMIND = 4;
+    private static final int PAGE_ACC = 5;
+    private static final int PAGE_UPDATE = 6;
+    private static final int PAGE_MORE = 7;
+    private int page = PAGE_TOP;
 
     // 软件更新状态回调（v1.27.0）：下载进度/状态变化时重画本页，让更新行的小字跟上
     private final AppUpdate.Listener updateListener = () -> {
@@ -54,6 +68,12 @@ public class SettingsActivity extends Activity {
         super.onDestroy();
     }
 
+    /** 二级页按系统返回先回一级分类页（v1.83.0）。 */
+    @Override public void onBackPressed() {
+        if (page != PAGE_TOP) { page = PAGE_TOP; buildUi(); return; }
+        super.onBackPressed();
+    }
+
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -72,19 +92,117 @@ public class SettingsActivity extends Activity {
         setContentView(scroll);
 
         TextView title = new TextView(this);
-        title.setText(Strings.settingsTitle());
         title.setTextSize(21);
         title.setTextColor(Ui.text(this));
         title.setTypeface(title.getTypeface(), Typeface.BOLD);
+        if (page == PAGE_TOP) {
+            title.setText(Strings.settingsTitle());
+            root.addView(title);
+            buildTopPage();
+            return;
+        }
+        // 二级页：先一行「‹ 设置」返回，再放页名标题，然后是该页的设置本体
+        TextView back = new TextView(this);
+        back.setText(Strings.settingsBack());
+        back.setTextSize(15);
+        back.setTextColor(Ui.link(this));
+        back.setPadding(0, dp(2), 0, dp(10));
+        back.setOnClickListener(v -> { page = PAGE_TOP; buildUi(); });
+        root.addView(back);
+        title.setText(pageTitle());
         root.addView(title);
+        switch (page) {
+            case PAGE_ASP: buildAspirationGroup(); break;
+            case PAGE_GUARD: buildGuardPage(); break;
+            case PAGE_JUDGE: buildJudgePage(); break;
+            case PAGE_REMIND: buildMorningGroup(); buildRemindRows(); break;
+            case PAGE_ACC: buildAccountabilityRows(); break;
+            case PAGE_UPDATE: buildUpdateGroup(); buildUpdateExtraRows(); break;
+            default: buildMorePage(); break;
+        }
+    }
 
-        buildAspirationGroup();
+    private String pageTitle() {
+        switch (page) {
+            case PAGE_ASP: return Strings.grpAspiration();
+            case PAGE_GUARD: return Strings.grpGuards();
+            case PAGE_JUDGE: return Strings.setGrpJudge();
+            case PAGE_REMIND: return Strings.setGrpRemind();
+            case PAGE_ACC: return Strings.setGrpAcc();
+            case PAGE_UPDATE: return Strings.setGrpUpdateAbout();
+            default: return Strings.setGrpMore();
+        }
+    }
+
+    /** 一级分类页（v1.83.0）：一行一个分类，行高大、留白足，一屏放完，不放任何开关本体。 */
+    private void buildTopPage() {
+        String asp = Aspiration.get(this);
+        catRow(Strings.grpAspiration(), asp.isEmpty() ? Strings.aspEmpty() : trunc(asp), PAGE_ASP);
+        catRow(Strings.grpGuards(), difficultyName(ScreenGuardPrefs.guardDifficulty(this)), PAGE_GUARD);
+        catRow(Strings.setGrpJudge(), null, PAGE_JUDGE);
+        catRow(Strings.setGrpRemind(), onOff(HabitData.morningEnabled(HabitData.load(this))), PAGE_REMIND);
+        catRow(Strings.setGrpAcc(), onOff(Accountability.enabled(this)), PAGE_ACC);
+        catRow(Strings.setGrpUpdateAbout(), Strings.versionLine(), PAGE_UPDATE);
+        catRow(Strings.setGrpMore(), null, PAGE_MORE);
+    }
+
+    /** 分类入口行：左标题（17sp），右当前值小字＋箭头，整行点进二级页。 */
+    private void catRow(String label, String value, final int target) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, dp(16), 0, dp(16));
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextSize(17);
+        l.setTextColor(Ui.text(this));
+        l.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        r.addView(l);
+        TextView v = new TextView(this);
+        v.setText(value == null || value.isEmpty() ? "›" : value + " ›");
+        v.setTextSize(13);
+        v.setTextColor(Ui.sub(this));
+        r.addView(v);
+        r.setOnClickListener(x -> { page = target; buildUi(); });
+        root.addView(r);
+        View line = new View(this);
+        line.setBackgroundColor(Ui.line(this));
+        root.addView(line, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+    }
+
+    private String onOff(boolean on) {
+        return Strings.en() ? (on ? "On" : "Off") : (on ? "开" : "关");
+    }
+
+    private static String trunc(String s) {
+        return s.length() > 14 ? s.substring(0, 14) + "…" : s;
+    }
+
+    static String difficultyName(String d) {
+        if (ScreenGuardPrefs.DIFF_EASY.equals(d)) return Strings.diffEasy();
+        if (ScreenGuardPrefs.DIFF_HARD.equals(d)) return Strings.diffHard();
+        return Strings.diffMedium();
+    }
+
+    /** 「更多」页：账号组＋显示组＋通用组（组内小标题照旧），设置项一个不少。 */
+    private void buildMorePage() {
         buildAccountGroup();
-        buildUpdateGroup();
         buildDisplayGroup();
-        buildGuardsGroup();
-        buildMorningGroup();
         buildGeneralGroup();
+    }
+
+    /** 「更新与关于」页的后两行：更新日志入口与关于（自原通用组挪来，行为不变）。 */
+    private void buildUpdateExtraRows() {
+        row(Strings.whatsNewEntry(), null, arrowBtn("›"),
+                v -> WhatsNew.show(this));
+        row(Strings.rowAbout(), Strings.versionLine(), null, v ->
+                new AlertDialog.Builder(this)
+                        .setTitle(Strings.appFull())
+                        .setMessage(Strings.aboutBody())
+                        .setPositiveButton(Strings.en() ? "OK" : "好", null)
+                        .show());
     }
 
     // ---------------- 晨间组（v1.16.0）：晨间首填开关＋新一天起始时刻 ----------------
@@ -447,10 +565,40 @@ public class SettingsActivity extends Activity {
                 .show();
     }
 
-    // ---------------- 守卫组 ----------------
+    // ---------------- 守卫页（v1.83.0）：难度与配额置顶，其后是处置与守卫本体 ----------------
 
-    private void buildGuardsGroup() {
-        groupTitle(Strings.grpGuards());
+    private void buildGuardPage() {
+        // 守卫难度三档（v1.83.0）：缺省中等，用户定案；困难档每日宽限配额紧随其后
+        row(Strings.setGuardDifficulty(), null,
+                arrowBtn(difficultyName(ScreenGuardPrefs.guardDifficulty(this)) + " ›"),
+                v -> pickDifficulty());
+        row(Strings.setHardQuota(), Strings.setHardQuotaSub(),
+                arrowBtn(ScreenGuardPrefs.hardGraceQuota(this) + (Strings.en() ? "" : " 次") + " ›"),
+                v -> pickHardQuota());
+        // 分神处置（v1.80.0）：宽限到点后三档，与问询页选择行读写同一份设置
+        {
+            String cur = ScreenGuardPrefs.graceAction(this);
+            row(Strings.setGraceAction(), null,
+                    arrowBtn(graceActionShort(cur) + " ›"), v -> pickGraceAction());
+        }
+        // 暂停时长（v1.80.0 立、v1.83.0 改名）：固定 3 分钟，只显示不设项
+        row(Strings.setBlockLen(), null, null, null);
+        // 提前解封（v1.80.0）：只在正被暂停时出现（必保入口，仍在本页）；每天限 1 次
+        if (AppBlock.isActive(this)) {
+            String blockedName = AppLister.labelOf(this, AppBlock.activePkg(this));
+            if (ScreenGuardPrefs.unblockUsedToday(this)) {
+                row(Strings.setUnblock(),
+                        blockedName + " · " + Strings.unblockUsed(), null, null);
+            } else {
+                row(Strings.setUnblock(), blockedName,
+                        arrowBtn(Strings.unblockBtn() + " ›"), v -> {
+                            AppBlock.clear(this);
+                            ScreenGuardPrefs.markUnblockUsed(this);
+                            toast(Strings.unblockedToast());
+                            buildUi();
+                        });
+            }
+        }
         boolean ready = FocusGuard.detectorReady(this);
         row(Strings.rowFocusGuard(),
                 Strings.rowFocusGuardSub() + "\n"
@@ -472,13 +620,59 @@ public class SettingsActivity extends Activity {
         });
         row(Strings.rowScreenGuard(), Strings.en() ? "Details live in Permissions"
                 : "细项在权限页里", sg, null);
-        Switch ns = mkSwitch(ScreenGuardPrefs.nsfwOneShot(this));
-        ns.setOnCheckedChangeListener((b, on) -> {
-            ScreenGuardPrefs.setNsfwOneShot(this, on);
-            toast(on ? (Strings.en() ? "NSFW now triggers on the first hit" : "黄色类改为一张即触发")
-                    : (Strings.en() ? "NSFW back to two confirmations" : "黄色类恢复两次确认"));
+        // 任务衔接守卫（v1.10.0）：只存本地（IdleGuard prefs），不进同步；关掉时看门狗整体停用
+        Switch ng = mkSwitch(IdleGuard.enabled(this));
+        ng.setOnCheckedChangeListener((b, on) -> {
+            IdleGuard.setEnabled(this, on);
+            toast(on ? (Strings.en() ? "Next-task guard on" : "任务衔接守卫已打开：空档时会全屏问下一个任务")
+                    : (Strings.en() ? "Next-task guard off" : "任务衔接守卫已关闭：空档时不再自动弹出（暂停规则不受影响）"));
         });
-        row(Strings.rowNsfwOneShot(), null, ns, null);
+        row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
+    }
+
+    /** 守卫难度三选（v1.83.0）：弹窗选择器，仿 pickGraceAction，选后写设置并重绘。 */
+    private void pickDifficulty() {
+        final String[] vals = {ScreenGuardPrefs.DIFF_EASY, ScreenGuardPrefs.DIFF_MEDIUM,
+                ScreenGuardPrefs.DIFF_HARD};
+        String[] labels = {Strings.diffEasy(), Strings.diffMedium(), Strings.diffHard()};
+        String cur = ScreenGuardPrefs.guardDifficulty(this);
+        int checked = 1;
+        for (int i = 0; i < vals.length; i++) if (vals[i].equals(cur)) checked = i;
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.setGuardDifficulty())
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    ScreenGuardPrefs.setGuardDifficulty(this, vals[which]);
+                    d.dismiss();
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    /** 困难档每日宽限配额（v1.83.0）：{0,1,2,3,5} 五选，选后写设置并重绘。 */
+    private void pickHardQuota() {
+        final int[] vals = {0, 1, 2, 3, 5};
+        String[] labels = new String[vals.length];
+        int cur = ScreenGuardPrefs.hardGraceQuota(this);
+        int checked = 1;
+        for (int i = 0; i < vals.length; i++) {
+            labels[i] = String.valueOf(vals[i]) + (Strings.en() ? "" : " 次");
+            if (vals[i] == cur) checked = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.setHardQuota())
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    ScreenGuardPrefs.setHardGraceQuota(this, vals[which]);
+                    d.dismiss();
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    // ---------------- 判定与名单页（v1.83.0） ----------------
+
+    private void buildJudgePage() {
         // 语义判定（v1.21.4）：粗判拿不准时先本地预筛、再云端终判；关掉只本地判、数据不出手机
         Switch sem = mkSwitch(ScreenGuardPrefs.semanticEnabled(this));
         sem.setOnCheckedChangeListener((b, on) -> {
@@ -494,6 +688,13 @@ public class SettingsActivity extends Activity {
                         : "守卫拿不准时，有网由云端 AI 终判（只发打码后的文字，绝不发图），没网时"
                         + "本地小模型兜底；关掉则只用本地判定，数据不出手机",
                 sem, null);
+        Switch ns = mkSwitch(ScreenGuardPrefs.nsfwOneShot(this));
+        ns.setOnCheckedChangeListener((b, on) -> {
+            ScreenGuardPrefs.setNsfwOneShot(this, on);
+            toast(on ? (Strings.en() ? "NSFW now triggers on the first hit" : "黄色类改为一张即触发")
+                    : (Strings.en() ? "NSFW back to two confirmations" : "黄色类恢复两次确认"));
+        });
+        row(Strings.rowNsfwOneShot(), null, ns, null);
         // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单弹问询，兜底名单也停
         Switch al = mkSwitch(ScreenGuardPrefs.appListsEnabled(this));
         al.setOnCheckedChangeListener((b, on) -> {
@@ -509,40 +710,10 @@ public class SettingsActivity extends Activity {
                         : "开始任务时，常用软件会被按这个任务分成白、灰、黑三档（在后台生成）。计时中打开"
                         + "黑名单软件立刻弹问询，白名单软件不再触发专注规则问询。在任务详情里点「软件名单」查看和改档",
                 al, null);
-        // 提示页重弹间隔（v1.26.3）：全屏提示页被划走、还没处理完时隔多久弹回来；
-        // 一个数值四处共用（晨间门重弹／守卫问询重拉／空档选任务页重拉／静音叫回），
-        // 存本地＋云端 user_state.prompt_repop 同步（PromptRepop）
-        row(Strings.en() ? "Prompt re-pop interval" : "提示页重弹间隔",
-                Strings.en() ? "When you swipe a full-screen prompt away without finishing it "
-                        + "(morning check-in, guard inquiry, next-task page, silent pause call-back), "
-                        + "how long before it pops back. Your pick, synced via cloud"
-                        : "全屏提示页（晨间页、守卫问询、选下一个任务、静音叫回）被划走、还没处理完时，"
-                        + "隔多久再弹回来。你的个人设置，存云端同步",
-                arrowBtn(PromptRepop.label(PromptRepop.seconds(this)) + " ›"), v -> pickRepop());
-        // 分神处置（v1.80.0）：宽限到点后三档，与问询页选择行读写同一份设置
-        {
-            String cur = ScreenGuardPrefs.graceAction(this);
-            row(Strings.setGraceAction(), null,
-                    arrowBtn(graceActionShort(cur) + " ›"), v -> pickGraceAction());
-        }
-        // 盖住时长（v1.80.0）：固定 3 分钟，只显示不设项
-        row(Strings.setBlockLen(), null, null, null);
-        // 提前解封（v1.80.0）：只在正被盖住时出现；每天限 1 次，只能在这里解
-        if (AppBlock.isActive(this)) {
-            String blockedName = AppLister.labelOf(this, AppBlock.activePkg(this));
-            if (ScreenGuardPrefs.unblockUsedToday(this)) {
-                row(Strings.setUnblock(),
-                        blockedName + " · " + Strings.unblockUsed(), null, null);
-            } else {
-                row(Strings.setUnblock(), blockedName,
-                        arrowBtn(Strings.unblockBtn() + " ›"), v -> {
-                            AppBlock.clear(this);
-                            ScreenGuardPrefs.markUnblockUsed(this);
-                            toast(Strings.unblockedToast());
-                            buildUi();
-                        });
-            }
-        }
+        row(Strings.en() ? "Model downloads" : "模型下载",
+                Strings.en() ? "Guard models are downloaded on demand, not packed into the app"
+                        : "守卫用的模型按需下载，不再装进安装包",
+                arrowBtn("›"), v -> startActivity(new Intent(this, ModelActivity.class)));
         // 测试者模式（内部 key diag_mode，v1.24.1 由暂名「测试模式」正式改名，用户钦定）：
         // 给愿意帮忙 debug、检查软件错误的用户用的模式，与守卫测试模式是两回事
         Switch dg = mkSwitch(ScreenGuardPrefs.diagMode(this));
@@ -559,23 +730,24 @@ public class SettingsActivity extends Activity {
                         : "打开后，判定结果会显示来源等诊断信息；软件内部报错还会额外弹一个"
                         + "悬浮窗（约 5 秒），把状态码和原因亮出来，方便帮忙查错",
                 dg, null);
-        row(Strings.en() ? "Model downloads" : "模型下载",
-                Strings.en() ? "Guard models are downloaded on demand, not packed into the app"
-                        : "守卫用的模型按需下载，不再装进安装包",
-                arrowBtn("›"), v -> startActivity(new Intent(this, ModelActivity.class)));
-        // 任务衔接守卫（v1.10.0）：只存本地（IdleGuard prefs），不进同步；关掉时看门狗整体停用
-        Switch ng = mkSwitch(IdleGuard.enabled(this));
-        ng.setOnCheckedChangeListener((b, on) -> {
-            IdleGuard.setEnabled(this, on);
-            toast(on ? (Strings.en() ? "Next-task guard on" : "任务衔接守卫已打开：空档时会全屏问下一个任务")
-                    : (Strings.en() ? "Next-task guard off" : "任务衔接守卫已关闭：空档时不再自动弹出（暂停规则不受影响）"));
-        });
-        row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
-        buildIdleNagRows();
-        buildAccountabilityRows();
-        row(Strings.rowPerms(), null, arrowBtn("›"),
-                v -> startActivity(new Intent(this, PermActivity.class)));
     }
+
+    // ---------------- 提醒页其余行（v1.83.0；晨间组由 buildMorningGroup 先行渲染） ----------------
+
+    private void buildRemindRows() {
+        // 提示页重弹间隔（v1.26.3）：全屏提示页被划走、还没处理完时隔多久弹回来；
+        // 一个数值四处共用（晨间门重弹／守卫问询重拉／空档选任务页重拉／静音叫回），
+        // 存本地＋云端 user_state.prompt_repop 同步（PromptRepop）
+        row(Strings.en() ? "Prompt re-pop interval" : "提示页重弹间隔",
+                Strings.en() ? "When you swipe a full-screen prompt away without finishing it "
+                        + "(morning check-in, guard inquiry, next-task page, silent pause call-back), "
+                        + "how long before it pops back. Your pick, synced via cloud"
+                        : "全屏提示页（晨间页、守卫问询、选下一个任务、静音叫回）被划走、还没处理完时，"
+                        + "隔多久再弹回来。你的个人设置，存云端同步",
+                arrowBtn(PromptRepop.label(PromptRepop.seconds(this)) + " ›"), v -> pickRepop());
+        buildIdleNagRows();
+    }
+
 
     // ---------------- 黄图问责邮件（v1.28.0 feature 7） ----------------
     // 守卫「截图从不上传」红线的唯一例外：终判黄图且开关开时，只把端侧打码图
@@ -908,19 +1080,12 @@ public class SettingsActivity extends Activity {
                         .show());
         row(Strings.help(), null, arrowBtn("›"),
                 v -> startActivity(new Intent(this, HelpActivity.class)));
-        row(Strings.whatsNewEntry(), null, arrowBtn("›"),
-                v -> WhatsNew.show(this));
         // 建议设置（v1.19.0）：常设入口，随时复查六项系统开关（电池/悬浮窗/无障碍/全屏通知/精确闹钟/通知）
         row(Strings.en() ? "Suggested settings" : "建议设置",
                 Strings.en() ? "Six system switches the guards rely on — all optional, all checkable here"
                         : "守卫们靠的六项系统开关：都是建议不是门槛，随时来这里复查",
                 arrowBtn("›"),
                 v -> startActivity(new Intent(this, SuggestedSettingsActivity.class)));
-        row(Strings.rowAbout(), Strings.versionLine(), null, v ->
-                new AlertDialog.Builder(this)
-                        .setTitle(Strings.appFull())
-                        .setMessage(Strings.aboutBody())
-                        .setPositiveButton(Strings.en() ? "OK" : "好", null)
-                        .show());
+        // 更新日志与关于自 v1.83.0 起挪到「更新与关于」二级页（buildUpdateExtraRows）
     }
 }
