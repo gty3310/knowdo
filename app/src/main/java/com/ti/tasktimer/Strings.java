@@ -351,6 +351,12 @@ public final class Strings {
     public static String breathIn() { return s("吸气", "Breathe in"); }
     public static String breathOut() { return s("呼气", "Breathe out"); }
 
+    // ---------------- 困难档误判判定（v1.83.0） ----------------
+    public static String hardExplainHint() { return s("写一句为什么这是误判", "One line on why this is a false alarm"); }
+    public static String hardJudgeSubmit() { return s("提交", "Submit"); }
+    public static String hardJudging() { return s("判定中", "Checking"); }
+    public static String hardJudgeRefused() { return s("未通过", "Not accepted"); }
+
     // ---------------- 更新日志（v1.13.0；用户定的长期规矩：每版首弹＋随时可翻） ----------------
     /** 弹框标题与设置页入口行共用；内容数据在 Changelog（最近 5 版）。 */
     public static String whatsNewEntry() { return s("更新日志", "What's new"); }
