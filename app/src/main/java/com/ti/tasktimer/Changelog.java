@@ -36,6 +36,27 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1830 = new Entry("v1.83.0", "2026-11-12");
+        e1830.add(new Group(s("新增", "New"),
+                s("守卫难度——「设置 → 守卫」可选简单／中等／困难，默认中等",
+                  "Guard difficulty — Settings → Guard offers Easy / Medium / Hard, Medium by default"),
+                s("深呼吸——中等以上选「再看几分钟」先做一段深呼吸，次数越多越久（15 秒起翻倍、最长 120 秒），呼吸完宽限才开始",
+                  "A breath first — on Medium and up, a few more minutes starts with a deep-breathing pause that grows with use (15 seconds, doubling, up to 120); the grace begins only after it"),
+                s("切换任务——分神提醒页多了「切换任务」，可直接去选下一个任务",
+                  "Switch task — the drift page gains a Switch task button that takes you straight to picking the next task"),
+                s("困难难度——「这是误判」需写一句解释由 AI 判定；可设每天最多宽限几次",
+                  "Hard level — a false-alarm claim takes one line of explanation for the AI to judge, and you can cap how many graces a day allows")));
+        e1830.add(new Group(s("改进", "Improved"),
+                s("设置页——首页只留分类，具体设置收进二级菜单，一个没少",
+                  "Settings — the first page now holds only categories; every setting lives one level down, and none is gone"),
+                s("改名与顺序——「盖住 3 分钟」改名「暂停软件 3 分钟」（另两档「关掉软件」「放到后台」）；提醒页先选再看多久、再选到点处置",
+                  "Renamed and reordered — Block for 3 minutes is now Pause this app for 3 minutes (the other two: Close this app, To background); the drift page asks how long first, then what happens at the end")));
+        e1830.why = s("让宽限先付一段呼吸的成本，冲动自己会退；误判仍留出口，但难度越高出口越正式",
+                "A grace now costs a breath first, and the impulse fades on its own; the false-alarm door stays open at every level — the higher the level, the more formal it gets");
+        e1830.tryIt = s("设置 → 守卫选「中等」，开始一个任务后打开黑名单软件，选「再看 3 分钟」，先深呼吸 15 秒",
+                "Settings → Guard, pick Medium; start a task, open a blacklisted app, choose 3 more minutes — and breathe for 15 seconds first");
+        out.add(e1830);
+
         Entry e1820 = new Entry("v1.82.0", "2026-11-11");
         e1820.add(new Group(s("新增", "New"),
                 s("「知」页改版为「致良知」——志、明、戒、察、问、人六组，习惯并入戒组",
