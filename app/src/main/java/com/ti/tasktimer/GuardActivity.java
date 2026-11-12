@@ -19,9 +19,10 @@ import java.util.List;
 
 /**
  * 专注守卫全屏问询页：计时中打开了无关软件时弹出。
- * 按钮：立即回到任务（跳回主软件/当前任务页）/「最后再看多久」四钮（马上封／
- * 再看 1、3、5 分钟，点任一钮即记一次分神，宽限到点按处置设置执行）/
- * 这是误判，本次放行 / 和 AI 聊聊。（v1.80.0 起本页不再有自检行。）
+ * 按钮：立即回到任务（跳回主软件/当前任务页）/ 切换任务（v1.83.0，去选
+ * 下一个任务页）/「最后再看多久」四钮（马上封／再看 1、3、5 分钟，点任一
+ * 钮即记一次分神，宽限到点按处置设置执行）/ 这是误判，本次放行 /
+ * 和 AI 聊聊。（v1.80.0 起本页不再有自检行。）
  */
 public class GuardActivity extends Activity {
     public static final String EXTRA_PKG = "fg_pkg";
@@ -135,7 +136,16 @@ public class GuardActivity extends Activity {
         actionsBox.addView(now);
         spacer(actionsBox, 16);
 
-        if (contentMode) buildGraceModeRow(actionsBox);
+        // 切换任务（v1.83.0 F1）：直接去已有的「选择下一个任务」页选新任务开始
+        // 计时；不记分神、不执行处置，本次问询就此作罢
+        Button switchTask = bigButton(Strings.guardSwitchTask(), Color.rgb(31, 47, 42));
+        switchTask.setOnClickListener(v -> {
+            try { startActivity(new android.content.Intent(this, NextTaskActivity.class)); }
+            catch (Exception ignored) { }
+            finish();
+        });
+        actionsBox.addView(switchTask);
+        spacer(actionsBox, 16);
 
         TextView lastLook = new TextView(this);
         lastLook.setText(Strings.lastLookQ());
@@ -150,6 +160,10 @@ public class GuardActivity extends Activity {
         LinearLayout gr2 = scRow(actionsBox);
         gr2.addView(graceButton(Strings.graceLook3(), 180));
         gr2.addView(graceButton(Strings.graceLook5(), 300));
+
+        // 处置三档选择行（仅内容模式）自 v1.83.0 起排在宽限时长钮之后（两组互换）
+        if (contentMode) buildGraceModeRow(actionsBox);
+
         spacer(actionsBox, 24);
 
         Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
@@ -192,8 +206,8 @@ public class GuardActivity extends Activity {
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
     /**
-     * 选宽限时长时一并选到点怎么办：退掉这个软件／只放到后台／盖住 3 分钟
-     * （v1.80.0 起三档，默认盖住）。点选即存进 ScreenGuardPrefs，下次问询
+     * 选宽限时长后一并选到点怎么办：关掉软件／放到后台／暂停软件 3 分钟
+     * （v1.80.0 起三档，默认暂停软件；v1.83.0 改名）。点选即存进 ScreenGuardPrefs，下次问询
      * 默认沿用上次的选择；名单模式不显示本行、共用同一份设置（设置页可
      * 改）；到点由 VerdictEngine.applyEnforcement 按这个选择执行。
      */

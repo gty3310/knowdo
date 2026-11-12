@@ -47,7 +47,7 @@ public final class BlockEnforcer {
 
     static void onAlarmFired(Context c) {
         if (prefs(c).getString("block_pkg", null) == null) return;
-        TimerState.logEvent(c, "分神处置：盖住 3 分钟到点，已解封");
+        TimerState.logEvent(c, "分神处置：暂停软件 3 分钟到点，已解除");
         AppBlock.clear(c);
     }
 

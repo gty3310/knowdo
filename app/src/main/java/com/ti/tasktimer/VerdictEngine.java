@@ -167,7 +167,7 @@ public final class VerdictEngine {
         // 到点主动处理：把闹钟排到 grace_until，不再等采样再次命中（v1.21.3）
         GraceEnforcer.schedule(c);
         String act = ScreenGuardPrefs.graceAction(c);
-        String actText = ScreenGuardPrefs.ACTION_BLOCK.equals(act) ? "盖住 3 分钟"
+        String actText = ScreenGuardPrefs.ACTION_BLOCK.equals(act) ? "暂停软件 3 分钟"
                 : ScreenGuardPrefs.ACTION_QUIT.equals(act) ? "退掉该软件并跳回任务" : "只放到后台";
         TimerState.logEvent(c, "屏幕内容守卫：用户给「" + ContentAnalyzer.label(cat) + "」宽限 " + seconds
                 + " 秒，到点处理：" + actText);
@@ -242,7 +242,7 @@ public final class VerdictEngine {
             AppBlock.start(c, target);
             GuardEvents.add(c, task, cat, 1f, "宽限到点处理（盖住 3 分钟）：仍停留在「" + appName
                     + "」，blocked 3m");
-            TimerState.logEvent(c, "屏幕内容守卫：宽限到点，仍在「" + appName + "」，已盖住 3 分钟");
+            TimerState.logEvent(c, "屏幕内容守卫：宽限到点，仍在「" + appName + "」，已暂停软件 3 分钟");
             return;
         }
         boolean homed = GuardActions.pressHome(c);

@@ -74,7 +74,7 @@ public final class FocusGuard {
         String appName = AppLister.labelOf(c, pkg);
         if (ScreenGuardPrefs.ACTION_BLOCK.equals(act)) {
             AppBlock.start(c, pkg);
-            TimerState.logEvent(c, "专注守卫：宽限到点，仍在用「" + appName + "」，已盖住 3 分钟");
+            TimerState.logEvent(c, "专注守卫：宽限到点，仍在用「" + appName + "」，已暂停软件 3 分钟");
         } else if (ScreenGuardPrefs.ACTION_BACKGROUND.equals(act)) {
             boolean homed = GuardActions.pressHome(c);
             TimerState.logEvent(c, "专注守卫：宽限到点，仍在用「" + appName + "」，已只放到后台"
