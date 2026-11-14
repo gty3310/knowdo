@@ -55,13 +55,10 @@ public class MainActivity extends Activity {
     // ---- v1.8.0 新界面状态 ----
     private boolean appliedDark;
     private boolean appliedEn;
-    private TextView nowTitleView;
-    private TextView nowRemainView;
     private TextView nowPrincipleView;
-    private TextView accountView;   // 今日时间账（v1.23.0，任务页最上方）
-    private TextView overflowView;  // 时间账下方的点名行（排不下的必干），无溢出时藏
-    private TextView dueView;       // 时间账下的到期小字行（v1.26.2），无到期非必做时藏
-    private String accountShown = ""; // 时间账已显示文本，没变就不重设（每秒刷新防闪）
+    private TextView headStatsView;   // 页头两数（v1.86.0：必做·空）
+    private String headStatsShown = ""; // 页头两数已显示签名，没变就不重设（防闪）
+    private static final int FREE_GREEN = android.graphics.Color.rgb(0x2E, 0x7D, 0x32);
     private TextView liveLeftView; // 正在计时行的「剩余」格，状态条每秒顺手刷新它
     private LinearLayout headerInner;
     private LinearLayout bodyInner;
@@ -233,7 +230,7 @@ public class MainActivity extends Activity {
         try {
             if (Rollover.maybeRoll(this, store)) {
                 runSync(false);
-                LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
+                LocalAutoScheduler.runAsync(this, store, this::refreshHeadStats);
             }
         } catch (Exception ignored) { }
         // 每日成绩单定格（v1.76.0）：跨过日界后的首次活动把昨天及此前未定格的
@@ -279,8 +276,8 @@ public class MainActivity extends Activity {
         else registerReceiver(syncReceiver, f);
         TaskStore.addChangeListener(storeListener);
         // 回前台发现今日有未排的必做 → 本地自动排程填空档（v1.23.0；内部先本地短路，
-        // 没有未排必做时不发任何网络请求；落盘后回调刷新时间账的点名行）
-        LocalAutoScheduler.runAsync(this, store, this::refreshTimeAccount);
+        // 没有未排必做时不发任何网络请求；落盘后回调刷新页头两数）
+        LocalAutoScheduler.runAsync(this, store, this::refreshHeadStats);
         // 更新日志补弹（v1.26.3）：排在建议设置（onCreate 已呈现则本轮让行）与
         // 晨间门（上方已 startActivity 并 return）之后——主界面真正回到前台、且
         // 没有更高优先级的全屏页在场时才试；弹框实际显示后才落已弹记录（WhatsNew 内）。
@@ -472,47 +469,45 @@ public class MainActivity extends Activity {
         burger.setOnClickListener(v -> openDrawer());
         topbar.addView(burger);
         TextView wordmark = new TextView(this);
-        wordmark.setText(Strings.appWordmark());
+        wordmark.setText(Strings.tabSchedule());
         wordmark.setTextSize(19);
         wordmark.setTextColor(Ui.text(this));
         wordmark.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD);
         topbar.addView(wordmark);
+        headStatsView = new TextView(this);
+        headStatsView.setTextSize(14);
+        headStatsView.setTextColor(Ui.text(this));
+        LinearLayout.LayoutParams hsLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hsLp.setMarginStart(dp(10));
+        headStatsView.setLayoutParams(hsLp);
+        topbar.addView(headStatsView);
         View tsp = new View(this);
         tsp.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
         topbar.addView(tsp);
-        TextView calBtn = new TextView(this);
-        calBtn.setText(Strings.calendar());
-        calBtn.setTextSize(14);
-        calBtn.setTextColor(Ui.accent(this));
-        calBtn.setGravity(Gravity.CENTER);
-        calBtn.setPadding(dp(14), dp(6), dp(14), dp(6));
-        android.graphics.drawable.GradientDrawable calBg = new android.graphics.drawable.GradientDrawable();
-        calBg.setCornerRadius(dp(9));
-        calBg.setColor(skinWash());
-        calBtn.setBackground(calBg);
+        android.widget.ImageButton planBtn = new android.widget.ImageButton(this);
+        planBtn.setImageResource(R.drawable.ic_plan_add);
+        planBtn.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.text(this)));
+        planBtn.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        planBtn.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        planBtn.setPadding(dp(9), dp(9), dp(9), dp(9));
+        planBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(40)));
+        planBtn.setContentDescription(Strings.en() ? "Plan today's tasks" : "安排今日任务");
+        planBtn.setOnClickListener(v -> startActivity(new Intent(this, TodayPlanActivity.class)));
+        topbar.addView(planBtn);
+        android.widget.ImageButton calBtn = new android.widget.ImageButton(this);
+        calBtn.setImageResource(R.drawable.ic_calendar);
+        calBtn.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.text(this)));
+        calBtn.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        calBtn.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        calBtn.setPadding(dp(9), dp(9), dp(9), dp(9));
+        calBtn.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(40)));
+        calBtn.setContentDescription(Strings.calendar());
         calBtn.setOnClickListener(v -> toggleCalendar());
         topbar.addView(calBtn);
         content.addView(topbar);
 
-        // 细条：当前任务＋剩余时间
-        LinearLayout strip = new LinearLayout(this);
-        strip.setOrientation(LinearLayout.HORIZONTAL);
-        strip.setGravity(Gravity.CENTER_VERTICAL);
-        strip.setPadding(dp(16), dp(1), dp(16), dp(8));
-        nowTitleView = new TextView(this);
-        nowTitleView.setTextSize(14);
-        nowTitleView.setTextColor(Ui.text(this));
-        nowTitleView.setSingleLine(true);
-        nowTitleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        nowTitleView.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        strip.addView(nowTitleView);
-        nowRemainView = new TextView(this);
-        nowRemainView.setTextSize(14);
-        nowRemainView.setTextColor(Ui.accent(this));
-        nowRemainView.setTypeface(nowRemainView.getTypeface(), android.graphics.Typeface.BOLD);
-        nowRemainView.setPadding(dp(10), 0, 0, 0);
-        strip.addView(nowRemainView);
-        content.addView(strip);
+
         // 当前任务的主原则细行（v1.75.0，F2）：贴在当前任务细条下方，只在
         // 计时/暂停中且该任务有主原则时出现，refreshStatus 每秒顺手刷新。
         nowPrincipleView = new TextView(this);
@@ -527,43 +522,7 @@ public class MainActivity extends Activity {
         stripLine.setBackgroundColor(skinLine());
         content.addView(stripLine, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
-        // 今日时间账（v1.23.0，任务页最上方，学 Sunsama）：三个数——今日还剩、必干占、空余。
-        // 极简宁静口径：不套卡片、不加边框，一行大字直接落在页面上；refreshStatus 每秒顺手刷新。
-        LinearLayout accountBox = new LinearLayout(this);
-        accountBox.setOrientation(LinearLayout.VERTICAL);
-        accountBox.setPadding(dp(16), dp(10), dp(16), dp(8));
-        accountView = new TextView(this);
-        accountView.setTextSize(21); // 基准字号：数字按 1.0 显示，标签按 0.62 缩小
-        accountView.setTextColor(Ui.text(this));
-        accountBox.addView(accountView);
-        dueView = new TextView(this);
-        dueView.setTextSize(12);
-        dueView.setTextColor(skinSub());
-        dueView.setPadding(0, dp(4), 0, 0);
-        dueView.setVisibility(View.GONE);
-        accountBox.addView(dueView);
-        overflowView = new TextView(this);
-        overflowView.setTextSize(13);
-        overflowView.setTextColor(Ui.accent(this));
-        overflowView.setPadding(0, dp(4), 0, 0);
-        overflowView.setVisibility(View.GONE);
-        // 点名行点一下展开日历看究竟（日历已开着时不动）
-        overflowView.setOnClickListener(v -> { if (!calOpen) toggleCalendar(); });
-        accountBox.addView(overflowView);
-        content.addView(accountBox);
 
-        // 「安排今日任务」常驻入口（v1.38.0）：「今天安排」页此前只有晨间门完成一条入口，
-        // 错过当天就再也进不去；这里在任务表上方加一行常驻文字钮，随时可进、反复可进。
-        // 防重复：本段只在 buildUi() 内构建，而 buildUi() 仅由 onCreate 调用一次；
-        // 切 Tab 只切 scheduleWrap 可见性，onResume / renderTable 都不重建此钮。
-        TextView planEntry = new TextView(this);
-        planEntry.setText(Strings.en() ? "Plan today's tasks  ›" : "安排今日任务  ›");
-        planEntry.setTextSize(14);
-        planEntry.setTextColor(Ui.accent(this));
-        planEntry.setGravity(Gravity.CENTER_VERTICAL);
-        planEntry.setPadding(dp(16), dp(10), dp(16), dp(10));
-        planEntry.setOnClickListener(v -> startActivity(new Intent(this, TodayPlanActivity.class)));
-        content.addView(planEntry);
 
         // 「做任务的人」筛选（v1.74.0，F4）：任务表上方一行小 chip（与展开区
         // chip 同款样式），全部／我本人／我的 AI；只过滤本页呈现（含下方历史
@@ -998,7 +957,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void openDrawer() {
+    void openDrawer() {
         if (drawerRoot == null) return;
         View panel = ((ViewGroup) drawerRoot).getChildAt(1);
         int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.68f);
@@ -1266,38 +1225,34 @@ public class MainActivity extends Activity {
     }
 
     private void refreshStatus() {
-        if (nowTitleView == null) return;
-        if (TimerState.isRunning(this)) {
-            TaskItem cur = store.byId(TimerState.taskId(this));
-            nowTitleView.setText(cur != null ? cur.title : TimerState.taskTitle(this));
-            nowRemainView.setText(Strings.remain() + " "
-                    + mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
-        } else if (TimerState.pausedTaskId(this) != null) {
-            TaskItem cur = store.byId(TimerState.pausedTaskId(this));
-            nowTitleView.setText((cur != null ? cur.title : TimerState.pausedTitle(this))
-                    + Strings.pausedTag());
-            nowRemainView.setText(Strings.remain() + " " + mmss(TimerState.pausedRemainMs(this)));
-        } else {
-            TaskItem first = null;
-            for (TaskItem t : store.visibleSorted()) {
-                if (!t.isDoneToday()) { first = t; break; }
-            }
-            if (first != null) {
-                nowTitleView.setText(first.title);
-                nowRemainView.setText(Strings.plannedMin(first.durationMinutes));
-            } else {
-                nowTitleView.setText(Strings.appFull());
-                nowRemainView.setText("");
-            }
-        }
         if (liveLeftView != null && TimerState.isRunning(this)) {
             liveLeftView.setText(mmss(Math.max(0, TimerState.endAt(this) - System.currentTimeMillis())));
         }
         updateNowPrinciple();
         updateDrawerAccount();
-        refreshTimeAccount();
+        refreshHeadStats();
     }
 
+    /** 页头两数（v1.86.0）：必做剩余 · 空闲，与旧时间账同源（DayAccount 只读、不改口径）。
+     * 格式 H:MM；空闲 >0 绿、<0 朱砂、=0 墨。文本没变就不重设，避免每秒闪烁。 */
+    private void refreshHeadStats() {
+        if (headStatsView == null) return;
+        DayAccount.Result a = DayAccount.compute(store, Rollover.logicalToday(this));
+        boolean en = Strings.en();
+        String sig = a.mustBufferedMin + "|" + a.freeMin + "|" + en;
+        if (sig.equals(headStatsShown)) return;
+        headStatsShown = sig;
+        headStatsView.setText((en ? "Must-do " : "必做 ") + fmtHM(a.mustBufferedMin)
+                + " · " + (en ? "Free " : "空 ") + fmtHM(a.freeMin));
+        headStatsView.setTextColor(a.freeMin > 0 ? FREE_GREEN
+                : a.freeMin < 0 ? Ui.accent(this) : Ui.text(this));
+    }
+
+    private static String fmtHM(int min) {
+        int m = Math.abs(min);
+        String core = (m / 60) + ":" + String.format(java.util.Locale.US, "%02d", m % 60);
+        return min < 0 ? "-" + core : core;
+    }
     /** 主原则展示文案（v1.75.0，F2）：「原则 · 名：一句话（等 N 条）」；
      * 无主原则/名解析不到返回 null（调用方整行不画）。 */
     private String mainPrincipleText(String taskId) {
@@ -1326,90 +1281,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    /**
-     * 今日时间账刷新（v1.23.0）：三个数拼成一行——标签小字、数字大字（宁静口径：不堆边框按钮）。
-     * 超了（空余为负）时空余数字走点缀色并加「超了」。文本没变就不重设，避免每秒闪烁；
-     * 溢出点名行每轮都重算（本地缓存口径，排程落盘后回调也会再触发一次本方法）。
-     */
-    private void refreshTimeAccount() {
-        if (accountView == null) return;
-        DayAccount.Result a = DayAccount.compute(store, Rollover.logicalToday(this));
-        boolean en = Strings.en();
-        String remain = DayAccount.fmtDur(a.remainMin);
-        String must = DayAccount.fmtDur(a.mustBufferedMin);
-        String freeAbs = DayAccount.fmtDur(Math.abs(a.freeMin));
-        String sig = a.remainMin + "|" + a.mustBufferedMin + "|" + a.freeMin + "|" + en;
-        if (!sig.equals(accountShown)) {
-            accountShown = sig;
-            String l1 = en ? "Left today " : "今日还剩 ";
-            String l2 = en ? "　Must-do " : "　必干占 ";
-            String l3 = en ? "　Free " : "　空余 ";
-            SpannableStringBuilder sb = new SpannableStringBuilder();
-            appendAccountPart(sb, l1, remain);
-            appendAccountPart(sb, l2, must);
-            String freeText = (a.over() ? "−" : "") + freeAbs + (a.over() ? (en ? " over" : " 超了") : "");
-            int freeNumStart = appendAccountPart(sb, l3, freeText);
-            if (a.over()) {
-                sb.setSpan(new ForegroundColorSpan(Ui.accent(this)), freeNumStart, sb.length(),
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
-            accountView.setText(sb);
-        }
-        if (dueView != null) {
-            if (a.dueCount > 0) {
-                dueView.setText(en
-                        ? a.dueCount + " due today (not must-do) · about " + DayAccount.fmtDur(a.dueBufferedMin)
-                        : "今天到期（非必做）共 " + a.dueCount + " 件 · 约占 " + DayAccount.fmtDur(a.dueBufferedMin));
-                dueView.setVisibility(View.VISIBLE);
-            } else {
-                dueView.setVisibility(View.GONE);
-            }
-        }
-        if (overflowView != null) {
-            LocalAutoScheduler.Plan p = LocalAutoScheduler.computeLocal(this, store);
-            // 点名范围（v1.26.2）：必做＋今天到期的；没到期又排不下的重要/次要不点名
-            String lt = Rollover.logicalToday(this);
-            int nMust = 0, nDue = 0;
-            for (LocalAutoScheduler.Candidate cd : p.overflow) {
-                if (cd.rank == 0) nMust++;
-                else if (cd.deadline != null && cd.deadline.compareTo(lt) <= 0) nDue++;
-            }
-            if (nMust + nDue > 0) {
-                StringBuilder nm = new StringBuilder();
-                if (en) {
-                    nm.append("Don't fit today: ");
-                    if (nMust > 0) nm.append(nMust).append(" must-do");
-                    if (nMust > 0 && nDue > 0) nm.append(", ");
-                    if (nDue > 0) nm.append(nDue).append(" due today");
-                    nm.append(" — tap to see the calendar");
-                } else {
-                    nm.append("还有 ");
-                    if (nMust > 0) nm.append(nMust).append(" 件必干");
-                    if (nMust > 0 && nDue > 0) nm.append("、");
-                    if (nDue > 0) nm.append(nDue).append(" 件今天到期的");
-                    nm.append("排不进今天，点开日历看看");
-                }
-                overflowView.setText(nm.toString());
-                overflowView.setVisibility(View.VISIBLE);
-            } else {
-                overflowView.setVisibility(View.GONE);
-            }
-        }
-    }
-
-    /** 时间账一行的一段：标签小字次级色 ＋ 数字大字粗体。返回数字段的起始下标。 */
-    private int appendAccountPart(SpannableStringBuilder sb, String label, String num) {
-        int s0 = sb.length();
-        sb.append(label);
-        sb.setSpan(new ForegroundColorSpan(Ui.sub(this)), s0, sb.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        sb.setSpan(new RelativeSizeSpan(0.62f), s0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        int s1 = sb.length();
-        sb.append(num);
-        sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s1, sb.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return s1;
-    }
 
     // ---------------- 任务行 ----------------
     /** 列表行：0 今日任务 / 1 历史日期头（可展开）/ 2 历史任务（某日完成的） */

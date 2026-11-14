@@ -89,13 +89,25 @@ public class TodayPage {
         TextView dateLine = tv(dateLabel(logicToday), 12.5f, subC());
         dateLine.setLetterSpacing(0.12f);
         col.addView(dateLine);
+        LinearLayout headRow = new LinearLayout(act);
+        headRow.setOrientation(LinearLayout.HORIZONTAL);
+        headRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView burger = new TextView(act);
+        burger.setText("☰");
+        burger.setTextSize(21);
+        burger.setTextColor(inkC());
+        burger.setGravity(Gravity.CENTER);
+        burger.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(40)));
+        burger.setOnClickListener(v -> act.openDrawer());
+        headRow.addView(burger);
         TextView title = new TextView(act);
         title.setText(s("今天", "Today"));
         title.setTextSize(27);
         title.setTypeface(Typeface.SERIF, Typeface.BOLD);
         title.setTextColor(inkC());
         title.setPadding(0, dp(4), 0, 0);
-        col.addView(title);
+        headRow.addView(title);
+        col.addView(headRow);
 
         col.addView(morningCard(habitRoot, session));
         View advice = adviceCard(logicToday);

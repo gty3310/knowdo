@@ -1336,7 +1336,7 @@ public final class ZhiPage {
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(18), dp(20), dp(18), dp(24));
-        col.addView(serif(s("致良知", "Liangzhi"), 23, inkC(), true));
+        col.addView(headRowWithBurger(serif(s("致良知", "Liangzhi"), 23, inkC(), true)));
         TextView hint = tv(s("先登录，这里才有你的知", "Sign in first — your principles and questions live here"), 15, inkC());
         hint.setPadding(0, dp(22), 0, 0);
         col.addView(hint);
@@ -1344,6 +1344,25 @@ public final class ZhiPage {
         sub.setPadding(0, dp(6), 0, 0);
         col.addView(sub);
         r.addView(col);
+    }
+
+    /** 页头行（v1.86.0）：左 ☰ 菜单钮＋标题，与其他页同款，点开同一抽屉。 */
+    private LinearLayout headRowWithBurger(View title) {
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView burger = new TextView(act);
+        burger.setText("☰");
+        burger.setTextSize(21);
+        burger.setTextColor(inkC());
+        burger.setGravity(Gravity.CENTER);
+        burger.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(40)));
+        burger.setOnClickListener(v -> {
+            if (act instanceof MainActivity) ((MainActivity) act).openDrawer();
+        });
+        row.addView(burger);
+        row.addView(title);
+        return row;
     }
 
     private String modeOf(int p) {
@@ -1371,7 +1390,7 @@ public final class ZhiPage {
         r.addView(scroll, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        col.addView(serif(s("致良知", "Liangzhi"), 23, inkC(), true));
+        col.addView(headRowWithBurger(serif(s("致良知", "Liangzhi"), 23, inkC(), true)));
 
         if (fetchFailed) {
             TextView t = tv(s("连不上，暂时看不到你的知", "Can't connect — your entries are out of reach for now"), 15, inkC());
