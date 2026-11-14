@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.84.0)
+## Features (Android, v1.85.0)
 
-Current version: **v1.84.0**.
+Current version: **v1.85.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.85.0 — 2026-11-14
+
+**Why:** When the Habits tab folded into the Know page in v1.82.0, the morning check-in entry at the top of the old Habits page quietly vanished with it — the first act of the day lost its door. This release brings it back as the first card of a new first tab, Today: check-in, one AI advice, today's diary in full, this morning's recommended principle and the day-planning entry, all on the screen the app opens on — so the first thing you see is what to do first. Build commit `a9a922e` · [compare v1.84.0...v1.85.0](https://github.com/gty3310/knowdo/compare/v1.84.0...v1.85.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **A Today tab.** The bottom bar goes from four tabs to five, Today first (a new circle-with-a-dot icon, vermilion at its centre even unselected), and the app opens on it. Everything that used to address tabs by index does so by named constant, so the renumbering shifts nothing: the guard's "chat with AI" deep link, the habit reminder's link into the Know page's Precepts group, and the drawer entries all land where they did.
+- **Morning check-in, restored.** The first card shows whether today's morning record is filled (same HabitData morningDone record the morning gate itself reads) and opens the morning page in edit mode — the exact jump the old Habits header button made before it was lost.
+- **AI advice.** A new cloud column, user_state.today_advice, carries one advice written hourly through the day (06:00–23:00) by the author's assistant — a main task to start first (its mini card's round button starts it through the same path as the Act tab), what should not wait, and any important unanswered mail. The card shows only when its date is the logical today. If the advice cites a principle, the principle's name in the text is itself the link into that principle's page. "Reply to AI" opens a small input right under the card; sending composes advice + reply and lands in the Muse app with the text filled into its input box by KnowDo's accessibility service — the send button is never pressed for you, and if filling fails the text is already on the clipboard to paste. The target app is a configuration value (Muse, com.facebook.aura, for now), so adding another AI app later is configuration, not code.
+- **The day on one page.** Today's diary is shown in full (the same HabitData diary the morning page and the Know page's Reflect group edit; tapping the card opens that same editor), the first principle from today's morning card gets its own card, and a dark "Today's plan" button opens the day planner.
+
+Not yet verified on a real device: the five-tab bar and default landing with every deep link (guard chat, habit reminder), the check-in card's two states and its jump, the advice card end to end (hourly refresh arriving, principle link, task mini card start, reply fill into Muse and its clipboard fallback), the recommended-principle card, and the 1.84.0 to 1.85.0 in-app update chain. Data change: one new nullable cloud column (user_state.today_advice); the app only ever reads it.
+
 ### v1.84.0 — 2026-11-14
 
 **Why:** A per-task app list is only ever used by the guard on the one phone it was made for — it never needed a home in the cloud, nor syncing between devices. Yet the lists sat inside the user_state row (71 lists, about 562KB, roughly 79% of the row), so every sync hauled the whole pile down and merged it back, making them the single largest source of Supabase egress — and any list deleted in the cloud simply resurrected on the next sync, because the phone's union merge wrote it back (observed the same morning: cut to 3 lists, back to 71 after one sync). Task sync should carry task data; a list is not task data. Build commit `f71148f` · [compare v1.83.0...v1.84.0](https://github.com/gty3310/knowdo/compare/v1.83.0...v1.84.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -86,22 +98,6 @@ Not yet verified on a real device: the full new-task chain (request → cloud ge
 - **Renamed and reordered.** "Block for 3 minutes" becomes "Pause this app for 3 minutes", alongside "Close this app" and "To background"; the inquiry page now asks how long a last look you want first, and only then what happens when it runs out. The cover page's "{app} is taking a break" line is unchanged, and the already-recorded guard-event wording keeps its historical form.
 
 Not yet verified on a real device: the inquiry page at all three difficulties (second-inquiry false-alarm hiding on Medium, the quota-exhausted page on Hard), the breathing page end to end (completion into a grace, leaving mid-breath cancelling it, the doubling ladder), the Hard explanation flow against the live AI channel, the switch-task jump, the two-level Settings (every category and row, early unblock while paused), and the 1.82.0 to 1.83.0 in-app update chain. Data changes: none in the cloud — everything new is an on-device preference; the unity index's drift counting is untouched (zero-line diffs in the calculator and day account, machine-checked).
-
-### v1.82.0 — 2026-11-11
-
-**Why:** Know becomes Liangzhi. The user's design: the Know page is rebuilt as six groups — Aspiration, Mind, Precepts, Reflect, Questions, People — the Habits tab goes away and habits move into Precepts, and the aspiration plus values form an editable system prompt, the backdrop the built-in chat AI answers against. Build commit `986efc8` · [compare v1.81.0...v1.82.0](https://github.com/gty3310/knowdo/compare/v1.81.0...v1.82.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Six groups on the Know page.** Aspiration holds a Prompt block (the aspiration — tap to edit, same editor as Settings — and a values row leading to a values-only list, stored as principles of a new kind "value"; nothing is prefilled) plus the Daily Self-Reading and Weekly Goal Review cards. Mind holds thinking principles. Reflect holds the diary (with the diary habit's today card above it), a one-line motive tally for today, and Faults: the last 30 days of "missed" principle checks and drift self-checks, read-only, newest first. Questions and People move over unchanged. Each group opens with a maxim line in small muted type (six lines chosen by the user, bilingual via Strings).
-- **Aspiration and values as the chat AI's backdrop.** Every chat send now appends the aspiration and the value titles to the system prompt, freshly read each time; if both are empty, nothing is appended. The model chain and all other prompt parts are untouched.
-- **Precepts: habits move in, cards untouched.** Precepts splits into Hold back (at-most habits) and Act (action principles plus all remaining habits), with the add-a-habit entry kept in the group. The habit cards and every button on them are rendered by the very same HabitPage code as before (readRow / diaryRow / weeklyRow / habitCard / compactRow, unchanged) — embedded by section, routed read/weekly to Aspiration, diary to Reflect, max to Hold back, the rest to Act. The morning page, the morning gate and the unity index's habit scoring do not change.
-
-**Removed**
-- **The Habits tab.** The bottom bar goes from five tabs to four — Act / Know / Oneness / Chat; the Know tab keeps its name. Habit reminder notifications now deep-link into the Know page's Precepts group.
-
-Data changes: exactly one — the cloud CHECK on zhi_principles.kind now also allows "value" (migration executed and read back; a probe row was inserted, read back and deleted). Everything else — habit data, the zhi tables' shapes, weekly data, sync rules — is untouched, as are the unity index, the day account and the morning pages (zero-line diffs, machine-checked).
-
-Not yet verified on a real device: the six groups end to end (habit check-ins inside Precepts, the read card in Aspiration, the diary status card in Reflect), the values-only list and editor, the chat backdrop in a live conversation, the habit-reminder deep link landing on Precepts, and the 1.81.0 to 1.82.0 in-app update chain. Not in this release: diary filters and the calendar re-plan line removal, the floating card changes, the semantic engine split, and the always-on floating window.
 
 ## Build
 

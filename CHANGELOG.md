@@ -2,6 +2,29 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.85.0] - 2026-11-14（versionCode 124）
+
+「今天」签：每日打卡回归＋AI 建议＋今日日记/推荐原则同页
+
+为什么：用户 2026-11-12 定案——v1.82.0 把习惯页并入知页时，页头的晨间打卡入口（打开晨间页编辑模式）随整页模式下线而丢失，每天第一件事的入口没了。本版把它找回来，并顺势新建底部第一签「今天」：一天的要紧事收在一屏——打卡、AI 建议、今日日记、今早推荐的原则、今天安排的入口；打开知行先落这一页，就知道先做什么。
+
+发布提交：`a9a922e`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.84.0...v1.85.0 比较](https://github.com/gty3310/knowdo/compare/v1.84.0...v1.85.0)
+
+### 新增
+
+- 云端迁移（F0）：user_state 新增列 `today_advice` jsonb（可空）。形状 {date, updated_at, text, principle_id, task_id}，无 url 字段。探针实证：写测试值→回读→清回 null→再回读，无残留；列加好后旧版 App 用显式列清单拉取、不受影响。
+- 底部五签＋默认落今天页（F1，`MainActivity`＋`Strings`＋新图标）：底部签由四变五，今天／行／知／合一／聊聊，「今天」第一签（TAB_TODAY=0，原四签常量顺延一位）。新图标 ic_00（VectorDrawable）：圆中一点，未选中态圆心点朱砂、圆环浅灰（沿 icon-set 既有口径），选中态圆环墨色、点仍朱砂。MainActivity 默认落今天页（todayContainer 首屏可见、行页容器初始 GONE，今天页在 buildUi 时即建）。全仓签索引/深链排查（逐处列明见实现报告）：外部按索引定位的引用只有 GuardActivity 的「和 AI 聊聊」（EXTRA_OPEN_TAB=TAB_CHAT 常量名）、HabitReceiver 的习惯提醒深链（TAB_ZHI＋EXTRA_ZHI_GROUP 常量名）、本类抽屉与知页跳转（常量名）——全部按常量名引用，顺延不需改、也不会错位；switchTab 越界回落与 EXTRA_OPEN_TAB 读取缺省值由 TAB_SCHEDULE 改 TAB_TODAY。晨间门、周门、问询等既有拉起逻辑与优先级一律不动（都在 onResume/独立 Activity，与默认签无关，代码零改动）。
+- 今天页（F2，新 `TodayPage`，整页单一 ScrollView，自上而下）：①页头日期行（M月d日 · 周X，逻辑今天口径）＋标题「今天」。②晨间打卡卡：状态＝今日晨间完成与否，判定来源 HabitData.morningDone(habitRoot, HabitData.sessionDate)——与晨间门口径同一份数据；未完成朱砂描边小标「今日未填」、已完成灰标「今日已填」；整卡点击开 MorningActivity MODE_EDIT，即并页时丢掉的旧习惯页页头按钮的原跳转。③AI 建议卡：数据＝user_state.today_advice，经 SbSync 既有 user_state 同步拉取（USER_STATE_COLS 加此列，共 24 列；全量同步与 Realtime 落地各 adopt 一处进本机只读缓存 TodayAdvice，App 永不回写）；date ≠ 逻辑今天（Rollover.logicalToday）整卡不显示。标题行左「AI 建议 · HH:mm 更新」（updated_at 本地时区）、右小按钮「给 AI 回复」；正文若给了 principle_id，按该原则 title（查 ZhiPage.principlesCache）在正文第一次出现处渲染朱砂可点，点击走 MainActivity.openZhiPrinciple（与合一页跳原则同一路径），匹配不到不渲染链接、不报错；task_id 非空时正文下方挂任务小卡（任务名＋优先级＋时长＋朱砂圆形开始钮，开始钮走 MainActivity.startTaskFromToday→startTaskNow，与行页开始同一实现；任务已删/已完成/今日已完成不挂卡）。「给 AI 回复」点开在卡下就地展开输入框（不跳页），发送把「建议正文＋用户回复」拼成一段经新 `AiReplyFill` 投递：先复制剪贴板兜底、登记 30 秒待填、拉起目标软件，知行无障碍服务在目标窗口出现时把文字填入输入框（新增 tryFillPending，只写文字、销账，找不到输入框不强填）；发送钮永不自动点，填好停在对方界面由用户自己点发送。目标软件只适配 Muse App（com.facebook.aura），包名做成配置项（AiReplyFill 的 prefs 键 pkg），以后加软件只加配置不改流程。④今日日记卡：展开显示逻辑今天日记全文（HabitData.diary，与晨间页、察组同一份数据），为空一行淡字提示；点卡经新 MainActivity.openZhiDiary→ZhiPage.openDiaryExternal 切察组打开同一编辑入口。⑤今日推荐原则卡：拉 morning_cards 今日行（与晨间页同一张表、同一 session 日口径），取 items 中第一条 principle（kind=act/think），显示原则名＋一句话（条目 body），点开同 openZhiPrinciple；无卡或无 principle 条目整卡不显示。⑥深色大按钮「今天的安排」开 TodayPlanActivity。全页文案极简、不用句号收尾（建议正文是云端数据，不受此限）。
+
+### 红线核查
+
+- `ZhixingCalc`、`DayAccount`、晨间门/周门判定（MorningGate/HabitData 的门逻辑）、recordDriftOnce 与分神口径：本版 diff 零触碰（机器核查见实现报告）。无障碍服务的新增段只写文字、不碰守卫判定与事件。
+- 同步层只加 today_advice 一列的读（adopt），不改既有列语义；本版 App 不写 today_advice（只读）。ZhiPage 仅新增一个公开跳入方法 openDiaryExternal，内部仍走原 openDiaryDetail，未改既有行为。
+
+未做（助理侧，不属本版交付）：F3 每小时 AI 建议 cron（knowdo-today-advice）由 Jarvis 在发版后另行创建；日记筛选与日历蓝字整行删除、悬浮卡改动、语义引擎外置、悬浮窗常驻，均不在本版。
+
+试用：打开知行 → 今天页，看 AI 建议卡，点任务小卡的开始钮；点晨间打卡卡进晨间页补填；点「给 AI 回复」在卡下写一句发送，看是否跳到 Muse 并填好。
+
 ## [1.84.0] - 2026-11-14（versionCode 123）
 
 名单本地化：任务软件名单只存手机本地，退出云端同步
