@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.83.0)
+## Features (Android, v1.84.0)
 
-Current version: **v1.83.0**.
+Current version: **v1.84.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.84.0 — 2026-11-14
+
+**Why:** A per-task app list is only ever used by the guard on the one phone it was made for — it never needed a home in the cloud, nor syncing between devices. Yet the lists sat inside the user_state row (71 lists, about 562KB, roughly 79% of the row), so every sync hauled the whole pile down and merged it back, making them the single largest source of Supabase egress — and any list deleted in the cloud simply resurrected on the next sync, because the phone's union merge wrote it back (observed the same morning: cut to 3 lists, back to 71 after one sync). Task sync should carry task data; a list is not task data. Build commit `f71148f` · [compare v1.83.0...v1.84.0](https://github.com/gty3310/knowdo/compare/v1.83.0...v1.84.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Lists are local-only now.** The sync layer no longer reads or writes the cloud app_lists column at all — no probe, no merge, no write-back, no realtime merging. Every user_state fetch (12 call sites) uses an explicit column list holding all current columns except app_lists, so a sync no longer drags the lists with it; writes stay field-level and no column is dropped.
+- **New lists arrive by mailbox.** A generation request still goes out through user_state.app_list_request; the result comes back in that same request's result field, the app files it into the local app_lists.json, clears its pending mark, and empties the mailbox with a field-level patch — the cloud keeps nothing. Hand-edited entries keep their protection: a fully hand-edited list is never overwritten, and individual hand-set tiers are laid back over a generated list, exactly as before. A malformed or failed pickup leaves the mailbox untouched and retries on the next sync, silently; an existing local list survives the upgrade untouched, and the guard's queries, its built-in fallback blacklist, and the list viewer/editor are all unchanged.
+
+Not yet verified on a real device: the full new-task chain (request → cloud generation under the mailbox protocol → pickup → list in effect), upgrade with existing local lists intact, and offline behaviour (request/pickup retrying silently). Data changes: no new cloud tables or columns; the cloud app_lists column is emptied on the operator side after release and re-checked the next day.
+
 ### v1.83.0 — 2026-11-12
 
 **Why:** The drift guard borrows Opal's two best ideas — a difficulty level chosen in advance, and a waiting room that makes an impulse pay in breath before it pays out. A grace is no longer one tap away: on Medium and up it starts with a deep-breathing pause that doubles with each use, so the urge usually fades inside the wait. But KnowDo's guard is AI-judged and can be wrong, so the false-alarm door stays open at every level — it just gets more formal as the level rises. In the same pass, Settings was rebuilt Opal-style: categories only on the first page, every setting one level down, none removed. Build commit `1d4e27d` · [compare v1.82.0...v1.83.0](https://github.com/gty3310/knowdo/compare/v1.82.0...v1.83.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -92,16 +102,6 @@ Not yet verified on a real device: the inquiry page at all three difficulties (s
 Data changes: exactly one — the cloud CHECK on zhi_principles.kind now also allows "value" (migration executed and read back; a probe row was inserted, read back and deleted). Everything else — habit data, the zhi tables' shapes, weekly data, sync rules — is untouched, as are the unity index, the day account and the morning pages (zero-line diffs, machine-checked).
 
 Not yet verified on a real device: the six groups end to end (habit check-ins inside Precepts, the read card in Aspiration, the diary status card in Reflect), the values-only list and editor, the chat backdrop in a live conversation, the habit-reminder deep link landing on Precepts, and the 1.81.0 to 1.82.0 in-app update chain. Not in this release: diary filters and the calendar re-plan line removal, the floating card changes, the semantic engine split, and the always-on floating window.
-
-### v1.81.0 — 2026-11-11
-
-**Why:** A repeating task skipped for today should stop posing as today's work in the task list. The user's spec: in the list, a skipped task carries a "(skipped)" mark beside its due date, and the ranking sorts by effective date — once skipped, the task's next real occurrence is what counts, so what is truly due today sits at the very top. Only the task-list page changes; everything else keeps its existing rules. Build commit `55fe1a3` · [compare v1.80.0...v1.81.0](https://github.com/gty3310/knowdo/compare/v1.80.0...v1.81.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **The task list sorts by effective date.** A repeating task skipped today now sorts by its next occurrence (tomorrow for a daily task) instead of today, so tasks genuinely due today rank above it. The shared ordering behind the floating window, the next-task page and chat is untouched, and so are Plan today and the unity index — the index has excluded skipped dates since 1.79; this release only teaches the list itself.
-- **Skipped tasks are marked in the list.** A task skipped for today shows "(skipped)" right after its due-date text on the task-list page.
-
-Not yet verified on a real device: the mark and the new ordering after an actual skip on the phone, and the 1.80.0 to 1.81.0 in-app update chain. Not in this release: diary filters and the calendar re-plan line removal, the floating card changes, the semantic engine split, and the always-on floating window.
 
 ## Build
 

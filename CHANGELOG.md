@@ -2,6 +2,31 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.84.0] - 2026-11-14（versionCode 123）
+
+名单本地化：任务软件名单只存手机本地，退出云端同步
+
+为什么：用户 2026-11-14 定案——任务软件名单只在手机守卫里用，不需要在线上安家，也不需要在设备之间同步。现状是名单整包塞在 user_state.app_lists 里（71 份约 562KB、占整行约 79%），App 每次同步都整行拉取并合并回写，是 Supabase 出流量的最大单一来源；而且云端删掉的名单会被手机本地的并集合并写回复活（同日实证：删到 3 份又被同步写回 71 份）。任务同步只该同步任务自己的数据，名单不属于任务数据。
+
+发布提交：`f71148f`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.83.0...v1.84.0 比较](https://github.com/gty3310/knowdo/compare/v1.83.0...v1.84.0)
+
+### 改进
+
+- 名单退出云端同步（F1，`SbSync`）：同步层全面停止 app_lists 列的读写——删掉列探测、syncUserState 的合并与两处回写、Realtime 推来行里的名单合并分支。user_state 的全部拉取（12 处）由 select=* 改为显式列清单 `USER_STATE_COLS`（现行 24 列除 app_lists 外的 23 列，云端实测列全集核对），写回仍是字段级只动变更键，不丢任何列。Realtime 订阅本就是整表级、无按列过滤，无可摘项，处理函数不再碰该列即可。
+- 新名单改走信箱（F0/F2，`SbSync.syncUserState`＋`AppLists.ingestLocal`）：请求仍走 user_state.app_list_request（单槽、结构不变）；巡查分类后把结果放进请求的 result 字段并置 status=done，App 在既有同步拉取中取件——存入本地 app_lists.json、清在途标记、把 app_list_request 字段级 PATCH 为 {} 清空信箱，云端不留存。本地手改过的名单按原 manual 纪律保护：整份手改（manual 且无 manualPkgs）整份不覆盖、仍算取件成功；有 manualPkgs 的以送来名单为底、手改软件逐个盖回。解析或存储异常时不清信箱、保持 pending 语义，下一轮同步重试，全程静默；result 缺失（巡查尚未生成/旧巡查未切换信箱模式）时不报错、不重复请求。
+- 名单本地自理（F3，`AppLists`）：手改（setTier）只落本地 saveAll，摘除原先的手改上云触发；删除已无调用方的 merge/signature/kickSync（合并签名回写逻辑随同步去名单化一并退役）。本地文件 app_lists.json 与手改 manual/manualPkgs 标记原样保留，老用户升级后本地名单无损。守卫查询 tierFor/whyFor/reasonFor、内置通用黑名单兜底、名单页查看/手改，行为与界面零改动。
+- 文案核查（F4）：设置页名单行与帮助文本（Strings 第六节等）只有「在后台生成」类表述、没有「云端同步名单」类表述，按清单口径无文案变更；设置开关 app_lists_enabled 语义不变。
+
+### 红线核查
+
+- `ZhixingCalc`、`DayAccount`、`SelfChecks`、recordDriftOnce 记录形状、`SemanticJudge`、guard_events 既有 category/detail 取值：本版 diff 零触碰（机器核查见实现报告）。
+- tasks 同步、timer_state、habit_data 等其余 user_state 列的合并口径零改动（除拉取列清单排除 app_lists）；app_rulings 读写零改动（巡查判例依赖它）。
+- 云端零迁移：不新增表/列；app_lists 列本身保留在云端（Jarvis 侧发版后清空并复查），App 不再读它、写它。
+
+未做：「今天」签（顺延 v1.85.0）、日记筛选与日历蓝字整行删除、悬浮卡改动、语义引擎外置、悬浮窗常驻与长按完全隐藏，均不在本版。
+
+试用：开始一个以前没做过的新任务，等几分钟（巡查切换到信箱模式后），名单会像以前一样自动出现在任务详情里；已有任务的名单不受影响，照旧可用。
+
 ## [1.83.0] - 2026-11-12（versionCode 122）
 
 守卫难度三档＋深呼吸门＋设置页两级极简
