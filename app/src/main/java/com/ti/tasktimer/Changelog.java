@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1850 = new Entry("v1.85.0", "2026-11-14");
+        e1850.add(new Group(s("新增", "New"),
+                s("「今天」页——底部多了第一签「今天」，打开知行先落这一页",
+                  "A Today tab — the bottom bar gains a first tab, Today, and KnowDo now opens on it"),
+                s("晨间打卡——今天页第一张卡就是打卡入口（并页时挪丢了，现在回到每天的第一屏）",
+                  "Morning check-in — the first card on Today is the check-in entry (lost when pages merged; now back on the first screen of every day)"),
+                s("AI 建议——白天每小时刷新一条，主推一件任务（小卡点一下就开始），还会点名要赶早的事与没回的重要邮件；卡旁「给 AI 回复」，在卡下写完发送，自动跳到 Muse 接着这条建议聊",
+                  "AI advice — refreshed hourly through the day, leading with one task to start (tap the mini card's button to begin), and naming what should not wait and which important mail is unanswered; Reply to AI beside the card lets you answer right there and lands in Muse with the advice and your reply filled in"),
+                s("今日同页——今天的日记展开着，今早推荐的原则也在这一页",
+                  "All on one page — today's diary in full, and this morning's recommended principle, are right here too")));
+        e1850.why = s("一天的要紧事收在一屏，打开就知道先做什么",
+                "The day's essentials on one screen: open the app and you know what to do first");
+        e1850.tryIt = s("打开知行 → 今天页，看 AI 建议卡，点任务小卡的开始钮",
+                "Open KnowDo → Today, read the AI advice card, and tap the start button on its task card");
+        out.add(e1850);
+
         Entry e1840 = new Entry("v1.84.0", "2026-11-14");
         e1840.add(new Group(s("改进", "Improved"),
                 s("任务软件名单改为只存在手机本地，不再同步到云端；新名单仍由云端生成，经一次性传递送到手机，取走后云端不保留",
