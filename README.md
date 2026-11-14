@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.85.0)
+## Features (Android, v1.86.0)
 
-Current version: **v1.85.0**.
+Current version: **v1.86.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -62,6 +62,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.86.0 — 2026-11-15
+
+**Why:** The Act page header carried a quarter-screen of figures — big Left-today / Must-do / Free numbers, a due-today line, a red doesn't-fit line — plus a current-task strip, while the drawer menu button existed only on that one page: from Today, Know or Oneness, changing the language or reaching Settings meant switching back to Act first. This release folds the header into a single row and gives every one of the first four tabs the same menu button. Build commit `2672d82` · [compare v1.85.0...v1.86.0](https://github.com/gty3310/knowdo/compare/v1.85.0...v1.86.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **The Act header, one row.** ☰ stays at the left; the title is now the page's own name (Act / 行） instead of the KnowDo wordmark; right after it, two compact figures — Must-do H:MM · Free H:MM — read from the same DayAccount result the old stats block used (read-only, formula untouched), the Free figure green when positive, vermilion when negative, ink at zero. At the far right, two icon-only buttons (new vector drawables, tinted with the theme ink): a list-plus Plan icon opening the day planner (the old text entry's exact jump) and a calendar icon toggling the calendar panel (the old pill button's exact behaviour).
+- **Removed from the Act page:** the whole stats block and its refresh code, the Plan text entry, and the current-task strip (the running task still shows in its list row and in the floating window). The current task's main-principle line survives as a slim line of its own under the header, under the same conditions as before.
+- **☰ on Today, Know and Oneness.** Each page head gains the same 42×40dp menu button at its far left, opening the same drawer (MainActivity.openDrawer is now package-visible); page titles are unchanged, and Chat gets none, as specified.
+- **The calendar's blue undo row is gone.** The "↩ Undo re-plan · no room: …" line, its undo entry and the snapshot read/refresh/undo methods are removed entirely; AI Re-plan and Quick Re-plan stay, and quick re-plan itself works exactly as before.
+
+Not yet verified on a real device: the new Act header end to end (figures refreshing with the timer and after auto-scheduling, the three Free colours, both icon jumps), the ☰ drawer opening from the three pages, quick re-plan with the undo row gone, and the 1.85.0 to 1.86.0 in-app update chain. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
+
 ### v1.85.0 — 2026-11-14
 
 **Why:** When the Habits tab folded into the Know page in v1.82.0, the morning check-in entry at the top of the old Habits page quietly vanished with it — the first act of the day lost its door. This release brings it back as the first card of a new first tab, Today: check-in, one AI advice, today's diary in full, this morning's recommended principle and the day-planning entry, all on the screen the app opens on — so the first thing you see is what to do first. Build commit `a9a922e` · [compare v1.84.0...v1.85.0](https://github.com/gty3310/knowdo/compare/v1.84.0...v1.85.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,21 +95,6 @@ Not yet verified on a real device: the five-tab bar and default landing with eve
 - **New lists arrive by mailbox.** A generation request still goes out through user_state.app_list_request; the result comes back in that same request's result field, the app files it into the local app_lists.json, clears its pending mark, and empties the mailbox with a field-level patch — the cloud keeps nothing. Hand-edited entries keep their protection: a fully hand-edited list is never overwritten, and individual hand-set tiers are laid back over a generated list, exactly as before. A malformed or failed pickup leaves the mailbox untouched and retries on the next sync, silently; an existing local list survives the upgrade untouched, and the guard's queries, its built-in fallback blacklist, and the list viewer/editor are all unchanged.
 
 Not yet verified on a real device: the full new-task chain (request → cloud generation under the mailbox protocol → pickup → list in effect), upgrade with existing local lists intact, and offline behaviour (request/pickup retrying silently). Data changes: no new cloud tables or columns; the cloud app_lists column is emptied on the operator side after release and re-checked the next day.
-
-### v1.83.0 — 2026-11-12
-
-**Why:** The drift guard borrows Opal's two best ideas — a difficulty level chosen in advance, and a waiting room that makes an impulse pay in breath before it pays out. A grace is no longer one tap away: on Medium and up it starts with a deep-breathing pause that doubles with each use, so the urge usually fades inside the wait. But KnowDo's guard is AI-judged and can be wrong, so the false-alarm door stays open at every level — it just gets more formal as the level rises. In the same pass, Settings was rebuilt Opal-style: categories only on the first page, every setting one level down, none removed. Build commit `1d4e27d` · [compare v1.82.0...v1.83.0](https://github.com/gty3310/knowdo/compare/v1.82.0...v1.83.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Guard difficulty in three levels.** Settings → Guard leads with Easy / Medium / Hard. Easy keeps the previous behaviour — false-alarm always available, graces take effect at a tap. Medium (the default for everyone, new installs and never-touched settings alike, no migration prompt) shows the false-alarm button only at the first inquiry for a task each day, and puts the breathing gate in front of every grace. Hard honours a false alarm only after a one-line explanation is judged by AI, and caps graces per day (0 / 1 / 2 / 3 / 5, default 1): run out, and the entire grace section leaves the inquiry page. All counters are on-device only, reckoned on the app's 04:00 logical day.
-- **The breathing gate.** Choosing a grace (except Block now, which is enforcement, not grace) opens a full-screen breathing page in the guard's own style: a large countdown, a circle swelling and settling on a 4-second-in / 4-second-out rhythm, and your aspiration in small type. 15 seconds the first time, then 30, 60, up to 120. Leave the page — switch apps, background it, lock the screen — and the grace is cancelled and uncounted; finish the breath and the grace starts through the exact same code path as before. The drift record still lands the moment a grace button is tapped, breath or no breath, and during the breath the content guard holds its fire so the two pages never pull each other up.
-- **Switch task on the inquiry page.** A full-size button under Return to task opens the existing next-task picker; picking a new task starts it and closes the inquiry — no drift record, no enforcement.
-- **Settings in two levels.** Seven category rows — Aspiration, Guard, Verdicts & lists, Reminders, Accountability, Updates & about, More — tall and airy, each showing its current value, all on one screen, with no switches on the first page at all. Every existing setting survives one level down under a back row (the system Back key returns to the categories first, too). The guard page leads with difficulty and the daily grace cap; early unblock still appears there only while an app is paused; the duplicate Permissions row that lived in two groups is now one row (same destination).
-
-**Improved**
-- **Renamed and reordered.** "Block for 3 minutes" becomes "Pause this app for 3 minutes", alongside "Close this app" and "To background"; the inquiry page now asks how long a last look you want first, and only then what happens when it runs out. The cover page's "{app} is taking a break" line is unchanged, and the already-recorded guard-event wording keeps its historical form.
-
-Not yet verified on a real device: the inquiry page at all three difficulties (second-inquiry false-alarm hiding on Medium, the quota-exhausted page on Hard), the breathing page end to end (completion into a grace, leaving mid-breath cancelling it, the doubling ladder), the Hard explanation flow against the live AI channel, the switch-task jump, the two-level Settings (every category and row, early unblock while paused), and the 1.82.0 to 1.83.0 in-app update chain. Data changes: none in the cloud — everything new is an on-device preference; the unity index's drift counting is untouched (zero-line diffs in the calculator and day account, machine-checked).
 
 ## Build
 
