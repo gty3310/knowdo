@@ -24,16 +24,19 @@ import java.util.Map;
  *
  * 名单的生成不在 App 里：开始计时一个还没有名单的任务时，App 把
  * {任务名＋备注＋常用软件清单（至多 100 个）} 写成请求放进云端
- * user_state.app_list_request（SbSync.requestAppList），由云端巡查分类后写回
- * user_state.app_lists，本类只管本地存取、合并与守卫查询。云端两列不可用时
- * （SbSync 探测纪律）整功能静默走本地：名单不来，就用内置通用黑名单兜底。
+ * user_state.app_list_request（SbSync.requestAppList），云端巡查分类后把结果
+ * 放回同一请求的 result 字段（信箱），App 在同步时取件存本地、随即把信箱
+ * 清空（SbSync.syncUserState 调 ingestLocal）。名单只存本地、永不上云同步
+ * （v1.84.0 本地化）：云端只经手这一次传递，不留存。本类只管本地存取与
+ * 守卫查询。请求列不可用时（SbSync 探测纪律）整功能静默走本地：名单不来，
+ * 就用内置通用黑名单兜底。
  *
- * 本地存应用私有文件 app_lists.json，结构与云端 app_lists 一致：
+ * 本地存应用私有文件 app_lists.json：
  * { taskId: {"taskTitle":…, "generatedAt":…, "by":…,
  *            "apps": { pkg: {"tier":"white|grey|black","why":…} },
  *            "manual": true（仅用户手改过）, "manualPkgs": [pkg…]（手改过的包） } }
- * 合并口径（与 GuardRules 同纪律）：本地带 manual 的手改条目（按 manualPkgs
- * 逐个软件）不被云端覆盖，其余以云端为准。
+ * 手改纪律：本地带 manual 的手改软件（按 manualPkgs 逐个）不被信箱送来的
+ * 生成名单覆盖（ingestLocal）；整份手改（manual 且无 manualPkgs）整份保留。
  *
  * 待生成状态只记在本类 prefs（pending 集）：请求写云成功才标记，名单到达即清。
  * 同一任务只请求一次（按 taskId；任务改名不重请）。
@@ -251,11 +254,52 @@ public final class AppLists {
         return out;
     }
 
+    // ---------------- 信箱取件（v1.84.0） ----------------
+
+    /**
+     * 信箱送来一份生成名单，存进本地：本地还没有该任务→直接存；本地是非手改
+     * 的旧名单→以新名单为准；本地带 manual 手改→整份手改（manual 且无
+     * manualPkgs）整份保留、不覆盖；有 manualPkgs 的，以送来名单为底，把
+     * 手改过的软件逐个用本地值盖回（与 setTier 的既定口径一致：生成名单到达
+     * 后按 manualPkgs 逐个保护、其余照常填充），manual 标记保留。
+     * 返回 true＝已落本地（调用方据此清 pending 并清空信箱）；异常返回 false，
+     * 调用方不清信箱，下一轮同步重试。
+     */
+    public static synchronized boolean ingestLocal(Context c, String taskId, JSONObject entry) {
+        if (taskId == null || entry == null) return false;
+        try {
+            JSONObject all = loadAll(c);
+            JSONObject le = all.optJSONObject(taskId);
+            JSONObject in = new JSONObject(entry.toString());
+            if (le != null && le.optBoolean("manual", false)) {
+                JSONArray mp = le.optJSONArray("manualPkgs");
+                if (mp == null || mp.length() == 0) return true; // 整份手改：不覆盖，仍算取件成功
+                JSONObject lApps = le.optJSONObject("apps");
+                JSONObject rApps = in.optJSONObject("apps");
+                if (lApps != null && rApps != null) {
+                    for (int i = 0; i < mp.length(); i++) {
+                        String pkg = mp.optString(i);
+                        JSONObject la = lApps.optJSONObject(pkg);
+                        if (la != null) rApps.put(pkg, la);
+                    }
+                }
+                in.put("manual", true);
+                in.put("manualPkgs", mp);
+            }
+            all.put(taskId, in);
+            saveAll(c, all);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ---------------- 用户手改 ----------------
 
     /**
-     * 名单页里改某个软件的档位：本地即刻生效，该任务条目打 manual、该软件记进
-     * manualPkgs（云端合并时这一条永不被覆盖），并踢一次同步把手改推上云。
+     * 名单页里改某个软件的档位：只落本地即刻生效（v1.84.0 起手改不再上云），
+     * 该任务条目打 manual、该软件记进 manualPkgs（信箱取件时这一条永不被
+     * 生成名单覆盖）。
      * 任务还没有生成名单时，先建一个只有手改条目的空名单（by=manual），
      * 生成名单到达后按 manualPkgs 逐个保护、其余照常填充。
      */
@@ -299,95 +343,6 @@ public final class AppLists {
             e.put("manual", true);
             saveAll(c, all);
         } catch (Exception ignored) { }
-        kickSync(c);
     }
 
-    // ---------------- 云端合并 ----------------
-
-    /**
-     * 与云端 app_lists 合并：以 taskId 为键——本地不存在的采用云端；本地在的
-     * 以云端为底，把 manualPkgs 里手改过的软件逐个用本地值盖回（并保留
-     * manual/manualPkgs 标记）；本地有、云端还没有的原样保留。结果落本地
-     * 并返回（供 SbSync 判断要不要回写云端）。名单到达即清该任务的 pending。
-     */
-    public static synchronized JSONObject merge(Context c, JSONObject remote) {
-        JSONObject local = loadAll(c);
-        if (remote == null) return local;
-        try {
-            JSONObject out = new JSONObject(remote.toString());
-            java.util.Iterator<String> it = local.keys();
-            while (it.hasNext()) {
-                String taskId = it.next();
-                JSONObject le = local.optJSONObject(taskId);
-                if (le == null) continue;
-                JSONObject re = out.optJSONObject(taskId);
-                if (re == null) { out.put(taskId, le); continue; }
-                JSONArray mp = le.optJSONArray("manualPkgs");
-                boolean wholeManual = le.optBoolean("manual", false) && (mp == null || mp.length() == 0);
-                if (wholeManual) { out.put(taskId, le); continue; }
-                if (mp != null && mp.length() > 0) {
-                    JSONObject lApps = le.optJSONObject("apps");
-                    JSONObject rApps = re.optJSONObject("apps");
-                    if (lApps != null) {
-                        if (rApps == null) { rApps = new JSONObject(); re.put("apps", rApps); }
-                        for (int i = 0; i < mp.length(); i++) {
-                            String pkg = mp.optString(i);
-                            JSONObject la = lApps.optJSONObject(pkg);
-                            if (la != null) rApps.put(pkg, la);
-                        }
-                    }
-                    re.put("manual", true);
-                    re.put("manualPkgs", mp);
-                }
-            }
-            saveAll(c, out);
-            // 名单到了：在途标记清掉
-            java.util.Iterator<String> rit = remote.keys();
-            while (rit.hasNext()) clearPending(c, rit.next());
-            return out;
-        } catch (Exception e) {
-            return local;
-        }
-    }
-
-    /** 合并签名：taskId＋手改标记＋每软件档位/理由的稳定串，供 SbSync 判断要不要回写。 */
-    public static String signature(JSONObject o) {
-        if (o == null) return "";
-        StringBuilder sb = new StringBuilder();
-        try {
-            List<String> taskIds = new ArrayList<>();
-            java.util.Iterator<String> it = o.keys();
-            while (it.hasNext()) taskIds.add(it.next());
-            Collections.sort(taskIds);
-            for (String taskId : taskIds) {
-                JSONObject e = o.optJSONObject(taskId);
-                if (e == null) continue;
-                sb.append(taskId).append('|').append(e.optBoolean("manual", false) ? '1' : '0').append('|');
-                JSONObject apps = e.optJSONObject("apps");
-                if (apps != null) {
-                    List<String> pkgs = new ArrayList<>();
-                    java.util.Iterator<String> ait = apps.keys();
-                    while (ait.hasNext()) pkgs.add(ait.next());
-                    Collections.sort(pkgs);
-                    for (String pkg : pkgs) {
-                        JSONObject a = apps.optJSONObject(pkg);
-                        if (a == null) continue;
-                        sb.append(pkg).append(':').append(a.optString("tier", ""))
-                                .append(':').append(a.optString("why", "")).append(';');
-                    }
-                }
-                sb.append('\n');
-            }
-        } catch (Exception ignored) { }
-        return sb.toString();
-    }
-
-    /** 与 GuardRules.kickSync 同办法：手改后踢一次全量同步，把 manual 条目推上云。 */
-    public static void kickSync(final Context c) {
-        if (!Supa.isLoggedIn(c)) return;
-        final Context app = c.getApplicationContext();
-        new Thread(() -> {
-            try { SbSync.syncNow(app, new TaskStore(app)); } catch (Exception ignored) { }
-        }).start();
-    }
 }

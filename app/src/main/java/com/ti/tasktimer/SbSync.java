@@ -254,8 +254,23 @@ public final class SbSync {
     }
 
     // ---------------- user_state ----------------
+    /**
+     * user_state 显式列清单（v1.84.0）：现行全部列除 app_lists 外的 23 列。
+     * 名单本地化后同步层永不读 app_lists——select=* 会把整包名单（曾达 71 份
+     * 约 562KB）每次同步整包拉回，是 Supabase 出流量的最大单一来源，故本类
+     * 所有 user_state 拉取一律走这份清单（app_list_request 在清单内，供信箱
+     * 取件）。列增减时同步改这里。
+     */
+    private static final String USER_STATE_COLS =
+            "user_id,updated_at,schedule,gcal,guard_events,timer_state,aspiration,"
+            + "self_checks,idle_nag,habit_data,guard_rules,app_list_request,app_rulings,"
+            + "prompt_repop,update_prefs,habit_display,accountability,day_avail,"
+            + "weekly_data,cloud_patch,diary_titles,diary_importance,reschedule_request";
+
+    private static String userStateUrl() { return "user_state?select=" + USER_STATE_COLS; }
+
     private static void syncUserState(Context c, String uid) throws Exception {
-        JSONArray us = Supa.restGet(c, "user_state?select=*");
+        JSONArray us = Supa.restGet(c, userStateUrl());
         JSONObject urow = us.length() > 0 ? us.getJSONObject(0) : null;
         JSONObject write = new JSONObject();
         write.put("user_id", uid);
@@ -267,7 +282,8 @@ public final class SbSync {
         boolean hasNag = probeUserStateCol(c, "idle_nag"); // v1.14.0：列未就绪只用本地，绝不碰此键
         boolean hasHabit = probeUserStateCol(c, "habit_data"); // v1.16.0：习惯系统整份数据，同纪律
         boolean hasRules = probeUserStateCol(c, "guard_rules"); // v1.24.3：用户纪律，列未就绪只用本地、绝不碰此键
-        boolean hasAppLists = probeUserStateCol(c, "app_lists"); // v1.26.0：任务软件名单，列未就绪只用本地、绝不碰此键
+        // 任务软件名单自 v1.84.0 起只存本地：本类不再探测/读/写 app_lists 列，
+        // 新名单改走 app_list_request 信箱（下方取件段），拉取列清单亦已排除该列
         boolean hasRepop = probeUserStateCol(c, "prompt_repop"); // v1.26.3：提示页重弹间隔，列未就绪只用本地、绝不碰此键
         boolean hasUpd = probeUserStateCol(c, "update_prefs"); // v1.27.0：更新下载网络，列未就绪只用本地、绝不碰此键
         boolean hasDisp = probeUserStateCol(c, "habit_display"); // v1.28.0：习惯显示口径（总设置），列未就绪只用本地、绝不碰此键
@@ -282,14 +298,23 @@ public final class SbSync {
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");
             if (sch != null) SyncManager.cacheSchedule(c, sch);
-            if (hasAppLists) {
-                // 软件名单合并（v1.26.0）：本地手改条目（manualPkgs）不被云端覆盖
-                // （AppLists.merge），合并签名与云端不同才回写，只动 app_lists 一个键
-                JSONObject remoteLists = urow.isNull("app_lists") ? null : urow.optJSONObject("app_lists");
-                JSONObject mergedLists = AppLists.merge(c, remoteLists);
-                if (!AppLists.signature(mergedLists).equals(AppLists.signature(remoteLists))) {
-                    write.put("app_lists", mergedLists);
-                    needWrite = true;
+            // 信箱取件（v1.84.0）：云端巡查把生成好的名单放进 app_list_request
+            // 的 result 字段并置 status=done；这里取走存本地（AppLists.ingestLocal，
+            // 本地手改过的按 manual 纪律保护），清该任务 pending，并把信箱字段级
+            // 清空（write 里只动 app_list_request 一列），云端不留存。解析/存储
+            // 异常时不清信箱、保持 pending 语义，下一轮同步重试；result 缺失
+            // （巡查还没生成/旧巡查未切换）时什么都不做，不报错、不重复请求。
+            if (!urow.isNull("app_list_request")) {
+                JSONObject reqBox = urow.optJSONObject("app_list_request");
+                if (reqBox != null && "done".equals(reqBox.optString("status", ""))) {
+                    JSONObject result = reqBox.optJSONObject("result");
+                    String rTaskId = reqBox.optString("taskId", "");
+                    if (result != null && !rTaskId.isEmpty()
+                            && AppLists.ingestLocal(c, rTaskId, result)) {
+                        AppLists.clearPending(c, rTaskId);
+                        write.put("app_list_request", new JSONObject());
+                        needWrite = true;
+                    }
                 }
             }
             JSONObject g = urow.isNull("gcal") ? null : urow.optJSONObject("gcal");
@@ -465,13 +490,6 @@ public final class SbSync {
             if (local.length() > 0) {
                 write.put("guard_events", local);
                 needWrite = true;
-            }
-            if (hasAppLists) {
-                JSONObject localLists = AppLists.loadAll(c);
-                if (localLists.length() > 0) {
-                    write.put("app_lists", localLists);
-                    needWrite = true;
-                }
             }
             if (hasRules) {
                 JSONArray localRules = GuardRules.loadArray(c);
@@ -665,12 +683,8 @@ public final class SbSync {
             if (!row.isNull("guard_rules")) {
                 GuardRules.merge(c, row.optJSONArray("guard_rules"));
             }
-            // 软件名单（v1.26.0）：推来时合并进本地（手改条目不被覆盖），不在这里回写；
-            // 列不存在时行里没有这个键，自然不碰
-            if (!row.isNull("app_lists")) {
-                JSONObject rl = row.optJSONObject("app_lists");
-                if (rl != null) AppLists.merge(c, rl);
-            }
+            // 软件名单自 v1.84.0 起只存本地：Realtime 推来的行里即使带 app_lists
+            // 也不再合并（名单改走 app_list_request 信箱，在全量同步时取件）
             if (!row.isNull("self_checks")) {
                 SelfChecks.merge(c, row.optJSONArray("self_checks"));
             }
@@ -774,7 +788,7 @@ public final class SbSync {
                                              String newStart, String newEnd) {
         if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法保存新时间";
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             if (us.length() == 0) return "云端还没有日程";
             JSONObject sch = us.getJSONObject(0).optJSONObject("schedule");
             if (sch == null) return "云端现在没有日程";
@@ -803,7 +817,7 @@ public final class SbSync {
             write.put("schedule", sch);
             Supa.restUpsertOne(c, "user_state", "user_id", write);
             // 回读校验
-            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            JSONArray chk = Supa.restGet(c, userStateUrl());
             boolean ok = false;
             if (chk.length() > 0) {
                 JSONObject s2 = chk.getJSONObject(0).optJSONObject("schedule");
@@ -834,7 +848,7 @@ public final class SbSync {
     public static String removeTaskBlocksToday(Context c, String taskId, String updatedBy) {
         if (!Supa.isLoggedIn(c)) return "未登录 Supabase，删块未上云";
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             if (us.length() == 0) return null;
             JSONObject sch = us.getJSONObject(0).optJSONObject("schedule");
             if (sch == null) return null;
@@ -858,7 +872,7 @@ public final class SbSync {
             write.put("user_id", Supa.userId(c));
             write.put("schedule", sch);
             Supa.restUpsertOne(c, "user_state", "user_id", write);
-            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            JSONArray chk = Supa.restGet(c, userStateUrl());
             if (chk.length() > 0) {
                 JSONObject s2 = chk.getJSONObject(0).optJSONObject("schedule");
                 JSONArray cb = s2 == null ? null : s2.optJSONArray("blocks");
@@ -887,7 +901,7 @@ public final class SbSync {
     public static String addScheduleBlock(Context c, String taskId, String newStart, String newEnd) {
         if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法保存计划块";
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             JSONObject sch = null;
             if (us.length() > 0) sch = us.getJSONObject(0).optJSONObject("schedule");
             if (sch == null || !TaskItem.today().equals(sch.optString("date", ""))) {
@@ -911,7 +925,7 @@ public final class SbSync {
             write.put("schedule", sch);
             Supa.restUpsertOne(c, "user_state", "user_id", write);
             // 回读校验：新块确实已在云端
-            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            JSONArray chk = Supa.restGet(c, userStateUrl());
             boolean ok = false;
             if (chk.length() > 0) {
                 JSONObject s2 = chk.getJSONObject(0).optJSONObject("schedule");
@@ -950,7 +964,7 @@ public final class SbSync {
                 logicToday, blocked);
         if (!Supa.isLoggedIn(c)) return fallback;
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
             LocalAutoScheduler.Plan plan = LocalAutoScheduler.plan(cands, base, nowMin,
@@ -988,7 +1002,7 @@ public final class SbSync {
         if (!Supa.isLoggedIn(c)) return "未登录 Supabase，无法保存排程";
         String today = TaskItem.today();
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
             List<LocalAutoScheduler.Block> merged = LocalAutoScheduler.mergeProposal(
@@ -1001,7 +1015,7 @@ public final class SbSync {
             write.put("user_id", Supa.userId(c));
             write.put("schedule", nsch);
             Supa.restUpsertOne(c, "user_state", "user_id", write);
-            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            JSONArray chk = Supa.restGet(c, userStateUrl());
             List<LocalAutoScheduler.Block> got = chk.length() > 0
                     ? LocalAutoScheduler.blocksOf(chk.getJSONObject(0).optJSONObject("schedule"), today)
                     : new ArrayList<>();
@@ -1029,7 +1043,7 @@ public final class SbSync {
         }
         String today = TaskItem.today();
         try {
-            JSONArray us = Supa.restGet(c, "user_state?select=*");
+            JSONArray us = Supa.restGet(c, userStateUrl());
             JSONObject sch = us.length() > 0 ? us.getJSONObject(0).optJSONObject("schedule") : null;
             o.previousSchedule = sch;
             List<LocalAutoScheduler.Block> base = LocalAutoScheduler.blocksOf(sch, today);
@@ -1050,7 +1064,7 @@ public final class SbSync {
             write.put("user_id", Supa.userId(c));
             write.put("schedule", nsch);
             Supa.restUpsertOne(c, "user_state", "user_id", write);
-            JSONArray chk = Supa.restGet(c, "user_state?select=*");
+            JSONArray chk = Supa.restGet(c, userStateUrl());
             List<LocalAutoScheduler.Block> got = chk.length() > 0
                     ? LocalAutoScheduler.blocksOf(chk.getJSONObject(0).optJSONObject("schedule"), today)
                     : new ArrayList<>();
@@ -1318,9 +1332,10 @@ public final class SbSync {
     /**
      * 开始计时一个还没有名单的任务时（AppLists.maybeRequest 收口），把
      * user_state.app_list_request 写成 pending：{status, taskId, taskTitle, note,
-     * apps[至多 100], requestedAt}。云端巡查分类后把结果写回 user_state.app_lists，
-     * 由 syncUserState 的合并落到本地（AppLists.merge）。列（app_list_request）
-     * 未就绪时按既有纪律完全不碰、静默返回（功能走本地兜底名单）。
+     * apps[至多 100], requestedAt}。云端巡查分类后把结果放回同一请求的 result
+     * 字段并置 status=done（信箱），由 syncUserState 的信箱取件存本地
+     * （AppLists.ingestLocal）后清空信箱；名单不再写 app_lists 列（v1.84.0）。
+     * 列（app_list_request）未就绪时按既有纪律完全不碰、静默返回（功能走本地兜底名单）。
      * 必须在后台线程调用；写成功才给该任务落 pending 标记（AppLists.markPending），
      * 失败不标记，下次开始同一任务再试。
      */
