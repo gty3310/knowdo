@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1860 = new Entry("v1.86.0", "2026-11-15");
+        e1860.add(new Group(s("改进", "Improved"),
+                s("行页页头变简洁——只剩「行」和必做·空两个数，右上角两个图标：第一个进今天安排、第二个开日历",
+                  "A simpler Act header — just Act plus Must-do · Free, with two icons at the top right: the first opens Plan, the second the calendar"),
+                s("菜单按钮补齐——今天、知、合一三页左上角都有了三横线，任意一页都能打开抽屉",
+                  "The menu button is on every page — Today, Know and Oneness now have the ☰ at their top left too, so the drawer opens from anywhere")));
+        e1860.why = s("页头信息太多占地方，菜单入口又只有行页才有",
+                "The header carried too much and took up space, and the menu lived only on the Act page");
+        e1860.tryIt = s("切到今天或知页，点左上角三横线开抽屉；回行页试右上角两个图标",
+                "Go to Today or Know and tap the ☰ at the top left; back on Act, try the two icons at the top right");
+        out.add(e1860);
+
         Entry e1850 = new Entry("v1.85.0", "2026-11-14");
         e1850.add(new Group(s("新增", "New"),
                 s("「今天」页——底部多了第一签「今天」，打开知行先落这一页",
