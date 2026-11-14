@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1840 = new Entry("v1.84.0", "2026-11-14");
+        e1840.add(new Group(s("改进", "Improved"),
+                s("任务软件名单改为只存在手机本地，不再同步到云端；新名单仍由云端生成，经一次性传递送到手机，取走后云端不保留",
+                  "Per-task app lists now live only on this phone and no longer sync to the cloud; new lists are still generated in the cloud and passed over once — once the phone picks one up, the cloud keeps nothing")));
+        e1840.why = s("名单存在云端让每次同步都搬运大量重复数据、耗流量；改成本地后同步更轻、流量大降，不同设备之间也不再互相影响名单",
+                "Keeping lists in the cloud made every sync carry a large pile of repeated data and burn bandwidth; local-only lists make sync lighter, cut the traffic sharply, and stop devices from affecting each other's lists");
+        e1840.tryIt = s("开始一个以前没做过的新任务，等几分钟，名单会像以前一样自动出现；已有任务的名单不受影响",
+                "Start a task you have never done before and wait a few minutes — its list appears automatically, just as before; lists for existing tasks are unaffected");
+        out.add(e1840);
+
         Entry e1830 = new Entry("v1.83.0", "2026-11-12");
         e1830.add(new Group(s("新增", "New"),
                 s("守卫难度——「设置 → 守卫」可选简单／中等／困难，默认中等",
