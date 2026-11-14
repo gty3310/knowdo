@@ -2260,6 +2260,13 @@ public final class ZhiPage {
         return box;
     }
 
+    /** 今天页日记卡跳入（v1.85.0）：切到察组并打开指定日期的日记详情，
+     *  与察组点开一篇日记走同一个入口（openDiaryDetail）。 */
+    public void openDiaryExternal(String date) {
+        page = PAGE_CHA;
+        openDiaryDetail(date);
+    }
+
     private void openDiaryDetail(String date) {
         diaryFromEditor = editing && es != null;
         diaryDate = date;

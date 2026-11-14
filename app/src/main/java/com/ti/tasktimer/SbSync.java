@@ -260,12 +260,14 @@ public final class SbSync {
      * 约 562KB）每次同步整包拉回，是 Supabase 出流量的最大单一来源，故本类
      * 所有 user_state 拉取一律走这份清单（app_list_request 在清单内，供信箱
      * 取件）。列增减时同步改这里。
+     * v1.85.0：加 today_advice（AI 建议，云端写、App 只读），共 24 列。
      */
     private static final String USER_STATE_COLS =
             "user_id,updated_at,schedule,gcal,guard_events,timer_state,aspiration,"
             + "self_checks,idle_nag,habit_data,guard_rules,app_list_request,app_rulings,"
             + "prompt_repop,update_prefs,habit_display,accountability,day_avail,"
-            + "weekly_data,cloud_patch,diary_titles,diary_importance,reschedule_request";
+            + "weekly_data,cloud_patch,diary_titles,diary_importance,reschedule_request,"
+            + "today_advice";
 
     private static String userStateUrl() { return "user_state?select=" + USER_STATE_COLS; }
 
@@ -292,6 +294,7 @@ public final class SbSync {
         boolean hasWeekly = probeUserStateCol(c, "weekly_data"); // v1.47.0：每周目标反思专属数据（周目标＋每日反省），列未就绪只用本地、绝不碰此键
         boolean hasDiaryTitles = probeUserStateCol(c, "diary_titles"); // v1.61.0：日记标题（日期→标题），列未就绪只用本地、绝不碰此键
         boolean hasPatch = probeUserStateCol(c, "cloud_patch"); // v1.52.0：云端补丁（云端协助整理的数据改动落地用），列未就绪不读、行为与旧版一字不差
+        boolean hasAdvice = probeUserStateCol(c, "today_advice"); // v1.85.0：AI 建议（云端写、App 只读），列未就绪不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
 
@@ -316,6 +319,13 @@ public final class SbSync {
                         needWrite = true;
                     }
                 }
+            }
+            // AI 建议（v1.85.0）：云端是唯一写方，这里只 adopt 进本机缓存
+            // （TodayAdvice），永不回写；云端为 null 时本机一并清掉，今天页
+            // 据 date 与逻辑今天比对决定显不显示
+            if (hasAdvice) {
+                TodayAdvice.adopt(c, urow.isNull("today_advice")
+                        ? null : urow.optJSONObject("today_advice"));
             }
             JSONObject g = urow.isNull("gcal") ? null : urow.optJSONObject("gcal");
             if (g != null) SyncManager.cacheGcal(c, g);
@@ -685,6 +695,12 @@ public final class SbSync {
             }
             // 软件名单自 v1.84.0 起只存本地：Realtime 推来的行里即使带 app_lists
             // 也不再合并（名单改走 app_list_request 信箱，在全量同步时取件）
+            // AI 建议（v1.85.0）：云端写、App 只读——推来什么就 adopt 什么，
+            // 不在这里回写（与全量同步同一口径）
+            if (!row.isNull("today_advice")) {
+                JSONObject ra = row.optJSONObject("today_advice");
+                if (ra != null) TodayAdvice.adopt(c, ra);
+            }
             if (!row.isNull("self_checks")) {
                 SelfChecks.merge(c, row.optJSONArray("self_checks"));
             }

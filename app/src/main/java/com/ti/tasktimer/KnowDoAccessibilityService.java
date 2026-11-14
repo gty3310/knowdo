@@ -115,7 +115,56 @@ public class KnowDoAccessibilityService extends AccessibilityService {
             lastFgPkg = event.getPackageName().toString();
             // 分神处置盖住（v1.80.0）：前台回到被盖软件→拉起盖屏；切去别的软件→收起盖屏
             try { AppBlock.checkForeground(this, lastFgPkg); } catch (Exception ignored) { }
+            // 「给 AI 回复」待填（v1.85.0）：目标软件窗口出现时把文字填入输入框
+            try { tryFillPending(lastFgPkg); } catch (Exception ignored) { }
+        } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && event.getPackageName() != null) {
+            // 输入框可能晚于窗口出现（对方首屏渲染慢）：内容变化时再补试一次
+            try { tryFillPending(event.getPackageName().toString()); } catch (Exception ignored) { }
         }
+    }
+
+    /**
+     * 「给 AI 回复」的自动填入（v1.85.0）：有待填、且前台正是目标软件时，
+     * 找它的输入框写入待填文字，写成功即销账；找不到/写不进就留着等下一次
+     * 事件，过了有效期由 AiReplyFill.pendingText 自动销账（剪贴板兜底已在
+     * 发起时备好）。只写文字，永不点发送钮。
+     */
+    private void tryFillPending(String fgPkg) {
+        if (fgPkg == null || fgPkg.isEmpty()) return;
+        String text = AiReplyFill.pendingText(this);
+        if (text == null) return;
+        if (!fgPkg.equals(AiReplyFill.pendingPkg(this))) return;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        AccessibilityNodeInfo edit = findEditable(root);
+        if (edit == null) return;
+        try {
+            android.os.Bundle args = new android.os.Bundle();
+            args.putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+            if (edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                AiReplyFill.clearPending(this);
+            }
+        } finally {
+            edit.recycle();
+        }
+    }
+
+    /** 找输入框：优先聚焦中的可编辑节点，其次任意可见的可编辑节点。 */
+    private AccessibilityNodeInfo findEditable(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+        if (node.isEditable() && node.isFocused()) return node;
+        AccessibilityNodeInfo found = null;
+        if (node.isEditable() && node.isVisibleToUser()) found = node;
+        for (int i = 0; found == null && i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch == null) continue;
+            AccessibilityNodeInfo r = findEditable(ch);
+            if (r != null) found = r; else ch.recycle();
+        }
+        if (found != node) node.recycle();
+        return found;
     }
 
     @Override
