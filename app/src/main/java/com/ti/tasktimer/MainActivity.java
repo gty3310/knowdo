@@ -89,24 +89,31 @@ public class MainActivity extends Activity {
     private final java.util.Set<String> todayBlockIds = new java.util.HashSet<>(); // 今日日程里有块的 taskId（不限分屏形态，只读 schedule）
     // ---- v1.16.0 底部 Tab：日程（原主页内容）／习惯／知行；v1.24.0 加第四签「聊聊」；
     // v1.50.0 五签：第一签改名「行」，第二签新增「知」，其余顺延；
-    // v1.82.0 四签：行／知／知行／聊聊（习惯签下线，习惯并入知页「戒」组） ----
+    // v1.82.0 四签：行／知／知行／聊聊（习惯签下线，习惯并入知页「戒」组）；
+    // v1.85.0 五签：新增第一签「今天」（打开 App 默认落此页），其余顺延一位。
+    // 全仓按索引定位的引用只有下面三处外部调用方，全部用常量名（不受顺延影响）：
+    // GuardActivity（EXTRA_OPEN_TAB=TAB_CHAT）、HabitReceiver（TAB_ZHI＋
+    // EXTRA_ZHI_GROUP）、本类抽屉/知页跳转（TAB_CHAT/TAB_ZHI 常量名） ----
     public static final String EXTRA_OPEN_TAB = "open_tab";
     /** 守卫问询页「和 AI 聊聊」带过来的上下文任务 id（配合 EXTRA_OPEN_TAB=TAB_CHAT 用）。 */
     public static final String EXTRA_CHAT_TASK = "chat_task_id";
-    public static final int TAB_SCHEDULE = 0;
-    public static final int TAB_ZHI = 1;
-    public static final int TAB_ZHIXING = 2;
-    public static final int TAB_CHAT = 3;
+    public static final int TAB_TODAY = 0;
+    public static final int TAB_SCHEDULE = 1;
+    public static final int TAB_ZHI = 2;
+    public static final int TAB_ZHIXING = 3;
+    public static final int TAB_CHAT = 4;
     /** v1.82.0：习惯提醒深链指定知页分组（值＝ZhiPage 的组序，如 PAGE_JIE）；配合 EXTRA_OPEN_TAB=TAB_ZHI 使用。 */
     public static final String EXTRA_ZHI_GROUP = "zhi_group";
-    private int currentTab = TAB_SCHEDULE;
+    private int currentTab = TAB_TODAY;
+    private FrameLayout todayContainer;
     private FrameLayout scheduleWrap;
     private FrameLayout zhiContainer;
     private FrameLayout zhixingContainer;
     private FrameLayout chatContainer;
-    private final View[] tabCells = new View[4];
-    private final TextView[] tabLabels = new TextView[4];
-    private final ImageView[] tabIcons = new ImageView[4];
+    private final View[] tabCells = new View[5];
+    private final TextView[] tabLabels = new TextView[5];
+    private final ImageView[] tabIcons = new ImageView[5];
+    private TodayPage todayPage;
     private ZhiPage zhiPage;
     private ZhixingPage zhixingPage;
     private ChatPanel chatPanel;
@@ -162,7 +169,7 @@ public class MainActivity extends Activity {
         refreshChatBadge();
         // 通知点开可直达某个 Tab（习惯提醒 → 知页戒组）
         if (getIntent() != null && getIntent().hasExtra(EXTRA_OPEN_TAB)) {
-            switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+            switchTab(getIntent().getIntExtra(EXTRA_OPEN_TAB, TAB_TODAY));
             applyChatTaskExtra(getIntent());
             applyZhiGroupExtra(getIntent());
         }
@@ -173,7 +180,7 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (intent != null && intent.hasExtra(EXTRA_OPEN_TAB)) {
-            switchTab(intent.getIntExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE));
+            switchTab(intent.getIntExtra(EXTRA_OPEN_TAB, TAB_TODAY));
             applyChatTaskExtra(intent);
             applyZhiGroupExtra(intent);
         }
@@ -423,7 +430,11 @@ public class MainActivity extends Activity {
         FrameLayout pages = new FrameLayout(this);
         mainCol.addView(pages, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        todayContainer = new FrameLayout(this);
+        pages.addView(todayContainer, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         scheduleWrap = new FrameLayout(this);
+        scheduleWrap.setVisibility(View.GONE); // v1.85.0：默认落「今天」页，行页切过来才显示
         pages.addView(scheduleWrap, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         zhiContainer = new FrameLayout(this);
@@ -439,6 +450,8 @@ public class MainActivity extends Activity {
         pages.addView(chatContainer, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         buildTabBar(mainCol);
+        // v1.85.0：默认落「今天」页——它不是懒建页，buildUi 时就建好首屏
+        todayPage = new TodayPage(this, todayContainer);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -695,7 +708,7 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Ui.dark(this) ? Ui.surface(this) : Ui.bg(this));
         bar.setPadding(dp(6), dp(4), dp(6), dp(6));
         mainCol.addView(bar);
-        String[] labels = {Strings.tabSchedule(), Strings.tabZhi(),
+        String[] labels = {Strings.tabToday(), Strings.tabSchedule(), Strings.tabZhi(),
                 Strings.tabZhixing(), Strings.tabChat()};
         for (int i = 0; i < labels.length; i++) {
             final int idx = i;
@@ -753,13 +766,16 @@ public class MainActivity extends Activity {
         paintTabs();
     }
 
-    // v1.63.0 底部签正式图标：顺序与 TAB_* 常量一致（v1.82.0 起四签：行/知/知行/聊聊）
+    // v1.63.0 底部签正式图标：顺序与 TAB_* 常量一致（v1.85.0 起五签：今天/行/知/知行/聊聊；
+    // 「今天」图标新作 ic_00：圆中一点，未选中态圆心点朱砂、圆环浅灰，选中态圆环墨色）
     private static final int[] TAB_ICON_SEL = {
-            R.drawable.ic_01_act_selected, R.drawable.ic_02_knowledge_selected,
-            R.drawable.ic_04_unity_selected, R.drawable.ic_05_chat_selected};
+            R.drawable.ic_00_today_selected, R.drawable.ic_01_act_selected,
+            R.drawable.ic_02_knowledge_selected, R.drawable.ic_04_unity_selected,
+            R.drawable.ic_05_chat_selected};
     private static final int[] TAB_ICON_UNSEL = {
-            R.drawable.ic_01_act_unselected, R.drawable.ic_02_knowledge_unselected,
-            R.drawable.ic_04_unity_unselected, R.drawable.ic_05_chat_unselected};
+            R.drawable.ic_00_today_unselected, R.drawable.ic_01_act_unselected,
+            R.drawable.ic_02_knowledge_unselected, R.drawable.ic_04_unity_unselected,
+            R.drawable.ic_05_chat_unselected};
 
     private void paintTabs() {
         for (int i = 0; i < tabLabels.length; i++) {
@@ -773,13 +789,14 @@ public class MainActivity extends Activity {
     }
 
     public void switchTab(int tab) {
-        if (tab < TAB_SCHEDULE || tab > TAB_CHAT) tab = TAB_SCHEDULE;
+        if (tab < TAB_TODAY || tab > TAB_CHAT) tab = TAB_TODAY;
         currentTab = tab;
         // 进入聊聊页签＝主线看过了，红点清零（v1.27.0）
         if (tab == TAB_CHAT) {
             ChatStore.markMainSeen(this);
             refreshChatBadge();
         }
+        if (todayContainer != null) todayContainer.setVisibility(tab == TAB_TODAY ? View.VISIBLE : View.GONE);
         if (scheduleWrap != null) scheduleWrap.setVisibility(tab == TAB_SCHEDULE ? View.VISIBLE : View.GONE);
         if (zhiContainer != null) zhiContainer.setVisibility(tab == TAB_ZHI ? View.VISIBLE : View.GONE);
         if (zhixingContainer != null) zhixingContainer.setVisibility(tab == TAB_ZHIXING ? View.VISIBLE : View.GONE);
@@ -790,7 +807,10 @@ public class MainActivity extends Activity {
             if (tab != TAB_SCHEDULE) calendarPanel.panelStop();
             else calendarPanel.panelStart();
         }
-        if (tab == TAB_ZHI) {
+        if (tab == TAB_TODAY) {
+            if (todayPage == null) todayPage = new TodayPage(this, todayContainer);
+            else todayPage.refresh();
+        } else if (tab == TAB_ZHI) {
             if (zhiPage == null) zhiPage = new ZhiPage(this, zhiContainer);
             zhiPage.refresh();
         } else if (tab == TAB_ZHIXING) {
@@ -2477,6 +2497,19 @@ public class MainActivity extends Activity {
     public void openZhiPrinciple(String principleId) {
         switchTab(TAB_ZHI);
         if (zhiPage != null) zhiPage.openPrincipleById(principleId);
+    }
+
+    /** 今天页日记卡跳知页察组（v1.85.0）：与 openZhiPrinciple 同款两段式——
+     *  先切知页签，再让知页打开这天的日记详情（察组同一编辑入口）。 */
+    public void openZhiDiary(String date) {
+        switchTab(TAB_ZHI);
+        if (zhiPage != null) zhiPage.openDiaryExternal(date);
+    }
+
+    /** 今天页 AI 建议任务小卡的开始钮（v1.85.0）：与行页开始走同一条路径
+     *  （startTaskNow：计时中切换／暂停中续跑／否则新开）。 */
+    public void startTaskFromToday(TaskItem t) {
+        startTaskNow(t);
     }
 
     private void startTaskNow(TaskItem t) {
