@@ -128,8 +128,8 @@ public final class Strings {
     public static String nextNoneToday() { return s("（今天没有未完成的任务）", "(Nothing left today)"); }
     public static String rowNextGuard() { return s("任务衔接守卫", "Next-task guard"); }
     public static String rowNextGuardSub() {
-        return s("没有任务在计时时，全屏弹出「下一个任务」页",
-                "When nothing is timing, a full-screen page asks what's next");
+        return s("没有任务在计时时，全屏弹出「下一个任务」页（经云端同步）",
+                "When nothing is timing, a full-screen page asks what's next (synced via the cloud)");
     }
     public static String pauseAskTitle(String title) {
         return en ? "Pause \"" + title + "\" — remind me in…"

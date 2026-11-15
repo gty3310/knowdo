@@ -208,6 +208,8 @@ public final class IdleNag {
             o.put("vibrate_seconds", vibrateSeconds(c));
             o.put("sound", sound(c));
             o.put("max_rounds", maxRounds(c));
+            // 任务衔接守卫总开关随本对象同步（无新列）；Mac 写回时保留不认识的键。
+            o.put("guard_enabled", IdleGuard.enabled(c));
             return o;
         } catch (Exception e) {
             return new JSONObject();

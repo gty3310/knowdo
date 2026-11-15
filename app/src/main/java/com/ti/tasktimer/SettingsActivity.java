@@ -620,12 +620,13 @@ public class SettingsActivity extends Activity {
         });
         row(Strings.rowScreenGuard(), Strings.en() ? "Details live in Permissions"
                 : "细项在权限页里", sg, null);
-        // 任务衔接守卫（v1.10.0）：只存本地（IdleGuard prefs），不进同步；关掉时看门狗整体停用
+        // 任务衔接守卫（v1.10.0）：本地 IdleGuard prefs，并经 idle_nag.guard_enabled 同步
         Switch ng = mkSwitch(IdleGuard.enabled(this));
         ng.setOnCheckedChangeListener((b, on) -> {
             IdleGuard.setEnabled(this, on);
             toast(on ? (Strings.en() ? "Next-task guard on" : "任务衔接守卫已打开：空档时会全屏问下一个任务")
                     : (Strings.en() ? "Next-task guard off" : "任务衔接守卫已关闭：空档时不再自动弹出（暂停规则不受影响）"));
+            AccountUi.runSync(this, store, this::buildUi, false);
         });
         row(Strings.rowNextGuard(), Strings.rowNextGuardSub(), ng, null);
     }

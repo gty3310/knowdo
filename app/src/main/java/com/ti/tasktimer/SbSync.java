@@ -271,6 +271,28 @@ public final class SbSync {
 
     private static String userStateUrl() { return "user_state?select=" + USER_STATE_COLS; }
 
+    /**
+     * 合并 idle_nag.guard_enabled（任务衔接守卫总开关）。需要回写时把整份
+     * idle_nag（含现行开关）写入 write 并返回 true；采用云端或无需动作返回 false。
+     */
+    private static boolean mergeIdleGuardEnabled(Context c, JSONObject remoteNag, JSONObject write)
+            throws Exception {
+        boolean remoteHas = remoteNag != null && remoteNag.has("guard_enabled");
+        if (remoteHas && !IdleGuard.hasLocal(c)) {
+            IdleGuard.adoptCloud(c, remoteNag.optBoolean("guard_enabled", true));
+            return false;
+        }
+        if (IdleGuard.hasLocal(c)) {
+            boolean remoteOn = remoteHas && remoteNag.optBoolean("guard_enabled", true);
+            boolean localOn = IdleGuard.enabled(c);
+            if (!remoteHas || remoteOn != localOn) {
+                write.put("idle_nag", IdleNag.toCloudJson(c));
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void syncUserState(Context c, String uid) throws Exception {
         JSONArray us = Supa.restGet(c, userStateUrl());
         JSONObject urow = us.length() > 0 ? us.getJSONObject(0) : null;
@@ -377,6 +399,10 @@ public final class SbSync {
                     write.put("idle_nag", IdleNag.toCloudJson(c));
                     needWrite = true;
                 }
+                // 任务衔接守卫总开关：寄存在 idle_nag.guard_enabled（无新列），
+                // 与催促档位分本机标记；本机从未存过且云端有该键→采用云端，
+                // 本机有值且不同、或本机有值而云端尚无该键→回写整份 idle_nag。
+                if (mergeIdleGuardEnabled(c, remoteNag, write)) needWrite = true;
             }
             if (hasRepop) {
                 // 提示页重弹间隔合并（v1.26.3，与 idle_nag 同口径，只动 prompt_repop 一个键）：
@@ -716,6 +742,13 @@ public final class SbSync {
                     IdleNag.adoptCloud(c, rn);
                     IdleAlarm.reevaluate(c);
                     EndNag.reevaluate(c);
+                }
+            }
+            // 任务衔接守卫开关（idle_nag.guard_enabled）：本机从未存过时才采用，不在这里回写
+            if (!row.isNull("idle_nag") && !IdleGuard.hasLocal(c)) {
+                JSONObject rn = row.optJSONObject("idle_nag");
+                if (rn != null && rn.has("guard_enabled")) {
+                    IdleGuard.adoptCloud(c, rn.optBoolean("guard_enabled", true));
                 }
             }
             // 提示页重弹间隔（v1.26.3）：本机从未存过时才采用云端推来的值（与 idle_nag 同口径），不在这里回写；

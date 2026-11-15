@@ -15,7 +15,7 @@ import android.os.Looper;
  *
  * 触发分两档：
  * - checkAndFire：常驻巡检（FloatService）、主页 onResume——
- *   受「守卫页被返回键退出后的静默期」与最小重拉间隔约束，免得用户临时翻列表/设置时被反复打断；
+ *   受「守卫页被返回键退出后的静默期」与最小重拉间隔约束，凑得用户临时翻列表/设置时被反复打断；
  * - fireNow：事件触发（检查页确认完成、主页/日历手动完成任务、叫回页转入）——
  *   不受静默期约束（完成一个任务正是「问下一个」的时刻），仍受开关/空档/页面互斥约束。
  */
@@ -34,15 +34,27 @@ public final class IdleGuard {
         return c.getSharedPreferences(PREF, Context.MODE_PRIVATE);
     }
 
-    /** 设置页「任务衔接守卫」开关（默认开，只存本地不进同步）。关掉时看门狗整体停用。 */
+    /** 设置页「任务衔接守卫」开关（默认开）。随 user_state.idle_nag 的
+     *  guard_enabled 键同步（无新列；本机从未存过且云端有值→采用云端，
+     *  本机有值且不同→回写本机）。关掉时看门狗整体停用。 */
     public static boolean enabled(Context c) { return sp(c).getBoolean("enabled", true); }
 
+    /** 本机是否存过该开关（含升级前只写过 enabled、尚无 has_local 标记的情况）。 */
+    public static boolean hasLocal(Context c) {
+        return sp(c).getBoolean("has_local", false) || sp(c).contains("enabled");
+    }
+
     public static void setEnabled(Context c, boolean on) {
-        sp(c).edit().putBoolean("enabled", on).apply();
+        sp(c).edit().putBoolean("has_local", true).putBoolean("enabled", on).apply();
         if (!on) {
             AlertHelper.cancelNextTask(c);
             IdleAlarm.onNotIdle(c); // 总开关关：催促周期一并取消（弹页与 alarm 都不发生）
         }
+    }
+
+    /** 采用云端 guard_enabled（调用方已确认本机从未存过）。 */
+    public static void adoptCloud(Context c, boolean on) {
+        setEnabled(c, on);
     }
 
     /** 是否空档：没在计时，也没有生效中的定时暂停。 */
