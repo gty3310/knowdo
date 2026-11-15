@@ -274,6 +274,11 @@
             android:name=".EndNagReceiver"
             android:exported="false" />
 
+        <!-- 「找下一个任务」3 分钟倒计时到点（本地轻量计时，不进 TimerState） -->
+        <receiver
+            android:name=".FindNextReceiver"
+            android:exported="false" />
+
         <!-- 宽限到点处理闹钟接收器（v1.21.3）：宽限到期主动复查前台并执行所选处理 -->
         <receiver
             android:name=".GraceEnforceReceiver"
