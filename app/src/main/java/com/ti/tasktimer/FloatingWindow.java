@@ -50,6 +50,7 @@ public class FloatingWindow {
     public static final int ST_IDLE = 1;
     public static final int ST_RUNNING = 2;
     public static final int ST_PAUSED = 3;
+    public static final int ST_FINDING = 4; // 「找下一个任务」3 分钟倒计时（不是任务）
 
     private static WindowManager wm;
     private static WindowManager.LayoutParams lp;
@@ -118,6 +119,13 @@ public class FloatingWindow {
             d.remainMs = TimerState.pausedRemainMs(c);
             return d;
         }
+        // 找下一件倒计时优先于「列表第一要务」：显示「找下一个任务 02:41」，不挂任何任务
+        if (FindNextTimer.isActive(c)) {
+            d.state = ST_FINDING;
+            d.title = Strings.findNextTitle();
+            d.remainMs = FindNextTimer.remainMs(c);
+            return d;
+        }
         for (TaskItem t : store.visibleSorted()) {
             if (!t.isDoneToday()) {
                 d.state = ST_IDLE;
@@ -133,6 +141,7 @@ public class FloatingWindow {
         Display d = resolveDisplay(c);
         if (d.state == ST_RUNNING) return "「" + d.title + "」计时中，剩余 " + fmt(d.remainMs);
         if (d.state == ST_PAUSED) return "「" + d.title + "」已暂停，剩余 " + fmt(d.remainMs);
+        if (d.state == ST_FINDING) return Strings.findNextSummary(fmt(d.remainMs));
         if (d.state == ST_IDLE) return "下一件：「" + d.title + "」（" + d.task.durationMinutes + " 分钟）";
         return "暂无未完成任务";
     }
@@ -289,7 +298,7 @@ public class FloatingWindow {
         Display d = resolveDisplay(c);
         displayTaskId = d.task != null ? d.task.id : null;
         String timeText;
-        if (d.state == ST_RUNNING || d.state == ST_PAUSED) timeText = fmt(d.remainMs);
+        if (d.state == ST_RUNNING || d.state == ST_PAUSED || d.state == ST_FINDING) timeText = fmt(d.remainMs);
         else if (d.state == ST_IDLE) timeText = d.task.durationMinutes + "分";
         else timeText = "--:--";
         if (titleView != null) titleView.setText(d.title);
@@ -363,7 +372,10 @@ public class FloatingWindow {
                 miniSub.setVisibility(View.GONE);
             }
         }
-        if (miniPlay != null) miniPlay.setText(d.state == ST_RUNNING ? "⏸" : "▶");
+        if (miniPlay != null) {
+            miniPlay.setText(d.state == ST_RUNNING ? "⏸" : "▶");
+            miniPlay.setVisibility(d.state == ST_FINDING ? View.GONE : View.VISIBLE);
+        }
         // EDIT 暂停条（v1.11.0）：暂停时贴在任务内容顶部
         if (pauseStrip != null && pauseStripText != null) {
             if (d.state == ST_PAUSED) {
@@ -384,7 +396,8 @@ public class FloatingWindow {
             }
         }
         // EDIT 按钮行随暂停态切换：暂停时藏 AI、亮「再加 5 分钟 / 换个目的」
-        if (aiBtnRef != null) aiBtnRef.setVisibility(d.state == ST_PAUSED ? View.GONE : View.VISIBLE);
+        if (aiBtnRef != null) aiBtnRef.setVisibility(
+                d.state == ST_PAUSED || d.state == ST_FINDING ? View.GONE : View.VISIBLE);
         if (pausedBtns != null) pausedBtns.setVisibility(d.state == ST_PAUSED ? View.VISIBLE : View.GONE);
         // EDIT 子任务区（v1.11.0）：编辑中或签名未变时不重建
         if (subPanel != null && !subEditing) {
@@ -406,6 +419,7 @@ public class FloatingWindow {
         if (stateView != null) {
             stateView.setText(d.state == ST_RUNNING ? "计时中"
                     : d.state == ST_PAUSED ? "已暂停，点 ▶ 继续"
+                    : d.state == ST_FINDING ? Strings.findNextHint()
                     : d.state == ST_IDLE ? "第一要务，点 ▶ 开始" : "今天的任务都完成了");
         }
         // EDIT 卡时间行右侧（v1.6.1）：已用 / 计划总。
@@ -436,12 +450,14 @@ public class FloatingWindow {
         if (playPauseBtn != null) {
             playPauseBtn.setText(d.state == ST_RUNNING ? "⏸ 暂停"
                     : d.state == ST_PAUSED ? "▶ 继续" : "▶ 开始");
-            playPauseBtn.setEnabled(d.state != ST_NONE);
+            playPauseBtn.setEnabled(d.state != ST_NONE && d.state != ST_FINDING);
+            playPauseBtn.setVisibility(d.state == ST_FINDING ? View.GONE : View.VISIBLE);
         }
         if (doneBtn != null) doneBtn.setVisibility(d.state == ST_RUNNING ? View.VISIBLE : View.GONE);
         if (dockView != null) {
             long mins;
-            if (d.state == ST_RUNNING || d.state == ST_PAUSED) mins = Math.max(1, (d.remainMs + 59_999) / 60_000);
+            if (d.state == ST_RUNNING || d.state == ST_PAUSED || d.state == ST_FINDING)
+                mins = Math.max(1, (d.remainMs + 59_999) / 60_000);
             else if (d.state == ST_IDLE) mins = d.task.durationMinutes;
             else mins = 0;
             dockView.setText(d.state == ST_NONE ? "✓" : mins > 99 ? "99+" : String.valueOf(mins));
@@ -491,6 +507,7 @@ public class FloatingWindow {
     // ---------- 开始 / 暂停 / 继续 ----------
     private static void onPlayPause(Context c) {
         Display d = resolveDisplay(c);
+        if (d.state == ST_FINDING) return; // 不是任务，不能暂停或当作第一要务开始
         if (d.state == ST_RUNNING) {
             PauseCard.showOverlay(c, d.title, Strings.pauseStartBtn(),
                     ch -> TimerService.pauseWithReminder(c, ch.delayMs, ch.reason, ch.emoji, ch.silent));

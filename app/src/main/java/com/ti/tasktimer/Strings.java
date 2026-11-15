@@ -126,6 +126,11 @@ public final class Strings {
     public static String nextStart() { return s("开始", "Start"); }
     public static String nextTodayTitle() { return s("今日未完成（点一下直接开始）", "Not done today (tap to start)"); }
     public static String nextNoneToday() { return s("（今天没有未完成的任务）", "(Nothing left today)"); }
+    public static String findNextTitle() { return s("找下一个任务", "Find next task"); }
+    public static String findNextSummary(String remain) {
+        return s("找下一个任务 " + remain, "Find next task " + remain);
+    }
+    public static String findNextHint() { return s("正在找下一件", "Finding the next task"); }
     public static String rowNextGuard() { return s("任务衔接守卫", "Next-task guard"); }
     public static String rowNextGuardSub() {
         return s("没有任务在计时时，全屏弹出「下一个任务」页",

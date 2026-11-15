@@ -253,6 +253,7 @@ public class NextTaskActivity extends Activity {
         store.load();
         List<TaskItem> today = new ArrayList<>();
         for (TaskItem t : store.visibleSorted()) {
+            if (t.isAi()) continue; // AI 任务不可计时，不进候选
             if (!t.isDoneToday()) today.add(t);
             if (today.size() >= 5) break;
         }
@@ -476,6 +477,7 @@ public class NextTaskActivity extends Activity {
         store.load();
         List<TaskItem> leisure = new ArrayList<>();
         for (TaskItem t : store.visibleSorted()) {
+            if (t.isAi()) continue;
             if (!t.isDoneToday() && TaskItem.isLeisure(t.priority)) leisure.add(t);
         }
         if (!leisure.isEmpty()) {
