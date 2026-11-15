@@ -103,6 +103,7 @@ public class BlockActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        FloatingWindow.setSuppressed(true); // 回到前台重新让位（onPause 时已放悬浮窗回来）
         if (countView != null) refresh();
     }
 
