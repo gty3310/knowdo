@@ -1,6 +1,7 @@
 package com.ti.tasktimer;
 
 import android.content.Context;
+import org.json.JSONObject;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,8 +36,10 @@ public final class IdleGuard {
     }
 
     /** 设置页「任务衔接守卫」开关（默认开）。随 user_state.idle_nag 的
-     *  guard_enabled 键同步（无新列；本机从未存过且云端有值→采用云端，
-     *  本机有值且不同→回写本机）。关掉时看门狗整体停用。 */
+     *  guard_enabled / guard_enabled_at 两个键同步（无新列）：按改动时刻新者胜——
+     *  云端改动时刻比本机新（或本机从未存过）→采用云端；否则本机值不同即回写。
+     *  这样在云端改开关（同时写 guard_enabled_at＝当前毫秒）能随时生效，
+     *  不会像「本机一旦存过就永远本机胜」那样只能远程改一次。关掉时看门狗整体停用。 */
     public static boolean enabled(Context c) { return sp(c).getBoolean("enabled", true); }
 
     /** 本机是否存过该开关（含升级前只写过 enabled、尚无 has_local 标记的情况）。 */
@@ -44,17 +47,35 @@ public final class IdleGuard {
         return sp(c).getBoolean("has_local", false) || sp(c).contains("enabled");
     }
 
+    /** 本机开关最后一次改动的时刻（毫秒；升级前存过或从未改过为 0）。 */
+    public static long changedAt(Context c) { return sp(c).getLong("changed_at", 0L); }
+
+    /** 设置页手动改开关：记下改动时刻，供与云端比新旧。 */
     public static void setEnabled(Context c, boolean on) {
-        sp(c).edit().putBoolean("has_local", true).putBoolean("enabled", on).apply();
+        apply(c, on, System.currentTimeMillis());
+    }
+
+    private static void apply(Context c, boolean on, long at) {
+        sp(c).edit().putBoolean("has_local", true).putBoolean("enabled", on)
+                .putLong("changed_at", at).apply();
         if (!on) {
             AlertHelper.cancelNextTask(c);
             IdleAlarm.onNotIdle(c); // 总开关关：催促周期一并取消（弹页与 alarm 都不发生）
+        } else {
+            IdleAlarm.reevaluate(c); // 远程/手动打开：催促周期按现状重排
         }
     }
 
-    /** 采用云端 guard_enabled（调用方已确认本机从未存过）。 */
-    public static void adoptCloud(Context c, boolean on) {
-        setEnabled(c, on);
+    /** 云端这份 idle_nag 里的开关是否应当采用：云端有键，且本机从未存过或云端改动时刻更新。 */
+    public static boolean shouldAdoptCloud(Context c, JSONObject nag) {
+        if (nag == null || !nag.has("guard_enabled")) return false;
+        if (!hasLocal(c)) return true;
+        return nag.optLong("guard_enabled_at", 0L) > changedAt(c);
+    }
+
+    /** 采用云端 guard_enabled（连同其改动时刻，免得下一轮又被判成本机更新而回写）。 */
+    public static void adoptCloud(Context c, JSONObject nag) {
+        apply(c, nag.optBoolean("guard_enabled", true), nag.optLong("guard_enabled_at", 0L));
     }
 
     /** 是否空档：没在计时，也没有生效中的定时暂停。 */

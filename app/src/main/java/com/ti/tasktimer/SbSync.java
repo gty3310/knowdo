@@ -272,25 +272,20 @@ public final class SbSync {
     private static String userStateUrl() { return "user_state?select=" + USER_STATE_COLS; }
 
     /**
-     * 合并 idle_nag.guard_enabled（任务衔接守卫总开关）。需要回写时把整份
-     * idle_nag（含现行开关）写入 write 并返回 true；采用云端或无需动作返回 false。
+     * 合并 idle_nag.guard_enabled（任务衔接守卫总开关，按 guard_enabled_at 新者胜）。
+     * 云端更新（或本机从未存过）→采用云端、返回 false；本机有值且与云端值或时刻
+     * 不一致→返回 true，由调用方把整份 idle_nag（toCloudJson，含现行开关）回写。
      */
-    private static boolean mergeIdleGuardEnabled(Context c, JSONObject remoteNag, JSONObject write)
-            throws Exception {
-        boolean remoteHas = remoteNag != null && remoteNag.has("guard_enabled");
-        if (remoteHas && !IdleGuard.hasLocal(c)) {
-            IdleGuard.adoptCloud(c, remoteNag.optBoolean("guard_enabled", true));
+    private static boolean mergeIdleGuardEnabled(Context c, JSONObject remoteNag) {
+        if (IdleGuard.shouldAdoptCloud(c, remoteNag)) {
+            IdleGuard.adoptCloud(c, remoteNag);
             return false;
         }
-        if (IdleGuard.hasLocal(c)) {
-            boolean remoteOn = remoteHas && remoteNag.optBoolean("guard_enabled", true);
-            boolean localOn = IdleGuard.enabled(c);
-            if (!remoteHas || remoteOn != localOn) {
-                write.put("idle_nag", IdleNag.toCloudJson(c));
-                return true;
-            }
-        }
-        return false;
+        if (!IdleGuard.hasLocal(c)) return false;
+        boolean remoteHas = remoteNag != null && remoteNag.has("guard_enabled");
+        return !remoteHas
+                || remoteNag.optBoolean("guard_enabled", true) != IdleGuard.enabled(c)
+                || remoteNag.optLong("guard_enabled_at", 0L) != IdleGuard.changedAt(c);
     }
 
     private static void syncUserState(Context c, String uid) throws Exception {
@@ -391,6 +386,9 @@ public final class SbSync {
                 // 空档催促设置合并（v1.14.0，与立志同口径）：本机从未存过且云端有值→采用云端；
                 // 本机有值且与云端不同→回写本机值。只动 idle_nag 一个键。
                 JSONObject remoteNag = urow.isNull("idle_nag") ? null : urow.optJSONObject("idle_nag");
+                // 任务衔接守卫总开关寄存在 idle_nag.guard_enabled（无新列），先于档位合并：
+                // 云端更新时先采用，免得下面档位回写的 toCloudJson 把本机旧开关值带上去盖掉云端
+                boolean guardWrite = mergeIdleGuardEnabled(c, remoteNag);
                 if (!IdleNag.hasLocal(c) && remoteNag != null) {
                     IdleNag.adoptCloud(c, remoteNag);
                     IdleAlarm.reevaluate(c);
@@ -399,10 +397,10 @@ public final class SbSync {
                     write.put("idle_nag", IdleNag.toCloudJson(c));
                     needWrite = true;
                 }
-                // 任务衔接守卫总开关：寄存在 idle_nag.guard_enabled（无新列），
-                // 与催促档位分本机标记；本机从未存过且云端有该键→采用云端，
-                // 本机有值且不同、或本机有值而云端尚无该键→回写整份 idle_nag。
-                if (mergeIdleGuardEnabled(c, remoteNag, write)) needWrite = true;
+                if (guardWrite) {
+                    write.put("idle_nag", IdleNag.toCloudJson(c));
+                    needWrite = true;
+                }
             }
             if (hasRepop) {
                 // 提示页重弹间隔合并（v1.26.3，与 idle_nag 同口径，只动 prompt_repop 一个键）：
@@ -744,12 +742,10 @@ public final class SbSync {
                     EndNag.reevaluate(c);
                 }
             }
-            // 任务衔接守卫开关（idle_nag.guard_enabled）：本机从未存过时才采用，不在这里回写
-            if (!row.isNull("idle_nag") && !IdleGuard.hasLocal(c)) {
+            // 任务衔接守卫开关（idle_nag.guard_enabled）：云端改动时刻更新（或本机从未存过）才采用，不在这里回写
+            if (!row.isNull("idle_nag")) {
                 JSONObject rn = row.optJSONObject("idle_nag");
-                if (rn != null && rn.has("guard_enabled")) {
-                    IdleGuard.adoptCloud(c, rn.optBoolean("guard_enabled", true));
-                }
+                if (IdleGuard.shouldAdoptCloud(c, rn)) IdleGuard.adoptCloud(c, rn);
             }
             // 提示页重弹间隔（v1.26.3）：本机从未存过时才采用云端推来的值（与 idle_nag 同口径），不在这里回写；
             // 各重弹链排下一拍时现读本值，故采用后下一拍起即按新间隔走
