@@ -83,6 +83,7 @@ public class FloatingWindow {
     private static boolean settingText = false;
     private static boolean suppressed = false;
     private static boolean layoutFailed = false; // addView/updateViewLayout 失败或视图已脱离窗口
+    private static long builtAt = 0L; // 上次 addView 成功的时刻：刚加上的视图要等下一帧才 attach，宽限期内不当成被卸
     private static boolean noteDirty = false;
     private static String cachedTaskId = null;
     private static String boundNoteText = null; // 笔记框上次与数据源对齐的文字（v1.6.2 同步修复）
@@ -256,7 +257,8 @@ public class FloatingWindow {
         if (FloatSnooze.isActive(c)) { hide(); return; }
         if (!AlertHelper.canDrawOverlays(c)) return;
         // 看门狗：系统把 overlay 卸掉后 rootView 可能仍非空，不重建就会「永远消失」
-        if (rootView != null && (layoutFailed || !rootView.isAttachedToWindow())) {
+        if (rootView != null && (layoutFailed || (!rootView.isAttachedToWindow()
+                && System.currentTimeMillis() - builtAt > 3_000L))) {
             hideInternal();
         }
         if (rootView != null) return;
@@ -761,7 +763,7 @@ public class FloatingWindow {
         btns.addView(aiBtnRef);
         doneBtn = smallButton(c, "完成");
         doneBtn.setOnClickListener(v -> {
-            setSuppressed(true);
+            // 检查页开着也不藏悬浮窗（与到点不藏同一口径）
             Intent i = new Intent(c, CheckActivity.class);
             i.putExtra(CheckActivity.EXTRA_TYPE, AlertHelper.TYPE_END);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -839,6 +841,7 @@ public class FloatingWindow {
         try {
             wm.addView(rootView, lp);
             layoutFailed = false;
+            builtAt = System.currentTimeMillis();
         } catch (Exception e) {
             layoutFailed = true;
             rootView = null;

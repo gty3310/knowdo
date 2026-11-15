@@ -163,6 +163,8 @@ public class TaskAlarmActivity extends Activity {
     private void openCheckIfNeeded() {
         if (!thenCheck || proceededToCheck) return;
         proceededToCheck = true;
+        // 任务已在别处确认/停表（悬浮窗、Mac 端、远端同步）就不再拉结束检查页
+        if (!TimerState.isRunning(this) || !TimerState.endFired(this)) return;
         Intent i = new Intent(this, CheckActivity.class);
         i.putExtra(CheckActivity.EXTRA_TYPE, AlertHelper.TYPE_END);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
