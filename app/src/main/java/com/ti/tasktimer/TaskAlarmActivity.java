@@ -37,6 +37,7 @@ public class TaskAlarmActivity extends Activity {
     private long ringStartMs;
     private boolean thenCheck;
     private boolean stopped;
+    private boolean proceededToCheck; // 已转去结束检查页，避免 onDestroy 再拉一次
 
     private final Runnable rampTick = new Runnable() {
         @Override public void run() {
@@ -158,18 +159,25 @@ public class TaskAlarmActivity extends Activity {
         player = null;
     }
 
+    /** thenCheck 时转到结束检查页；知道了 / 超时 / 非配置变更的销毁共用，只走一次。 */
+    private void openCheckIfNeeded() {
+        if (!thenCheck || proceededToCheck) return;
+        proceededToCheck = true;
+        // 任务已在别处确认/停表（悬浮窗、Mac 端、远端同步）就不再拉结束检查页
+        if (!TimerState.isRunning(this) || !TimerState.endFired(this)) return;
+        Intent i = new Intent(this, CheckActivity.class);
+        i.putExtra(CheckActivity.EXTRA_TYPE, AlertHelper.TYPE_END);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { startActivity(i); } catch (Exception ignored) { }
+    }
+
     private void stopAndFinish() {
         if (stopped) return;
         stopped = true;
         handler.removeCallbacks(rampTick);
         handler.removeCallbacks(autoStop);
         releasePlayer();
-        if (thenCheck) {
-            Intent i = new Intent(this, CheckActivity.class);
-            i.putExtra(CheckActivity.EXTRA_TYPE, AlertHelper.TYPE_END);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { startActivity(i); } catch (Exception ignored) { }
-        }
+        openCheckIfNeeded();
         finish();
     }
 
@@ -189,6 +197,8 @@ public class TaskAlarmActivity extends Activity {
         handler.removeCallbacks(rampTick);
         handler.removeCallbacks(autoStop);
         releasePlayer();
+        // 非「知道了」路径被销毁（例如用户打开主界面后系统回收响铃页）时，仍要拉起检查页，避免 endFired 卡住
+        if (!isChangingConfigurations()) openCheckIfNeeded();
         super.onDestroy();
     }
 

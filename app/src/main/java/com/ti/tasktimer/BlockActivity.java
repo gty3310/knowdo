@@ -103,7 +103,14 @@ public class BlockActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        FloatingWindow.setSuppressed(true); // 回到前台重新让位（onPause 时已放悬浮窗回来）
         if (countView != null) refresh();
+    }
+
+    @Override
+    protected void onPause() {
+        FloatingWindow.unsuppressAndShow(this);
+        super.onPause();
     }
 
     /** 刷新倒计时；盖住已结束（到点／被解封）时收起本页并返回 false。 */
@@ -121,7 +128,7 @@ public class BlockActivity extends Activity {
     protected void onDestroy() {
         if (current == this) current = null;
         handler.removeCallbacks(ticker);
-        FloatingWindow.setSuppressed(false);
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 

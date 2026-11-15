@@ -230,7 +230,7 @@ public class TimerService extends Service {
             KnowDoAccessibilityService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
-            FloatingWindow.hide();
+            FloatingWindow.refresh(this); // 停表后不藏窗，立刻刷新为下一要务
             handler.removeCallbacks(ticker);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
@@ -244,7 +244,7 @@ public class TimerService extends Service {
             KnowDoAccessibilityService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
-            FloatingWindow.hide();
+            FloatingWindow.refresh(this); // 停表后不藏窗，立刻刷新为下一要务
             handler.removeCallbacks(ticker);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
@@ -564,34 +564,27 @@ public class TimerService extends Service {
     private void tick() {
         if (!TimerState.isRunning(this)) return;
         long now = System.currentTimeMillis();
-        // 悬浮窗：计时中显示任务与倒计时；检查页将弹出时让位；到点等待确认时隐藏
-        if (TimerState.endFired(this)) {
-            FloatingWindow.hide();
-        } else {
-            FloatingWindow.ensureShown(this);
-            long remainSec = Math.max(0, (TimerState.endAt(this) - now) / 1000);
-            String remain = remainSec >= 3600
-                    ? String.format("%d:%02d:%02d", remainSec / 3600, (remainSec % 3600) / 60, remainSec % 60)
-                    : String.format("%d:%02d", remainSec / 60, remainSec % 60);
-            FloatingWindow.update(this, remain);
-        }
+        // 悬浮窗：计时中与到点待确认都保持显示（到点不再藏窗）
+        FloatingWindow.ensureShown(this);
+        long remainSec = Math.max(0, (TimerState.endAt(this) - now) / 1000);
+        String remain = remainSec >= 3600
+                ? String.format("%d:%02d:%02d", remainSec / 3600, (remainSec % 3600) / 60, remainSec % 60)
+                : String.format("%d:%02d", remainSec / 60, remainSec % 60);
+        FloatingWindow.update(this, remain);
         if (TimerState.subActive(this)) {
             // 子任务模式：检查点只在子任务边界；最后一个子任务的边界即任务结束点（下面 END 处理）
             if (!TimerState.subFired(this) && now >= TimerState.subEndAt(this)) {
                 TimerState.markSubFired(this);
                 if (TimerState.subIndex(this) < TimerState.subCount(this) - 1) {
-                    FloatingWindow.setSuppressed(true);
                     AlertHelper.fire(this, AlertHelper.TYPE_SUB);
                 }
             }
         } else if (!TimerState.halfFired(this) && now >= TimerState.halfAt(this)) {
             TimerState.markHalfFired(this);
-            FloatingWindow.setSuppressed(true);
             AlertHelper.fire(this, AlertHelper.TYPE_HALF);
         }
         if (!TimerState.endFired(this) && now >= TimerState.endAt(this)) {
             TimerState.markEndFired(this);
-            FloatingWindow.setSuppressed(true);
             AlertHelper.fire(this, AlertHelper.TYPE_END);
         }
         FocusGuard.tick(this);
@@ -614,15 +607,23 @@ public class TimerService extends Service {
             if (TimerState.endFired(c)) return;
             TimerState.markEndFired(c);
         }
-        FloatingWindow.setSuppressed(true);
         AlertHelper.fire(c, type);
     }
 
     private void startInForeground() {
         long endAt = TimerState.endAt(this);
         long remainSec = Math.max(0, (endAt - System.currentTimeMillis()) / 1000);
-        Intent open = new Intent(this, MainActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, open,
+        // 到点待确认：通知深链到响铃页或结束检查页，不再误开主界面把确认页「丢掉」
+        Intent open;
+        int req;
+        if (TimerState.endFired(this)) {
+            open = AlertHelper.endPendingContentIntent(this);
+            req = 10;
+        } else {
+            open = new Intent(this, MainActivity.class);
+            req = 0;
+        }
+        PendingIntent pi = PendingIntent.getActivity(this, req, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, AlertHelper.CHANNEL_RUNNING)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -684,7 +685,6 @@ public class TimerService extends Service {
     public void onDestroy() {
         TaskStore.removeChangeListener(storeListener);
         handler.removeCallbacks(ticker);
-        FloatingWindow.hide();
         super.onDestroy();
     }
 }

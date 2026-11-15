@@ -82,6 +82,8 @@ public class FloatingWindow {
     private static boolean editing = false;
     private static boolean settingText = false;
     private static boolean suppressed = false;
+    private static boolean layoutFailed = false; // addView/updateViewLayout 失败或视图已脱离窗口
+    private static long builtAt = 0L; // 上次 addView 成功的时刻：刚加上的视图要等下一帧才 attach，宽限期内不当成被卸
     private static boolean noteDirty = false;
     private static String cachedTaskId = null;
     private static String boundNoteText = null; // 笔记框上次与数据源对齐的文字（v1.6.2 同步修复）
@@ -198,7 +200,7 @@ public class FloatingWindow {
                 : m == MODE_MINI ? (int) (262 * d)
                 : (int) (46 * d);
         if (m == MODE_DOCK) lp.x = dockX(c);
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        updateLayout();
     }
 
     private static int dockX(Context c) {
@@ -236,19 +238,42 @@ public class FloatingWindow {
         ui.postDelayed(() -> { if (!TimerState.isRunning(c)) hide(); }, 10_000);
     }
 
-    /** 检查页在前台时让位；检查页销毁后由常驻服务自动恢复显示。 */
+    /** 守卫/封禁/呼吸页等在前台时让位；离开前台后由 unsuppressAndShow 立刻恢复。 */
     public static void setSuppressed(boolean s) {
         suppressed = s;
         if (s) hideInternal();
     }
 
+    /** 让位结束：清抑制并立刻重建（页 onPause/onDestroy 调用，不等下一秒节拍）。 */
+    public static void unsuppressAndShow(Context c) {
+        setSuppressed(false);
+        if (c != null) ensureShown(c);
+    }
+
     // ---------- 显示/隐藏/刷新 ----------
     public static void ensureShown(Context c) {
-        if (!enabled(c) || suppressed || rootView != null) return;
+        if (!enabled(c) || suppressed) return;
         // snooze 期间（v1.14.0）：只藏悬浮窗，计时/守卫/alarm/通知照常
         if (FloatSnooze.isActive(c)) { hide(); return; }
         if (!AlertHelper.canDrawOverlays(c)) return;
+        // 看门狗：系统把 overlay 卸掉后 rootView 可能仍非空，不重建就会「永远消失」
+        if (rootView != null && (layoutFailed || (!rootView.isAttachedToWindow()
+                && System.currentTimeMillis() - builtAt > 3_000L))) {
+            hideInternal();
+        }
+        if (rootView != null) return;
         build(c.getApplicationContext());
+    }
+
+    /** 更新已添加的悬浮窗布局；失败则打标，下一拍 ensureShown 会拆掉重建。 */
+    private static void updateLayout() {
+        if (wm == null || rootView == null || lp == null) return;
+        try {
+            wm.updateViewLayout(rootView, lp);
+            layoutFailed = false;
+        } catch (Exception e) {
+            layoutFailed = true;
+        }
     }
 
     /** TimerService 的旧入口：统一走 refresh 渲染。 */
@@ -738,7 +763,7 @@ public class FloatingWindow {
         btns.addView(aiBtnRef);
         doneBtn = smallButton(c, "完成");
         doneBtn.setOnClickListener(v -> {
-            setSuppressed(true);
+            // 检查页开着也不藏悬浮窗（与到点不藏同一口径）
             Intent i = new Intent(c, CheckActivity.class);
             i.putExtra(CheckActivity.EXTRA_TYPE, AlertHelper.TYPE_END);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -815,7 +840,10 @@ public class FloatingWindow {
         rootView.setOnTouchListener(new Dragger(c));
         try {
             wm.addView(rootView, lp);
+            layoutFailed = false;
+            builtAt = System.currentTimeMillis();
         } catch (Exception e) {
+            layoutFailed = true;
             rootView = null;
             return;
         }
@@ -845,7 +873,7 @@ public class FloatingWindow {
         editing = true;
         lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE;
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        updateLayout();
         noteEdit.requestFocus();
         noteEdit.setSelection(noteEdit.getText().length());
         InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -861,7 +889,7 @@ public class FloatingWindow {
         if (lp == null || rootView == null) return;
         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = 0;
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        updateLayout();
         InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(rootView.getWindowToken(), 0);
     }
@@ -1040,7 +1068,7 @@ public class FloatingWindow {
         editing = true;
         lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE;
-        try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+        updateLayout();
         target.requestFocus();
         InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) ui.postDelayed(() -> imm.showSoftInput(target, InputMethodManager.SHOW_IMPLICIT), 80);
@@ -1069,7 +1097,7 @@ public class FloatingWindow {
                     if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
                     lp.x = startX + dx;
                     lp.y = startY + dy;
-                    try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+                    updateLayout();
                     return true;
                 case MotionEvent.ACTION_UP:
                     onUp(lp.x - startX);
@@ -1091,7 +1119,7 @@ public class FloatingWindow {
                 else if (inward) setMode(c, MODE_MINI);
                 else {
                     lp.x = dockX(c);
-                    try { wm.updateViewLayout(rootView, lp); } catch (Exception ignored) { }
+                    updateLayout();
                 }
             } else if (m == MODE_MINI) {
                 if (!moved) { openEdit(c); return; }

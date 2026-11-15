@@ -223,6 +223,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (Ui.dark(this) != appliedDark || Ui.en(this) != appliedEn) { recreate(); return; }
+        FloatingWindow.ensureShown(this); // 回前台补一次：系统卸掉 overlay 时立刻重建
         store.load();
         // 昨日未完成滚入今日必干（v1.23.0）：排在晨间门之前——跨过 04:00 日界后的
         // 第一次回前台就滚，晨间页里看到的也是滚完的数。滚完走同一条云端同步路推上去，

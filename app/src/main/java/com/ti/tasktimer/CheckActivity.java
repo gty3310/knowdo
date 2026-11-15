@@ -120,6 +120,7 @@ public class CheckActivity extends Activity {
 
     @Override protected void onPause() {
         TopPages.checkShown = false;
+        FloatingWindow.unsuppressAndShow(this);
         super.onPause();
     }
 
@@ -127,7 +128,7 @@ public class CheckActivity extends Activity {
     protected void onDestroy() {
         if (endChatPanel != null) endChatPanel.detach();
         try { unregisterReceiver(timerRemoteReceiver); } catch (Exception ignored) { }
-        FloatingWindow.setSuppressed(false); // 检查页关闭，悬浮窗可以回来了（计时还在走时）
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 

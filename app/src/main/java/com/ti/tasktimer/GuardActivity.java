@@ -494,9 +494,23 @@ public class GuardActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // 回到前台重新让位：onPause 已放悬浮窗回来，且下层页（如检查页）的 onPause
+        // 会在本页 onResume 之前清掉抑制，不在这里补上悬浮窗就会盖在守卫页上
+        FloatingWindow.setSuppressed(true);
+    }
+
+    @Override
+    protected void onPause() {
+        FloatingWindow.unsuppressAndShow(this);
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
         judgeSettled = true; // 页面已关：未决的 AI 判定结果一律作废，不再执行处置
-        FloatingWindow.setSuppressed(false);
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 
