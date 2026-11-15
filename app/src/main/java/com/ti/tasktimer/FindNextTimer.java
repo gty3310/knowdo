@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 
 /**
  * 「找下一个任务」轻量倒计时（本地 prefs，不进 TimerState，不同步云端）：
@@ -44,6 +46,7 @@ public final class FindNextTimer {
         sp(c).edit().putLong("end_at", end).apply();
         schedule(c, end);
         if (FloatingWindow.enabled(c)) FloatService.start(c);
+        refreshFloat(c); // 立刻换成「找下一个任务」倒计时，不等 FloatService 下一秒 tick
         TimerState.logEvent(c, "找下一个任务：开始 3 分钟倒计时");
     }
 
@@ -52,7 +55,10 @@ public final class FindNextTimer {
         boolean had = endAt(c) != 0L;
         cancelAlarm(c);
         sp(c).edit().clear().apply();
-        if (had) TimerState.logEvent(c, "找下一个任务：已取消");
+        if (had) {
+            refreshFloat(c); // 去掉找下一件态，立刻把窗口交回真正的任务/下一要务
+            TimerState.logEvent(c, "找下一个任务：已取消");
+        }
     }
 
     /**
@@ -81,10 +87,26 @@ public final class FindNextTimer {
     private static void onExpired(Context c) {
         cancelAlarm(c);
         sp(c).edit().clear().apply();
+        refreshFloat(c); // 闹钟路径没有 FloatService tick，也要立刻摘掉倒计时文案
         // 到期时若已经在计时/暂停，真正的任务优先，不再弹选任务页
         if (TimerState.isRunning(c) || TimerState.isPaused(c)) return;
         TimerState.logEvent(c, "找下一个任务：3 分钟到，拉起选任务页");
-        AlertHelper.fireNextTask(c);
+        // 走衔接守卫的事件档：尊重总开关、路人静音、温和档与页面互斥（检查页/响铃页在显时不叠弹，
+        // 之后由巡检或主页 onResume 补拉）；状态已清，isActive 为假，不会被自己挡住
+        IdleGuard.fireNow(c);
+    }
+
+    /** 把悬浮窗立刻刷新到当前 FindNext 状态；切到主线程，闹钟唤醒时也安全。 */
+    private static void refreshFloat(Context c) {
+        final Context app = c.getApplicationContext();
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (FloatingWindow.enabled(app)) {
+                    FloatingWindow.ensureShown(app);
+                    FloatingWindow.refresh(app);
+                }
+            } catch (Exception ignored) { }
+        });
     }
 
     private static PendingIntent pending(Context c) {
