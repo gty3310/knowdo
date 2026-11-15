@@ -76,6 +76,8 @@ public final class IdleGuard {
         // 空档中维护锚点与 alarm 排期。这一步在总开关/静默判断之前——
         // 按返回的重弹间隔静默只压自动弹页，绝不动 alarm 排期。
         if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
+        // 找下一件倒计时进行中：不拉选任务页、不推进空档催促，避免双重打扰；到点后恢复
+        if (FindNextTimer.isActive(c)) return;
         IdleAlarm.observeIdle(c);
         if (BystanderMute.isMuted(c)) return; // 路人已静音：下一次亮屏前不拉页（排期不动，v1.19.0）
         if (!enabled(c) || TopPages.anyBlockingShown()) return;
@@ -88,6 +90,7 @@ public final class IdleGuard {
 
     /** 事件档：完成任务/叫回页转入等明确时刻调用，不受返回静默期约束。 */
     public static void fireNow(Context c) {
+        if (FindNextTimer.isActive(c)) return;
         if (!enabled(c) || !isIdle(c) || TopPages.anyBlockingShown()) return;
         if (BystanderMute.isMuted(c)) return;
         if (IdleNag.suppressIdlePage(c)) return;
@@ -103,6 +106,7 @@ public final class IdleGuard {
      */
     public static void checkOnUserPresent(Context c) {
         if (!isIdle(c)) { IdleAlarm.onNotIdle(c); return; }
+        if (FindNextTimer.isActive(c)) return;
         IdleAlarm.observeIdle(c);
         if (BystanderMute.isMuted(c)) return;
         if (!enabled(c) || TopPages.anyBlockingShown()) return;

@@ -205,6 +205,11 @@ public class TimerService extends Service {
                 || ACTION_MIRROR.equals(action)) {
             EndNag.cancel(this);
         }
+        // 真正开始/恢复/镜像一个任务：立刻取消「找下一个任务」倒计时，改由本任务计时器接管悬浮窗
+        if (ACTION_START.equals(action) || ACTION_RESUME.equals(action)
+                || ACTION_MIRROR.equals(action)) {
+            FindNextTimer.cancel(this);
+        }
         if (ACTION_PAUSE.equals(action) || ACTION_PAUSE_REMIND.equals(action)) {
             long remain = TimerState.endAt(this) - System.currentTimeMillis();
             boolean saved = false;

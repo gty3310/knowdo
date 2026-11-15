@@ -83,6 +83,7 @@ public class FloatService extends Service {
             registerReceiver(screenReceiver, sf);
         } catch (Exception ignored) { }
         try { MorningGate.ensureScheduled(this); } catch (Exception ignored) { }
+        try { FindNextTimer.ensureScheduled(this); } catch (Exception ignored) { }
         handler.post(loop);
     }
 
@@ -97,6 +98,7 @@ public class FloatService extends Service {
             stopSelf();
             return;
         }
+        FindNextTimer.poll(this); // 「找下一个任务」到点检测（进程在就每秒兜一次）
         FloatSnooze.poll(this); // 「等任务结束」型 snooze 的到期检测（v1.14.0）
         if (FloatSnooze.isActive(this)) {
             FloatingWindow.hide(); // snooze 中：只藏窗，本服务的通知/巡检照常
