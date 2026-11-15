@@ -321,8 +321,9 @@ public class CheckActivity extends Activity {
         }
         TimerState.logEvent(this, "结束检查[" + taskName() + "]：做完了");
         TimerService.stopTimer(this);
-        // v1.10.0 衔接守卫：确认完成后若没顺势开始下一个，约 0.6 秒后全屏问「下一个任务」
-        IdleGuard.fireSoon(CheckActivity.this);
+        // 点「做完了」立刻开始 3 分钟「找下一个任务」倒计时（不是任务，只给找下一件一点紧迫感）。
+        // 这段时间里不立刻弹选任务页（由倒计时取代 fireSoon）；到点仍未开始再走 fireNextTask。
+        FindNextTimer.start(this);
         Intent i = new Intent(this, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(i);
