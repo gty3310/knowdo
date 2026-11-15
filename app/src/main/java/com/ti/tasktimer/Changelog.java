@@ -36,6 +36,25 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1870 = new Entry("v1.87.0", "2026-11-15");
+        e1870.add(new Group(s("新增", "New"),
+                s("「找下一个任务」3 分钟倒计时——结束检查页点「做完了」，悬浮窗立刻开始 3 分钟倒计时找下一件；到点还没开始，自动弹出「下一个任务」页；期间衔接守卫不重复打扰，一开始新任务倒计时立刻取消",
+                  "A 3-minute find-the-next-task countdown — tap Done on the end check page and the floating window immediately starts counting down 3 minutes to pick what's next; if nothing has started when it runs out, the Next Task page opens on its own; the between-task guard stays quiet meanwhile, and starting any task cancels the countdown at once")));
+        e1870.add(new Group(s("修复", "Fixed"),
+                s("悬浮窗到点不再消失——计时结束等确认时悬浮窗一直都在；被系统收走也会自动重建回来",
+                  "The floating window no longer vanishes at time-up — it stays on screen while the end-of-task confirmation is pending, and if the system tears it down it rebuilds itself"),
+                s("点「做完了」后不再闪现下一个任务约一秒——悬浮窗立刻换成倒计时",
+                  "No more one-second flash of the next task after tapping Done — the floating window switches to the countdown immediately"),
+                s("计时结束点通知直达响铃页或结束检查页，不再误开主界面把确认页弄丢；响铃页被系统回收时也会补拉检查页",
+                  "Tapping the timer notification at time-up now lands on the ring page or the end check page instead of the home screen, and if the system reclaims the ring page the check page is still brought up"),
+                s("「下一个任务」页的候选不再列 AI 任务（AI 任务不可计时）",
+                  "The Next Task page no longer lists AI tasks as candidates (they cannot be timed)")));
+        e1870.why = s("悬浮窗偏偏在到点这个最要紧的时刻消失、还不回来；两件任务之间的空档也缺一点紧迫感",
+                "The floating window disappeared at the very moment it mattered most and never came back, and the gap between two tasks had no gentle push");
+        e1870.tryIt = s("开始一个 1 分钟的任务，等它结束（或在检查页点「做完了」），看悬浮窗的 3 分钟倒计时；什么都别开始，等倒计时走完，看选任务页自己弹出来",
+                "Start a 1-minute task and let it end (or tap Done on the check page) — watch the 3-minute countdown in the floating window; start nothing, and when it runs out the task picker opens on its own");
+        out.add(e1870);
+
         Entry e1860 = new Entry("v1.86.0", "2026-11-15");
         e1860.add(new Group(s("改进", "Improved"),
                 s("行页页头变简洁——只剩「行」和必做·空两个数，右上角两个图标：第一个进今天安排、第二个开日历",
