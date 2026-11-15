@@ -180,17 +180,48 @@ public final class AlertHelper {
      */
     private static boolean fireTaskAlarmIfNeeded(Context c) {
         try {
+            if (!wantsTimerEndAlarm(c)) return false;
             String tid = TimerState.taskId(c);
-            if (tid == null) return false;
-            TaskItem t = new TaskStore(c).byId(tid);
-            if (t == null || t.deleted) return false;
-            if (t.alarmMuted()) return false;
-            if (!t.alarmOnTimerEnd && !TaskItem.ALARM_SOUND.equals(t.alarmMode)) return false;
+            TaskItem t = tid == null ? null : new TaskStore(c).byId(tid);
+            if (t == null) return false;
             fireTaskAlarm(c, t.id, t.title, true);
             return true;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 当前计时任务到点时是否应先走响铃页（与 fireTaskAlarmIfNeeded 同一套裁决）。 */
+    static boolean wantsTimerEndAlarm(Context c) {
+        try {
+            String tid = TimerState.taskId(c);
+            if (tid == null) return false;
+            TaskItem t = new TaskStore(c).byId(tid);
+            if (t == null || t.deleted) return false;
+            if (t.alarmMuted()) return false;
+            return t.alarmOnTimerEnd || TaskItem.ALARM_SOUND.equals(t.alarmMode);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 到点待确认时，计时通知应打开的页面：
+     * 尚未进入检查页且该任务要先响铃 → 响铃页（随后转检查页）；否则直接结束检查页。
+     */
+    public static Intent endPendingContentIntent(Context c) {
+        Intent i;
+        if (!EndNag.isArmed(c) && wantsTimerEndAlarm(c)) {
+            i = new Intent(c, TaskAlarmActivity.class);
+            i.putExtra(TaskAlarmActivity.EXTRA_TASK_ID, TimerState.taskId(c));
+            i.putExtra(TaskAlarmActivity.EXTRA_TASK_TITLE, TimerState.taskTitle(c));
+            i.putExtra(TaskAlarmActivity.EXTRA_THEN_CHECK, true);
+        } else {
+            i = new Intent(c, CheckActivity.class);
+            i.putExtra(CheckActivity.EXTRA_TYPE, TYPE_END);
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return i;
     }
 
     /**

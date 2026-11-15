@@ -494,9 +494,15 @@ public class GuardActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        FloatingWindow.unsuppressAndShow(this);
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
         judgeSettled = true; // 页面已关：未决的 AI 判定结果一律作废，不再执行处置
-        FloatingWindow.setSuppressed(false);
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 

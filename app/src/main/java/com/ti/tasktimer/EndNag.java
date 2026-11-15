@@ -85,6 +85,9 @@ public final class EndNag {
         return max > 0 && round(c) >= max;
     }
 
+    /** 结束催促是否已武装（检查页已是去向，或已经展示过）。 */
+    public static boolean isArmed(Context c) { return anchor(c) != 0; }
+
     // ---------------- 武装 / 解除 ----------------
 
     /**
