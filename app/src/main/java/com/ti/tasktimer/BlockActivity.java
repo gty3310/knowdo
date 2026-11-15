@@ -106,6 +106,12 @@ public class BlockActivity extends Activity {
         if (countView != null) refresh();
     }
 
+    @Override
+    protected void onPause() {
+        FloatingWindow.unsuppressAndShow(this);
+        super.onPause();
+    }
+
     /** 刷新倒计时；盖住已结束（到点／被解封）时收起本页并返回 false。 */
     private boolean refresh() {
         long until = AppBlock.until(this);
@@ -121,7 +127,7 @@ public class BlockActivity extends Activity {
     protected void onDestroy() {
         if (current == this) current = null;
         handler.removeCallbacks(ticker);
-        FloatingWindow.setSuppressed(false);
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 

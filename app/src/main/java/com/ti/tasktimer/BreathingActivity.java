@@ -167,12 +167,13 @@ public class BreathingActivity extends Activity {
             GuardBreath.clear(this);
             finish();
         }
+        FloatingWindow.unsuppressAndShow(this);
     }
 
     @Override
     protected void onDestroy() {
         handler.removeCallbacks(tick);
-        FloatingWindow.setSuppressed(false);
+        FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }
 

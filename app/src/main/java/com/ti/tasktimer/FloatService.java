@@ -103,11 +103,7 @@ public class FloatService extends Service {
             patrolIdle();
             return;
         }
-        if (TimerState.endFired(this)) {
-            // 到点等确认期间不显示（检查页在管事），确认完自动回来
-            FloatingWindow.hide();
-            return;
-        }
+        // 到点待确认也保持显示：只在用户关开关或 snooze 时藏窗
         FloatingWindow.ensureShown(this);
         FloatingWindow.refresh(this);
         String text = FloatingWindow.displaySummary(this);
