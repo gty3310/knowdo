@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.86.0)
+## Features (Android, v1.87.0)
 
-Current version: **v1.86.0**.
+Current version: **v1.87.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,21 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.87.0 — 2026-11-15
+
+**Why:** The floating window vanished at the worst possible moment — the instant a timer ran out — and never came back on its own; and the gap between finishing one task and starting the next had no gentle push. This release (two PRs by an external coding agent, diff-reviewed line by line before release) keeps the window alive through the end-of-task confirmation, rebuilds it if the system tears it down, and fills the gap with a 3-minute countdown to find the next task. Build commit `bb2fc3e` · [compare v1.86.0...v1.87.0](https://github.com/gty3310/knowdo/compare/v1.86.0...v1.87.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Find-the-next-task countdown.** Tapping Done on the end check page starts a 3-minute countdown in the floating window — a purely local timer (its own preferences + an exact alarm; never a task: it enters no task list, time account, unity index or cloud table). If nothing has started when it expires, the Next Task page opens by itself; the between-task guard stays quiet during the countdown so nothing double-prompts, and starting, resuming or mirroring any real task cancels it instantly. It survives process death (alarm plus a per-second poll in the float service), and its floating-window state cannot be tapped into starting or pausing anything.
+
+**Fixed**
+- **The floating window no longer disappears at time-up.** It stays through the end-pending confirmation (both services used to hide it), and a watchdog now detects a system-torn-down overlay — a detached view or a failed layout update, with a 3-second grace after a fresh build — and rebuilds it. Pages that yield to the full-screen guard, block and breathing pages restore the window the moment they pause, and those pages re-suppress on resume so the window never covers them.
+- **No one-second flash of the next task after Done.** The window switches straight to the countdown, and stopping a timer refreshes the window to the next priority instead of hiding it first.
+- **The timer notification at time-up deep-links to the ring page or the end check page** (its own PendingIntent request code) instead of opening the home screen and losing the confirmation; if the system reclaims the ring page, it still hands over to the check page, unless the task was already confirmed or stopped elsewhere.
+- **The Next Task page no longer offers AI tasks** as candidates — they cannot be timed.
+
+Not verified on a device or emulator: at the user's own call (token budget), this release skipped the emulator run that a bug-fix release would normally get. The behaviours above — the window staying at time-up, the watchdog rebuild, the 3-minute countdown and its expiry page, the flash fix, the notification deep link — have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
+
 ### v1.86.0 — 2026-11-15
 
 **Why:** The Act page header carried a quarter-screen of figures — big Left-today / Must-do / Free numbers, a due-today line, a red doesn't-fit line — plus a current-task strip, while the drawer menu button existed only on that one page: from Today, Know or Oneness, changing the language or reaching Settings meant switching back to Act first. This release folds the header into a single row and gives every one of the first four tabs the same menu button. Build commit `2672d82` · [compare v1.85.0...v1.86.0](https://github.com/gty3310/knowdo/compare/v1.85.0...v1.86.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,16 +103,6 @@ Not yet verified on a real device: the new Act header end to end (figures refres
 - **The day on one page.** Today's diary is shown in full (the same HabitData diary the morning page and the Know page's Reflect group edit; tapping the card opens that same editor), the first principle from today's morning card gets its own card, and a dark "Today's plan" button opens the day planner.
 
 Not yet verified on a real device: the five-tab bar and default landing with every deep link (guard chat, habit reminder), the check-in card's two states and its jump, the advice card end to end (hourly refresh arriving, principle link, task mini card start, reply fill into Muse and its clipboard fallback), the recommended-principle card, and the 1.84.0 to 1.85.0 in-app update chain. Data change: one new nullable cloud column (user_state.today_advice); the app only ever reads it.
-
-### v1.84.0 — 2026-11-14
-
-**Why:** A per-task app list is only ever used by the guard on the one phone it was made for — it never needed a home in the cloud, nor syncing between devices. Yet the lists sat inside the user_state row (71 lists, about 562KB, roughly 79% of the row), so every sync hauled the whole pile down and merged it back, making them the single largest source of Supabase egress — and any list deleted in the cloud simply resurrected on the next sync, because the phone's union merge wrote it back (observed the same morning: cut to 3 lists, back to 71 after one sync). Task sync should carry task data; a list is not task data. Build commit `f71148f` · [compare v1.83.0...v1.84.0](https://github.com/gty3310/knowdo/compare/v1.83.0...v1.84.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **Lists are local-only now.** The sync layer no longer reads or writes the cloud app_lists column at all — no probe, no merge, no write-back, no realtime merging. Every user_state fetch (12 call sites) uses an explicit column list holding all current columns except app_lists, so a sync no longer drags the lists with it; writes stay field-level and no column is dropped.
-- **New lists arrive by mailbox.** A generation request still goes out through user_state.app_list_request; the result comes back in that same request's result field, the app files it into the local app_lists.json, clears its pending mark, and empties the mailbox with a field-level patch — the cloud keeps nothing. Hand-edited entries keep their protection: a fully hand-edited list is never overwritten, and individual hand-set tiers are laid back over a generated list, exactly as before. A malformed or failed pickup leaves the mailbox untouched and retries on the next sync, silently; an existing local list survives the upgrade untouched, and the guard's queries, its built-in fallback blacklist, and the list viewer/editor are all unchanged.
-
-Not yet verified on a real device: the full new-task chain (request → cloud generation under the mailbox protocol → pickup → list in effect), upgrade with existing local lists intact, and offline behaviour (request/pickup retrying silently). Data changes: no new cloud tables or columns; the cloud app_lists column is emptied on the operator side after release and re-checked the next day.
 
 ## Build
 
