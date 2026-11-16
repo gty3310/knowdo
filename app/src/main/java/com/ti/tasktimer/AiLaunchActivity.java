@@ -91,7 +91,8 @@ sb.append("任务：").append(t.title).append('\n');
 if (t.scenarios!= null &&!t.scenarios.isEmpty()) {
 sb.append("情景：").append(String.join("、", t.scenarios)).append('\n');
 }
-if ("daily".equals(t.repeat)) sb.append("截止：每日重复\n");
+if (t.isDaily()) sb.append("截止：每日重复\n");
+else if (t.isWeekly()) sb.append("截止：").append(t.weeklyLabel()).append("\n");
 else if (t.deadline!= null) {
     sb.append("截止：").append(t.deadline);
     if (t.deadlineTime != null) sb.append(" ").append(t.deadlineTime).append(" 前");

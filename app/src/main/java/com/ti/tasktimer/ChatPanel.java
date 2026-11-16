@@ -594,15 +594,15 @@ public class ChatPanel {
         if (newStart != null && !newStart.isEmpty()) {
             t.nextStartAt = newStart;
             // 与编辑弹层同口径：选了开始时间，截止日期跟到同一天（每日任务除外）
-            if (!"daily".equals(t.repeat) && newStart.length() >= 10) {
+            if (!t.isRecurring() && newStart.length() >= 10) {
                 t.deadline = newStart.substring(0, 10);
                 t.deadlineTime = null;
             }
         }
         if (p.has("deadline")) {
             String dl = p.optString("deadline", "");
-            if ("daily".equals(t.repeat)) {
-                // 每日任务不带单日截止（既有口径）：这一项不应用
+            if (t.isRecurring()) {
+                // 每日/每周任务不带单日截止（既有口径）：这一项不应用
             } else if (dl.isEmpty()) {
                 t.deadline = null;
                 t.deadlineTime = null;
@@ -1007,7 +1007,7 @@ public class ChatPanel {
                     sb.append("备注：").append(t.note.trim()).append("\n");
                 }
                 sb.append("计划时长：").append(t.durationMinutes).append(" 分钟\n");
-                sb.append("重复：").append("daily".equals(t.repeat) ? "每天" : "不重复").append("\n");
+                sb.append("重复：").append(t.isDaily() ? "每天" : t.isWeekly() ? t.weeklyLabel() : "不重复").append("\n");
                 if (t.deadline != null) sb.append("截止日期：").append(t.deadline).append("\n");
                 if (t.nextStartAt != null) sb.append("计划开始：").append(t.nextStartAt.replace('T', ' ')).append("\n");
                 sb.append("今天已经做了约 ").append(usedMin).append(" 分钟\n");

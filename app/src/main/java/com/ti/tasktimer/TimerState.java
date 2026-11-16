@@ -66,6 +66,25 @@ public final class TimerState {
         return t == null || t.isEmpty() ? "当前任务" : t;
     }
 
+    /** 列表或悬浮窗改了标题时，同步正在跑或暂停槽里的显示名。 */
+    public static void updateTitleIfCurrent(Context c, String taskId, String title) {
+        if (taskId == null || title == null) return;
+        title = title.trim();
+        if (title.isEmpty()) return;
+        SharedPreferences p = sp(c);
+        SharedPreferences.Editor e = p.edit();
+        boolean any = false;
+        if (taskId.equals(p.getString("taskId", ""))) {
+            e.putString("taskTitle", title);
+            any = true;
+        }
+        if (taskId.equals(p.getString("p_taskId", ""))) {
+            e.putString("p_title", title);
+            any = true;
+        }
+        if (any) e.apply();
+    }
+
     public static void extend(Context c, int addSec) {
         SharedPreferences p = sp(c);
         long base = Math.max(System.currentTimeMillis(), p.getLong("endAt", 0));
