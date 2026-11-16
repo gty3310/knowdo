@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.87.0)
+## Features (Android, v1.88.0)
 
-Current version: **v1.87.0**.
+Current version: **v1.88.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.88.0 — 2026-11-16
+
+**Why:** On the medium guard difficulty, the "This is a mistake" button only appeared on the first drift check of the day — a real misjudgement on the second check had nowhere to appeal. And once a task was paused with no next step chosen, nothing ever called you back: the pause could hang silently all day while you drifted off. This release (two PRs by an external coding agent, diff-reviewed before merge) shows the appeal button on every check and adds a full-screen pause lock as the last resort that pulls you back. Build commit `e26826e` · [compare v1.87.0...v1.88.0](https://github.com/gty3310/knowdo/compare/v1.87.0...v1.88.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Pause lock.** Thirty seconds after a task is paused with no next step chosen, an exact alarm fires and the floating window expands to about 99% of the screen (new `PauseLock` / `PauseLockActivity` / `PauseLockReceiver`, re-armed after reboot), so the pause cannot be ignored; two holes where a pause had no call-back at all are closed along the way.
+
+**Improved**
+- **"This is a mistake" shows on every drift check.** The medium-difficulty gate that rendered the appeal button only on the day's first check is gone — all three difficulties render it every time.
+
+Not verified on a device or emulator: the user ordered this release shipped right after the merge. The appeal button on a second same-day check, the 30-second pause lock end to end, and the two call-back fixes have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
+
 ### v1.87.0 — 2026-11-15
 
 **Why:** The floating window vanished at the worst possible moment — the instant a timer ran out — and never came back on its own; and the gap between finishing one task and starting the next had no gentle push. This release (two PRs by an external coding agent, diff-reviewed line by line before release) keeps the window alive through the end-of-task confirmation, rebuilds it if the system tears it down, and fills the gap with a 3-minute countdown to find the next task. Build commit `bb2fc3e` · [compare v1.86.0...v1.87.0](https://github.com/gty3310/knowdo/compare/v1.86.0...v1.87.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -91,18 +103,6 @@ Not verified on a device or emulator: at the user's own call (token budget), thi
 - **The calendar's blue undo row is gone.** The "↩ Undo re-plan · no room: …" line, its undo entry and the snapshot read/refresh/undo methods are removed entirely; AI Re-plan and Quick Re-plan stay, and quick re-plan itself works exactly as before.
 
 Not yet verified on a real device: the new Act header end to end (figures refreshing with the timer and after auto-scheduling, the three Free colours, both icon jumps), the ☰ drawer opening from the three pages, quick re-plan with the undo row gone, and the 1.85.0 to 1.86.0 in-app update chain. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
-
-### v1.85.0 — 2026-11-14
-
-**Why:** When the Habits tab folded into the Know page in v1.82.0, the morning check-in entry at the top of the old Habits page quietly vanished with it — the first act of the day lost its door. This release brings it back as the first card of a new first tab, Today: check-in, one AI advice, today's diary in full, this morning's recommended principle and the day-planning entry, all on the screen the app opens on — so the first thing you see is what to do first. Build commit `a9a922e` · [compare v1.84.0...v1.85.0](https://github.com/gty3310/knowdo/compare/v1.84.0...v1.85.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **A Today tab.** The bottom bar goes from four tabs to five, Today first (a new circle-with-a-dot icon, vermilion at its centre even unselected), and the app opens on it. Everything that used to address tabs by index does so by named constant, so the renumbering shifts nothing: the guard's "chat with AI" deep link, the habit reminder's link into the Know page's Precepts group, and the drawer entries all land where they did.
-- **Morning check-in, restored.** The first card shows whether today's morning record is filled (same HabitData morningDone record the morning gate itself reads) and opens the morning page in edit mode — the exact jump the old Habits header button made before it was lost.
-- **AI advice.** A new cloud column, user_state.today_advice, carries one advice written hourly through the day (06:00–23:00) by the author's assistant — a main task to start first (its mini card's round button starts it through the same path as the Act tab), what should not wait, and any important unanswered mail. The card shows only when its date is the logical today. If the advice cites a principle, the principle's name in the text is itself the link into that principle's page. "Reply to AI" opens a small input right under the card; sending composes advice + reply and lands in the Muse app with the text filled into its input box by KnowDo's accessibility service — the send button is never pressed for you, and if filling fails the text is already on the clipboard to paste. The target app is a configuration value (Muse, com.facebook.aura, for now), so adding another AI app later is configuration, not code.
-- **The day on one page.** Today's diary is shown in full (the same HabitData diary the morning page and the Know page's Reflect group edit; tapping the card opens that same editor), the first principle from today's morning card gets its own card, and a dark "Today's plan" button opens the day planner.
-
-Not yet verified on a real device: the five-tab bar and default landing with every deep link (guard chat, habit reminder), the check-in card's two states and its jump, the advice card end to end (hourly refresh arriving, principle link, task mini card start, reply fill into Muse and its clipboard fallback), the recommended-principle card, and the 1.84.0 to 1.85.0 in-app update chain. Data change: one new nullable cloud column (user_state.today_advice); the app only ever reads it.
 
 ## Build
 
