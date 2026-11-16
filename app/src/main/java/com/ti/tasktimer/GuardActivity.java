@@ -39,10 +39,9 @@ public class GuardActivity extends Activity {
     private boolean contentMode;
     private String category = "";
 
-    // 守卫难度三档（v1.83.0）：本次问询的任务、难度与开页前的计数快照
+    // 守卫难度三档（v1.83.0）：本次问询的任务与难度
     private String taskId = "";
     private String difficulty = ScreenGuardPrefs.DIFF_MEDIUM;
-    private int priorInquiries;
     private boolean hardQuotaExhausted;
 
     // 分神记录（v1.80.0）：点任一宽限钮＝承认分神，在这里记一次等价于旧
@@ -87,12 +86,12 @@ public class GuardActivity extends Activity {
             category = cat == null ? "" : cat;
         }
         // 难度与计数快照（v1.83.0）：问询计数在「新开一页」时记一次——
-        // 同一页被重拉回前台走 onResume/onNewIntent、不再过 onCreate，不重复计；
-        // medium 误判钮显隐看的是开页之前的次数。逻辑日口径在 GuardLedger 内
+        // 同一页被重拉回前台走 onResume/onNewIntent、不再过 onCreate，不重复计。
+        // 逻辑日口径在 GuardLedger 内。误判钮改为每次都显示，不再用
+        // 开页前次数做中等档显隐。
         String tid0 = TimerState.taskId(this);
         taskId = tid0 == null ? "" : tid0;
         difficulty = ScreenGuardPrefs.guardDifficulty(this);
-        priorInquiries = GuardLedger.inquiryCount(this, taskId);
         if (savedInstanceState == null) GuardLedger.noteInquiry(this, taskId);
         hardQuotaExhausted = ScreenGuardPrefs.DIFF_HARD.equals(difficulty)
                 && GuardLedger.hardGraceUsed(this) >= ScreenGuardPrefs.hardGraceQuota(this);
@@ -202,18 +201,14 @@ public class GuardActivity extends Activity {
             spacer(actionsBox, 24);
         }
 
-        // 「这是误判」出口（v1.83.0）：三档都有、形式递增——easy 常显点即
-        // 放行；medium 仅同一任务同一逻辑日的第一次问询显示；hard 常显，
-        // 但点后要写解释走 AI 判定（F4，见 onOverturnClicked）
-        boolean showOverturn = !ScreenGuardPrefs.DIFF_MEDIUM.equals(difficulty)
-                || priorInquiries == 0;
-        if (showOverturn) {
-            Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
-            allow.setOnClickListener(v -> onOverturnClicked());
-            actionsBox.addView(allow);
-            spacer(actionsBox, 12);
-            if (ScreenGuardPrefs.DIFF_HARD.equals(difficulty)) buildExplainBox(actionsBox);
-        }
+        // 「这是误判」出口（v1.83.0）：三档都有、形式递增——easy/medium 点即
+        // 放行；hard 点后要写解释走 AI 判定（F4，见 onOverturnClicked）。
+        // 中等档不再仅限当日第一次问询才显示，每次问询都给出入口。
+        Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
+        allow.setOnClickListener(v -> onOverturnClicked());
+        actionsBox.addView(allow);
+        spacer(actionsBox, 12);
+        if (ScreenGuardPrefs.DIFF_HARD.equals(difficulty)) buildExplainBox(actionsBox);
 
         // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
         // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
