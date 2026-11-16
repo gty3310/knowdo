@@ -35,6 +35,7 @@ public class ResumeReminder {
         else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(c));
         TimerState.logEvent(c, "暂停提醒已设：" + (delayMs / 60000) + " 分钟后叫回「"
                 + TimerState.pausedTitle(c) + "」");
+        PauseLock.onPauseStateChanged(c);
     }
 
     public static void cancel(Context c) {
@@ -44,5 +45,6 @@ public class ResumeReminder {
         // v1.11.0：叫回的升级闹铃与静音亮屏链都挂在同一次叫回上，暂停被恢复/开始新任务时一并撤
         PauseEscalation.cancel(c);
         SilentResume.cancel(c);
+        PauseLock.cancel(c);
     }
 }

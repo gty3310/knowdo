@@ -30,6 +30,8 @@ public class TimerService extends Service {
     public static final String ACTION_SUB_ADVANCE = "com.ti.tasktimer.SUB_ADVANCE";
     /** 子任务队列重建（v1.13.0）：计时/暂停中该任务的子任务被编辑，按最新列表重建队列并接管。 */
     public static final String ACTION_SUB_RESYNC = "com.ti.tasktimer.SUB_RESYNC";
+    /** 从暂停态打开结束检查页：先恢复再立刻到点，沿用既有 CheckActivity。 */
+    public static final String ACTION_END_PAUSED = "com.ti.tasktimer.END_PAUSED";
     public static final String EXTRA_REASON = "pause_reason";
     public static final String EXTRA_EMOJI = "pause_emoji";
     public static final String EXTRA_SILENT = "pause_silent";
@@ -192,6 +194,13 @@ public class TimerService extends Service {
         c.startForegroundService(i);
     }
 
+    /** 暂停中点「完成」：恢复计时并立刻把结束点设到现在，下一拍走结束检查页。 */
+    public static void endPaused(Context c) {
+        Intent i = new Intent(c, TimerService.class);
+        i.setAction(ACTION_END_PAUSED);
+        c.startForegroundService(i);
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         AlertHelper.createChannels(this);
@@ -202,12 +211,12 @@ public class TimerService extends Service {
         if (ACTION_STOP.equals(action) || ACTION_PAUSE.equals(action)
                 || ACTION_PAUSE_REMIND.equals(action) || ACTION_EXTEND.equals(action)
                 || ACTION_START.equals(action) || ACTION_RESUME.equals(action)
-                || ACTION_MIRROR.equals(action)) {
+                || ACTION_MIRROR.equals(action) || ACTION_END_PAUSED.equals(action)) {
             EndNag.cancel(this);
         }
         // 真正开始/恢复/镜像一个任务：立刻取消「找下一个任务」倒计时，改由本任务计时器接管悬浮窗
         if (ACTION_START.equals(action) || ACTION_RESUME.equals(action)
-                || ACTION_MIRROR.equals(action)) {
+                || ACTION_MIRROR.equals(action) || ACTION_END_PAUSED.equals(action)) {
             FindNextTimer.cancel(this);
         }
         if (ACTION_PAUSE.equals(action) || ACTION_PAUSE_REMIND.equals(action)) {
@@ -235,6 +244,8 @@ public class TimerService extends Service {
             KnowDoAccessibilityService.onTimerStopped(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
+            // ACTION_PAUSE（无目的无叫回）与叫回没排上的暂停：30 秒后盖屏，禁止静默挂着
+            PauseLock.onPauseStateChanged(this);
             FloatingWindow.refresh(this); // 停表后不藏窗，立刻刷新为下一要务
             handler.removeCallbacks(ticker);
             stopForeground(STOP_FOREGROUND_REMOVE);
@@ -253,9 +264,11 @@ public class TimerService extends Service {
             handler.removeCallbacks(ticker);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
+            PauseLock.onPauseStateChanged(this); // 停表后若还留着旧暂停槽，重新估价
             return START_NOT_STICKY;
         }
         if (ACTION_MIRROR.equals(action)) {
+            PauseLock.cancel(this);
             IdleAlarm.onNotIdle(this); // 任何一台设备开始计时，空档催促周期立即取消
             // 跨设备镜像：只落状态，刻意不动 SessionLog/专注守卫/屏幕采样（那些是发起端的本端语义）
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
@@ -355,6 +368,29 @@ public class TimerService extends Service {
                 TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
             }
             SbTimerSync.onLocalTimerChanged(this);
+        } else if (ACTION_END_PAUSED.equals(action)) {
+            if (TimerState.isPaused(this) && !TimerState.isRunning(this)) {
+                IdleAlarm.onNotIdle(this);
+                ResumeReminder.cancel(this);
+                int total = TimerState.pausedTotalSec(this);
+                String tid = TimerState.pausedTaskId(this);
+                String title = TimerState.pausedTitle(this);
+                int remain = (int) Math.max(1, TimerState.pausedRemainMs(this) / 1000);
+                if (total <= 0) {
+                    TaskItem t = tid.isEmpty() ? null : new TaskStore(this).byId(tid);
+                    total = Math.max(1, t != null ? t.durationMinutes * 60 : 60);
+                }
+                TimerState.startResumed(this, total, remain, tid, title);
+                FocusGuard.reset(this);
+                VerdictEngine.reset(this);
+                KnowDoAccessibilityService.onTimerStarted(this);
+                SessionLog.open(this, tid, title);
+                TaskItem rt = tid.isEmpty() ? null : new TaskStore(this).byId(tid);
+                TimerState.setSubSnapshot(this, rt != null ? rt.subtasks : null);
+                TimerState.finishNow(this);
+                TimerState.logEvent(this, "暂停中打开结束检查：「" + title + "」");
+                SbTimerSync.onLocalTimerChanged(this);
+            }
         } else if (ACTION_EXTEND.equals(action)) {
             int add = intent.getIntExtra(EXTRA_ADD_SEC, 30);
             TimerState.extend(this, add);
