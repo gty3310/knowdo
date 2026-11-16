@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1880 = new Entry("v1.88.0", "2026-11-16");
+        e1880.add(new Group(s("新增", "New"),
+                s("暂停 30 秒盖屏提醒——任务暂停后 30 秒还没选下一步，悬浮窗会放大盖满屏幕，把你拉回来选下一步",
+                  "A full-screen pause reminder — if a task has been paused for 30 seconds with no next step chosen, the floating window expands to fill the screen and pulls you back to pick one")));
+        e1880.add(new Group(s("改进", "Improved"),
+                s("走神问询页的「这是误判」现在每次都显示——不再只在当天第一次问询时出现，真误判时随时能申诉",
+                  "The 'This is a mistake' button on the drift check page now shows every time — no longer only on the first check of the day, so a real mistake can be appealed whenever it happens")));
+        e1880.add(new Group(s("修复", "Fixed"),
+                s("堵上两个暂停后没人叫回的漏洞——暂停不再可能无声无息地一直挂着",
+                  "Closed two holes where a pause could hang forever with nothing calling you back")));
+        e1880.why = s("误判入口藏起来，真误判时没法申诉；暂停后人容易就此散掉，盖屏是把你拉回来的最后一道。本版未经模拟器/真机验证",
+                "A hidden appeal button means a real mistake cannot be appealed, and after a pause it is easy to drift away for good — the full-screen cover is the last resort that pulls you back. This version has not been verified on an emulator or a real device");
+        e1880.tryIt = s("触发一次走神问询，看「这是误判」在不在；同一天再触发第二次，它也应该在。然后开始一个任务、暂停、放着别动 30 秒，看悬浮窗是否放大盖满屏幕",
+                "Trigger a drift check and look for 'This is a mistake'; trigger a second one the same day — it should still be there. Then start a task, pause it, and leave it alone for 30 seconds to see the floating window expand full-screen");
+        out.add(e1880);
+
         Entry e1870 = new Entry("v1.87.0", "2026-11-15");
         e1870.add(new Group(s("新增", "New"),
                 s("「找下一个任务」3 分钟倒计时——结束检查页点「做完了」，悬浮窗立刻开始 3 分钟倒计时找下一件；到点还没开始，自动弹出「下一个任务」页；期间衔接守卫不重复打扰，一开始新任务倒计时立刻取消",
