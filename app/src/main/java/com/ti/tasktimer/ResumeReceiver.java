@@ -29,6 +29,7 @@ public class ResumeReceiver extends BroadcastReceiver {
         // 静音暂停（v1.11.0）：不弹全屏、不震动、不出声——只亮屏＋通知，之后每 5 分钟重复
         if (TimerState.pauseSilent(c)) {
             SilentResume.onDue(c);
+            PauseLock.onBreakDue(c); // 静音到点同样：30 秒不处理就盖屏
             return;
         }
         // 普通暂停到点（v1.19.0 根因修复）：置「暂停已到期」标记——暂停槽保留（任务还能
@@ -39,6 +40,7 @@ public class ResumeReceiver extends BroadcastReceiver {
         // 普通模式：到点先短震一次，并武装 60 秒无反馈的渐强闹铃升级
         vibrateShort(c);
         PauseEscalation.arm(c, taskId);
+        PauseLock.onBreakDue(c);
         AlertHelper.createChannels(c);
         Intent page = new Intent(c, ResumeRemindActivity.class);
         page.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);

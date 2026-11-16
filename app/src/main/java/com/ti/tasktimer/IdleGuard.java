@@ -63,6 +63,8 @@ public final class IdleGuard {
      */
     private static boolean timedPauseActive(Context c) {
         if (!TimerState.isPaused(c)) return false;
+        // 30 秒遮罩已排期或已在等选择：由 PauseLock 接管，不算空档
+        if (PauseLock.blocksIdle(c)) return true;
         if (TimerState.pauseExpired(c)) return TopPages.resumeRemindShown;
         long ra = TimerState.remindAt(c);
         if (ra == 0L) return true;

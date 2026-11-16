@@ -36,6 +36,8 @@ public class BootReceiver extends BroadcastReceiver {
             // 晨间页「暂停一会儿」推后闹钟：开机后按持久化截止时刻续排（v1.17.0；
             // 已过点则 1 秒后补响，由 MorningReceiver 再核对晨间是否仍未完成）
             try { MorningGate.ensureScheduled(context); } catch (Exception ignored) { }
+            // 暂停 30 秒遮罩：开机后按持久化排期续上（已过点则立刻补盖）
+            try { PauseLock.ensureScheduled(context); } catch (Exception ignored) { }
         }
     }
 
