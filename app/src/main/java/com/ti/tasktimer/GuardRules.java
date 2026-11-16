@@ -16,12 +16,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 用户纪律（v1.24.3 引入）：守卫判错时，用户在问询页点「分析错误」顺手留下的规矩。
  * 误判申诉机制已整套撤销：问询页的收集入口与设置里的「我的纪律」管理页都没了，
- * 本类不再新增、删除纪律——只保留既有数据的本地存储、云端合并与随终判带参，
- * 云端已有数据原样留着。
+ * 问询页「加到 system prompt 里」会把通过复核的解释追加进来（每条最多 60 字）；
+ * 删除入口仍未恢复。本地存储、云端合并与随终判带参照旧。
  * 本地存应用私有文件 guard_rules.json（与 GuardEvents 同办法），云端存
  * user_state.guard_rules（jsonb 数组）——列不存在时 SbSync 完全不碰该键、本类
  * 只管本地（探测纪律见 SbSync.probeUserStateCol，照 aspiration/habit_data 先例）。
@@ -36,6 +37,8 @@ import java.util.Set;
 public final class GuardRules {
     private static final String FILE = "guard_rules.json";
     private static final int MAX = 100;
+    /** 单条纪律字数上限（原收集入口是 20，issue #4 提到 60）。 */
+    public static final int MAX_TEXT = 60;
 
     private GuardRules() {}
 
@@ -93,6 +96,31 @@ public final class GuardRules {
         JSONArray out = new JSONArray();
         for (String t : texts(c)) out.put(t);
         return out;
+    }
+
+    /**
+     * 把一句已通过复核的误判解释追加为全局纪律，截到 MAX_TEXT，然后踢同步。
+     * 空文案不加。
+     */
+    public static synchronized boolean add(Context c, String text) {
+        if (text == null) return false;
+        text = text.trim();
+        if (text.isEmpty()) return false;
+        if (text.length() > MAX_TEXT) text = text.substring(0, MAX_TEXT);
+        try {
+            JSONArray arr = loadArray(c);
+            JSONObject o = new JSONObject();
+            o.put("id", UUID.randomUUID().toString());
+            o.put("text", text);
+            o.put("ts", System.currentTimeMillis());
+            arr.put(o);
+            arr = trim(arr);
+            saveArray(c, arr);
+            kickSync(c);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ---------------- 云端合并 ----------------

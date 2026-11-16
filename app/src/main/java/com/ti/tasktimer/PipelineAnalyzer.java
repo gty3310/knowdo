@@ -34,6 +34,8 @@ public class PipelineAnalyzer implements ContentAnalyzer {
     public Result analyze(Context c, Bitmap bmp, TaskItem task, String fgPkg, String nodeText) {
         lastText = nodeText != null ? nodeText : "";
         SemanticJudge.beginFrame();
+        // 把任务说明拼进 note 再交给后续规则与 SemanticJudge，不改红线文件本身
+        if (task != null) task = task.forJudging();
         if (fgPkg != null && isExempt(c, fgPkg, task)) return Result.none();
 
         if (PkgCategories.isShopping(fgPkg)) {
