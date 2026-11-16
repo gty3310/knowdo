@@ -253,9 +253,11 @@ public final class ZhixingCalc {
         for (TaskItem t : tasks) {
             if (t == null || t.deleted) continue;
             if (t.isAi()) continue; // 给 AI 做的任务不进任务完成分项：分子分母都排除（v1.74.0）
-            if ("daily".equals(t.repeat)) {
+            if (t.isRecurring()) {
                 String d = from;
                 while (d.compareTo(to) <= 0 && d.compareTo(today) <= 0) {
+                    // 每周：未选中的星期既不算完成也不算漏做
+                    if (!t.isDueOn(d)) { d = DayUtil.addDays(d, 1); continue; }
                     String key = t.id + "@" + d;
                     if (seen.add(key)) {
                         // 「跳过今天」的那一天既不算完成也不算未完成：分子分母
@@ -295,10 +297,10 @@ public final class ZhixingCalc {
                             TaskItem t = byId.get(b.optString("taskId", ""));
                             if (t == null || t.deleted || t.isAi()) continue;
                             if (t.isSkippedOn(d)) continue; // 跳过的日期不从日程补入（v1.79.0）
-                            String key = "daily".equals(t.repeat) ? t.id + "@" + d : t.id;
+                            String key = t.isRecurring() ? t.id + "@" + d : t.id;
                             if (seen.add(key)) {
                                 total++;
-                                boolean dn = "daily".equals(t.repeat)
+                                boolean dn = t.isRecurring()
                                         ? (t.doneDates != null && t.doneDates.contains(d))
                                         : "done".equals(t.status);
                                 if (dn) done++;
@@ -422,7 +424,7 @@ public final class ZhixingCalc {
         } catch (Exception ignored) { }
         for (TaskItem t : tasks) {
             if (t == null || t.deleted) continue;
-            if ("daily".equals(t.repeat)) {
+            if (t.isRecurring()) {
                 if (t.doneDates != null) {
                     for (String d : t.doneDates) {
                         if (d.compareTo(from) >= 0 && d.compareTo(to) <= 0) return true;
@@ -531,10 +533,10 @@ public final class ZhixingCalc {
             if (t == null || t.deleted) continue;
             if (t.isAi()) continue; // AI 任务的到期不是用户的漏项（v1.74.0，与任务分项同口径）
             if (t.isSkippedOn(date)) continue; // 跳过的那一天不算漏项（v1.79.0）
-            boolean due = "daily".equals(t.repeat)
-                    ? !(t.doneDates != null && t.doneDates.contains(date))
+            boolean due = t.isRecurring()
+                    ? (t.isDueOn(date) && !(t.doneDates != null && t.doneDates.contains(date)))
                     : (date.equals(t.deadline) && !"done".equals(t.status));
-            if (due && ("daily".equals(t.repeat) || date.equals(t.deadline))) {
+            if (due && (t.isRecurring() || date.equals(t.deadline))) {
                 s.misses.add(0, t.title);
             }
         }
