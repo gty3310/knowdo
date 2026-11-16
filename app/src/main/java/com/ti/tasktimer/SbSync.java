@@ -103,6 +103,7 @@ public final class SbSync {
         boolean hasAlarmMode = probeAlarmModeCol(c);
         boolean hasAi = probeAiCols(c);
         boolean hasSkip = probeSkipCol(c);
+        boolean hasWeekdays = probeWeekdaysCol(c);
 
         // 1) 拉云端任务全量
         Map<String, TaskItem> remote = new HashMap<>();
@@ -113,7 +114,7 @@ public final class SbSync {
         if (remote.isEmpty() && !prefs(c).getBoolean("seeded_" + uid, false)) {
             if (!store.tasks.isEmpty()) {
                 JSONArray payload = new JSONArray();
-                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
+                for (TaskItem t : store.tasks) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip, hasWeekdays));
                 JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
                 synchronized (STORE_LOCK) {
                     store.load(); // 先拿磁盘最新状态再对齐时间戳，别用旧快照整表盖盘（v1.14.0 修复）
@@ -167,7 +168,7 @@ public final class SbSync {
         }
         if (!toPush.isEmpty()) {
             JSONArray payload = new JSONArray();
-            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
+            for (TaskItem t : toPush) payload.put(SbMapper.toRow(t, uid, hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip, hasWeekdays));
             JSONArray back = Supa.restUpsert(c, "tasks", "id", payload);
             synchronized (STORE_LOCK) {
                 store.load(); // 同上：对齐前先重读，且仅当条目未被更新的本地改动动过时才对齐
@@ -1245,6 +1246,7 @@ public final class SbSync {
         boolean hasAlarmMode = prefs(c).getBoolean("has_alarm_mode", false);
         boolean hasAi = prefs(c).getBoolean("has_ai_cols", false);
         boolean hasSkip = prefs(c).getBoolean("has_skip_col", false);
+        boolean hasWeekdays = prefs(c).getBoolean("has_repeat_weekdays", false);
         try {
             for (int attempt = 0; attempt < 2; attempt++) {
                 TaskItem local;
@@ -1293,7 +1295,7 @@ public final class SbSync {
                     }
                 }
                 JSONArray payload = new JSONArray();
-                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip));
+                payload.put(SbMapper.toRow(local, Supa.userId(c), hasExtra, hasAlarm, hasSub, hasAlarmMode, hasAi, hasSkip, hasWeekdays));
                 Supa.restUpsert(c, "tasks", "id", payload);
                 // 回读校验
                 JSONArray chk = Supa.restGet(c, "tasks?select=*&id=eq." + taskId);
@@ -1539,6 +1541,17 @@ public final class SbSync {
             has = true;
         } catch (Exception ignored) { }
         prefs(c).edit().putBoolean("has_skip_col", has).apply();
+        return has;
+    }
+
+    /** 服务端有没有每周重复列 repeat_weekdays。列尚未上线时不写入，本机值由 fromRow 保全。 */
+    private static boolean probeWeekdaysCol(Context c) {
+        boolean has = false;
+        try {
+            Supa.restGet(c, "tasks?select=repeat_weekdays&limit=0");
+            has = true;
+        } catch (Exception ignored) { }
+        prefs(c).edit().putBoolean("has_repeat_weekdays", has).apply();
         return has;
     }
 

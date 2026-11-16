@@ -130,7 +130,11 @@ public class TaskStore {
     }
 
     private static String effDate(TaskItem t) {
-        if ("daily".equals(t.repeat)) return TaskItem.today();
+        if (t.isDaily()) return TaskItem.today();
+        if (t.isWeekly()) {
+            String due = t.nextDueOnOrAfter(TaskItem.today());
+            return due != null ? due : TaskItem.today();
+        }
         return t.deadline;
     }
 
