@@ -33,6 +33,8 @@ public class BlockActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView countView;
+    private OverturnFlow.Box overturnBox;
+    private String difficulty = ScreenGuardPrefs.DIFF_MEDIUM;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
             if (refresh()) handler.postDelayed(this, 500);
@@ -96,6 +98,24 @@ public class BlockActivity extends Activity {
         });
         root.addView(back);
 
+        difficulty = ScreenGuardPrefs.guardDifficulty(this);
+        Button overturn = new Button(this);
+        overturn.setText(Strings.overturnThis());
+        overturn.setTextSize(18);
+        overturn.setTextColor(Color.WHITE);
+        overturn.setBackgroundColor(Color.rgb(117, 117, 117));
+        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        op.topMargin = dp(16);
+        overturn.setLayoutParams(op);
+        overturn.setOnClickListener(v ->
+                OverturnFlow.onMisjudgeClicked(overturnHost(), difficulty, overturnBox));
+        root.addView(overturn);
+
+        if (!ScreenGuardPrefs.DIFF_EASY.equals(difficulty)) {
+            overturnBox = OverturnFlow.build(overturnHost(), root);
+        }
+
         refresh();
         handler.postDelayed(ticker, 500);
     }
@@ -130,6 +150,22 @@ public class BlockActivity extends Activity {
         handler.removeCallbacks(ticker);
         FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
+    }
+
+    private OverturnFlow.Host overturnHost() {
+        return new OverturnFlow.Host() {
+            @Override public android.app.Activity activity() { return BlockActivity.this; }
+            @Override public boolean contentMode() { return AppBlock.isContent(BlockActivity.this); }
+            @Override public String category() {
+                String c = AppBlock.category(BlockActivity.this);
+                return c == null ? "" : c;
+            }
+            @Override public String fgPkg() {
+                String p = AppBlock.activePkg(BlockActivity.this);
+                return p == null ? "" : p;
+            }
+            @Override public void finishAfterAllow() { finish(); }
+        };
     }
 
     private int dp(int v) {
