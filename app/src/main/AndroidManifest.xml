@@ -203,10 +203,26 @@
             android:name=".PauseEscalationReceiver"
             android:exported="false" />
 
+        <!-- 暂停 30 秒无下一步：精确闹钟到点盖屏 -->
+        <receiver
+            android:name=".PauseLockReceiver"
+            android:exported="false" />
+
         <!-- 静音暂停：每 5 分钟亮屏提醒链（v1.11.0） -->
         <receiver
             android:name=".SilentNudgeReceiver"
             android:exported="false" />
+
+        <activity
+            android:name=".PauseLockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysHidden" />
 
         <activity
             android:name=".ResumeRemindActivity"

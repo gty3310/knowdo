@@ -2919,4 +2919,19 @@ public class MainActivity extends Activity {
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
+
+    /** 打开行页选下一件（暂停遮罩「换任务」、找下一件等入口共用）。 */
+    public static Intent xingIntent(Context c) {
+        Intent i = new Intent(c, MainActivity.class);
+        i.putExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE);
+        return i;
+    }
+
+    public static void openXing(Context c) {
+        Intent i = xingIntent(c);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        c.startActivity(i);
+    }
 }

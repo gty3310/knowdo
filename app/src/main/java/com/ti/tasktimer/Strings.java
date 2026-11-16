@@ -186,6 +186,30 @@ public final class Strings {
     public static String pauseMore5() { return s("再加 5 分钟", "+5 min"); }
     public static String pauseChangePurpose() { return s("换个目的", "Change purpose"); }
 
+    // ---------- 暂停 30 秒无下一步遮罩 ----------
+    public static String pauseLockBanner() {
+        return s("已暂停，请选下一步", "Still paused — choose a next step");
+    }
+    public static String pauseLockBody() {
+        return s("这个任务暂停后 30 秒没有下一步。这扇悬浮窗现在盖住约 99% 的屏幕，不能划掉、也不能关掉。背后的应用没法用，选一项才能继续",
+                "This task has been paused for 30 seconds, and nothing else happened. This floating window now covers about 99% of the screen. It can't be swiped away or closed. The app behind it can't be used until you pick a next step");
+    }
+    public static String pauseLockContinue() { return s("▶  继续这个任务", "▶  Continue this task"); }
+    public static String pauseLockBreak() { return s("先休息一会儿…", "Take a timed break…"); }
+    public static String pauseLockDone() { return s("完成", "完成   Mark done"); }
+    public static String pauseLockSwitch() {
+        return s("换任务  ·  去「行」里选下一件", "Switch task  ·  去「行」里选下一件");
+    }
+    public static String pauseLockNotifTitle() { return s("该选下一步了", "Choose a next step"); }
+    public static String pauseLockNotifText(String title) {
+        return en ? "\"" + title + "\" is still paused"
+                  : "「" + title + "」还停在暂停里";
+    }
+    public static String pauseLockTaskGone() { return s("这个任务已经不在了", "This task is gone"); }
+    public static String pauseNeedPurposeFirst() {
+        return s("先选暂停目的，再加时间", "Pick a purpose before adding time");
+    }
+
     // ---------- 子任务（v1.11.0） ----------
     public static String subtasksTitle() { return s("子任务", "Subtasks"); }
     public static String subAdd() { return s("＋ 加子任务", "＋ Add subtask"); }

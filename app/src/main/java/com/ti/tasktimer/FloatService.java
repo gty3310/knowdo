@@ -84,6 +84,7 @@ public class FloatService extends Service {
         } catch (Exception ignored) { }
         try { MorningGate.ensureScheduled(this); } catch (Exception ignored) { }
         try { FindNextTimer.ensureScheduled(this); } catch (Exception ignored) { }
+        try { PauseLock.ensureScheduled(this); } catch (Exception ignored) { }
         handler.post(loop);
     }
 
@@ -100,7 +101,8 @@ public class FloatService extends Service {
         }
         FindNextTimer.poll(this); // 「找下一个任务」到点检测（进程在就每秒兜一次）
         FloatSnooze.poll(this); // 「等任务结束」型 snooze 的到期检测（v1.14.0）
-        if (FloatSnooze.isActive(this)) {
+        PauseLock.poll(this); // 通话中缩小遮罩、挂断后再盖上；无权限时保通知
+        if (FloatSnooze.isActive(this) && !PauseLock.isDue(this)) {
             FloatingWindow.hide(); // snooze 中：只藏窗，本服务的通知/巡检照常
             patrolIdle();
             return;

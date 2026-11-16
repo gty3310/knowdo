@@ -80,6 +80,9 @@ public final class SbTimerSync {
                 String emoji = TimerState.pauseEmoji(c);
                 if (!emoji.isEmpty()) o.put("pause_emoji", emoji);
                 if (TimerState.pauseSilent(c)) o.put("pause_silent", true);
+                // 叫回时刻（老端忽略）：给对面安排到点提醒，避免静默挂着
+                long ra = TimerState.remindAt(c);
+                if (ra > 0) o.put("pause_remind_at", ra);
             } else {
                 o.put("task_id", "");
                 o.put("task_title", "");
@@ -208,14 +211,28 @@ public final class SbTimerSync {
                     && Math.abs(TimerState.pausedRemainMs(c) - remainMs) < 2000;
             if (!same) {
                 if (TimerState.isRunning(c)) TimerService.stopTimer(c);
+                ResumeReminder.cancel(c);
                 TimerState.setPausedRemote(c, taskId, title, duration, remainMs,
                         subIndex, subTitle, subCount, subRemainMs, reason, emoji, silent);
                 TimerState.logEvent(c, "跨设备同步：远端已暂停[" + title + "]");
                 changed = true;
             }
+            // 远端若带了叫回时刻就在本机排提醒；否则 30 秒后盖屏，绝不静默挂着
+            long remindAt = ts.has("pause_remind_at") ? ts.optLong("pause_remind_at", 0) : 0;
+            long now2 = System.currentTimeMillis();
+            if (remindAt > now2 + 1000L) {
+                if (Math.abs(TimerState.remindAt(c) - remindAt) > 2000L) {
+                    ResumeReminder.schedule(c, taskId, remindAt - now2);
+                } else {
+                    PauseLock.onPauseStateChanged(c);
+                }
+            } else {
+                PauseLock.onPauseStateChanged(c);
+            }
         } else { // idle
             if (TimerState.isRunning(c) || TimerState.isPaused(c)) {
                 if (TimerState.isRunning(c)) TimerService.stopTimer(c);
+                ResumeReminder.cancel(c);
                 TimerState.clearPaused(c);
                 AlertHelper.cancelAlert(c);
                 TimerState.logEvent(c, "跨设备同步：远端已结束计时，本机跟随停止");

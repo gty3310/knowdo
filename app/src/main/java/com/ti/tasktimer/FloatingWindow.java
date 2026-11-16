@@ -74,6 +74,16 @@ public class FloatingWindow {
     private static LinearLayout pauseStrip;
     private static TextView pauseStripText;
     private static LinearLayout pausedBtns;
+    private static LinearLayout lockBox;
+    private static TextView lockTitle;
+    private static TextView lockBanner;
+    private static TextView lockTime;
+    private static TextView lockState;
+    private static TextView lockUsed;
+    private static TextView lockBody;
+    private static boolean lockShowing = false;
+    private static int savedFlags, savedWidth, savedHeight, savedX, savedY, savedGravity;
+    private static boolean savedLp = false;
     private static SubtaskPanel subPanel;
     private static LinearLayout subFormBox;
     private static String subSignature = "";
@@ -188,6 +198,7 @@ public class FloatingWindow {
 
     private static void applyMode(Context c) {
         if (rootView == null || lp == null) return;
+        if (lockShowing) { applyLockLayout(c); return; }
         int m = mode(c);
         float d = c.getResources().getDisplayMetrics().density;
         bodyBox.setVisibility(m == MODE_EDIT ? View.VISIBLE : View.GONE);
@@ -261,17 +272,18 @@ public class FloatingWindow {
 
     // ---------- 显示/隐藏/刷新 ----------
     public static void ensureShown(Context c) {
-        if (!enabled(c) || suppressed) return;
-        // snooze 期间（v1.14.0）：只藏悬浮窗，计时/守卫/alarm/通知照常
-        if (FloatSnooze.isActive(c)) { hide(); return; }
+        if (suppressed) return;
+        if (!enabled(c) && !PauseLock.isDue(c)) return;
+        // 已到期的 99% 遮罩优先于 snooze：不能靠关窗躲开
+        if (FloatSnooze.isActive(c) && !PauseLock.isDue(c)) { hide(); return; }
         if (!AlertHelper.canDrawOverlays(c)) return;
         // 看门狗：系统把 overlay 卸掉后 rootView 可能仍非空，不重建就会「永远消失」
         if (rootView != null && (layoutFailed || (!rootView.isAttachedToWindow()
                 && System.currentTimeMillis() - builtAt > 3_000L))) {
             hideInternal();
         }
-        if (rootView != null) return;
-        build(c.getApplicationContext());
+        if (rootView == null) build(c.getApplicationContext());
+        if (PauseLock.isDue(c) && !GuardDispatch.inCall(c)) showLock(c);
     }
 
     /** 更新已添加的悬浮窗布局；失败则打标，下一拍 ensureShown 会拆掉重建。 */
@@ -447,6 +459,15 @@ public class FloatingWindow {
                 usedView.setText(fmt(usedMs) + " / " + fmt(totalMs));
             }
         }
+        if (lockShowing && lockBox != null && lockBox.getVisibility() == View.VISIBLE) {
+            if (lockTitle != null) lockTitle.setText(d.title);
+            if (lockBanner != null) lockBanner.setText(Strings.pauseLockBanner());
+            if (lockTime != null) lockTime.setText(timeText);
+            if (lockState != null) lockState.setText(d.state == ST_PAUSED
+                    ? (Strings.en() ? "Paused" : "已暂停") : "");
+            if (lockBody != null) lockBody.setText(Strings.pauseLockBody());
+            if (lockUsed != null) lockUsed.setText(usedView != null ? usedView.getText() : "");
+        }
         if (playPauseBtn != null) {
             playPauseBtn.setText(d.state == ST_RUNNING ? "⏸ 暂停"
                     : d.state == ST_PAUSED ? "▶ 继续" : "▶ 开始");
@@ -493,6 +514,8 @@ public class FloatingWindow {
             TaskStore.removeChangeListener(storeListener);
             storeListener = null;
         }
+        lockShowing = false;
+        savedLp = false;
         if (wm != null && rootView != null) {
             try { wm.removeView(rootView); } catch (Exception ignored) { }
         }
@@ -796,6 +819,21 @@ public class FloatingWindow {
         Button more5Btn = smallButton(c, Strings.pauseMore5());
         more5Btn.setOnClickListener(v -> {
             if (!TimerState.isPaused(c)) return;
+            // 没有目的的暂停不能靠 +5 分钟继续挂着，先补目的
+            if (TimerState.pauseReason(c) == null) {
+                android.widget.Toast.makeText(c, Strings.pauseNeedPurposeFirst(), android.widget.Toast.LENGTH_SHORT).show();
+                pauseCardForRepurpose = true;
+                Display dd = resolveDisplay(c);
+                PauseCard.showOverlay(c, dd.title, Strings.pauseSaveBtn(), ch -> {
+                    pauseCardForRepurpose = false;
+                    TimerState.setPauseMeta(c, ch.reason, ch.emoji, ch.silent);
+                    ResumeReminder.schedule(c, TimerState.pausedTaskId(c), ch.delayMs);
+                    SbTimerSync.onLocalTimerChanged(c);
+                    PauseLock.onPauseStateChanged(c);
+                    refresh(c);
+                });
+                return;
+            }
             long remain = Math.max(0, TimerState.remindAt(c) - System.currentTimeMillis()) + 300_000L;
             ResumeReminder.schedule(c, TimerState.pausedTaskId(c), remain);
             android.widget.Toast.makeText(c, Strings.pauseMore5(), android.widget.Toast.LENGTH_SHORT).show();
@@ -874,6 +912,7 @@ public class FloatingWindow {
             };
             TaskStore.addChangeListener(storeListener);
         }
+        buildLockBox(c);
         applyMode(c);
         refresh(c);
     }
@@ -1091,6 +1130,184 @@ public class FloatingWindow {
         if (imm != null) ui.postDelayed(() -> imm.showSoftInput(target, InputMethodManager.SHOW_IMPLICIT), 80);
     }
 
+    // ---------- 暂停 30 秒 99% 遮罩 ----------
+    public static boolean isLockShowing() { return lockShowing && rootView != null; }
+
+    public static void showLock(Context c) {
+        if (c == null) return;
+        if (suppressed) return; // 守卫/封禁页在前：等让位后再盖
+        if (!AlertHelper.canDrawOverlays(c)) return;
+        endEditFocus(c);
+        PauseCard.closeOverlay();
+        if (rootView == null) {
+            ensureShown(c);
+            if (rootView == null) return;
+        }
+        if (!lockShowing) {
+            if (lp != null) {
+                savedFlags = lp.flags;
+                savedWidth = lp.width;
+                savedHeight = lp.height;
+                savedX = lp.x;
+                savedY = lp.y;
+                savedGravity = lp.gravity;
+                savedLp = true;
+            }
+            lockShowing = true;
+        }
+        applyLockLayout(c);
+        refresh(c);
+    }
+
+    public static void retractLock(Context c) {
+        if (!lockShowing) return;
+        lockShowing = false;
+        if (lockBox != null) lockBox.setVisibility(View.GONE);
+        if (lp != null && savedLp) {
+            lp.flags = savedFlags;
+            lp.width = savedWidth;
+            lp.height = savedHeight;
+            lp.x = savedX;
+            lp.y = savedY;
+            lp.gravity = savedGravity;
+            savedLp = false;
+        }
+        if (c != null && rootView != null) applyMode(c);
+    }
+
+    private static void applyLockLayout(Context c) {
+        if (rootView == null || lp == null) return;
+        float d = c.getResources().getDisplayMetrics().density;
+        int sw = c.getResources().getDisplayMetrics().widthPixels;
+        int sh = c.getResources().getDisplayMetrics().heightPixels;
+        lp.width = sw;
+        lp.height = sh;
+        lp.x = 0;
+        lp.y = 0;
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH;
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN;
+        // 不设 FLAG_NOT_FOCUSABLE / FLAG_NOT_TOUCH_MODAL：触摸和按键都不漏到背后
+        int pad = Math.max(4, (int) (Math.min(sw, sh) * 0.005f));
+        rootView.setPadding(pad, pad, pad, pad);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(242, 24, 36, 31));
+        bg.setCornerRadius(18 * d);
+        rootView.setBackground(bg);
+        if (dockView != null) dockView.setVisibility(View.GONE);
+        if (miniBox != null) miniBox.setVisibility(View.GONE);
+        if (bodyBox != null) bodyBox.setVisibility(View.GONE);
+        if (lockBox != null) lockBox.setVisibility(View.VISIBLE);
+        if (noteEdit != null) {
+            noteEdit.clearFocus();
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager)
+                            c.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.hideSoftInputFromWindow(noteEdit.getWindowToken(), 0);
+        }
+        updateLayout();
+    }
+
+    private static void buildLockBox(final Context c) {
+        lockBox = new LinearLayout(c);
+        lockBox.setOrientation(LinearLayout.VERTICAL);
+        lockBox.setVisibility(View.GONE);
+        int pad = dp(c, 20);
+        lockBox.setPadding(pad, pad, pad, pad);
+
+        TextView tag = new TextView(c);
+        tag.setText("知行 · 当前第一要务");
+        tag.setTextColor(Color.rgb(176, 176, 176));
+        tag.setTextSize(13);
+        lockBox.addView(tag);
+
+        lockTitle = new TextView(c);
+        lockTitle.setTextColor(Color.WHITE);
+        lockTitle.setTextSize(20);
+        lockTitle.setTypeface(lockTitle.getTypeface(), android.graphics.Typeface.BOLD);
+        lockTitle.setPadding(0, dp(c, 8), 0, dp(c, 10));
+        lockBox.addView(lockTitle);
+
+        lockBanner = new TextView(c);
+        lockBanner.setTextColor(Color.rgb(247, 164, 148));
+        lockBanner.setTextSize(15);
+        lockBanner.setPadding(dp(c, 12), dp(c, 10), dp(c, 12), dp(c, 10));
+        GradientDrawable sb = new GradientDrawable();
+        sb.setColor(Color.argb(50, 217, 75, 58));
+        sb.setCornerRadius(12 * c.getResources().getDisplayMetrics().density);
+        sb.setStroke(dp(c, 1), Color.argb(140, 217, 75, 58));
+        lockBanner.setBackground(sb);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lockBanner.setLayoutParams(blp);
+        lockBox.addView(lockBanner);
+
+        LinearLayout timeRow = new LinearLayout(c);
+        timeRow.setOrientation(LinearLayout.HORIZONTAL);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
+        lockTime = new TextView(c);
+        lockTime.setTextColor(Color.WHITE);
+        lockTime.setTextSize(40);
+        lockTime.setTypeface(lockTime.getTypeface(), android.graphics.Typeface.BOLD);
+        timeRow.addView(lockTime);
+        lockState = new TextView(c);
+        lockState.setTextColor(Color.rgb(176, 176, 176));
+        lockState.setTextSize(14);
+        lockState.setPadding(dp(c, 10), 0, 0, 0);
+        lockState.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        timeRow.addView(lockState);
+        lockUsed = new TextView(c);
+        lockUsed.setTextColor(Color.rgb(200, 200, 200));
+        lockUsed.setTextSize(14);
+        timeRow.addView(lockUsed);
+        LinearLayout.LayoutParams trlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        trlp.topMargin = dp(c, 12);
+        timeRow.setLayoutParams(trlp);
+        lockBox.addView(timeRow);
+
+        lockBody = new TextView(c);
+        lockBody.setTextColor(Color.rgb(190, 200, 195));
+        lockBody.setTextSize(15);
+        lockBody.setPadding(0, dp(c, 14), 0, dp(c, 12));
+        lockBox.addView(lockBody);
+
+        lockBox.addView(lockBtn(c, Strings.pauseLockContinue(), Color.rgb(46, 122, 72),
+                v -> PauseLock.chooseContinue(c)));
+        lockBox.addView(lockBtn(c, Strings.pauseLockBreak(), Color.rgb(55, 66, 60),
+                v -> PauseLock.chooseTimedBreak(c)));
+        lockBox.addView(lockBtn(c, Strings.pauseLockDone(), Color.rgb(55, 66, 60),
+                v -> PauseLock.chooseMarkDone(c)));
+        lockBox.addView(lockBtn(c, Strings.pauseLockSwitch(), Color.rgb(55, 66, 60),
+                v -> PauseLock.chooseSwitchTask(c)));
+
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
+        lockBox.setLayoutParams(llp);
+        rootView.addView(lockBox);
+    }
+
+    private static Button lockBtn(Context c, String label, int color, android.view.View.OnClickListener click) {
+        Button b = new Button(c);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(16);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(14 * c.getResources().getDisplayMetrics().density);
+        b.setBackground(g);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(c, 52));
+        lp.topMargin = dp(c, 10);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(click);
+        return b;
+    }
+
     /** 拖动：三模式共用。EDIT 只移动；MINI 点按=进编辑、拖到边缘=吸附；DOCK 点按/拖离=展开。 */
     private static class Dragger implements View.OnTouchListener {
         private final Context c;
@@ -1102,6 +1319,7 @@ public class FloatingWindow {
 
         @Override public boolean onTouch(View v, MotionEvent e) {
             if (lp == null || rootView == null) return false;
+            if (lockShowing) return true; // 盖屏时不能拖、不能划掉
             switch (e.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     startX = lp.x; startY = lp.y;
