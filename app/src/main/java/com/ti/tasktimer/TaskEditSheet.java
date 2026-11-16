@@ -37,7 +37,7 @@ import java.util.Set;
  * 时段，保存后顺手在所点时间生成计划块）；② 主页「新建任务」；③ 点任务「编辑」。
  *
  * 字段：任务名／日期与开始时间（落 deadline＋nextStartAt 既有口径）／时长／
- * 重要性（must/secondary）／重复（none/daily，与数据模型一致）／任务级 alarm
+ * 重要性（must/secondary）／重复（none/daily/weekly，每周再选周一到周日）／任务级 alarm
  * 模式（follow/sound/silent/off）／情景标签（多选）。
  * 编辑态另有「专注规则」「重置计时」两个入口（经 Host 回调走宿主既有对话框），
  * 笔记与闹钟仍在展开区的笔记行与闹钟 chip 上，不在本层重复。
@@ -127,7 +127,10 @@ public final class TaskEditSheet {
         final boolean[] startDirty = {false};
         final String[] priority = {normPriority(src.priority)};
         final String[] assignee = {TaskItem.normAssignee(src.assignee)};
-        final String[] repeat = {"daily".equals(src.repeat) ? "daily" : "none"};
+        final String[] repeat = {src.isWeekly() ? TaskItem.REPEAT_WEEKLY
+                : src.isDaily() ? TaskItem.REPEAT_DAILY : TaskItem.REPEAT_NONE};
+        final List<Integer> weekdays = new ArrayList<>(
+                src.repeatWeekdays == null ? new ArrayList<>() : src.repeatWeekdays);
         final String[] alarmMode = {TaskItem.normAlarmMode(src.alarmMode)};
         final Set<String> scenarios = new LinkedHashSet<>(src.scenarios);
         final boolean subtaskLocked = !creating && src.hasSubtasks();
@@ -301,23 +304,51 @@ public final class TaskEditSheet {
         }
         col.addView(prioRow);
 
-        // 重复
+        // 重复（不重复 / 每天 / 每周；每周下面再选周一到周日）
         col.addView(label(ctx, en ? "Repeat" : "重复"));
         LinearLayout repRow = new LinearLayout(ctx);
         repRow.setOrientation(LinearLayout.HORIZONTAL);
-        final TextView[] repChips = new TextView[2];
-        final String[] repVals = {"none", "daily"};
-        final String[] repNames = {en ? "No repeat" : "不重复", en ? "Daily" : "每天"};
-        for (int i = 0; i < 2; i++) {
+        final TextView[] repChips = new TextView[3];
+        final String[] repVals = {TaskItem.REPEAT_NONE, TaskItem.REPEAT_DAILY, TaskItem.REPEAT_WEEKLY};
+        final String[] repNames = {en ? "No repeat" : "不重复", en ? "Daily" : "每天", en ? "Weekly" : "每周"};
+        final LinearLayout weekdayRow = new LinearLayout(ctx);
+        weekdayRow.setOrientation(LinearLayout.HORIZONTAL);
+        weekdayRow.setPadding(0, dp(ctx, 6), 0, 0);
+        final String[] dayNames = new String[7];
+        for (int d = 0; d < 7; d++) dayNames[d] = DayUtil.weekdayName(d);
+        final TextView[] dayChips = new TextView[7];
+        final Runnable refreshDays = () -> {
+            for (int d = 0; d < 7; d++) setChip(dayChips[d], weekdays.contains(d + 1));
+        };
+        for (int d = 0; d < 7; d++) {
+            final int iso = d + 1;
+            dayChips[d] = chip(ctx, dayNames[d], weekdays.contains(iso));
+            // 星期芯片略收一点，七个能排进一行
+            LinearLayout.LayoutParams dlp = (LinearLayout.LayoutParams) dayChips[d].getLayoutParams();
+            dlp.rightMargin = dp(ctx, 4);
+            dayChips[d].setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6));
+            dayChips[d].setTextSize(12);
+            dayChips[d].setOnClickListener(v -> {
+                if (weekdays.contains(iso)) weekdays.remove((Integer) iso);
+                else weekdays.add(iso);
+                java.util.Collections.sort(weekdays);
+                refreshDays.run();
+            });
+            weekdayRow.addView(dayChips[d]);
+        }
+        weekdayRow.setVisibility(TaskItem.REPEAT_WEEKLY.equals(repeat[0]) ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < 3; i++) {
             final int idx = i;
             repChips[i] = chip(ctx, repNames[i], repVals[i].equals(repeat[0]));
             repChips[i].setOnClickListener(v -> {
                 repeat[0] = repVals[idx];
-                for (int j = 0; j < 2; j++) setChip(repChips[j], j == idx);
+                for (int j = 0; j < 3; j++) setChip(repChips[j], j == idx);
+                weekdayRow.setVisibility(TaskItem.REPEAT_WEEKLY.equals(repeat[0]) ? View.VISIBLE : View.GONE);
             });
             repRow.addView(repChips[i]);
         }
         col.addView(repRow);
+        col.addView(weekdayRow);
 
         // alarm 模式
         col.addView(label(ctx, en ? "Alarm for this task" : "这个任务的 alarm"));
@@ -707,12 +738,20 @@ public final class TaskEditSheet {
             } else {
                 target.aiState = null;
             }
+            if (TaskItem.REPEAT_WEEKLY.equals(repeat[0]) && weekdays.isEmpty()) {
+                toast(ctx, Strings.pickWeekdayHint());
+                return;
+            }
             target.repeat = repeat[0];
+            target.repeatWeekdays = TaskItem.REPEAT_WEEKLY.equals(repeat[0])
+                    ? new ArrayList<>(weekdays) : new ArrayList<>();
             if (!subtaskLocked) target.durationMinutes = dur;
             target.alarmMode = alarmMode[0];
             target.scenarios = new ArrayList<>(scenarios);
+            boolean recurring = TaskItem.REPEAT_DAILY.equals(repeat[0])
+                    || TaskItem.REPEAT_WEEKLY.equals(repeat[0]);
             if (startDirty[0]) {
-                if ("daily".equals(repeat[0])) {
+                if (recurring) {
                     target.deadline = null;
                     target.deadlineTime = null;
                 } else {
@@ -722,10 +761,10 @@ public final class TaskEditSheet {
                 }
                 target.nextStartAt = startHolder[0];
             } else if (creating) {
-                target.deadline = "daily".equals(repeat[0]) ? null : deadlineHolder[0];
+                target.deadline = recurring ? null : deadlineHolder[0];
                 target.nextStartAt = startHolder[0];
-            } else if ("daily".equals(repeat[0])) {
-                // 与既有口径一致：每日任务不带单日截止
+            } else if (recurring) {
+                // 与既有口径一致：每日/每周任务不带单日截止
                 target.deadline = null;
                 target.deadlineTime = null;
             }
