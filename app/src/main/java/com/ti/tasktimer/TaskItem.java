@@ -77,6 +77,7 @@ public class TaskItem {
     public String status = "todo";     // todo / done（daily 任务用 doneDates 记每日完成）
     public boolean autoStart = false;  // 桥端置 true：App 实时同步发现后立即自动开始计时，随即回写 false 防重复
     public String note = "";           // 任务笔记，可在计时悬浮窗里随手写，随桥同步
+    public String description = "";    // 任务说明：给守卫判定用，与笔记分开
     public List<Subtask> subtasks = new ArrayList<>(); // 子任务队列（v1.11.0）：非空时总时长＝其分钟之和
     // ---- 专注守卫 ----
     public String focusRule = "";      // 自然语言规则（人读的，App 不解析；结构化名单才执行）
@@ -110,6 +111,23 @@ public class TaskItem {
     }
 
     public void touch() { updatedAtMs = System.currentTimeMillis(); }
+
+    /**
+     * 给判定层看的副本：把任务说明拼进 note，不改本机任务。
+     * 这样 SemanticJudge 无需改动也能读到任务说明（它只看 title+note）。
+     */
+    public TaskItem forJudging() {
+        if (description == null || description.trim().isEmpty()) return this;
+        try {
+            TaskItem c = fromJson(toJson());
+            String d = description.trim();
+            String n = note == null ? "" : note.trim();
+            c.note = n.isEmpty() ? d : d + "\n" + n;
+            return c;
+        } catch (Exception e) {
+            return this;
+        }
+    }
 
     // ---------- 子任务（v1.11.0） ----------
     public boolean hasSubtasks() { return subtasks != null && !subtasks.isEmpty(); }
@@ -173,6 +191,7 @@ public class TaskItem {
         o.put("status", status);
         o.put("autoStart", autoStart);
         o.put("note", note);
+        o.put("description", description == null ? "" : description);
         JSONArray subs = new JSONArray();
         if (subtasks != null) for (Subtask s : subtasks) subs.put(s.toJson());
         o.put("subtasks", subs);
@@ -250,6 +269,7 @@ public class TaskItem {
         t.status = o.optString("status", "todo");
         t.autoStart = o.optBoolean("autoStart", false);
         t.note = o.optString("note", "");
+        t.description = o.optString("description", "");
         JSONArray subs = o.optJSONArray("subtasks");
         if (subs != null) for (int i = 0; i < subs.length(); i++) {
             JSONObject so = subs.optJSONObject(i);

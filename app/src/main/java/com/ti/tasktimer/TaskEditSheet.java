@@ -160,6 +160,16 @@ public final class TaskEditSheet {
         nameIn.setHorizontallyScrolling(false);
         col.addView(nameIn);
 
+        col.addView(label(ctx, Strings.taskDescriptionLabel()));
+        final EditText descIn = new EditText(ctx);
+        descIn.setHint(Strings.taskDescriptionHint());
+        if (!creating && src.description != null) descIn.setText(src.description);
+        descIn.setTextSize(15);
+        descIn.setMinLines(2);
+        descIn.setSingleLine(false);
+        descIn.setHorizontallyScrolling(false);
+        col.addView(descIn);
+
         // 日期与开始时间
         col.addView(label(ctx, en ? "Date & start time" : "日期与开始时间"));
         LinearLayout timeRow = new LinearLayout(ctx);
@@ -696,6 +706,7 @@ public final class TaskEditSheet {
                 target = fresh != null ? fresh : src;
                 target.title = name;
             }
+            target.description = descIn.getText() == null ? "" : descIn.getText().toString().trim();
             target.priority = priority[0];
             // 谁来做（v1.74.0，F1 状态口径）：改成 AI（含新建）且尚无状态→queued；
             // 已是 AI 且已有状态（done/question/working/await_confirm）不回退；
