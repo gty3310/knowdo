@@ -324,9 +324,7 @@ public class CheckActivity extends Activity {
         // 点「做完了」立刻开始 3 分钟「找下一个任务」倒计时（不是任务，只给找下一件一点紧迫感）。
         // 这段时间里不立刻弹选任务页（由倒计时取代 fireSoon）；到点仍未开始再走 fireNextTask。
         FindNextTimer.start(this);
-        Intent i = new Intent(this, MainActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(i);
+        MainActivity.openXing(this);
         finish();
     }
 

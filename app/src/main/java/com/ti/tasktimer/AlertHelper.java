@@ -287,17 +287,17 @@ public final class AlertHelper {
         boolean locked = kg != null && kg.isKeyguardLocked();
         if (interactive && !locked && canDrawOverlays(c)) {
             try {
-                Intent direct = new Intent(c, NextTaskActivity.class);
-                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                Intent direct = MainActivity.xingIntent(c);
+                direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 c.startActivity(direct);
-                TimerState.logEvent(c, "已直接弹出衔接守卫页（亮屏路径，未经通知）");
+                TimerState.logEvent(c, "已直接打开行页选下一件（亮屏路径，未经通知）");
                 return;
             } catch (Exception e) {
                 TimerState.logEvent(c, "衔接守卫页直接启动失败，退回通知路径：" + e.getClass().getSimpleName());
             }
         }
-        Intent intent = new Intent(c, NextTaskActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        Intent intent = MainActivity.xingIntent(c);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, NOTIF_NEXT_TASK, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = new Notification.Builder(c, CHANNEL_ALERTS)
