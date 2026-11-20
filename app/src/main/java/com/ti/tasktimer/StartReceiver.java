@@ -50,6 +50,8 @@ public class StartReceiver extends BroadcastReceiver {
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = km != null && km.isKeyguardLocked();
         if (interactive && !locked && AlertHelper.canDrawOverlays(c)) {
+            // 大窗批二（Issue #6）：优先 99% 大窗；没接管才直拉原页；锁屏/无权限走下面 FSI 不变
+            if (BigOverlay.requestStart(c, t.id)) return;
             try {
                 c.startActivity(page);
                 return;
