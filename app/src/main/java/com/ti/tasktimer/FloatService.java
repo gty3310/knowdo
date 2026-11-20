@@ -102,6 +102,7 @@ public class FloatService extends Service {
         FindNextTimer.poll(this); // 「找下一个任务」到点检测（进程在就每秒兜一次）
         FloatSnooze.poll(this); // 「等任务结束」型 snooze 的到期检测（v1.14.0）
         PauseLock.poll(this); // 通话中缩小遮罩、挂断后再盖上；无权限时保通知
+        BigOverlay.poll(this); // 通用大窗：通话让位/复原、排队递补、在显内容每秒 tick
         if (FloatSnooze.isActive(this) && !PauseLock.isDue(this)) {
             FloatingWindow.hide(); // snooze 中：只藏窗，本服务的通知/巡检照常
             patrolIdle();

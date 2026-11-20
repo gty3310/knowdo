@@ -78,6 +78,8 @@ public class FloatingWindow {
     private static TextView pauseStripText;
     private static LinearLayout pausedBtns;
     private static LinearLayout lockBox;
+    private static LinearLayout overlayBox;
+    private static boolean overlayShowing = false;
     private static TextView lockTitle;
     private static TextView lockBanner;
     private static TextView lockTime;
@@ -204,6 +206,7 @@ public class FloatingWindow {
     private static void applyMode(Context c) {
         if (rootView == null || lp == null) return;
         if (lockShowing) { applyLockLayout(c); return; }
+        if (overlayShowing) { applyBigLayout(c, overlayBox); return; }
         int m = mode(c);
         float d = c.getResources().getDisplayMetrics().density;
         bodyBox.setVisibility(m == MODE_EDIT ? View.VISIBLE : View.GONE);
@@ -535,6 +538,8 @@ public class FloatingWindow {
             storeListener = null;
         }
         lockShowing = false;
+        overlayShowing = false;
+        overlayBox = null;
         savedLp = false;
         if (wm != null && rootView != null) {
             try { wm.removeView(rootView); } catch (Exception ignored) { }
@@ -972,8 +977,19 @@ public class FloatingWindow {
             TaskStore.addChangeListener(storeListener);
         }
         buildLockBox(c);
+        buildOverlayBox(c);
         applyMode(c);
         refresh(c);
+    }
+
+    /** 通用大窗内容盒（BigOverlay 用）：与 lockBox 并列，同一时刻只显一个。 */
+    private static void buildOverlayBox(Context c) {
+        overlayBox = new LinearLayout(c);
+        overlayBox.setOrientation(LinearLayout.VERTICAL);
+        overlayBox.setVisibility(View.GONE);
+        overlayBox.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        rootView.addView(overlayBox);
     }
 
     /** 进入编辑：展开卡片 + 笔记输入框立刻获得焦点并弹键盘。 */
@@ -1237,8 +1253,14 @@ public class FloatingWindow {
             ensureShown(c);
             if (rootView == null) return;
         }
+        boolean wasBig = lockShowing || overlayShowing;
+        if (overlayShowing) {
+            // 暂停遮罩优先级最高：抢占通用大窗（其内容由 BigOverlay 排队，遮罩收回后复出）
+            overlayShowing = false;
+            if (overlayBox != null) overlayBox.setVisibility(View.GONE);
+        }
         if (!lockShowing) {
-            if (lp != null) {
+            if (lp != null && !wasBig) {
                 savedFlags = lp.flags;
                 savedWidth = lp.width;
                 savedHeight = lp.height;
@@ -1257,6 +1279,11 @@ public class FloatingWindow {
         if (!lockShowing) return;
         lockShowing = false;
         if (lockBox != null) lockBox.setVisibility(View.GONE);
+        restoreSavedLp();
+        if (c != null && rootView != null) applyMode(c);
+    }
+
+    private static void restoreSavedLp() {
         if (lp != null && savedLp) {
             lp.flags = savedFlags;
             lp.width = savedWidth;
@@ -1266,10 +1293,91 @@ public class FloatingWindow {
             lp.gravity = savedGravity;
             savedLp = false;
         }
+    }
+
+    private static void saveCurrentLp() {
+        if (lp == null) return;
+        savedFlags = lp.flags;
+        savedWidth = lp.width;
+        savedHeight = lp.height;
+        savedX = lp.x;
+        savedY = lp.y;
+        savedGravity = lp.gravity;
+        savedLp = true;
+    }
+
+    // ---------- 通用 99% 大窗（BigOverlay 壳的窗口层） ----------
+    public static boolean isOverlayShowing() { return overlayShowing && rootView != null; }
+
+    public static boolean isSuppressed() { return suppressed; }
+
+    /**
+     * 把 content 装进通用内容盒并进入 99% 大窗模式。暂停遮罩在显、被守卫页
+     * 抑制中或无悬浮权限时拒绝（返回 false，调用方排队等下一拍）。
+     * 已在通用大窗模式时调用＝换内容（不重存 LayoutParams）。
+     */
+    public static boolean showOverlay(Context c, View content) {
+        if (c == null || content == null) return false;
+        if (suppressed) return false;
+        if (lockShowing) return false;
+        if (!AlertHelper.canDrawOverlays(c)) return false;
+        endEditFocus(c);
+        PauseCard.closeOverlay();
+        if (rootView == null) {
+            ensureShown(c);
+            if (rootView == null) return false;
+        }
+        if (lockShowing || overlayBox == null) return false; // ensureShown 可能刚拉起暂停遮罩
+        overlayBox.removeAllViews();
+        overlayBox.addView(content, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        if (!overlayShowing) {
+            saveCurrentLp();
+            overlayShowing = true;
+        }
+        applyBigLayout(c, overlayBox);
+        return true;
+    }
+
+    /** 只收视觉（通话让位）：内容留在盒里、窗口恢复普通形态，挂断后 resumeOverlayVisual 复原。 */
+    public static void hideOverlayVisual() {
+        if (!overlayShowing) return;
+        overlayShowing = false;
+        if (overlayBox != null) overlayBox.setVisibility(View.GONE);
+        restoreSavedLp();
+        Context c = appCtx();
+        if (c != null && rootView != null) applyMode(c);
+    }
+
+    /** 通话结束：把盒里现成的内容重新扩成 99% 大窗。盒是空的（窗口被重建过）返回 false。 */
+    public static boolean resumeOverlayVisual(Context c) {
+        if (c == null || rootView == null || overlayBox == null) return false;
+        if (lockShowing || overlayShowing) return false;
+        if (overlayBox.getChildCount() == 0) return false;
+        saveCurrentLp();
+        overlayShowing = true;
+        applyBigLayout(c, overlayBox);
+        return true;
+    }
+
+    /** 收回通用大窗并清掉内容（与 retractLock 对称；暂停遮罩在显时不动其状态）。 */
+    public static void retractOverlay(Context c) {
+        if (overlayBox != null) {
+            overlayBox.setVisibility(View.GONE);
+            overlayBox.removeAllViews();
+        }
+        if (!overlayShowing) return;
+        overlayShowing = false;
+        restoreSavedLp();
         if (c != null && rootView != null) applyMode(c);
     }
 
     private static void applyLockLayout(Context c) {
+        applyBigLayout(c, lockBox);
+    }
+
+    /** 99% 大窗布局：全屏尺寸＋深色底＋只显指定内容盒，其余盒全藏，触摸/按键不漏到背后。 */
+    private static void applyBigLayout(Context c, View box) {
         if (rootView == null || lp == null) return;
         float d = c.getResources().getDisplayMetrics().density;
         int sw = c.getResources().getDisplayMetrics().widthPixels;
@@ -1293,7 +1401,8 @@ public class FloatingWindow {
         if (dockView != null) dockView.setVisibility(View.GONE);
         if (miniBox != null) miniBox.setVisibility(View.GONE);
         if (bodyBox != null) bodyBox.setVisibility(View.GONE);
-        if (lockBox != null) lockBox.setVisibility(View.VISIBLE);
+        if (lockBox != null) lockBox.setVisibility(box == lockBox ? View.VISIBLE : View.GONE);
+        if (overlayBox != null) overlayBox.setVisibility(box == overlayBox ? View.VISIBLE : View.GONE);
         if (noteEdit != null) {
             noteEdit.clearFocus();
             android.view.inputmethod.InputMethodManager imm =
@@ -1413,7 +1522,7 @@ public class FloatingWindow {
 
         @Override public boolean onTouch(View v, MotionEvent e) {
             if (lp == null || rootView == null) return false;
-            if (lockShowing) return true; // 盖屏时不能拖、不能划掉
+            if (lockShowing || overlayShowing) return true; // 大窗时不能拖、不能划掉
             switch (e.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     startX = lp.x; startY = lp.y;
