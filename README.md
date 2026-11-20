@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.88.0)
+## Features (Android, v1.89.0)
 
-Current version: **v1.88.0**.
+Current version: **v1.89.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,20 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.89.0 — 2026-11-20
+
+**Why:** Repeat was daily-only, so a task that runs on set weekdays could not exist; and the guard delivered its verdicts without knowing a task's special circumstances, while appealing a wrong verdict was restricted. This release merges two PRs by an external coding agent (Grok) — weekly repeat, and task descriptions with an always-available appeal — diff-reviewed item by item and hand-merged before release. Build commit `273bd5a` · [compare v1.88.0...v1.89.0](https://github.com/gty3310/knowdo/compare/v1.88.0...v1.89.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Weekly repeat.** A task can repeat every week on the weekdays you tick (say Mon/Wed/Fri), chosen when editing the task; the unity index and the daily rollover count only the days you picked, and a day you did not pick never counts as missed.
+- **Task description.** Editing a task now takes a one-line description; the guard's judgement reads it as background, so fewer verdicts are mistakes.
+- **Appeal any time.** "This is a mistake" on the guard check page can be tapped whenever it appears, and appeals work from the block screen too; on Medium and Hard you write a short explanation and an AI re-checks it (the task description goes along). If the AI channel is unavailable, you can skip the re-check after waiting 5 seconds.
+
+**Improved**
+- **Rename on the floating window.** Tap the task title on the floating window to edit the name in place; on the call-back page, "switch to next task" jumps straight to the Act page to pick one.
+
+Not verified on a device or emulator: a feature-merge release, shipped directly at the user's instruction; if anything is wrong, roll back to v1.88.0. Data changes: weekday picks and task descriptions are stored on the phone for now; the matching cloud columns (`tasks.repeat_weekdays`, `tasks.description`) are written up in docs/migrations but deliberately not applied yet — sync picks them up automatically once the database is unblocked on Nov 24 and the columns are added, and nothing on the phone is lost in the meantime.
+
 ### v1.88.0 — 2026-11-16
 
 **Why:** On the medium guard difficulty, the "This is a mistake" button only appeared on the first drift check of the day — a real misjudgement on the second check had nowhere to appeal. And once a task was paused with no next step chosen, nothing ever called you back: the pause could hang silently all day while you drifted off. This release (two PRs by an external coding agent, diff-reviewed before merge) shows the appeal button on every check and adds a full-screen pause lock as the last resort that pulls you back. Build commit `e26826e` · [compare v1.87.0...v1.88.0](https://github.com/gty3310/knowdo/compare/v1.87.0...v1.88.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -91,18 +105,6 @@ Not verified on a device or emulator: the user ordered this release shipped righ
 - **The Next Task page no longer offers AI tasks** as candidates — they cannot be timed.
 
 Not verified on a device or emulator: at the user's own call (token budget), this release skipped the emulator run that a bug-fix release would normally get. The behaviours above — the window staying at time-up, the watchdog rebuild, the 3-minute countdown and its expiry page, the flash fix, the notification deep link — have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
-
-### v1.86.0 — 2026-11-15
-
-**Why:** The Act page header carried a quarter-screen of figures — big Left-today / Must-do / Free numbers, a due-today line, a red doesn't-fit line — plus a current-task strip, while the drawer menu button existed only on that one page: from Today, Know or Oneness, changing the language or reaching Settings meant switching back to Act first. This release folds the header into a single row and gives every one of the first four tabs the same menu button. Build commit `2672d82` · [compare v1.85.0...v1.86.0](https://github.com/gty3310/knowdo/compare/v1.85.0...v1.86.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Improved**
-- **The Act header, one row.** ☰ stays at the left; the title is now the page's own name (Act / 行） instead of the KnowDo wordmark; right after it, two compact figures — Must-do H:MM · Free H:MM — read from the same DayAccount result the old stats block used (read-only, formula untouched), the Free figure green when positive, vermilion when negative, ink at zero. At the far right, two icon-only buttons (new vector drawables, tinted with the theme ink): a list-plus Plan icon opening the day planner (the old text entry's exact jump) and a calendar icon toggling the calendar panel (the old pill button's exact behaviour).
-- **Removed from the Act page:** the whole stats block and its refresh code, the Plan text entry, and the current-task strip (the running task still shows in its list row and in the floating window). The current task's main-principle line survives as a slim line of its own under the header, under the same conditions as before.
-- **☰ on Today, Know and Oneness.** Each page head gains the same 42×40dp menu button at its far left, opening the same drawer (MainActivity.openDrawer is now package-visible); page titles are unchanged, and Chat gets none, as specified.
-- **The calendar's blue undo row is gone.** The "↩ Undo re-plan · no room: …" line, its undo entry and the snapshot read/refresh/undo methods are removed entirely; AI Re-plan and Quick Re-plan stay, and quick re-plan itself works exactly as before.
-
-Not yet verified on a real device: the new Act header end to end (figures refreshing with the timer and after auto-scheduling, the three Free colours, both icon jumps), the ☰ drawer opening from the three pages, quick re-plan with the undo row gone, and the 1.85.0 to 1.86.0 in-app update chain. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
 
 ## Build
 
