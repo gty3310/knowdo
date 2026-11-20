@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1900 = new Entry("v1.90.0", "2026-11-20");
+        e1900.add(new Group(s("改进", "Improved"),
+                s("盖屏和空档催促改成 99% 超大悬浮窗——分神软件被封时的盖屏、空档太久的催促，现在以占满整个屏幕的悬浮窗出现，划不走、按返回也关不掉，必须选了下一步才会收回（暂停 30 秒的遮罩本来就是这样，这次把这套机制抽成了通用壳，后面所有全屏提醒都会陆续换成这种）",
+                  "Block cover and idle nudge are now 99% overlays — the cover shown when a distracting app is blocked, and the nudge after a long idle gap, now appear as a floating window filling the whole screen: it cannot be swiped away or closed with Back, and only goes away once you pick a next step (the 30-second pause lock already worked this way; this release extracts that mechanism into a generic shell, and every full-screen reminder will move onto it in turn)"),
+                s("锁屏时、或没有悬浮窗权限时，仍走原来的全屏页面，不受影响",
+                  "On the lock screen, or without the overlay permission, the original full-screen pages still appear, unchanged"),
+                s("小适配——盖屏上的「这是误判」在大窗里点按后，会转到原来的盖屏页完成申诉（写解释的输入框需要页面承载）",
+                  "Small adaptation — tapping 'This is a mistake' on the overlay cover hands over to the original block page to finish the appeal (the explanation input needs a page to live on)")));
+        e1900.why = s("全屏提醒页能被划走、退到后台，提醒就白弹了；99% 超大悬浮窗划不走、关不掉，必须选了下一步才收回。这一版先把暂停遮罩的大窗机制抽成通用壳，迁了盖屏和空档催促两页，其余全屏提醒后面陆续跟上。本版未经模拟器/真机验证（按指示直接发），有问题回滚 v1.89.0",
+                "A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed — it only goes away once you pick a next step. This release extracts the pause lock's big-window mechanism into a generic shell and moves the first two pages (the block cover and the idle nudge) onto it; the remaining full-screen reminders follow in later releases. Not verified on an emulator or a real device (shipped directly as instructed); if anything is wrong, roll back to v1.89.0");
+        e1900.tryIt = s("触发一次盖屏（把被封软件打开），或让任务空档到催促出现",
+                "Trigger a block cover (open a blocked app), or let a task sit idle until the nudge appears");
+        out.add(e1900);
+
         Entry e1890 = new Entry("v1.89.0", "2026-11-20");
         e1890.add(new Group(s("新增", "New"),
                 s("每周重复——任务可以设成每周重复并勾选星期几（比如周一、三、五），编辑任务时可选；知行指数和每日滚入都按你选中的日子算，没选中的日子不算漏做",
