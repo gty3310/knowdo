@@ -36,6 +36,23 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1890 = new Entry("v1.89.0", "2026-11-20");
+        e1890.add(new Group(s("新增", "New"),
+                s("每周重复——任务可以设成每周重复并勾选星期几（比如周一、三、五），编辑任务时可选；知行指数和每日滚入都按你选中的日子算，没选中的日子不算漏做",
+                  "Weekly repeat — a task can repeat every week on the weekdays you tick (say Mon/Wed/Fri), chosen when editing the task; the unity index and the daily rollover count only the days you picked, and days you did not pick never count as missed"),
+                s("任务说明——编辑任务时可填一句「任务说明」，守卫判定会把说明纳入参考，减少误判",
+                  "Task description — when editing a task you can add a one-line description; the guard's judgement takes it into account, so fewer verdicts are mistakes"),
+                s("误判随时可申诉——守卫问询页的「这是误判」任何时候都可点，盖屏时也能申诉；中、难档写一句解释后交 AI 复核（会带上任务说明）；AI 通道不可用时等 5 秒可跳过复核",
+                  "Appeal any time — 'This is a mistake' on the guard check page can be tapped whenever it appears, and you can appeal from the block screen too; on Medium and Hard, write a short explanation and an AI re-checks it (the task description goes along); if the AI channel is unavailable, wait 5 seconds and you can skip the re-check")));
+        e1890.add(new Group(s("改进", "Improved"),
+                s("悬浮窗上可以直接改任务名（点标题编辑）；叫回页点「换下一个任务」直达行页选任务",
+                  "Rename a task right on the floating window (tap the title to edit); on the call-back page, tapping 'next task' now jumps straight to the Act page to pick one")));
+        e1890.why = s("重复此前只有「每天」一种，按星期做的事建不了；守卫判定不了解任务的特殊情况，误判了申诉入口又受限。每周的星期选择和任务说明目前先存本机，云端同步要等 11 月 24 日数据库解封、补上两列后自动跟上，本机数据不会丢。本版未经模拟器/真机验证（功能合并版，按指示直接发），有问题回滚 v1.88.0",
+                "Repeat used to be daily-only, so weekday-based tasks could not exist; and the guard judged without knowing a task's circumstances, while the appeal entry was restricted. Weekday picks and task descriptions live on the phone for now; cloud sync catches up automatically once the database is unblocked on Nov 24 and the two columns are added, and nothing on the phone is lost. This version has not been verified on an emulator or a real device (a feature-merge release, shipped directly as instructed); if anything is wrong, roll back to v1.88.0");
+        e1890.tryIt = s("编辑任意任务→重复选「每周」→勾几天保存，看列表与日历；给常用任务填说明，再触发一次问询看判定",
+                "Edit any task, set repeat to Weekly, tick a few days and save, then check the list and the calendar; add a description to a task you use often, then trigger a guard check and watch the verdict");
+        out.add(e1890);
+
         Entry e1880 = new Entry("v1.88.0", "2026-11-16");
         e1880.add(new Group(s("新增", "New"),
                 s("暂停 30 秒盖屏提醒——任务暂停后 30 秒还没选下一步，悬浮窗会放大盖满屏幕，把你拉回来选下一步",
