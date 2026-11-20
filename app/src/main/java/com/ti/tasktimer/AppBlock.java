@@ -73,6 +73,7 @@ public final class AppBlock {
                 .remove("block_category").remove("block_content").apply();
         BlockEnforcer.cancel(c);
         BlockActivity.dismissCurrent();
+        BigOverlay.dismissBlock(c);
         AlertHelper.cancelBlock(c);
     }
 
@@ -95,7 +96,10 @@ public final class AppBlock {
             show(c);
             return true;
         }
-        if (!fg.equals(c.getPackageName())) BlockActivity.dismissCurrent();
+        if (!fg.equals(c.getPackageName())) {
+            BlockActivity.dismissCurrent();
+            BigOverlay.dismissBlock(c); // 大窗版盖屏同口径：用户切去别的软件就收起
+        }
         return false;
     }
 

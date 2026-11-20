@@ -110,7 +110,9 @@ public final class BigOverlay {
      */
     public static boolean requestBlock(Context c) {
         if (!FloatingWindow.enabled(c)) return false;
-        request(c, KEY_BLOCK, PRI_BLOCK, new BlockOverlay());
+        // 前台检测链会随被盖软件的窗口事件反复调到这里：已在列就不重建内容，
+        // 倒计时靠 tick 每秒刷新；被收回后（用户切走）下次请求自然是新一份
+        if (!isWanted(KEY_BLOCK)) request(c, KEY_BLOCK, PRI_BLOCK, new BlockOverlay());
         return true;
     }
 

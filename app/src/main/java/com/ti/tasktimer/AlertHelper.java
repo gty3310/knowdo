@@ -465,6 +465,8 @@ public final class AlertHelper {
     /**
      * 分神处置盖屏的统一出口（v1.80.0）：与守卫问询页同一策略（亮屏且可
      * 悬浮时直接启动，锁屏走全屏通知）。通知文案与盖屏同题，不解释功能。
+     * 大窗批一（Issue #6）：亮屏未锁＋有悬浮权限时优先 99% 大窗（划不走），
+     * 大窗没接管（悬浮窗关着）才直拉原页；锁屏或无权限保持全屏通知＋原页。
      */
     public static void fireBlock(Context c) {
         createChannels(c);
@@ -473,6 +475,7 @@ public final class AlertHelper {
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = kg != null && kg.isKeyguardLocked();
         if (interactive && !locked && canDrawOverlays(c)) {
+            if (BigOverlay.requestBlock(c)) return;
             try {
                 Intent direct = new Intent(c, BlockActivity.class);
                 direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
