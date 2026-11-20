@@ -33,11 +33,13 @@ public final class BigOverlay {
     public static final String KEY_ALARM = "alarm";
     public static final String KEY_RESUME = "resume";
     public static final String KEY_START = "start";
+    public static final String KEY_THANKS = "thanks";
 
     public static final int PRI_CHECK = 40;
     public static final int PRI_ALARM = 35;
     public static final int PRI_RESUME = 30;
     public static final int PRI_START = 25;
+    public static final int PRI_THANKS = 10;
     public static final int PRI_BLOCK = 30;
     public static final int PRI_IDLE = 20;
 
@@ -218,6 +220,22 @@ public final class BigOverlay {
 
     public static void dismissStart(Context c) {
         if (isWanted(KEY_START)) dismiss(c, KEY_START);
+    }
+
+    /**
+     * 致谢大窗（AlertHelper.fireThanks 在亮屏未锁＋有悬浮权限时调）：返回
+     * 口径与 requestCheck 相同（false＝走原 Activity 路径）。路人静音的
+     * 待致谢状态在内容 onShown 时才消费（呈现即消费，与原页同）。
+     */
+    public static boolean requestThanks(Context c) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (KnowDoApp.ownActivityVisible()) return false;
+        request(c, KEY_THANKS, PRI_THANKS, new ThanksOverlay());
+        return true;
+    }
+
+    public static void dismissThanks(Context c) {
+        if (isWanted(KEY_THANKS)) dismiss(c, KEY_THANKS);
     }
 
     // ---------------- 每秒节拍（FloatService 调） ----------------
