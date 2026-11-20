@@ -387,6 +387,18 @@ public final class Strings {
     public static String hardJudgeSubmit() { return s("提交", "Submit"); }
     public static String hardJudging() { return s("判定中", "Checking"); }
     public static String hardJudgeRefused() { return s("未通过", "Not accepted"); }
+    public static String addToSystemPrompt() { return s("加到 system prompt 里", "Add to the system prompt"); }
+    public static String explainTooThin() { return s("请用一句话说明为什么这是误判", "Please write one sentence explaining the false alarm"); }
+    public static String explainRejected() { return s("这个解释不够清楚，请再写一句", "That explanation is not clear enough — please write another sentence"); }
+    public static String aiUnavailableWait(int sec) {
+        return s("AI 暂时不可用，" + sec + " 秒后可跳过",
+                "AI is unavailable. You can skip in " + sec + "s");
+    }
+    public static String aiUnavailableSkipHint() { return s("AI 不可用，可以跳过这次解释", "AI is unavailable — you can skip this explanation"); }
+    public static String skipAiUnavailable() { return s("跳过（AI 不可用）", "Skip (AI unavailable)"); }
+    public static String taskDescriptionLabel() { return s("任务说明", "Task description"); }
+    public static String taskDescriptionHint() { return s("给守卫看的背景说明，与笔记分开", "Background for the guard, separate from the note"); }
+    public static String overturnThis() { return s("这是误判", "False alarm"); }
 
     // ---------------- 设置页两级（v1.83.0） ----------------
     public static String settingsBack() { return s("‹ 设置", "‹ Settings"); }

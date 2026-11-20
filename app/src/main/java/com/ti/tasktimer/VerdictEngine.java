@@ -242,7 +242,7 @@ public final class VerdictEngine {
         String appName = AppLister.labelOf(c, target);
         if (ScreenGuardPrefs.ACTION_BLOCK.equals(act)) {
             // 盖住 3 分钟（v1.80.0）：不回家、不跳回，盖屏拉起来盖住它即可
-            AppBlock.start(c, target);
+            AppBlock.start(c, target, cat, true);
             GuardEvents.add(c, task, cat, 1f, "宽限到点处理（盖住 3 分钟）：仍停留在「" + appName
                     + "」，blocked 3m");
             TimerState.logEvent(c, "屏幕内容守卫：宽限到点，仍在「" + appName + "」，已暂停软件 3 分钟");

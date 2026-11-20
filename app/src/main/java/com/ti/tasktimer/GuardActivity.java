@@ -11,7 +11,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -55,19 +54,7 @@ public class GuardActivity extends Activity {
     private ScrollView scrollView;
     private LinearLayout actionsBox;
 
-    // 困难档误判判定（v1.83.0 F4）：解释区与判定状态（只给一次提交机会）
-    private LinearLayout explainBox;
-    private EditText explainInput;
-    private Button explainSubmit;
-    private TextView judgeState;
-    private boolean judgeSubmitted;
-    private boolean judgeSettled;
-
-    /** hard 误判 AI 判定的 system prompt 形状：只回 agree/refuse 二值。 */
-    private static final String JUDGE_SYSTEM =
-            "你是知行 App 的守卫判定器。用户在做任务时打开了被守卫拦下的软件，声称这是误判，并写了一句解释。"
-            + "只判断这句解释是否构成合理的误判理由（例如软件与任务相关、系统自动弹出、误触点开、正当查资料）。"
-            + "只输出一个词：agree 或 refuse，不要输出任何其他内容。";
+    private OverturnFlow.Box overturnBox;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,8 +74,7 @@ public class GuardActivity extends Activity {
         }
         // 难度与计数快照（v1.83.0）：问询计数在「新开一页」时记一次——
         // 同一页被重拉回前台走 onResume/onNewIntent、不再过 onCreate，不重复计。
-        // 逻辑日口径在 GuardLedger 内。误判钮改为每次都显示，不再用
-        // 开页前次数做中等档显隐。
+        // 逻辑日口径在 GuardLedger 内。误判钮每次都显示，不再用开页前次数做中等档显隐。
         String tid0 = TimerState.taskId(this);
         taskId = tid0 == null ? "" : tid0;
         difficulty = ScreenGuardPrefs.guardDifficulty(this);
@@ -201,14 +187,16 @@ public class GuardActivity extends Activity {
             spacer(actionsBox, 24);
         }
 
-        // 「这是误判」出口（v1.83.0）：三档都有、形式递增——easy/medium 点即
-        // 放行；hard 点后要写解释走 AI 判定（F4，见 onOverturnClicked）。
-        // 中等档不再仅限当日第一次问询才显示，每次问询都给出入口。
+        // 「这是误判」出口：三档每次都显示。easy 点即放行；medium/hard
+        // 要写一句解释交给 AI 复核（见 OverturnFlow）。
         Button allow = bigButton(contentMode ? "这是误判，本次放行这一类" : "这是误判，本次放行它", Color.rgb(117, 117, 117));
-        allow.setOnClickListener(v -> onOverturnClicked());
+        allow.setOnClickListener(v -> OverturnFlow.onMisjudgeClicked(overturnHost(), difficulty, overturnBox));
         actionsBox.addView(allow);
         spacer(actionsBox, 12);
-        if (ScreenGuardPrefs.DIFF_HARD.equals(difficulty)) buildExplainBox(actionsBox);
+        if (!ScreenGuardPrefs.DIFF_EASY.equals(difficulty)) {
+            overturnBox = OverturnFlow.build(overturnHost(), actionsBox);
+            spacer(actionsBox, 12);
+        }
 
         // 和 AI 聊聊（v1.24.0）：直达「聊聊」页签并带上当前任务上下文。
         // 只是换个地方说话——问询本身不做任何裁决（回到任务/宽限/放行都还没选），
@@ -239,128 +227,18 @@ public class GuardActivity extends Activity {
         }
     }
 
-    /**
-     * 「这是误判」的点击：easy/medium 直接按现行 overturn 口径放行；
-     * hard 先展开解释区（不跳页），写一句解释提交 AI 判定（F4）。
-     */
-    private void onOverturnClicked() {
-        if (ScreenGuardPrefs.DIFF_HARD.equals(difficulty)) {
-            if (explainBox != null) explainBox.setVisibility(View.VISIBLE);
-            return;
-        }
-        if (contentMode) VerdictEngine.contentAllow(this, category);
-        else FocusGuard.chooseAllow(this, fgPkg);
-        finish();
-    }
-
-    /** hard 解释区：输入框＋提交钮＋判定状态小字，初始隐藏，点误判钮才展开。 */
-    private void buildExplainBox(LinearLayout root) {
-        explainBox = new LinearLayout(this);
-        explainBox.setOrientation(LinearLayout.VERTICAL);
-        explainBox.setVisibility(View.GONE);
-        explainInput = new EditText(this);
-        explainInput.setHint(Strings.hardExplainHint());
-        explainInput.setTextSize(16);
-        explainInput.setTextColor(Color.rgb(31, 47, 42));
-        explainInput.setHintTextColor(Color.rgb(150, 150, 150));
-        explainInput.setMinLines(2);
-        explainInput.setGravity(Gravity.TOP);
-        explainBox.addView(explainInput);
-        spacer(explainBox, 8);
-        explainSubmit = bigButton(Strings.hardJudgeSubmit(), Color.rgb(90, 90, 90));
-        explainSubmit.setOnClickListener(v -> submitExplanation());
-        explainBox.addView(explainSubmit);
-        judgeState = new TextView(this);
-        judgeState.setTextSize(14);
-        judgeState.setTextColor(Color.rgb(117, 117, 117));
-        judgeState.setPadding(0, dp(8), 0, 0);
-        explainBox.addView(judgeState);
-        root.addView(explainBox);
-        spacer(root, 12);
-    }
-
-    /**
-     * 提交解释给 AI 判定：走 App 现有云端通道 ChatClient（chat-proxy）。
-     * 判定输入只有四项：任务名、软件名、判定类别、用户解释；输出 agree /
-     * refuse 二值（回复以 agree 开头才算同意，其余一律未通过）。只给一次
-     * 提交机会；判定等待期提交钮与输入框禁用防重复提交；25 秒无结论、
-     * 网络失败、通道报错都按未通过处理。
-     */
-    private void submitExplanation() {
-        if (judgeSubmitted) return;
-        judgeSubmitted = true;
-        explainSubmit.setEnabled(false);
-        explainInput.setEnabled(false);
-        judgeState.setText(Strings.hardJudging());
-        final String explanation = explainInput.getText() == null
-                ? "" : explainInput.getText().toString().trim();
-        String appName;
-        if (contentMode) {
-            String lbl = fgPkg == null || fgPkg.isEmpty() ? "" : AppLister.labelOf(this, fgPkg);
-            appName = lbl == null || lbl.isEmpty() ? ContentAnalyzer.label(category) : lbl;
-        } else {
-            appName = AppLister.labelOf(this, fgPkg);
-        }
-        String catLabel = contentMode ? ContentAnalyzer.label(category)
-                : (Strings.en() ? "app list (blacklist)" : "任务软件名单（黑名单）");
-        org.json.JSONArray msgs = new org.json.JSONArray();
-        try {
-            org.json.JSONObject sys = new org.json.JSONObject();
-            sys.put("role", "system");
-            sys.put("content", JUDGE_SYSTEM);
-            msgs.put(sys);
-            org.json.JSONObject usr = new org.json.JSONObject();
-            usr.put("role", "user");
-            usr.put("content", "任务：「" + TimerState.taskTitle(this) + "」\n软件：「" + appName
-                    + "」\n判定类别：" + catLabel + "\n用户解释：" + explanation);
-            msgs.put(usr);
-        } catch (Exception e) {
-            onJudgeRefused();
-            return;
-        }
-        // 超时兜底：25 秒没有结论按未通过处理（ChatClient 自身的流超时更长）
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            if (!judgeSettled) onJudgeRefused();
-        }, 25_000);
-        ChatClient.send(this, msgs, new ChatClient.Callback() {
-            @Override public void onModel(String modelId) { }
-            @Override public void onDelta(String fullText) { }
-            @Override public void onDone(String fullText) {
-                if (judgeSettled) return;
-                String t = fullText == null ? "" : fullText.trim().toLowerCase(java.util.Locale.US);
-                if (t.startsWith("agree")) onJudgeAgreed();
-                else onJudgeRefused();
-            }
-            @Override public void onError(String friendlyMsg) {
-                if (!judgeSettled) onJudgeRefused();
-            }
-        });
-    }
-
-    /** agree：按现行 overturn 口径放行（与 easy/medium 同一出口，不计分神）。 */
-    private void onJudgeAgreed() {
-        judgeSettled = true;
-        if (contentMode) VerdictEngine.contentAllow(this, category);
-        else FocusGuard.chooseAllow(this, fgPkg);
-        finish();
-    }
-
-    /**
-     * 未通过（refuse／超时／网络失败）：不放行，小字只写结果，然后直接执行
-     * 当前处置档的立即变体（与「马上封」同一路径）。页面已关时不再执行。
-     */
-    private void onJudgeRefused() {
-        judgeSettled = true;
-        if (judgeState != null) judgeState.setText(Strings.hardJudgeRefused());
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            if (isFinishing() || isDestroyed()) return;
-            if (contentMode) VerdictEngine.contentEnforceNow(this, category);
-            else FocusGuard.chooseGraceImmediate(this, fgPkg);
-            finish();
-        }, 900);
+    private OverturnFlow.Host overturnHost() {
+        return new OverturnFlow.Host() {
+            @Override public android.app.Activity activity() { return GuardActivity.this; }
+            @Override public boolean contentMode() { return contentMode; }
+            @Override public String category() { return category; }
+            @Override public String fgPkg() { return fgPkg; }
+            @Override public void finishAfterAllow() { finish(); }
+        };
     }
 
     // ---------------- 宽限到点处理方式（v1.21.3，仅内容守卫模式） ----------------
+
     /**
      * 选宽限时长后一并选到点怎么办：关掉软件／放到后台／暂停软件 3 分钟
      * （v1.80.0 起三档，默认暂停软件；v1.83.0 改名）。点选即存进 ScreenGuardPrefs，下次问询
@@ -504,7 +382,6 @@ public class GuardActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        judgeSettled = true; // 页面已关：未决的 AI 判定结果一律作废，不再执行处置
         FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }

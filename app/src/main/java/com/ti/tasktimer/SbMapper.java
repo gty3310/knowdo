@@ -128,13 +128,13 @@ public final class SbMapper {
                                    boolean hasAlarmModeCol, boolean hasAiCols,
                                    boolean hasSkipCol) throws Exception {
         return toRow(t, userId, hasExtraCols, hasAlarmCols, hasSubtaskCols,
-                hasAlarmModeCol, hasAiCols, hasSkipCol, false);
+                hasAlarmModeCol, hasAiCols, hasSkipCol, false, false);
     }
 
     public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
                                    boolean hasAlarmCols, boolean hasSubtaskCols,
                                    boolean hasAlarmModeCol, boolean hasAiCols,
-                                   boolean hasSkipCol, boolean hasWeekdaysCol) throws Exception {
+                                   boolean hasSkipCol, boolean hasWeekdaysCol, boolean hasDescriptionCol) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -186,6 +186,9 @@ public final class SbMapper {
             String wd = TaskItem.weekdaysToStr(t.repeatWeekdays);
             o.put("repeat_weekdays", wd.isEmpty() ? JSONObject.NULL : wd);
         }
+        if (hasDescriptionCol) {
+            o.put("description", t.description == null ? "" : t.description);
+        }
         return o;
     }
 
@@ -198,6 +201,12 @@ public final class SbMapper {
         t.id = o.optString("id", "");
         t.title = o.optString("title", "");
         t.note = o.optString("note", "");
+        if (o.has("description")) {
+            t.description = o.isNull("description") ? "" : o.optString("description", "");
+        } else if (preserveFrom != null && preserveFrom.description != null) {
+            // 服务端没这列：从本地同 id 任务保全，同步合并不得冲掉
+            t.description = preserveFrom.description;
+        }
         t.scenarios = toStrList(o.optJSONArray("scenarios"));
         t.deadline = o.isNull("deadline") ? null : tsToDate(o.optString("deadline", ""));
         t.repeat = o.optString("repeat", "none");

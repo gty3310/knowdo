@@ -43,18 +43,34 @@ public final class AppBlock {
      * 已复查过前台仍停在该软件；用户切走再切回时由前台检测链再拉起）。
      */
     public static void start(Context c, String pkg) {
+        start(c, pkg, "", false);
+    }
+
+    /** content=true 时带上内容守卫的类别，盖屏上点误判才能按「这一类」放行。 */
+    public static void start(Context c, String pkg, String category, boolean content) {
         if (pkg == null || pkg.equals(c.getPackageName())) return; // 本包永远不封
         prefs(c).edit()
                 .putString("block_pkg", pkg)
+                .putString("block_category", category == null ? "" : category)
+                .putBoolean("block_content", content)
                 .putLong("block_until", System.currentTimeMillis() + BLOCK_MS)
                 .apply();
         BlockEnforcer.schedule(c);
         show(c);
     }
 
+    public static String category(Context c) {
+        return prefs(c).getString("block_category", "");
+    }
+
+    public static boolean isContent(Context c) {
+        return prefs(c).getBoolean("block_content", false);
+    }
+
     /** 清掉盖住状态（到点／设置页提前解封共用）：撤闹钟、收盖屏、撤通知。 */
     public static void clear(Context c) {
-        prefs(c).edit().remove("block_pkg").remove("block_until").apply();
+        prefs(c).edit().remove("block_pkg").remove("block_until")
+                .remove("block_category").remove("block_content").apply();
         BlockEnforcer.cancel(c);
         BlockActivity.dismissCurrent();
         AlertHelper.cancelBlock(c);
