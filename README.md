@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.89.0)
+## Features (Android, v1.90.0)
 
-Current version: **v1.89.0**.
+Current version: **v1.90.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.90.0 — 2026-11-20
+
+**Why:** A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed — it only goes away once you pick a next step. This release extracts the v1.88.0 pause lock's big-window mechanism into a generic shell (BigOverlay) and moves the first two pages onto it; the remaining full-screen reminders follow in later releases. Build commit `9d0ee29` · [compare v1.89.0...v1.90.0](https://github.com/gty3310/knowdo/compare/v1.89.0...v1.90.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Block cover and idle nudge as 99% overlays.** The cover shown when a distracting app is blocked, and the nudge after a long idle gap, now appear as a floating window filling the whole screen: it cannot be swiped away or closed with Back, and only goes away once you pick a next step. On the lock screen, or without the overlay permission, the original full-screen pages still appear, unchanged.
+- **Appeal hand-off.** Tapping "This is a mistake" on the overlay cover hands over to the original block page to finish the appeal (the explanation input needs a page to live on).
+
+Not verified on a device or emulator: shipped directly at the user's instruction; if anything is wrong, roll back to v1.89.0. Data changes: none.
+
 ### v1.89.0 — 2026-11-20
 
 **Why:** Repeat was daily-only, so a task that runs on set weekdays could not exist; and the guard delivered its verdicts without knowing a task's special circumstances, while appealing a wrong verdict was restricted. This release merges two PRs by an external coding agent (Grok) — weekly repeat, and task descriptions with an always-available appeal — diff-reviewed item by item and hand-merged before release. Build commit `273bd5a` · [compare v1.88.0...v1.89.0](https://github.com/gty3310/knowdo/compare/v1.88.0...v1.89.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -90,21 +100,6 @@ Not verified on a device or emulator: a feature-merge release, shipped directly 
 - **"This is a mistake" shows on every drift check.** The medium-difficulty gate that rendered the appeal button only on the day's first check is gone — all three difficulties render it every time.
 
 Not verified on a device or emulator: the user ordered this release shipped right after the merge. The appeal button on a second same-day check, the 30-second pause lock end to end, and the two call-back fixes have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
-
-### v1.87.0 — 2026-11-15
-
-**Why:** The floating window vanished at the worst possible moment — the instant a timer ran out — and never came back on its own; and the gap between finishing one task and starting the next had no gentle push. This release (two PRs by an external coding agent, diff-reviewed line by line before release) keeps the window alive through the end-of-task confirmation, rebuilds it if the system tears it down, and fills the gap with a 3-minute countdown to find the next task. Build commit `bb2fc3e` · [compare v1.86.0...v1.87.0](https://github.com/gty3310/knowdo/compare/v1.86.0...v1.87.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Find-the-next-task countdown.** Tapping Done on the end check page starts a 3-minute countdown in the floating window — a purely local timer (its own preferences + an exact alarm; never a task: it enters no task list, time account, unity index or cloud table). If nothing has started when it expires, the Next Task page opens by itself; the between-task guard stays quiet during the countdown so nothing double-prompts, and starting, resuming or mirroring any real task cancels it instantly. It survives process death (alarm plus a per-second poll in the float service), and its floating-window state cannot be tapped into starting or pausing anything.
-
-**Fixed**
-- **The floating window no longer disappears at time-up.** It stays through the end-pending confirmation (both services used to hide it), and a watchdog now detects a system-torn-down overlay — a detached view or a failed layout update, with a 3-second grace after a fresh build — and rebuilds it. Pages that yield to the full-screen guard, block and breathing pages restore the window the moment they pause, and those pages re-suppress on resume so the window never covers them.
-- **No one-second flash of the next task after Done.** The window switches straight to the countdown, and stopping a timer refreshes the window to the next priority instead of hiding it first.
-- **The timer notification at time-up deep-links to the ring page or the end check page** (its own PendingIntent request code) instead of opening the home screen and losing the confirmation; if the system reclaims the ring page, it still hands over to the check page, unless the task was already confirmed or stopped elsewhere.
-- **The Next Task page no longer offers AI tasks** as candidates — they cannot be timed.
-
-Not verified on a device or emulator: at the user's own call (token budget), this release skipped the emulator run that a bug-fix release would normally get. The behaviours above — the window staying at time-up, the watchdog rebuild, the 3-minute countdown and its expiry page, the flash fix, the notification deep link — have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
 
 ## Build
 
