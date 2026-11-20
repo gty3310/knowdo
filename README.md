@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.90.0)
+## Features (Android, v1.91.0)
 
-Current version: **v1.90.0**.
+Current version: **v1.91.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.91.0 — 2026-11-20
+
+**Why:** A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed — it only goes away once you pick a next step. The previous release moved the block cover and the idle nudge onto the BigOverlay shell; this release moves five more reminder pages, bringing the total to seven of the ten full-screen reminder pages, with the remaining three to follow. Build commit `26dcdc7` · [compare v1.90.0...v1.91.0](https://github.com/gty3310/knowdo/compare/v1.90.0...v1.91.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Five more reminder pages as 99% overlays.** The check-in prompt (half-time and end-of-task confirmation), the task alarm, the resume reminder, the start reminder and the gratitude page now appear as a floating window filling the whole screen: it cannot be swiped away or closed with Back, and only goes away once you pick a next step. On the lock screen, or without the overlay permission, the original full-screen pages still appear, unchanged.
+- **Small adaptations.** On the resume overlay, "Rest a little longer" lists its options right on the page instead of opening a pop-up; the check-in page's physical keyboard shortcuts do not work inside the overlay (every button is still there, so nothing is lost).
+
+Not verified on a device or emulator: shipped directly at the user's instruction; if anything is wrong, roll back to v1.90.0. Data changes: none.
+
 ### v1.90.0 — 2026-11-20
 
 **Why:** A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed — it only goes away once you pick a next step. This release extracts the v1.88.0 pause lock's big-window mechanism into a generic shell (BigOverlay) and moves the first two pages onto it; the remaining full-screen reminders follow in later releases. Build commit `9d0ee29` · [compare v1.89.0...v1.90.0](https://github.com/gty3310/knowdo/compare/v1.89.0...v1.90.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,18 +98,6 @@ Not verified on a device or emulator: shipped directly at the user's instruction
 - **Rename on the floating window.** Tap the task title on the floating window to edit the name in place; on the call-back page, "switch to next task" jumps straight to the Act page to pick one.
 
 Not verified on a device or emulator: a feature-merge release, shipped directly at the user's instruction; if anything is wrong, roll back to v1.88.0. Data changes: weekday picks and task descriptions are stored on the phone for now; the matching cloud columns (`tasks.repeat_weekdays`, `tasks.description`) are written up in docs/migrations but deliberately not applied yet — sync picks them up automatically once the database is unblocked on Nov 24 and the columns are added, and nothing on the phone is lost in the meantime.
-
-### v1.88.0 — 2026-11-16
-
-**Why:** On the medium guard difficulty, the "This is a mistake" button only appeared on the first drift check of the day — a real misjudgement on the second check had nowhere to appeal. And once a task was paused with no next step chosen, nothing ever called you back: the pause could hang silently all day while you drifted off. This release (two PRs by an external coding agent, diff-reviewed before merge) shows the appeal button on every check and adds a full-screen pause lock as the last resort that pulls you back. Build commit `e26826e` · [compare v1.87.0...v1.88.0](https://github.com/gty3310/knowdo/compare/v1.87.0...v1.88.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Pause lock.** Thirty seconds after a task is paused with no next step chosen, an exact alarm fires and the floating window expands to about 99% of the screen (new `PauseLock` / `PauseLockActivity` / `PauseLockReceiver`, re-armed after reboot), so the pause cannot be ignored; two holes where a pause had no call-back at all are closed along the way.
-
-**Improved**
-- **"This is a mistake" shows on every drift check.** The medium-difficulty gate that rendered the appeal button only on the day's first check is gone — all three difficulties render it every time.
-
-Not verified on a device or emulator: the user ordered this release shipped right after the merge. The appeal button on a second same-day check, the 30-second pause lock end to end, and the two call-back fixes have not been run anywhere yet. Data changes: none — no cloud column, no sync change; the six red-line files (unity index, day account, self checks, semantic judge, habit data, rollover) have zero diffs in this release.
 
 ## Build
 
