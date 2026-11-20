@@ -31,9 +31,11 @@ public final class BigOverlay {
     public static final String KEY_IDLE = "idle";
     public static final String KEY_CHECK = "check";
     public static final String KEY_ALARM = "alarm";
+    public static final String KEY_RESUME = "resume";
 
     public static final int PRI_CHECK = 40;
     public static final int PRI_ALARM = 35;
+    public static final int PRI_RESUME = 30;
     public static final int PRI_BLOCK = 30;
     public static final int PRI_IDLE = 20;
 
@@ -182,6 +184,22 @@ public final class BigOverlay {
 
     public static void dismissAlarm(Context c) {
         if (isWanted(KEY_ALARM)) dismiss(c, KEY_ALARM);
+    }
+
+    /**
+     * 叫回大窗（ResumeReceiver 在亮屏未锁＋有悬浮权限时调）：返回口径与
+     * requestCheck 相同（false＝走原 Activity 路径）。每次触发新建内容
+     * （无常驻资源，阶段状态在内容对象内）。
+     */
+    public static boolean requestResume(Context c) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (KnowDoApp.ownActivityVisible()) return false;
+        request(c, KEY_RESUME, PRI_RESUME, new ResumeOverlay());
+        return true;
+    }
+
+    public static void dismissResume(Context c) {
+        if (isWanted(KEY_RESUME)) dismiss(c, KEY_RESUME);
     }
 
     // ---------------- 每秒节拍（FloatService 调） ----------------
