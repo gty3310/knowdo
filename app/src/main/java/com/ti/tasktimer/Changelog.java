@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1910 = new Entry("v1.91.0", "2026-11-20");
+        e1910.add(new Group(s("改进", "Improved"),
+                s("五个提醒页也换成 99% 超大悬浮窗：打卡问询（过半/结束确认）、任务闹钟、暂停叫回、开始提醒、感恩页——划不走、按返回也关不掉，选了下一步才收回。加上上一版的盖屏和空档催促，十个全屏提醒页已换完七个，剩找下一件、晨间、走神问询三页随后换",
+                  "Five more reminder pages are now 99% overlays: the check-in prompt (half-time and end-of-task confirmation), the task alarm, the resume reminder, the start reminder and the gratitude page - they cannot be swiped away or closed with Back, and only go away once you pick a next step. Together with the block cover and the idle nudge from the last release, seven of the ten full-screen reminder pages have now moved; the next-task picker, the morning page and the distraction inquiry follow next"),
+                s("锁屏时、或没有悬浮窗权限时，仍走原来的全屏页面，不受影响",
+                  "On the lock screen, or without the overlay permission, the original full-screen pages still appear, unchanged"),
+                s("小适配：叫回页的「再歇一会」在大窗里直接整页列出选项，不再弹窗；打卡问询页的物理键盘快捷键在大窗里用不了（按钮都在，不影响使用）",
+                  "Small adaptations: on the resume overlay, 'Rest a little longer' now lists its options right on the page instead of opening a pop-up; the check-in page's physical keyboard shortcuts do not work inside the overlay (every button is still there, so nothing is lost)")));
+        e1910.why = s("全屏提醒页能被划走、退到后台，提醒就白弹了；99% 超大悬浮窗划不走、关不掉，必须选了下一步才收回。上一版已迁盖屏和空档催促，这一版再迁五个最常用的提醒页，十个全屏提醒页换完七个，剩下三页随后跟上。本版未经模拟器/真机验证（按指示直接发），有问题回滚 v1.90.0",
+                "A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed - it only goes away once you pick a next step. The last release moved the block cover and the idle nudge; this one moves the five most-used reminder pages, bringing the total to seven of ten, with the remaining three to follow. Not verified on an emulator or a real device (shipped directly as instructed); if anything is wrong, roll back to v1.90.0");
+        e1910.tryIt = s("让一个任务计时到点结束，看问询大窗；或暂停一个任务等叫回到点，看叫回大窗",
+                "Let a timed task reach its end and watch the check-in overlay; or pause a task and wait for the resume reminder overlay");
+        out.add(e1910);
+
         Entry e1900 = new Entry("v1.90.0", "2026-11-20");
         e1900.add(new Group(s("改进", "Improved"),
                 s("盖屏和空档催促改成 99% 超大悬浮窗——分神软件被封时的盖屏、空档太久的催促，现在以占满整个屏幕的悬浮窗出现，划不走、按返回也关不掉，必须选了下一步才会收回（暂停 30 秒的遮罩本来就是这样，这次把这套机制抽成了通用壳，后面所有全屏提醒都会陆续换成这种）",
