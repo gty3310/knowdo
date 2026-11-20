@@ -95,6 +95,7 @@ public final class IdleAlarm {
     /** 不再是空档（任务开始计时／进入带时长暂停／守卫被关）：整个周期取消并重置，正在进行的震/响立即停，路人静音/致谢一并作废。 */
     public static void onNotIdle(Context c) {
         IdleStage.stop(c);
+        BigOverlay.dismissIdle(c); // 大窗版催促页同步收回（原页靠巡检/自身动作收尾，不动）
         BystanderMute.clearAll(c);
         if (anchor(c) != 0 || nextAt(c) != 0) clearState(c);
         else cancelAlarm(c);
@@ -144,12 +145,15 @@ public final class IdleAlarm {
             return;
         }
         // 全屏页：已有全屏页在显（叫回页/检查页/守卫页/alarm 页自身）就不叠页，
-        // 本轮的震/响直接作用于当前页；否则拉起 alarm 页
+        // 本轮的震/响直接作用于当前页；否则出页——大窗批一（Issue #6）：
+        // 亮屏未锁＋有悬浮权限时优先 99% 大窗（划不走），大窗没接管才直拉原页
         if (!TopPages.anyBlockingShown()) {
-            Intent i = new Intent(c, IdleAlarmActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            try { c.startActivity(i); } catch (Exception ignored) { }
+            if (!BigOverlay.requestIdle(c)) {
+                Intent i = new Intent(c, IdleAlarmActivity.class);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                try { c.startActivity(i); } catch (Exception ignored) { }
+            }
         }
         IdleStage.start(c, vibMs, ringMs, snd);
         TimerState.logEvent(c, "空档催促第 " + r + " 轮（震 " + (vibMs / 1000) + " 秒"

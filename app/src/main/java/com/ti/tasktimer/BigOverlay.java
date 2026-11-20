@@ -120,6 +120,24 @@ public final class BigOverlay {
         if (isWanted(KEY_BLOCK)) dismiss(c, KEY_BLOCK);
     }
 
+    /**
+     * 空档催促大窗（IdleAlarm.onAlarmFired 调）：出窗条件与原直拉页同口径
+     * （亮屏、未锁、有悬浮权限、悬浮窗开着）。返回 false＝调用方走原 Activity。
+     * 已在列时不重建内容（舞台小字靠 tick 刷新，任务列表本轮内不变）。
+     */
+    public static boolean requestIdle(Context c) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (!AlertHelper.canDrawOverlays(c)) return false;
+        if (!screenUsable(c)) return false;
+        AlertHelper.cancelNextTask(c); // 与 IdleAlarmActivity.onCreate 同一步
+        if (!isWanted(KEY_IDLE)) request(c, KEY_IDLE, PRI_IDLE, new IdleOverlay());
+        return true;
+    }
+
+    public static void dismissIdle(Context c) {
+        if (isWanted(KEY_IDLE)) dismiss(c, KEY_IDLE);
+    }
+
     // ---------------- 每秒节拍（FloatService 调） ----------------
 
     public static void poll(Context c) {
