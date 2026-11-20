@@ -242,6 +242,11 @@ public final class AlertHelper {
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = kg != null && kg.isKeyguardLocked();
         if (interactive && !locked && canDrawOverlays(c)) {
+            // 大窗批二（Issue #6）：优先 99% 大窗；没接管才直拉原页；锁屏/无权限走下面 FSI 不变
+            if (BigOverlay.requestAlarm(c, taskId, title, thenCheck)) {
+                TimerState.logEvent(c, "已弹出任务闹钟响铃页（99% 大窗路径）");
+                return;
+            }
             try {
                 Intent direct = new Intent(c, TaskAlarmActivity.class);
                 direct.putExtra(TaskAlarmActivity.EXTRA_TASK_ID, taskId);

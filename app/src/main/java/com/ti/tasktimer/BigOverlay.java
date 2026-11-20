@@ -30,8 +30,10 @@ public final class BigOverlay {
     public static final String KEY_BLOCK = "block";
     public static final String KEY_IDLE = "idle";
     public static final String KEY_CHECK = "check";
+    public static final String KEY_ALARM = "alarm";
 
     public static final int PRI_CHECK = 40;
+    public static final int PRI_ALARM = 35;
     public static final int PRI_BLOCK = 30;
     public static final int PRI_IDLE = 20;
 
@@ -160,6 +162,26 @@ public final class BigOverlay {
 
     public static void dismissCheck(Context c) {
         if (isWanted(KEY_CHECK)) dismiss(c, KEY_CHECK);
+    }
+
+    private static AlarmOverlay sAlarm;
+
+    /**
+     * 任务闹钟大窗（AlertHelper.fireTaskAlarm 在亮屏未锁＋有悬浮权限时调）：
+     * 返回口径与 requestCheck 相同（false＝走原 Activity 路径）。内容对象
+     * 单例复用，prepare 时停掉上一轮可能还在响的播放器并重置状态。
+     */
+    public static boolean requestAlarm(Context c, String taskId, String title, boolean thenCheck) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (KnowDoApp.ownActivityVisible()) return false;
+        if (sAlarm == null) sAlarm = new AlarmOverlay();
+        sAlarm.prepare(taskId, title, thenCheck);
+        request(c, KEY_ALARM, PRI_ALARM, sAlarm);
+        return true;
+    }
+
+    public static void dismissAlarm(Context c) {
+        if (isWanted(KEY_ALARM)) dismiss(c, KEY_ALARM);
     }
 
     // ---------------- 每秒节拍（FloatService 调） ----------------
