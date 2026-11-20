@@ -63,7 +63,7 @@ public final class MotiveGate {
      * 朱砂只点在「有」上（v1.75.0：「没考虑」「没有」同为描边）。点任一：先记
      * 事件（本地落盘），再回调 onward。
      */
-    public static void buildInto(final Activity act, LinearLayout col, final Runnable onward) {
+    public static void buildInto(final Context act, LinearLayout col, final Runnable onward) {
         TextView q = new TextView(act);
         q.setText(QUESTION);
         q.setTextSize(26);
@@ -93,7 +93,7 @@ public final class MotiveGate {
     }
 
     /** 与检查页大按钮同一视觉语言：主按钮＝朱砂填充，次按钮＝描边。 */
-    private static Button gateButton(Activity act, String text, boolean primary, Runnable onClick) {
+    private static Button gateButton(Context act, String text, boolean primary, Runnable onClick) {
         Button b = new Button(act);
         b.setText(text);
         b.setTextSize(20);
@@ -147,7 +147,7 @@ public final class MotiveGate {
         return new int[]{ty, tm, tn, ay, am, an};
     }
 
-    private static int dp(Activity act, int v) {
+    private static int dp(Context act, int v) {
         return (int) (v * act.getResources().getDisplayMetrics().density + 0.5f);
     }
 }

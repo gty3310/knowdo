@@ -1,6 +1,6 @@
 package com.ti.tasktimer;
 
-import android.app.Activity;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -39,7 +39,7 @@ public class ChatPanel {
     private static final int COMPACT_VISIBLE = 6;
     private static final int DANGER = Color.parseColor("#B3261E");
 
-    private final Activity act;
+    private final Context act;
     private final boolean compact;
     private final TaskStore store;
     private String taskId;                 // 当前在聊的任务（上下文），null＝没带任务
@@ -60,7 +60,7 @@ public class ChatPanel {
         reloadIfChanged();
     };
 
-    public ChatPanel(Activity act, ViewGroup container, boolean compact) {
+    public ChatPanel(Context act, ViewGroup container, boolean compact) {
         this.act = act;
         this.compact = compact;
         this.store = new TaskStore(act);
@@ -754,7 +754,7 @@ public class ChatPanel {
         new Thread(() -> {
             final String err = SyncManager.applyScheduleProposal(
                     act, store, blocks, "KnowDo App（聊天排程）");
-            act.runOnUiThread(() -> {
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                 if (err == null) {
                     m.propState = ChatStore.PROP_APPLIED;
                     ChatStore.saveMain(act, msgs);

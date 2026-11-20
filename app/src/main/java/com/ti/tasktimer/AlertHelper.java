@@ -102,6 +102,12 @@ public final class AlertHelper {
         boolean locked = kg != null && kg.isKeyguardLocked();
         String label = type == TYPE_HALF ? "过半" : type == TYPE_SUB ? "子任务" : "结束";
         if (interactive && !locked && canDrawOverlays(c)) {
+            // 大窗批二（Issue #6）：优先 99% 大窗（划不走）；大窗没接管（悬浮窗关着
+            // 或本应用页面在前台）才直拉原页；锁屏/无权限保持全屏通知＋原页不变
+            if (BigOverlay.requestCheck(c, type)) {
+                TimerState.logEvent(c, "已弹出[" + label + "]检查页（99% 大窗路径）");
+                return;
+            }
             try {
                 Intent direct = new Intent(c, CheckActivity.class);
                 direct.putExtra(CheckActivity.EXTRA_TYPE, type);

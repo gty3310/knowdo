@@ -1228,6 +1228,16 @@ public class FloatingWindow {
         refresh(c);
     }
 
+    /** 让通用大窗（BigOverlay）内容里的输入框获得焦点并弹键盘：与 focusInput 同一套窗口标志处理。 */
+    public static void focusOverlayInput(Context c, EditText target) {
+        focusInput(c, target);
+    }
+
+    /** 通用大窗收回时退出输入态（恢复窗口标志、收键盘）；没进过输入态时是 no-op。 */
+    public static void endOverlayInputFocus(Context c) {
+        endEditFocus(c);
+    }
+
     /** 让任意输入框在悬浮窗里获得焦点并弹键盘（与笔记编辑同一套窗口标志处理）。 */
     private static void focusInput(Context c, EditText target) {
         if (rootView == null || lp == null) return;

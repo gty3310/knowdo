@@ -29,7 +29,9 @@ import java.util.Map;
 public final class BigOverlay {
     public static final String KEY_BLOCK = "block";
     public static final String KEY_IDLE = "idle";
+    public static final String KEY_CHECK = "check";
 
+    public static final int PRI_CHECK = 40;
     public static final int PRI_BLOCK = 30;
     public static final int PRI_IDLE = 20;
 
@@ -136,6 +138,28 @@ public final class BigOverlay {
 
     public static void dismissIdle(Context c) {
         if (isWanted(KEY_IDLE)) dismiss(c, KEY_IDLE);
+    }
+
+    private static CheckOverlay sCheck;
+
+    /**
+     * 检查页大窗（AlertHelper.fire 在亮屏未锁＋有悬浮权限时调）：返回 true＝已由
+     * 大窗接管（已出窗或已排队）；false＝调用方走原 Activity 路径（悬浮窗关着，
+     * 或本应用页面正在前台——原页本来就是直接盖在本应用页上，保持原行为）。
+     * 内容对象全仓单例复用：同一时刻只可能有一张检查页，新触发先重置状态
+     * （等价原页新开一个实例），阶段状态由内容对象持有（动机门/原则问询）。
+     */
+    public static boolean requestCheck(Context c, int type) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (KnowDoApp.ownActivityVisible()) return false;
+        if (sCheck == null) sCheck = new CheckOverlay();
+        sCheck.prepare(type);
+        request(c, KEY_CHECK, PRI_CHECK, sCheck);
+        return true;
+    }
+
+    public static void dismissCheck(Context c) {
+        if (isWanted(KEY_CHECK)) dismiss(c, KEY_CHECK);
     }
 
     // ---------------- 每秒节拍（FloatService 调） ----------------
