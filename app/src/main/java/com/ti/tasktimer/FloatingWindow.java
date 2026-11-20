@@ -9,7 +9,10 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
+import android.view.KeyEvent;
+import android.view.inputmethod.EditorInfo;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -58,7 +61,7 @@ public class FloatingWindow {
     private static LinearLayout bodyBox;
     private static LinearLayout miniBox;
     private static TextView dockView;
-    private static TextView titleView;
+    private static EditText titleView;
     private static TextView headerSubView;
     private static TextView timeView;
     private static TextView miniTitle;
@@ -96,8 +99,10 @@ public class FloatingWindow {
     private static boolean layoutFailed = false; // addView/updateViewLayout 失败或视图已脱离窗口
     private static long builtAt = 0L; // 上次 addView 成功的时刻：刚加上的视图要等下一帧才 attach，宽限期内不当成被卸
     private static boolean noteDirty = false;
+    private static boolean titleDirty = false;
     private static String cachedTaskId = null;
     private static String boundNoteText = null; // 笔记框上次与数据源对齐的文字（v1.6.2 同步修复）
+    private static String boundTitleText = null;
     private static String displayTaskId = null;
     private static TaskStore.ChangeListener storeListener = null; // 数据一变就重渲染（v1.6.2）
     private static final Handler ui = new Handler(Looper.getMainLooper());
@@ -313,11 +318,37 @@ public class FloatingWindow {
         if (d.state == ST_RUNNING || d.state == ST_PAUSED || d.state == ST_FINDING) timeText = fmt(d.remainMs);
         else if (d.state == ST_IDLE) timeText = d.task.durationMinutes + "分";
         else timeText = "--:--";
-        if (titleView != null) titleView.setText(d.title);
-        if (timeView != null) timeView.setText(timeText);
-        // MINI 两行呈现（v1.11.0）
         boolean subRun = d.state == ST_RUNNING && d.task != null
                 && d.task.id.equals(TimerState.taskId(c)) && TimerState.subActive(c);
+        if (titleView != null && timeView != null) {
+            // 用户正在改任务名时不要用 refresh 冲掉输入
+            if (!(titleView.hasFocus() || titleDirty) || subRun) {
+                settingText = true;
+                if (subRun) {
+                    titleView.setText(TimerState.subTitle(c));
+                    titleView.setEnabled(false);
+                    titleView.setFocusable(false);
+                    titleView.setFocusableInTouchMode(false);
+                    timeView.setText(fmt(Math.max(0, TimerState.subEndAt(c) - System.currentTimeMillis())));
+                    if (headerSubView != null) {
+                        headerSubView.setText(d.title);
+                        headerSubView.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    titleView.setEnabled(true);
+                    titleView.setFocusable(true);
+                    titleView.setFocusableInTouchMode(true);
+                    titleView.setText(d.title);
+                    boundTitleText = d.title == null ? "" : d.title;
+                    if (headerSubView != null) headerSubView.setVisibility(View.GONE);
+                }
+                settingText = false;
+            }
+            if (!subRun && timeView != null) timeView.setText(timeText);
+        } else if (timeView != null) {
+            timeView.setText(timeText);
+        }
+        // MINI 两行呈现（v1.11.0）
         if (miniTitle != null && miniTime != null) {
             if (d.state == ST_PAUSED) {
                 miniTitle.setText(Strings.miniPausedTitle(d.title));
@@ -343,18 +374,7 @@ public class FloatingWindow {
         // EDIT 头部主次（v1.12.0 追加规格，与 MINI 统一）：计时中且有当前子任务时——
         // 第一行＝子任务名（头部最大字号槽）＋时间大字改显子任务剩余；第二行＝母任务名（细体小字弱化）。
         // 无子任务时维持原样；暂停态不动（暂停条自有呈现）。
-        if (titleView != null && timeView != null) {
-            if (subRun) {
-                titleView.setText(TimerState.subTitle(c));
-                timeView.setText(fmt(Math.max(0, TimerState.subEndAt(c) - System.currentTimeMillis())));
-                if (headerSubView != null) {
-                    headerSubView.setText(d.title);
-                    headerSubView.setVisibility(View.VISIBLE);
-                }
-            } else if (headerSubView != null) {
-                headerSubView.setVisibility(View.GONE);
-            }
-        }
+        // 头部主次（计时中有当前子任务）已在上面与标题刷新一并处理。
         if (miniSub != null) {
             if (d.state == ST_PAUSED) {
                 String reason = TimerState.pauseReason(c);
@@ -453,7 +473,7 @@ public class FloatingWindow {
                     totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
                 }
                 if (totalMs <= 0) totalMs = Math.max(1, d.task.durationMinutes) * 60_000L;
-                long usedMs = "daily".equals(d.task.repeat)
+                long usedMs = d.task.isRecurring()
                         ? SessionLog.todayMsForTask(c, d.task.id)
                         : SessionLog.totalMsForTask(c, d.task.id);
                 usedView.setText(fmt(usedMs) + " / " + fmt(totalMs));
@@ -522,8 +542,10 @@ public class FloatingWindow {
         rootView = null;
         editing = false;
         noteDirty = false;
+        titleDirty = false;
         cachedTaskId = null;
         boundNoteText = null;
+        boundTitleText = null;
         displayTaskId = null;
     }
 
@@ -631,11 +653,44 @@ public class FloatingWindow {
         head.addView(shrinkBtn);
         bodyBox.addView(head);
 
-        titleView = new TextView(c);
+        titleView = new EditText(c);
         titleView.setTextColor(Color.WHITE);
         titleView.setTextSize(16);
         titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
         titleView.setMaxLines(2);
+        titleView.setBackgroundColor(Color.TRANSPARENT);
+        titleView.setPadding(0, dp(c, 2), 0, dp(c, 2));
+        titleView.setHint(Strings.en() ? "Task name" : "任务名");
+        titleView.setHintTextColor(Color.rgb(150, 150, 150));
+        titleView.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        titleView.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        titleView.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN && titleView.isEnabled()) {
+                beginEditFocus(c, titleView);
+            }
+            return false;
+        });
+        titleView.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int n) { }
+            @Override public void afterTextChanged(Editable s) {
+                if (settingText || !titleView.isEnabled()) return;
+                titleDirty = true;
+            }
+        });
+        titleView.setOnEditorActionListener((v, actionId, ev) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE
+                    || (ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                        && ev.getAction() == KeyEvent.ACTION_DOWN)) {
+                persistTitle(c, true);
+                titleView.clearFocus();
+                return true;
+            }
+            return false;
+        });
+        titleView.setOnFocusChangeListener((v, has) -> {
+            if (!has) persistTitle(c, true);
+        });
         bodyBox.addView(titleView);
 
         // EDIT 头部第二行（v1.12.0 追加规格）：计时中且有当前子任务时，第一行让给子任务名，
@@ -860,9 +915,13 @@ public class FloatingWindow {
         btns2.setOrientation(LinearLayout.HORIZONTAL);
         Button openBtn = smallButton(c, "打开知行");
         openBtn.setOnClickListener(v -> {
-            Intent i = new Intent(c, MainActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            c.startActivity(i);
+            Display dd = resolveDisplay(c);
+            if (dd.state == ST_IDLE || dd.state == ST_FINDING) MainActivity.openXing(c);
+            else {
+                Intent i = new Intent(c, MainActivity.class);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(i);
+            }
             // 用户定案（v1.6.2）：点「打开知行」拉起主界面后，悬浮窗自动缩回 MINI，不留大卡占屏。
             setMode(c, MODE_MINI);
         });
@@ -924,30 +983,65 @@ public class FloatingWindow {
     }
 
     private static void beginEditFocus(Context c) {
-        if (rootView == null || noteEdit == null) return;
+        beginEditFocus(c, noteEdit);
+    }
+
+    private static void beginEditFocus(Context c, android.widget.EditText focus) {
+        if (rootView == null || focus == null) return;
         if (mode(c) != MODE_EDIT) setMode(c, MODE_EDIT);
         editing = true;
         lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE;
         updateLayout();
-        noteEdit.requestFocus();
-        noteEdit.setSelection(noteEdit.getText().length());
+        focus.requestFocus();
+        focus.setSelection(focus.getText().length());
         InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) ui.postDelayed(() -> imm.showSoftInput(noteEdit, InputMethodManager.SHOW_IMPLICIT), 80);
+        if (imm != null) ui.postDelayed(() -> imm.showSoftInput(focus, InputMethodManager.SHOW_IMPLICIT), 80);
     }
 
     private static void endEditFocus(Context c) {
         if (!editing) return;
         if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
         persistNote(c, true);
+        persistTitle(c, true);
         editing = false;
         noteDirty = false;
+        titleDirty = false;
         if (lp == null || rootView == null) return;
         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = 0;
         updateLayout();
         InputMethodManager imm = (InputMethodManager) c.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(rootView.getWindowToken(), 0);
+    }
+
+    private static void persistTitle(Context c, boolean fromEnd) {
+        if (titleView == null || displayTaskId == null) return;
+        if (!titleView.isEnabled()) { titleDirty = false; return; }
+        String v = titleView.getText().toString().trim();
+        if (v.isEmpty()) {
+            // 不允许空标题：退回已对齐的名字
+            settingText = true;
+            titleView.setText(boundTitleText == null ? "" : boundTitleText);
+            settingText = false;
+            titleDirty = false;
+            return;
+        }
+        TaskStore store = new TaskStore(c);
+        TaskItem t = store.byId(displayTaskId);
+        if (t == null) return;
+        if (!v.equals(t.title == null ? "" : t.title)) {
+            t.title = v;
+            t.touch();
+            store.save();
+            TimerState.updateTitleIfCurrent(c, t.id, v);
+            if (fromEnd) {
+                final Context app = c.getApplicationContext();
+                new Thread(() -> SbSync.syncNow(app, new TaskStore(app))).start();
+            }
+        }
+        boundTitleText = v;
+        titleDirty = false;
     }
 
     private static void persistNote(Context c, boolean fromEnd) {

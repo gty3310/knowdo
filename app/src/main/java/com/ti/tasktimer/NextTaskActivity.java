@@ -274,9 +274,7 @@ public class NextTaskActivity extends Activity {
         root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         root.addView(entryRow(Strings.en() ? "All tasks" : "其他任务", v -> {
-            Intent i = new Intent(this, MainActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            try { startActivity(i); } catch (Exception ignored) { }
+            try { MainActivity.openXing(this); } catch (Exception ignored) { }
             finish();
         }));
         root.addView(entryRow(Strings.en() ? "New task" : "新建任务", v -> buildState(STATE_NEW)));

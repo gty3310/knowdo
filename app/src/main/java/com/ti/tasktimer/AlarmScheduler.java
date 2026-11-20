@@ -36,7 +36,20 @@ public class AlarmScheduler {
     public static long nextFireMs(TaskItem t, long now) {
         long base = t.alarmMs();
         if (base == 0) return 0;
-        if (!"daily".equals(t.repeat)) return base > now ? base : 0;
+        if (t.isWeekly()) {
+            Calendar cal = Calendar.getInstance();
+            cal.setTimeInMillis(base);
+            int guard = 0;
+            while (guard++ < 400) {
+                String d = DayUtil.fmt(cal);
+                boolean past = cal.getTimeInMillis() <= now;
+                boolean done = t.doneDates != null && t.doneDates.contains(d);
+                if (!past && t.isDueOn(d) && !done) return cal.getTimeInMillis();
+                cal.add(Calendar.DAY_OF_YEAR, 1);
+            }
+            return 0;
+        }
+        if (!t.isDaily()) return base > now ? base : 0;
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(base);
         int guard = 0;
@@ -67,7 +80,7 @@ public class AlarmScheduler {
             PendingIntent pi = alarmIntent(c, t);
             try { am.cancel(pi); } catch (Exception ignored) { }
             if (t.deleted) continue;
-            if (!"daily".equals(t.repeat) && "done".equals(t.status)) continue;
+            if (!t.isRecurring() && "done".equals(t.status)) continue;
             long fire = nextFireMs(t, now);
             if (fire == 0) continue;
             setClock(c, am, fire, pi);

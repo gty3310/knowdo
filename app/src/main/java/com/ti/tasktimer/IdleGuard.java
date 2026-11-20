@@ -8,7 +8,7 @@ import android.os.Looper;
 /**
  * 任务衔接守卫（v1.10.0）：消灭「没有状态的空档」。
  * 本地有效计时状态既非 running、又没有生效中的定时暂停时，视为「空档」，
- * 经 AlertHelper.fireNextTask 全屏拉起「下一个任务」页（NextTaskActivity）。
+ * 经 AlertHelper.fireNextTask 直接打开「行」签选下一件任务。
  *
  * 状态来源是 TimerState，其中已含 Supabase timer_state 的跨设备镜像：
  * 另一台设备在计时（running 镜像）或暂停（暂停槽镜像）时本机同样不算空档，不会误弹。

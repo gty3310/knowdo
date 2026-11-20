@@ -1323,10 +1323,9 @@ public class TodayPlanActivity extends Activity {
             if (t.deleted || t.isDoneToday()) continue;
             if (t.isAi()) continue; // 给 AI 做的任务不进今天安排候选（v1.74.0）
             if (t.isSkippedOn(logicToday)) continue; // 跳过今天：今日不进候选（v1.79.0）
-            boolean daily = "daily".equals(t.repeat);
             boolean due = t.deadline != null && logicToday != null
                     && t.deadline.compareTo(logicToday) <= 0;
-            if (daily || due) out.add(t);
+            if (t.isDueOn(logicToday) || due) out.add(t);
         }
         Comparator<LocalAutoScheduler.Candidate> ord = LocalAutoScheduler.candidateOrder(logicToday);
         out.sort((a, b) -> {
@@ -1343,7 +1342,7 @@ public class TodayPlanActivity extends Activity {
      * （与「取消截止日期」沿用现状一致）；每日重复没有推迟一说，不置灰。
      */
     private boolean isGrey(TaskItem t) {
-        if (t == null || "daily".equals(t.repeat)) return false;
+        if (t == null || t.isRecurring()) return false;
         return t.deadline != null && logicToday != null
                 && t.deadline.compareTo(logicToday) > 0;
     }
@@ -1545,7 +1544,7 @@ public class TodayPlanActivity extends Activity {
         for (TaskItem t : store.tasks) {
             if (t.deleted || t.isDoneToday()) continue;
             if (t.isAi()) continue; // 给 AI 做的任务不进本页（含「其他重要任务」区，v1.74.0）
-            if ("daily".equals(t.repeat)) continue;
+            if (t.isRecurring()) continue;
             if (TaskItem.priorityRank(t.priority) > TaskItem.priorityRank("important")) continue;
             if (mainIds.contains(t.id)) continue;
             if (t.deadline != null && logicToday != null
@@ -1718,14 +1717,15 @@ public class TodayPlanActivity extends Activity {
         }
 
         final int used = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
-        boolean daily = "daily".equals(t.repeat);
+        boolean recurring = t.isRecurring();
         LinearLayout meta = new LinearLayout(this);
         meta.setOrientation(LinearLayout.HORIZONTAL);
         meta.setPadding(0, dp(2), 0, 0);
         TextView m1 = new TextView(this);
         m1.setTextSize(11);
         m1.setTextColor(Ui.sub(this));
-        m1.setText(daily ? s("每日重复", "Daily") : s("已用 ", "Used ") + used + s(" 分", " min"));
+        String recLabel = t.isWeekly() ? t.weeklyLabel() : s("每日重复", "Daily");
+        m1.setText(recurring ? recLabel : s("已用 ", "Used ") + used + s(" 分", " min"));
         meta.addView(m1, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView m2 = new TextView(this);
@@ -1747,7 +1747,7 @@ public class TodayPlanActivity extends Activity {
         card.addView(meta, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        if (!daily) {
+        if (!recurring) {
             // 截止钮（v1.54.0）：改到今天／明天／周六／下周一／挑选日期／取消截止
             // 日期，六钮分两行（标签列定宽对齐）；点击都与「改到今天」同一走法——
             // 设 deadline 后 persistTask 落盘＋同步；高亮口径一致：deadline 正好

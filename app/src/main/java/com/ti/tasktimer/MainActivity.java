@@ -101,6 +101,22 @@ public class MainActivity extends Activity {
     public static final int TAB_CHAT = 4;
     /** v1.82.0：习惯提醒深链指定知页分组（值＝ZhiPage 的组序，如 PAGE_JIE）；配合 EXTRA_OPEN_TAB=TAB_ZHI 使用。 */
     public static final String EXTRA_ZHI_GROUP = "zhi_group";
+
+    /** 找下一件任务：直接打开「行」签，不要落到默认的「今天」。 */
+    public static Intent xingIntent(android.content.Context c) {
+        Intent i = new Intent(c, MainActivity.class);
+        i.putExtra(EXTRA_OPEN_TAB, TAB_SCHEDULE);
+        return i;
+    }
+
+    public static void openXing(android.content.Context c) {
+        Intent i = xingIntent(c);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        c.startActivity(i);
+    }
+
     private int currentTab = TAB_TODAY;
     private FrameLayout todayContainer;
     private FrameLayout scheduleWrap;
@@ -1484,13 +1500,18 @@ public class MainActivity extends Activity {
 
     private static String listEffDate(TaskItem t, String logicToday) {
         // 跳过今天（v1.81.0）：被跳过的重复任务今天不算数，有效期算下一次
-        // 出现（每日→明天、每周→下周同一天），今天真正到期的排在它前面。
-        // 任务 repeat 现行取值只有 none/daily，weekly 分支是防御性的。
-        if (t.isSkippedOn(logicToday) && t.repeat != null && !"none".equals(t.repeat)) {
-            if ("daily".equals(t.repeat)) return DayUtil.addDays(logicToday, 1);
-            if ("weekly".equals(t.repeat)) return DayUtil.addDays(logicToday, 7);
+        // 出现（每日→明天、每周→下一个选中的星期），今天真正到期的排在它前面。
+        if (t.isSkippedOn(logicToday) && t.isRecurring()) {
+            String next = DayUtil.addDays(logicToday, 1);
+            if (t.isDaily()) return next;
+            String due = t.nextDueOnOrAfter(next);
+            return due != null ? due : DayUtil.addDays(logicToday, 7);
         }
-        if ("daily".equals(t.repeat)) return logicToday;
+        if (t.isDaily()) return logicToday;
+        if (t.isWeekly()) {
+            if (t.isDueOn(logicToday)) return logicToday;
+            return t.nextDueOnOrAfter(logicToday);
+        }
         return t.deadline;
     }
 
@@ -1519,7 +1540,7 @@ public class MainActivity extends Activity {
      */
     private boolean isUnscheduledToday(TaskItem t) {
         if (t.isDoneToday()) return false;
-        if ("daily".equals(t.repeat)) return false;
+        if (t.isRecurring()) return false;
         if ("leisure".equals(t.priority)) return false;
         if (t.deadline == null || listLogicToday == null) return false;
         if (!t.deadline.equals(listLogicToday)) return false;
@@ -1651,7 +1672,8 @@ public class MainActivity extends Activity {
         // 跳过标记（v1.81.0）：今天被「跳过今天」的任务，日期文字后带「（跳过）」
         String suffix = t.isSkippedOn(listLogicToday != null ? listLogicToday
                 : Rollover.logicalToday(this)) ? Strings.skippedTag() : "";
-        if ("daily".equals(t.repeat)) return Strings.dateDaily() + suffix;
+        if (t.isDaily()) return Strings.dateDaily() + suffix;
+        if (t.isWeekly()) return t.weeklyLabel() + suffix;
         if (t.deadline == null) return Strings.dateEmpty();
         return t.deadline.substring(5) + suffix + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime);
     }
@@ -1855,7 +1877,7 @@ public class MainActivity extends Activity {
             case "used": {
                 // 每日重复任务「已用」只算今天，与「剩余」列的 todayMsForTask 同口径（v1.65.0）；
                 // 非每日任务保持全历史累计
-                int usedMin = (int) (("daily".equals(t.repeat)
+                int usedMin = (int) ((t.isRecurring()
                         ? SessionLog.todayMsForTask(this, t.id)
                         : SessionLog.totalMsForTask(this, t.id)) / 60000);
                 v.setText(Strings.fmtMin(usedMin));
@@ -1898,7 +1920,7 @@ public class MainActivity extends Activity {
                 } else {
                     v.setText(dlText);
                 }
-                v.setTextColor(t.deadline == null && !"daily".equals(t.repeat) ? Ui.sub(this) : Ui.link(this));
+                v.setTextColor(t.deadline == null && !t.isRecurring() ? Ui.sub(this) : Ui.link(this));
                 v.setOnClickListener(x -> dialogDeadline(t));
                 break;
             }
@@ -1964,10 +1986,10 @@ public class MainActivity extends Activity {
         // 每日重复任务：已用与段数都只算今天（v1.65.0，todayCountForTask 内部已含
         // 「打开段是今天开的」那一段，与 todayMsForTask 同口径，不再另加）；
         // 非每日任务保持全历史累计＋打开段 +1
-        boolean daily = "daily".equals(t.repeat);
-        int usedMin = (int) ((daily ? SessionLog.todayMsForTask(this, t.id)
+        boolean recurring = t.isRecurring();
+        int usedMin = (int) ((recurring ? SessionLog.todayMsForTask(this, t.id)
                 : SessionLog.totalMsForTask(this, t.id)) / 60000);
-        int segs = daily ? SessionLog.todayCountForTask(this, t.id)
+        int segs = recurring ? SessionLog.todayCountForTask(this, t.id)
                 : SessionLog.countForTask(this, t.id)
                 + (t.id.equals(SessionLog.openTaskId(this)) ? 1 : 0);
         String startPart = t.nextStartMs() > 0
@@ -2529,7 +2551,8 @@ public class MainActivity extends Activity {
 
     /** 截止格文字：日期/每日 + 完成时间；设了下次开始时间时再加一行小字 ▶时间（不是今天时带 MM-DD）。 */
     private CharSequence deadlineCellText(TaskItem t) {
-        String base = "daily".equals(t.repeat) ? "每日"
+        String base = t.isDaily() ? "每日"
+                : t.isWeekly() ? t.weeklyLabel()
                 : (t.deadline == null ? "＋日期"
                 : t.deadline.substring(5) + (t.deadlineTime == null ? "" : "\n" + t.deadlineTime));
         long ms = t.nextStartMs();
@@ -2637,6 +2660,10 @@ public class MainActivity extends Activity {
                     TaskItem cur = freshCopyOf(t);
                     if (repeatBox.isChecked()) {
                         cur.repeat = "daily";
+                        cur.deadline = null;
+                        cur.deadlineTime = null;
+                    } else if (cur.isWeekly()) {
+                        // 每周任务改星期请走编辑层；本对话框不把 weekly 冲成 none
                         cur.deadline = null;
                         cur.deadlineTime = null;
                     } else {

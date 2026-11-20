@@ -6,6 +6,7 @@ import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -70,7 +71,12 @@ public class TaskItem {
         }
     }
 
-    public String repeat = "none";     // none / daily
+    public static final String REPEAT_NONE = "none";
+    public static final String REPEAT_DAILY = "daily";
+    public static final String REPEAT_WEEKLY = "weekly";
+    public String repeat = "none";     // none / daily / weekly
+    /** ISO 星期 1=周一 … 7=周日；仅 weekly 有意义。 */
+    public List<Integer> repeatWeekdays = new ArrayList<>();
     public int durationMinutes = 30;
     public int actualMinutes = 0;      // 手动记录的实际用时（分钟），0=未填
     public String priority;            // must / important / secondary / leisure / null（null 与未知值按 secondary 论）
@@ -125,8 +131,91 @@ public class TaskItem {
         if (hasSubtasks()) durationMinutes = Math.max(1, subtasksTotalMinutes());
     }
 
+    public boolean isDaily() { return REPEAT_DAILY.equals(repeat); }
+    public boolean isWeekly() { return REPEAT_WEEKLY.equals(repeat); }
+    public boolean isRecurring() { return isDaily() || isWeekly(); }
+
+    /** yyyy-MM-dd 的 ISO 星期：1=周一 … 7=周日；解析失败返回 0。 */
+    public static int isoWeekday(String date) {
+        Calendar cal = DayUtil.parse(date);
+        if (cal == null) return 0;
+        int dow = cal.get(Calendar.DAY_OF_WEEK);
+        return dow == Calendar.SUNDAY ? 7 : dow - 1;
+    }
+
+    public static String weekdaysToStr(List<Integer> days) {
+        if (days == null || days.isEmpty()) return "";
+        List<Integer> u = new ArrayList<>();
+        for (Integer d : days) {
+            if (d == null || d < 1 || d > 7 || u.contains(d)) continue;
+            u.add(d);
+        }
+        java.util.Collections.sort(u);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < u.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(u.get(i));
+        }
+        return sb.toString();
+    }
+
+    public static List<Integer> weekdaysFromStr(String raw) {
+        List<Integer> out = new ArrayList<>();
+        if (raw == null) return out;
+        for (String p : raw.split(",")) {
+            p = p.trim();
+            if (p.isEmpty()) continue;
+            try {
+                int n = Integer.parseInt(p);
+                if (n >= 1 && n <= 7 && !out.contains(n)) out.add(n);
+            } catch (NumberFormatException ignored) { }
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** 每日：每天都到期。每周：仅选中的星期。其他：不算按日重复到期。 */
+    public boolean isDueOn(String date) {
+        if (date == null || date.isEmpty()) return false;
+        if (isDaily()) return true;
+        if (!isWeekly()) return false;
+        int iso = isoWeekday(date);
+        return iso != 0 && repeatWeekdays != null && repeatWeekdays.contains(iso);
+    }
+
+    /** 从 date（含当天）起下一个到期日；每日即当天；每周没有选日子则返回 null。 */
+    public String nextDueOnOrAfter(String date) {
+        if (date == null) return null;
+        if (isDaily()) return date;
+        if (!isWeekly() || repeatWeekdays == null || repeatWeekdays.isEmpty()) return null;
+        String d = date;
+        for (int i = 0; i < 8; i++) {
+            if (isDueOn(d)) return d;
+            d = DayUtil.addDays(d, 1);
+        }
+        return null;
+    }
+
+    /** 用于列表展示：每周一、三、五 / Weekly Mon, Wed, Fri。 */
+    public String weeklyLabel() { return weeklyLabel(Strings.en()); }
+    public String weeklyLabel(boolean en) {
+        if (repeatWeekdays == null || repeatWeekdays.isEmpty()) {
+            return en ? "Weekly" : "每周";
+        }
+        String[] zh = {"一", "二", "三", "四", "五", "六", "日"};
+        String[] enN = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        StringBuilder sb = new StringBuilder(en ? "Weekly " : "每周");
+        for (int i = 0; i < repeatWeekdays.size(); i++) {
+            if (i > 0) sb.append(en ? ", " : "、");
+            int iso = repeatWeekdays.get(i);
+            if (iso < 1 || iso > 7) continue;
+            sb.append(en ? enN[iso - 1] : zh[iso - 1]);
+        }
+        return sb.toString();
+    }
+
     public boolean isDoneToday() {
-        if ("daily".equals(repeat)) return doneDates.contains(today());
+        if (isRecurring()) return doneDates.contains(today());
         return "done".equals(status);
     }
 
@@ -136,7 +225,7 @@ public class TaskItem {
     }
 
     public void markDone() {
-        if ("daily".equals(repeat)) {
+        if (isRecurring()) {
             String d = today();
             if (!doneDates.contains(d)) doneDates.add(d);
         } else {
@@ -146,7 +235,7 @@ public class TaskItem {
     }
 
     public void markUndone() {
-        if ("daily".equals(repeat)) doneDates.remove(today());
+        if (isRecurring()) doneDates.remove(today());
         else status = "todo";
         touch();
     }
@@ -165,6 +254,9 @@ public class TaskItem {
         o.put("alarmOnTimerEnd", alarmOnTimerEnd);
         o.put("alarmMode", alarmMode == null ? ALARM_FOLLOW : alarmMode);
         o.put("repeat", repeat);
+        JSONArray wd = new JSONArray();
+        if (repeatWeekdays != null) for (Integer d : repeatWeekdays) if (d != null) wd.put(d.intValue());
+        o.put("repeatWeekdays", wd);
         o.put("assignee", assignee == null ? ASSIGN_SELF : assignee);
         o.put("aiState", aiState == null ? JSONObject.NULL : aiState);
         o.put("durationMinutes", durationMinutes);
@@ -238,6 +330,20 @@ public class TaskItem {
         t.alarmOnTimerEnd = o.optBoolean("alarmOnTimerEnd", false);
         t.alarmMode = normAlarmMode(o.optString("alarmMode", ALARM_FOLLOW));
         t.repeat = o.optString("repeat", "none");
+        JSONArray wd = o.optJSONArray("repeatWeekdays");
+        if (wd != null) {
+            for (int i = 0; i < wd.length(); i++) {
+                int n = wd.optInt(i, 0);
+                if (n >= 1 && n <= 7 && !t.repeatWeekdays.contains(n)) t.repeatWeekdays.add(n);
+            }
+            java.util.Collections.sort(t.repeatWeekdays);
+        } else {
+            // 兼容本机曾把星期写在 repeat 字符串里（weekly:1,2,3）
+            if (t.repeat != null && t.repeat.startsWith("weekly:")) {
+                t.repeatWeekdays = weekdaysFromStr(t.repeat.substring(7));
+                t.repeat = REPEAT_WEEKLY;
+            }
+        }
         // 老本地数据无此两字段时 optString 给默认：assignee=self、aiState=null
         t.assignee = normAssignee(o.optString("assignee", ASSIGN_SELF));
         t.aiState = o.isNull("aiState") ? null : o.optString("aiState", null);

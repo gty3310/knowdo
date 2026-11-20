@@ -21,7 +21,7 @@ public class TaskAlarmReceiver extends BroadcastReceiver {
             TimerState.logEvent(c, "任务闹钟跳过（今天已完成）：「" + t.title + "」");
             return;
         }
-        if (!"daily".equals(t.repeat)
+        if (!t.isRecurring()
                 && t.alarmMs() > System.currentTimeMillis() + 90_000L) {
             // 一次性闹钟被改到更远的未来：rescheduleAll 已按新时间重排，这次不响
             TimerState.logEvent(c, "任务闹钟跳过（时间已改后）：「" + t.title + "」");

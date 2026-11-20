@@ -326,7 +326,8 @@ private String today() { return TaskItem.today();}
 
 private boolean isTodayTask(TaskItem t) {
 if (t.deleted) return false;
-if ("daily".equals(t.repeat)) return true;
+if (t.isDaily()) return true;
+if (t.isWeekly()) return t.isDueOn(today());
 if (t.deadline == null) return true;
 return t.deadline.compareTo(today()) <= 0;
 }
@@ -1069,10 +1070,10 @@ exp.addView(note);
 
 // 每日重复任务：已用与段数都只算今天（v1.65.0，与 MainActivity 详情 meta 同改法，
 // todayCountForTask 内部已含今天开的打开段）；非每日任务保持全历史累计＋打开段 +1
-boolean daily = "daily".equals(t.repeat);
-int usedMin = (int) ((daily ? SessionLog.todayMsForTask(ctx, t.id)
+boolean recurring = t.isRecurring();
+int usedMin = (int) ((recurring ? SessionLog.todayMsForTask(ctx, t.id)
 : SessionLog.totalMsForTask(ctx, t.id)) / 60000);
-int segs = daily ? SessionLog.todayCountForTask(ctx, t.id)
+int segs = recurring ? SessionLog.todayCountForTask(ctx, t.id)
 : SessionLog.countForTask(ctx, t.id)
 + (t.id.equals(SessionLog.openTaskId(ctx)) ? 1 : 0);
 String startPart = t.nextStartMs() > 0

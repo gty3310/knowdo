@@ -50,7 +50,9 @@ public final class Strings {
     public static String priLeisure() { return s("休息", "Leisure"); }
     public static String scenariosEmpty() { return s("＋情景", "+ Context"); }
     public static String dateDaily() { return s("每日", "Daily"); }
+    public static String dateWeekly() { return s("每周", "Weekly"); }
     public static String dateEmpty() { return s("＋日期", "+ Date"); }
+    public static String pickWeekdayHint() { return s("请至少选一天", "Pick at least one weekday"); }
 
     // ---------------- 展开面板 ----------------
     public static String chipStart() { return s("开始", "Start"); }

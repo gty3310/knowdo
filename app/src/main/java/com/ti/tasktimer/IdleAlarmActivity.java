@@ -200,9 +200,7 @@ public class IdleAlarmActivity extends Activity {
         np.topMargin = dp(20);
         owner.addView(newRow, np);
         newRow.setOnClickListener(v -> {
-            Intent i = new Intent(this, NextTaskActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { startActivity(i); } catch (Exception ignored) { }
+            try { MainActivity.openXing(this); } catch (Exception ignored) { }
             finish();
         });
 

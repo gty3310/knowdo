@@ -127,6 +127,14 @@ public final class SbMapper {
                                    boolean hasAlarmCols, boolean hasSubtaskCols,
                                    boolean hasAlarmModeCol, boolean hasAiCols,
                                    boolean hasSkipCol) throws Exception {
+        return toRow(t, userId, hasExtraCols, hasAlarmCols, hasSubtaskCols,
+                hasAlarmModeCol, hasAiCols, hasSkipCol, false);
+    }
+
+    public static JSONObject toRow(TaskItem t, String userId, boolean hasExtraCols,
+                                   boolean hasAlarmCols, boolean hasSubtaskCols,
+                                   boolean hasAlarmModeCol, boolean hasAiCols,
+                                   boolean hasSkipCol, boolean hasWeekdaysCol) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", t.id);
         o.put("user_id", userId);
@@ -174,6 +182,10 @@ public final class SbMapper {
         if (hasSkipCol) {
             o.put("skipped_dates", strArr(t.skippedDates));
         }
+        if (hasWeekdaysCol) {
+            String wd = TaskItem.weekdaysToStr(t.repeatWeekdays);
+            o.put("repeat_weekdays", wd.isEmpty() ? JSONObject.NULL : wd);
+        }
         return o;
     }
 
@@ -189,6 +201,13 @@ public final class SbMapper {
         t.scenarios = toStrList(o.optJSONArray("scenarios"));
         t.deadline = o.isNull("deadline") ? null : tsToDate(o.optString("deadline", ""));
         t.repeat = o.optString("repeat", "none");
+        if (o.has("repeat_weekdays")) {
+            t.repeatWeekdays = TaskItem.weekdaysFromStr(
+                    o.isNull("repeat_weekdays") ? "" : o.optString("repeat_weekdays", ""));
+        } else if (preserveFrom != null && preserveFrom.repeatWeekdays != null) {
+            // 服务端没这列：从本地同 id 任务保全，同步合并不得冲掉
+            t.repeatWeekdays = new java.util.ArrayList<>(preserveFrom.repeatWeekdays);
+        }
         t.durationMinutes = o.optInt("duration_minutes", 30);
         t.priority = o.isNull("priority") ? null : o.optString("priority", null);
         t.status = o.optString("status", "todo");

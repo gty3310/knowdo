@@ -171,7 +171,7 @@ public class GuardActivity extends Activity {
         // 计时；不记分神、不执行处置，本次问询就此作罢
         Button switchTask = bigButton(Strings.guardSwitchTask(), Color.rgb(31, 47, 42));
         switchTask.setOnClickListener(v -> {
-            try { startActivity(new android.content.Intent(this, NextTaskActivity.class)); }
+            try { MainActivity.openXing(this); }
             catch (Exception ignored) { }
             finish();
         });

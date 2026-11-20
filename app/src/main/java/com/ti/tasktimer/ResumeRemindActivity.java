@@ -83,9 +83,7 @@ public class ResumeRemindActivity extends Activity {
         Button dismiss = bigButton("换下一个任务");
         dismiss.setOnClickListener(v -> {
             PauseEscalation.cancel(this); // 有反馈：撤掉 60 秒渐强闹铃升级
-            Intent i = new Intent(this, NextTaskActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { startActivity(i); } catch (Exception ignored) { }
+            try { MainActivity.openXing(this); } catch (Exception ignored) { }
             // 暂停槽还在、叫回已清：重新估价，30 秒没有开始下一件就盖屏
             PauseLock.onPauseStateChanged(this);
             finish();

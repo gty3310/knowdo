@@ -80,8 +80,8 @@ public final class Rollover {
 
         Set<String> rolled = new HashSet<>();
         for (TaskItem t : store.tasks) {
-            if (t.deleted || "daily".equals(t.repeat)) continue;
-            if (t.isDoneToday()) continue; // 非 daily 的完成＝status done
+            if (t.deleted || t.isRecurring()) continue;
+            if (t.isDoneToday()) continue; // 非重复任务的完成＝status done
             if (TaskItem.isLeisure(t.priority)) continue; // 休息档永不滚入（v1.26.0）
             if (t.isAi()) continue; // 给 AI 做的任务永不滚入：到期保持原样、日期不自动改（v1.74.0）
             boolean overdue = t.deadline != null && t.deadline.compareTo(today) < 0;
