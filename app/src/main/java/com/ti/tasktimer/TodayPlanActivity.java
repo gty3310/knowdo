@@ -87,6 +87,10 @@ public class TodayPlanActivity extends Activity {
      * 只有「重新排序」按 candidateOrder 重排并刷新冻结序。 */
     private final List<String> frozenOrder = new ArrayList<>();
     private boolean orderFrozen = false;
+    /** 本页是否在前台（v1.93.0）：OverPlanGate 排超弹窗读它，在前台时不再重复弹本页。 */
+    private static boolean inForeground = false;
+
+    public static boolean isInForeground() { return inForeground; }
 
     // ---- v1.55.0：AI 添加任务聊天面板（临时会话，只存内存，不落 ChatStore） ----
     private LinearLayout aiPanel;
@@ -126,10 +130,26 @@ public class TodayPlanActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        inForeground = true;
         store.load();
         logicToday = Rollover.logicalToday(this);
         selfCheckSchedule();
         refreshAll();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        inForeground = false;
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        inForeground = false;
+        // 排超延迟宽限（v1.93.0）：离开本页时，若有待生效宽限且未过期，
+        // 由 OverPlanGate 按两个落点的原口径补生效（宽限从这一刻开始算）
+        try { OverPlanGate.applyPendingGrace(this); } catch (Exception ignored) { }
     }
 
     /**
@@ -682,18 +702,14 @@ public class TodayPlanActivity extends Activity {
     }
 
     /** 时间账（v1.92.0 起新口径，用户 2026-11-21 亲定）：左「未完成还剩」＝
-     * 本页卡片同一份任务列（currentTasks，灰卡除外）逐件还剩加总，还剩公式
-     * 与卡片同源（duration − 今日已用，原时长、不 ×1.5）；右「今天还剩」＝
+     * 今日候选（todayCandidates，灰卡除外）逐件还剩加总，还剩公式与卡片同源
+     * （duration − 今日已用，原时长、不 ×1.5）；右「今天还剩」＝
      * DayAvail.wallCapMinToday（现在→min(22:30, 睡觉开始) 扣锁时段）。
-     * 两数只回答「还剩多少活／今天还剩多少时间」，与已完成多少、日程块无关。 */
+     * 两数只回答「还剩多少活／今天还剩多少时间」，与已完成多少、日程块无关。
+     * v1.93.0 起两数改经 OverPlanGate 取（与排超提醒闸门严格同源）。 */
     private void refreshLedger() {
-        int unfinished = 0;
-        for (TaskItem t : currentTasks()) {
-            if (isGrey(t)) continue; // 灰卡（推迟到未来）不计（v1.54.0 起既有口径）
-            int used = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
-            unfinished += Math.max(0, t.durationMinutes - used);
-        }
-        int dayLeft = DayAvail.wallCapMinToday(this, logicToday);
+        int unfinished = OverPlanGate.unfinishedMinutes(this, store, logicToday);
+        int dayLeft = OverPlanGate.dayLeftMinutes(this, logicToday);
         remainVal.setText(DayAccount.fmtDur(unfinished));
         remainVal.setTextColor(Ui.text(this));
         arrangedVal.setText(DayAccount.fmtDur(dayLeft));
@@ -1310,6 +1326,12 @@ public class TodayPlanActivity extends Activity {
 
     /** 今日候选：未删、未完成、（每日重复 ∥ deadline ≤ 逻辑今天），按 candidateOrder 排。 */
     private List<TaskItem> todayCandidates() {
+        return todayCandidates(store, logicToday);
+    }
+
+    /** todayCandidates 的静态版（v1.93.0 抽出，行为逐字不变）：OverPlanGate 算
+     * 未完成还剩时共用同一份候选集，保证「触发的数＝页面显示的数」。 */
+    static List<TaskItem> todayCandidates(TaskStore store, String logicToday) {
         List<LocalAutoScheduler.Candidate> cands = LocalAutoScheduler.snapshot(store, logicToday);
         java.util.Map<String, LocalAutoScheduler.Candidate> byId = new java.util.HashMap<>();
         for (LocalAutoScheduler.Candidate cd : cands) byId.put(cd.id, cd);
@@ -1331,12 +1353,17 @@ public class TodayPlanActivity extends Activity {
         return out;
     }
 
+    /** 置灰判定（v1.54.0）：转调静态版（v1.93.0 抽出，与 OverPlanGate 共用）。 */
+    private boolean isGrey(TaskItem t) {
+        return isGrey(t, logicToday);
+    }
+
     /**
      * 置灰判定（v1.54.0）：非每日重复、deadline 在逻辑今天之后＝被推迟了，整卡
      * 置灰。逾期（deadline＜今天）是滚进来的今日事、不置灰；无 deadline 不置灰
      * （与「取消截止日期」沿用现状一致）；每日重复没有推迟一说，不置灰。
      */
-    private boolean isGrey(TaskItem t) {
+    static boolean isGrey(TaskItem t, String logicToday) {
         if (t == null || t.isRecurring()) return false;
         return t.deadline != null && logicToday != null
                 && t.deadline.compareTo(logicToday) > 0;
