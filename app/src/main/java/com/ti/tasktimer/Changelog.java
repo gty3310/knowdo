@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1920 = new Entry("v1.92.0", "2026-11-21");
+        e1920.add(new Group(s("改进", "Improved"),
+                s("今天安排页顶部两个数换了口径：左边「未完成还剩」是今天未完成任务还剩的时长（按原时长算，与下面卡片的「还剩」加总一致），右边「今天还剩」是从现在到今天结束还剩的时间",
+                  "The two numbers at the top of the Plan Today page mean something new: on the left, 'Unfinished' is the total time left on today's unfinished tasks (raw durations, matching the sum of the remaining minutes on the cards below); on the right, 'Left today' is the time left from now until the end of today"),
+                s("行页顶部「必做」也改成未完成必做任务所剩的原时长（扣掉今天已经用掉的分钟，不再乘 1.5 缓冲）",
+                  "The 'Must-do' figure at the top of the Tasks page is now also the raw time remaining on unfinished must-do tasks (minutes already used today deducted, no 1.5x buffer)")));
+        e1920.why = s("原来顶部算的是日程块时长（含已完成任务留下的块、还乘 1.5 缓冲），与卡片对不上、容易误判今天到底还剩多少活。本版未经模拟器/真机验证，有问题回滚 v1.91.0",
+                "The old top figures summed schedule-block lengths: blocks left behind by finished tasks still counted, and block lengths carried the 1.5x buffer, so the totals never matched the cards below and made it easy to misjudge how much work is left today. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.91.0");
+        e1920.tryIt = s("打开「安排今日任务」，看左边的数是不是下面卡片「还剩」分钟的加总；再回行页看顶部「必做」",
+                "Open Plan Today and check that the left number equals the sum of the remaining minutes on the cards below; then go back to the Tasks page and look at 'Must-do' at the top");
+        out.add(e1920);
+
         Entry e1910 = new Entry("v1.91.0", "2026-11-20");
         e1910.add(new Group(s("改进", "Improved"),
                 s("五个提醒页也换成 99% 超大悬浮窗：打卡问询（过半/结束确认）、任务闹钟、暂停叫回、开始提醒、感恩页——划不走、按返回也关不掉，选了下一步才收回。加上上一版的盖屏和空档催促，十个全屏提醒页已换完七个，剩找下一件、晨间、走神问询三页随后换",
