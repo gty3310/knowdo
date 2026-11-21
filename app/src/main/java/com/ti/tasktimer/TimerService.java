@@ -328,6 +328,8 @@ public class TimerService extends Service {
             // 软件名单（v1.26.0）：继续的任务若还没有名单，借这次开始补发一次请求
             AppLists.maybeRequest(this, rt);
         } else if (ACTION_START.equals(action)) {
+            // 切换判定（v1.93.0）：动手改状态前先记下原在跑的任务，分支末尾与新任务比对
+            String prevRunningId = TimerState.isRunning(this) ? TimerState.taskId(this) : null;
             IdleAlarm.onNotIdle(this); // 任何入口开始计时都算：催促周期取消、空档时钟重置
             ResumeReminder.cancel(this);
             int total = intent.getIntExtra(EXTRA_TOTAL_SEC, 60);
@@ -368,6 +370,11 @@ public class TimerService extends Service {
                 TimerState.logEvent(this, "开始计时：" + TimerState.taskTitle(this) + "（" + total + " 秒）");
             }
             SbTimerSync.onLocalTimerChanged(this);
+            // 排超提醒（v1.93.0）：从另一个在跑任务直接切换过来、且今天已排超时，
+            // 切换办妥后弹安排今日任务页（同任务重开、首次开始都不触发）
+            if (prevRunningId != null && !prevRunningId.isEmpty() && !prevRunningId.equals(sid)) {
+                OverPlanGate.maybePop(this);
+            }
         } else if (ACTION_END_PAUSED.equals(action)) {
             if (TimerState.isPaused(this) && !TimerState.isRunning(this)) {
                 IdleAlarm.onNotIdle(this);
@@ -396,6 +403,9 @@ public class TimerService extends Service {
             TimerState.extend(this, add);
             TimerState.logEvent(this, "加时 " + add + " 秒，新结束时间已顺延");
             SbTimerSync.onLocalTimerChanged(this);
+            // 排超提醒（v1.93.0）：加时入账后判定，排超则弹安排今日任务页
+            // （Check 页可连点加时，靠 gate 的 30 分钟节流兜底：首次弹、后续不弹）
+            OverPlanGate.maybePop(this);
         }
         // START / EXTEND / 系统重启恢复（intent==null）都汇到这里
         if (TimerState.isRunning(this)) {

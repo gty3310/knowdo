@@ -55,6 +55,15 @@ public final class FocusGuard {
     }
 
     public static void chooseGrace(Context c, String pkg, int seconds) {
+        // 排超延迟（v1.93.0）：今天排超且过节流时先不落宽限——请求存 OverPlanGate
+        // 待生效槽并弹安排今日任务页，用户离开安排页时再经 applyGraceNow 按原口径
+        // 生效（宽限从离开那一刻开始算）；未超/被节流时照旧立即生效
+        if (OverPlanGate.deferGrace(c, OverPlanGate.KIND_LIST, pkg, null, seconds)) return;
+        applyGraceNow(c, pkg, seconds);
+    }
+
+    /** 宽限立即生效（v1.93.0 前的 chooseGrace 本体，口径不变）：写 grace_pkg/grace_until 并记日志。 */
+    public static void applyGraceNow(Context c, String pkg, int seconds) {
         prefs(c).edit()
                 .putString("grace_pkg", pkg)
                 .putLong("grace_until", System.currentTimeMillis() + seconds * 1000L)

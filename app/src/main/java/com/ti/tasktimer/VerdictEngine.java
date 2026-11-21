@@ -160,6 +160,16 @@ public final class VerdictEngine {
     }
 
     public static void contentGrace(Context c, String cat, int seconds) {
+        // 排超延迟（v1.93.0）：与名单模式同口径——先经 OverPlanGate 判定，排超且
+        // 过节流时把请求（连同此刻的 inquiry_pkg）存待生效槽并弹安排今日任务页，
+        // 离开安排页时经 applyDeferredContentGrace 按原口径生效；否则立即生效
+        String pkg = prefs(c).getString("inquiry_pkg", null);
+        if (OverPlanGate.deferGrace(c, OverPlanGate.KIND_CONTENT, pkg, cat, seconds)) return;
+        applyContentGraceNow(c, cat, seconds);
+    }
+
+    /** 宽限立即生效（v1.93.0 前的 contentGrace 本体，口径不变）。 */
+    public static void applyContentGraceNow(Context c, String cat, int seconds) {
         SharedPreferences p = prefs(c);
         String pkg = p.getString("inquiry_pkg", null);
         SharedPreferences.Editor e = p.edit().putString("grace_cat", cat)
@@ -174,6 +184,17 @@ public final class VerdictEngine {
                 : ScreenGuardPrefs.ACTION_QUIT.equals(act) ? "退掉该软件并跳回任务" : "只放到后台";
         TimerState.logEvent(c, "屏幕内容守卫：用户给「" + ContentAnalyzer.label(cat) + "」宽限 " + seconds
                 + " 秒，到点处理：" + actText);
+    }
+
+    /**
+     * 排超延迟宽限到期生效（v1.93.0，OverPlanGate 回调）：把问询时捕获的前台包
+     * 放回 inquiry_pkg，再走 applyContentGraceNow 原口径（grace_until 从这一刻起算）。
+     */
+    public static void applyDeferredContentGrace(Context c, String cat, int seconds, String pkg) {
+        SharedPreferences.Editor e = prefs(c).edit();
+        if (pkg != null) e.putString("inquiry_pkg", pkg); else e.remove("inquiry_pkg");
+        e.apply();
+        applyContentGraceNow(c, cat, seconds);
     }
 
     /**
