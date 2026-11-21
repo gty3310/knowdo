@@ -1250,19 +1250,23 @@ public class MainActivity extends Activity {
         refreshHeadStats();
     }
 
-    /** 页头两数（v1.86.0）：必做剩余 · 空闲，与旧时间账同源（DayAccount 只读、不改口径）。
-     * 格式 H:MM；空闲 >0 绿、<0 朱砂、=0 墨。文本没变就不重设，避免每秒闪烁。 */
+    /** 页头两数（v1.86.0；v1.92.0 换口径，用户 2026-11-21 亲定）：必做＝未完成
+     * 必做任务所剩原时长（扣今日已用、不 ×1.5，DayAccount.mustRemainRawMin）；
+     * 空＝今日还剩（remainMin）− 必做所剩。格式 H:MM；空 >0 绿、<0 朱砂、=0 墨。
+     * 文本没变就不重设，避免每秒闪烁。DayAccount 既有主账口径不动，本页只是
+     * 改用新数字段展示。 */
     private void refreshHeadStats() {
         if (headStatsView == null) return;
-        DayAccount.Result a = DayAccount.compute(store, Rollover.logicalToday(this));
+        DayAccount.Result a = DayAccount.compute(this, store, Rollover.logicalToday(this));
         boolean en = Strings.en();
-        String sig = a.mustBufferedMin + "|" + a.freeMin + "|" + en;
+        int freeRaw = a.remainMin - a.mustRemainRawMin;
+        String sig = a.mustRemainRawMin + "|" + freeRaw + "|" + en;
         if (sig.equals(headStatsShown)) return;
         headStatsShown = sig;
-        headStatsView.setText((en ? "Must-do " : "必做 ") + fmtHM(a.mustBufferedMin)
-                + " · " + (en ? "Free " : "空 ") + fmtHM(a.freeMin));
-        headStatsView.setTextColor(a.freeMin > 0 ? FREE_GREEN
-                : a.freeMin < 0 ? Ui.accent(this) : Ui.text(this));
+        headStatsView.setText((en ? "Must-do " : "必做 ") + fmtHM(a.mustRemainRawMin)
+                + " · " + (en ? "Free " : "空 ") + fmtHM(freeRaw));
+        headStatsView.setTextColor(freeRaw > 0 ? FREE_GREEN
+                : freeRaw < 0 ? Ui.accent(this) : Ui.text(this));
     }
 
     private static String fmtHM(int min) {
