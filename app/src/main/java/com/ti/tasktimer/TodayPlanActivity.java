@@ -36,8 +36,9 @@ import java.util.Set;
  * 「今天安排」页（v1.28.0 feature 9，用户亲自设计、审稿定稿后开发）：
  * 晨间门填完点「开启今天」后进来，在这里把今天排定——目标是任务总量
  * 绝不超过今天可支配时间。构成（照设计稿，紧凑小字矮卡）：
- * - 吸顶时间账：还剩可用／已安排（已安排＝今日已排块时长合计，块长本身
- *   就是 ×1.5 口径；预算＝填了的可支配，未填按 1440−睡眠−锁时估算），超排变红
+ * - 吸顶时间账：未完成还剩／今天还剩（v1.92.0 起新口径：左＝本页未完成任务
+ *   还剩时长加总、原时长不 ×1.5，与下方卡片「还剩」同一公式；右＝从现在到
+ *   今天结束的墙上可用时间），左超过右时红字提示
  * - 今日时段横条：今晨起床→明晨起床；锁时段可拖拽新建/移位/改界、可命名，
  *   睡眠段可设且长期保存；旁有数字条展开做精细编辑
  * - 快速输入「今天可支配 X 小时」＋ⓘ说明
@@ -234,7 +235,7 @@ public class TodayPlanActivity extends Activity {
         ledger.setPadding(0, dp(5), 0, 0);
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
-        TextView labL = smallLabel(s("还剩可用", "Left"));
+        TextView labL = smallLabel(s("未完成还剩", "Unfinished"));
         remainVal = bigNum();
         left.addView(labL, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -244,7 +245,7 @@ public class TodayPlanActivity extends Activity {
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
         right.setGravity(Gravity.END);
-        TextView labR = smallLabel(s("已安排", "Planned"));
+        TextView labR = smallLabel(s("今天还剩", "Left today"));
         labR.setGravity(Gravity.END);
         arrangedVal = bigNum();
         arrangedVal.setGravity(Gravity.END);
@@ -680,37 +681,31 @@ public class TodayPlanActivity extends Activity {
         return t;
     }
 
-    /** 时间账（v1.46.0 起从此刻算）：已安排＝现在之后的日程块时长（横跨此刻的
-     * 块只算现在之后那截）；预算＝填的可支配与从现在到今天结束的墙上可用两者
-     * 取小；还剩＝预算−已安排，负数变红。 */
+    /** 时间账（v1.92.0 起新口径，用户 2026-11-21 亲定）：左「未完成还剩」＝
+     * 本页卡片同一份任务列（currentTasks，灰卡除外）逐件还剩加总，还剩公式
+     * 与卡片同源（duration − 今日已用，原时长、不 ×1.5）；右「今天还剩」＝
+     * DayAvail.wallCapMinToday（现在→min(22:30, 睡觉开始) 扣锁时段）。
+     * 两数只回答「还剩多少活／今天还剩多少时间」，与已完成多少、日程块无关。 */
     private void refreshLedger() {
-        List<LocalAutoScheduler.Block> blocks = LocalAutoScheduler.blocksOf(
-                SyncManager.latestSchedule(this), TaskItem.today());
-        int nowMin = DayAccount.nowMinutes();
-        Set<String> grey = greyIdSet(); // 灰卡不计时间账（v1.54.0）：它已有的块也不算已安排
-        int arranged = 0;
-        for (LocalAutoScheduler.Block b : blocks) {
-            if (grey.contains(b.taskId)) continue;
-            arranged += Math.max(0, b.endMin - Math.max(b.startMin, nowMin));
+        int unfinished = 0;
+        for (TaskItem t : currentTasks()) {
+            if (isGrey(t)) continue; // 灰卡（推迟到未来）不计（v1.54.0 起既有口径）
+            int used = (int) (SessionLog.todayMsForTask(this, t.id) / 60000);
+            unfinished += Math.max(0, t.durationMinutes - used);
         }
-        int budget = Math.min(DayAvail.budgetMin(this, logicToday),
-                DayAvail.wallCapMinToday(this, logicToday));
-        int remain = budget - arranged;
-        arrangedVal.setText(DayAccount.fmtDur(arranged));
-        remainVal.setText(remain < 0 ? "−" + DayAccount.fmtDur(-remain) : DayAccount.fmtDur(remain));
-        remainVal.setTextColor(remain < 0 ? Ui.accent(this) : Ui.text(this));
-        int usedW = Math.min(arranged, budget);
-        int overW = Math.max(0, arranged - budget);
-        int restW = Math.max(0, budget - arranged);
+        int dayLeft = DayAvail.wallCapMinToday(this, logicToday);
+        remainVal.setText(DayAccount.fmtDur(unfinished));
+        remainVal.setTextColor(Ui.text(this));
+        arrangedVal.setText(DayAccount.fmtDur(dayLeft));
+        int usedW = Math.min(unfinished, dayLeft);
+        int overW = Math.max(0, unfinished - dayLeft);
+        int restW = Math.max(0, dayLeft - unfinished);
         setWeight(barUsed, usedW);
         setWeight(barOver, overW);
         setWeight(barRest, restW);
-        if (remain < 0) {
-            ledgerNote.setText(s("已经排超了，减一点或把可支配填大些", "Over budget — trim tasks or raise free time"));
+        if (unfinished > dayLeft) {
+            ledgerNote.setText(s("已经排超了，减一点或把些任务挪到明天", "Over — trim some or move them to tomorrow"));
             ledgerNote.setTextColor(Ui.accent(this));
-        } else if (DayAvail.freeHours(this, logicToday) < 0) {
-            ledgerNote.setText(s("可支配还没填，按现在到今天结束估算", "Free time not set — estimated from now to day end"));
-            ledgerNote.setTextColor(Ui.sub(this));
         } else {
             ledgerNote.setText("");
         }
