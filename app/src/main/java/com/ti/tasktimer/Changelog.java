@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1930 = new Entry("v1.93.0", "2026-11-21");
+        e1930.add(new Group(s("新增", "New"),
+                s("排超提醒：今天未完成任务还剩的时间超过今天还剩的时间时，在你切换任务、给任务加时、确认分神宽限这三个时刻，会自动打开「安排今日任务」页请你重新安排",
+                  "Over-plan reminder: when the time left on today's unfinished tasks exceeds the time left today, the Plan Today page opens by itself at three moments — when you switch tasks, when you add time to a task, and when you confirm a distraction grace — so you can re-plan on the spot"),
+                s("宽限的时间从你离开安排页才开始算，不会被安排页吃掉；弹过后 30 分钟内不重复弹（超额又多出 15 分钟以上除外）；今天还剩不足 15 分钟时不弹",
+                  "Grace time only starts counting once you leave the Plan Today page, so the page cannot eat into it; after a pop, it stays quiet for 30 minutes (unless the overage grows by another 15 minutes or more), and it never pops when less than 15 minutes are left today")));
+        e1930.why = s("排超往往到晚上才发现，这三个时刻是还来得及当场调整的关口。本版未经模拟器/真机验证，有问题回滚 v1.92.0",
+                "Being over-planned usually only surfaces in the evening; these three moments are the points where there is still time to adjust on the spot. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.92.0");
+        e1930.tryIt = s("把今天的任务加到排超，再切换到另一个任务，看安排页是否自动打开；或在守卫问询页点一次「再看 3 分钟」",
+                "Add tasks until today is over-planned, then switch to another task and see whether the Plan Today page opens by itself; or tap '3 more minutes' once on the guard inquiry page");
+        out.add(e1930);
+
         Entry e1920 = new Entry("v1.92.0", "2026-11-21");
         e1920.add(new Group(s("改进", "Improved"),
                 s("今天安排页顶部两个数换了口径：左边「未完成还剩」是今天未完成任务还剩的时长（按原时长算，与下面卡片的「还剩」加总一致），右边「今天还剩」是从现在到今天结束还剩的时间",
