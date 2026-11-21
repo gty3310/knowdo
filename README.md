@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.91.0)
+## Features (Android, v1.92.0)
 
-Current version: **v1.91.0**.
+Current version: **v1.92.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,16 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.92.0 — 2026-11-21
+
+**Why:** The old top figures summed schedule-block lengths: blocks left behind by finished tasks still counted, and block lengths carried the 1.5x buffer, so the totals never matched the cards below and made it easy to misjudge how much work is left today. Build commit `939dfb7` · [compare v1.91.0...v1.92.0](https://github.com/gty3310/knowdo/compare/v1.91.0...v1.92.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Improved**
+- **Plan Today header, new meanings.** On the left, "Unfinished" is the total time left on today's unfinished tasks in raw durations, matching the sum of the remaining minutes on the cards below; on the right, "Left today" is the time left from now until the end of today.
+- **Tasks page header.** "Must-do" is now also the raw time remaining on unfinished must-do tasks, with the minutes already used today deducted and no 1.5x buffer.
+
+Not verified on a device or emulator; if anything is wrong, roll back to v1.91.0. Data changes: none.
+
 ### v1.91.0 — 2026-11-20
 
 **Why:** A full-screen reminder can be swiped away or sent to the background, and then it has fired for nothing; a 99% overlay cannot be swiped away or closed — it only goes away once you pick a next step. The previous release moved the block cover and the idle nudge onto the BigOverlay shell; this release moves five more reminder pages, bringing the total to seven of the ten full-screen reminder pages, with the remaining three to follow. Build commit `26dcdc7` · [compare v1.90.0...v1.91.0](https://github.com/gty3310/knowdo/compare/v1.90.0...v1.91.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -84,20 +94,6 @@ Not verified on a device or emulator: shipped directly at the user's instruction
 - **Appeal hand-off.** Tapping "This is a mistake" on the overlay cover hands over to the original block page to finish the appeal (the explanation input needs a page to live on).
 
 Not verified on a device or emulator: shipped directly at the user's instruction; if anything is wrong, roll back to v1.89.0. Data changes: none.
-
-### v1.89.0 — 2026-11-20
-
-**Why:** Repeat was daily-only, so a task that runs on set weekdays could not exist; and the guard delivered its verdicts without knowing a task's special circumstances, while appealing a wrong verdict was restricted. This release merges two PRs by an external coding agent (Grok) — weekly repeat, and task descriptions with an always-available appeal — diff-reviewed item by item and hand-merged before release. Build commit `273bd5a` · [compare v1.88.0...v1.89.0](https://github.com/gty3310/knowdo/compare/v1.88.0...v1.89.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Weekly repeat.** A task can repeat every week on the weekdays you tick (say Mon/Wed/Fri), chosen when editing the task; the unity index and the daily rollover count only the days you picked, and a day you did not pick never counts as missed.
-- **Task description.** Editing a task now takes a one-line description; the guard's judgement reads it as background, so fewer verdicts are mistakes.
-- **Appeal any time.** "This is a mistake" on the guard check page can be tapped whenever it appears, and appeals work from the block screen too; on Medium and Hard you write a short explanation and an AI re-checks it (the task description goes along). If the AI channel is unavailable, you can skip the re-check after waiting 5 seconds.
-
-**Improved**
-- **Rename on the floating window.** Tap the task title on the floating window to edit the name in place; on the call-back page, "switch to next task" jumps straight to the Act page to pick one.
-
-Not verified on a device or emulator: a feature-merge release, shipped directly at the user's instruction; if anything is wrong, roll back to v1.88.0. Data changes: weekday picks and task descriptions are stored on the phone for now; the matching cloud columns (`tasks.repeat_weekdays`, `tasks.description`) are written up in docs/migrations but deliberately not applied yet — sync picks them up automatically once the database is unblocked on Nov 24 and the columns are added, and nothing on the phone is lost in the meantime.
 
 ## Build
 
