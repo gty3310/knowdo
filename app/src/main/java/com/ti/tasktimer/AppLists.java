@@ -19,8 +19,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 任务软件名单（v1.26.0）：每个任务一份「常用软件三档」名单——
- * 白（放心用）/ 灰（可能有用，先不打扰）/ 黑（跟任务明显无关，一打开就弹问询）。
+ * 任务软件名单（v1.26.0）：每个任务一份「常用软件名单」——
+ * 白（放心用）/ 灰（可能有用，先不打扰）。v1.94.0 起去掉全部黑名单：
+ * 名单只有白、灰两档；存量名单里遗留的 black 读时一律按灰处理。
  *
  * 名单的生成不在 App 里：开始计时一个还没有名单的任务时，App 把
  * {任务名＋备注＋常用软件清单（至多 100 个）} 写成请求放进云端
@@ -28,12 +29,12 @@ import java.util.Map;
  * 放回同一请求的 result 字段（信箱），App 在同步时取件存本地、随即把信箱
  * 清空（SbSync.syncUserState 调 ingestLocal）。名单只存本地、永不上云同步
  * （v1.84.0 本地化）：云端只经手这一次传递，不留存。本类只管本地存取与
- * 守卫查询。请求列不可用时（SbSync 探测纪律）整功能静默走本地：名单不来，
- * 就用内置通用黑名单兜底。
+ * 守卫查询。请求列不可用时（SbSync 探测纪律）整功能静默走本地：名单没到
+ * 时不按名单打扰，守卫照旧看屏幕内容判定。
  *
  * 本地存应用私有文件 app_lists.json：
  * { taskId: {"taskTitle":…, "generatedAt":…, "by":…,
- *            "apps": { pkg: {"tier":"white|grey|black","why":…} },
+ *            "apps": { pkg: {"tier":"white|grey","why":…} }（存量 black 按灰读）,
  *            "manual": true（仅用户手改过）, "manualPkgs": [pkg…]（手改过的包） } }
  * 手改纪律：本地带 manual 的手改软件（按 manualPkgs 逐个）不被信箱送来的
  * 生成名单覆盖（ingestLocal）；整份手改（manual 且无 manualPkgs）整份保留。
@@ -108,40 +109,28 @@ public final class AppLists {
         if (s.remove(taskId)) prefs(c).edit().putStringSet("pending", s).apply();
     }
 
-    // ---------------- 内置通用兜底名单（只判黑一档） ----------------
+    // ---------------- 内置通用兜底名单（v1.94.0 起已清空） ----------------
 
-    /** 包名 → {显示名, 理由}：主流短视频/娱乐/购物/游戏。 */
+    /**
+     * v1.94.0 起去掉全部黑名单：曾经的内置通用兜底黑名单整表删除，此表恒空，
+     * 只保留方法形状给旧调用点（名单页兜底展示等）——它们拿到空表自然无行可列。
+     */
     private static final Map<String, String[]> FALLBACK = new LinkedHashMap<>();
-    static {
-        String why = "通用黑名单：娱乐、购物或游戏，跟手头任务多半无关";
-        FALLBACK.put("com.ss.android.ugc.aweme", new String[]{"抖音", why});
-        FALLBACK.put("com.ss.android.ugc.aweme.lite", new String[]{"抖音极速版", why});
-        FALLBACK.put("com.ss.android.ugc.live", new String[]{"抖音火山版", why});
-        FALLBACK.put("com.ss.android.ugc.trill", new String[]{"TikTok", why});
-        FALLBACK.put("com.smile.gifmaker", new String[]{"快手", why});
-        FALLBACK.put("com.kuaishou.nebula", new String[]{"快手极速版", why});
-        FALLBACK.put("com.xingin.xhs", new String[]{"小红书", why});
-        FALLBACK.put("com.sina.weibo", new String[]{"微博", why});
-        FALLBACK.put("tv.danmaku.bili", new String[]{"哔哩哔哩", why});
-        FALLBACK.put("com.taobao.taobao", new String[]{"淘宝", why});
-        FALLBACK.put("com.xunmeng.pinduoduo", new String[]{"拼多多", why});
-        FALLBACK.put("com.jingdong.app.mall", new String[]{"京东", why});
-        FALLBACK.put("com.tencent.tmgp.sgame", new String[]{"王者荣耀", why});
-        FALLBACK.put("com.tencent.tmgp.pubgmhd", new String[]{"和平精英", why});
-    }
 
     public static Map<String, String[]> fallback() { return FALLBACK; }
 
-    /** pkg 是否只靠兜底名单判黑（该任务还没有生成名单）。 */
+    /** v1.94.0 起无兜底判黑，恒 false。 */
     public static boolean isFallbackBlack(Context c, String taskId, String pkg) {
-        return entry(c, taskId) == null && FALLBACK.containsKey(pkg);
+        return false;
     }
 
     // ---------------- 守卫查询 ----------------
 
     /**
-     * 当前任务下某软件的档位："white"/"grey"/"black"，未分类返回 null。
-     * 功能关（设置开关）时一律 null。任务还没有名单时只认兜底名单的黑。
+     * 当前任务下某软件的档位："white"/"grey"，未分类返回 null。
+     * 功能关（设置开关）时一律 null。v1.94.0 起无黑档：存量名单里遗留的
+     * black 在这里按 grey 返回——装上新版即刻生效，不等名单迁移；
+     * 任务还没有名单时不再有兜底判黑，一律 null。
      */
     public static String tierFor(Context c, String taskId, String pkg) {
         if (!enabled(c) || pkg == null) return null;
@@ -151,9 +140,10 @@ public final class AppLists {
             JSONObject a = apps == null ? null : apps.optJSONObject(pkg);
             if (a == null) return null;
             String t = a.optString("tier", "");
-            return (TIER_WHITE.equals(t) || TIER_GREY.equals(t) || TIER_BLACK.equals(t)) ? t : null;
+            if (TIER_BLACK.equals(t)) return TIER_GREY;
+            return (TIER_WHITE.equals(t) || TIER_GREY.equals(t)) ? t : null;
         }
-        return FALLBACK.containsKey(pkg) ? TIER_BLACK : null;
+        return null;
     }
 
     public static String whyFor(Context c, String taskId, String pkg) {
@@ -271,6 +261,7 @@ public final class AppLists {
             JSONObject all = loadAll(c);
             JSONObject le = all.optJSONObject(taskId);
             JSONObject in = new JSONObject(entry.toString());
+            downgradeBlacks(in); // v1.94.0：信箱送来的名单落地前先把 black 全改 grey
             if (le != null && le.optBoolean("manual", false)) {
                 JSONArray mp = le.optJSONArray("manualPkgs");
                 if (mp == null || mp.length() == 0) return true; // 整份手改：不覆盖，仍算取件成功
@@ -286,12 +277,26 @@ public final class AppLists {
                 in.put("manual", true);
                 in.put("manualPkgs", mp);
             }
+            downgradeBlacks(in); // 手改盖回的存量 black 也一并按 grey 落地
             all.put(taskId, in);
             saveAll(c, all);
             return true;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 把一份名单条目 apps 里所有 tier=black 的条目改成 grey（v1.94.0 无黑档）。 */
+    private static void downgradeBlacks(JSONObject entryJson) {
+        try {
+            JSONObject apps = entryJson == null ? null : entryJson.optJSONObject("apps");
+            if (apps == null) return;
+            java.util.Iterator<String> it = apps.keys();
+            while (it.hasNext()) {
+                JSONObject a = apps.optJSONObject(it.next());
+                if (a != null && TIER_BLACK.equals(a.optString("tier", ""))) a.put("tier", TIER_GREY);
+            }
+        } catch (Exception ignored) { }
     }
 
     // ---------------- 用户手改 ----------------
@@ -306,6 +311,7 @@ public final class AppLists {
     public static synchronized void setTier(Context c, String taskId, String taskTitle,
                                             String pkg, String tier) {
         if (taskId == null || pkg == null || tier == null) return;
+        if (TIER_BLACK.equals(tier)) tier = TIER_GREY; // v1.94.0：无黑档，黑按灰存
         try {
             JSONObject all = loadAll(c);
             JSONObject e = all.optJSONObject(taskId);
@@ -314,19 +320,8 @@ public final class AppLists {
                 e.put("taskTitle", taskTitle == null ? "" : taskTitle);
                 e.put("generatedAt", "");
                 e.put("by", "manual");
-                JSONObject seed = new JSONObject();
-                // 条目一旦存在，守卫就只认条目、不再查兜底名单：先把已安装的
-                // 兜底黑名单整份播种进来，免得手改一个、其余兜底软件集体失效
-                for (Map.Entry<String, String[]> f : FALLBACK.entrySet()) {
-                    try {
-                        c.getPackageManager().getApplicationInfo(f.getKey(), 0);
-                        JSONObject fa = new JSONObject();
-                        fa.put("tier", TIER_BLACK);
-                        fa.put("why", f.getValue()[1]);
-                        seed.put(f.getKey(), fa);
-                    } catch (Exception ignored) { }
-                }
-                e.put("apps", seed);
+                // v1.94.0：兜底黑名单已删除，新条目从空名单起步，只含手改的这一条
+                e.put("apps", new JSONObject());
                 all.put(taskId, e);
             }
             JSONObject apps = e.optJSONObject("apps");

@@ -695,7 +695,7 @@ public class SettingsActivity extends Activity {
                     : (Strings.en() ? "NSFW back to two confirmations" : "黄色类恢复两次确认"));
         });
         row(Strings.rowNsfwOneShot(), null, ns, null);
-        // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单弹问询，兜底名单也停
+        // 任务软件名单（v1.26.0）：关了不发名单生成请求、不按名单放行（v1.94.0 起无黑名单）
         Switch al = mkSwitch(ScreenGuardPrefs.appListsEnabled(this));
         al.setOnCheckedChangeListener((b, on) -> {
             ScreenGuardPrefs.setAppListsEnabled(this, on);
@@ -705,10 +705,10 @@ public class SettingsActivity extends Activity {
         });
         row(Strings.en() ? "Per-task app lists" : "任务软件名单",
                 Strings.en() ? "When a task starts, your frequently used apps are sorted into "
-                        + "white / grey / black for that task in the background. Opening a blacklisted "
-                        + "app during the task asks right away; whitelisted apps never trigger focus-rule inquiries"
-                        : "开始任务时，常用软件会被按这个任务分成白、灰、黑三档（在后台生成）。计时中打开"
-                        + "黑名单软件立刻弹问询，白名单软件不再触发专注规则问询。在任务详情里点「软件名单」查看和改档",
+                        + "white / grey for that task in the background (no blacklist since v1.94.0). "
+                        + "Whitelisted apps never trigger focus-rule inquiries; the guard judges by screen content instead"
+                        : "开始任务时，常用软件会被按这个任务分成白、灰两档（在后台生成，v1.94.0 起没有黑名单）。"
+                        + "白名单软件不再触发专注规则问询，守卫改看屏幕内容判定。在任务详情里点「软件名单」查看和改档",
                 al, null);
         row(Strings.en() ? "Model downloads" : "模型下载",
                 Strings.en() ? "Guard models are downloaded on demand, not packed into the app"

@@ -19,10 +19,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 「软件名单」页（v1.26.0，从任务详情进入）：看当前任务的三档名单，点某个
- * 软件改它的档（白/灰/黑）。名单的生成只走一条暗线——开始任务时自动发
- * 请求、云端巡查分类后回来，本页没有生成入口；未生成时显示「生成中」并
- * 列出正在兜底的通用黑名单（同样可改档）。用户手改过的软件记 manual，
+ * 「软件名单」页（v1.26.0，从任务详情进入）：看当前任务的名单，点某个
+ * 软件改它的档（白/灰）。v1.94.0 起名单只有白、灰两档，没有黑名单；
+ * 存量名单里遗留的黑档在本页按灰显示。名单的生成只走一条暗线——开始
+ * 任务时自动发请求、云端巡查分类后回来，本页没有生成入口；未生成时
+ * 显示「生成中」。用户手改过的软件记 manual，
  * 之后生成的名单也不会覆盖（AppLists 合并口径）。
  * 整页可滚动（v1.25.0 问询页/纪律页的教训：名单条目多，裸布局会把靠后的
  * 条目挤出屏幕）。
@@ -115,31 +116,15 @@ public class AppListActivity extends Activity {
         JSONObject e = AppLists.entry(this, taskId);
         if (e == null) {
             TextView gen = new TextView(this);
-            gen.setText(en ? "This task's list is still being generated — for now a built-in "
-                    + "generic blacklist stands in. Start this task once and the list arrives "
+            gen.setText(en ? "This task's list is still being generated. Start this task once and the list arrives "
                     + "a few minutes later; apps you re-tier yourself are never overwritten"
-                    : "这个任务的名单还在生成中，先用一份通用黑名单兜底。下次开始这个任务后，"
+                    : "这个任务的名单还在生成中。下次开始这个任务后，"
                             + "名单过几分钟就到；你自己改过档的软件，名单回来也不会覆盖");
             gen.setTextSize(15);
             gen.setTextColor(Color.DKGRAY);
             gen.setPadding(0, dp(8), 0, dp(14));
             root.addView(gen);
-            // 兜底名单里已安装的软件（只黑一档，可改档）
-            List<String> pkgs = new ArrayList<>();
-            for (Map.Entry<String, String[]> f : AppLists.fallback().entrySet()) {
-                try {
-                    getPackageManager().getApplicationInfo(f.getKey(), 0);
-                    pkgs.add(f.getKey());
-                } catch (Exception ignored) { }
-            }
-            Collections.sort(pkgs, (a, b) -> AppLister.labelOf(this, a).compareTo(AppLister.labelOf(this, b)));
-            groupTitle(en ? "Black — generic stand-in" : "黑名单（通用兜底）");
-            if (pkgs.isEmpty()) {
-                emptyLine(en ? "None of the generic-blacklist apps is installed" : "通用黑名单里的软件一个都没装");
-            }
-            for (String pkg : pkgs) {
-                appRow(pkg, AppLists.fallback().get(pkg)[1], AppLists.TIER_BLACK);
-            }
+            // v1.94.0：兜底黑名单已删除，未生成时只显示「生成中」，无兜底分组
             return;
         }
 
@@ -156,8 +141,8 @@ public class AppListActivity extends Activity {
         root.addView(state);
 
         buildGroup(en ? "White — safe to use" : "白名单 · 放心用", apps, AppLists.TIER_WHITE, en);
+        // 存量名单里遗留的 black 在灰组里显示（buildGroup 的灰组兼收 black 条目）
         buildGroup(en ? "Grey — might be useful, no interruptions" : "灰名单 · 可能有用，先不打扰", apps, AppLists.TIER_GREY, en);
-        buildGroup(en ? "Black — opening it asks right away" : "黑名单 · 一打开就问", apps, AppLists.TIER_BLACK, en);
     }
 
     private void buildGroup(String name, JSONObject apps, String tier, boolean en) {
@@ -168,7 +153,10 @@ public class AppListActivity extends Activity {
             while (it.hasNext()) {
                 String pkg = it.next();
                 JSONObject a = apps.optJSONObject(pkg);
-                if (a != null && tier.equals(a.optString("tier", ""))) pkgs.add(pkg);
+                String stored = a == null ? "" : a.optString("tier", "");
+                // v1.94.0：灰组兼收存量 black 条目（按灰显示、按灰改档）
+                if (a != null && (tier.equals(stored)
+                        || (AppLists.TIER_GREY.equals(tier) && AppLists.TIER_BLACK.equals(stored)))) pkgs.add(pkg);
             }
         }
         if (pkgs.isEmpty()) {
@@ -239,15 +227,15 @@ public class AppListActivity extends Activity {
         boolean en = Strings.en();
         if (AppLists.TIER_WHITE.equals(tier)) return en ? "White" : "白";
         if (AppLists.TIER_GREY.equals(tier)) return en ? "Grey" : "灰";
-        return en ? "Black" : "黑";
+        return en ? "Grey" : "灰"; // v1.94.0：无黑档，遗留值也按灰显示
     }
 
     private void pickTier(final String pkg, String current) {
         boolean en = Strings.en();
-        final String[] tiers = {AppLists.TIER_WHITE, AppLists.TIER_GREY, AppLists.TIER_BLACK};
+        final String[] tiers = {AppLists.TIER_WHITE, AppLists.TIER_GREY};
         String[] labels = en
-                ? new String[]{"White — safe to use", "Grey — might be useful, no interruptions", "Black — opening it asks right away"}
-                : new String[]{"白：放心用", "灰：可能有用，先不打扰", "黑：一打开就问我是不是分神"};
+                ? new String[]{"White — safe to use", "Grey — might be useful, no interruptions"}
+                : new String[]{"白：放心用", "灰：可能有用，先不打扰"};
         int checked = 0;
         for (int i = 0; i < tiers.length; i++) if (tiers[i].equals(current)) checked = i;
         new AlertDialog.Builder(this)

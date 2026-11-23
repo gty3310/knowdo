@@ -18,19 +18,13 @@ import java.util.concurrent.TimeUnit;
  * 一级分析：文字 → 关键词规则。文字来源有两路（v1.21.0 起）：
  * 无障碍节点文字（零成本，管线预筛与「无关」判定优先用它）与
  * ML Kit OCR（中文识别器兼拉丁字母 + 日文识别器，节点文字太少时才兜底跑）。
- * 判定顺序：命中华购/短视频词 → 分神；与任务上下文有词面重合 → 相关；
- * 文字很多、零重合、且前台是浏览器/社交/视频类 → “无关”（低置信，靠两次确认兜底）；
- * 其余不表态。OCR 读不到的（花字、手写、纯画面）由二级 NudeNet 补位。
+ * 判定顺序：与任务上下文有词面重合 → 相关（放行）；文字很多、零重合、
+ * 且前台是浏览器/社交/视频类 → “无关”（低置信，靠两次确认兜底）；其余不表态。
+ * v1.94.0 起购物/短视频关键词不再直接定罪（judgeKeywords 恒不表态），
+ * 分神与否改由相关性、NudeNet 与语义层判定。
+ * OCR 读不到的（花字、手写、纯画面）由二级 NudeNet 补位。
  */
 public class OcrRuleAnalyzer implements ContentAnalyzer {
-    private static final String[] SHOPPING_KW = {
-            "购物车", "立即购买", "立即下单", "加入购物车", "领券", "优惠券",
-            "去结算", "确认订单", "提交订单", "秒杀", "拼单", "包邮", "¥"
-    };
-    private static final String[] VIDEO_KW = {
-            "点赞", "弹幕", "同款", "上滑看下一个", "关注作者", "评论区", "直播中", "打赏"
-    };
-
     private TextRecognizer zhRecognizer;
     private TextRecognizer jaRecognizer;
 
@@ -44,19 +38,11 @@ public class OcrRuleAnalyzer implements ContentAnalyzer {
         return judgeText(text, task, fgPkg);
     }
 
-    /** 只用关键词表扫一遍文字：命中购物/短视频词就出结论，否则不表态（管线预筛用）。 */
+    /**
+     * 关键词预筛（管线与 judgeText 调用，签名保留）：v1.94.0 起购物/短视频
+     * 关键词不再直接定罪，本方法恒不表态；判定改走相关性、NudeNet 与语义层。
+     */
     public Result judgeKeywords(String text) {
-        if (text == null) return Result.none();
-        for (String kw : SHOPPING_KW) {
-            if (text.contains(kw)) {
-                return new Result(CAT_SHOPPING, 0.70f, "屏幕文字命中购物词「" + kw + "」");
-            }
-        }
-        for (String kw : VIDEO_KW) {
-            if (text.contains(kw)) {
-                return new Result(CAT_SHORT_VIDEO, 0.65f, "屏幕文字命中短视频词「" + kw + "」");
-            }
-        }
         return Result.none();
     }
 
@@ -65,7 +51,7 @@ public class OcrRuleAnalyzer implements ContentAnalyzer {
         return task != null && text != null && !text.isEmpty() && isRelevant(text, task);
     }
 
-    /** 完整文字规则：关键词 → 相关放行 → 文字多且零重合的风险场景判「无关」→ 不表态。 */
+    /** 完整文字规则：相关放行 → 文字多且零重合的风险场景判「无关」→ 不表态（关键词已不表态）。 */
     public Result judgeText(String text, TaskItem task, String fgPkg) {
         if (text == null) text = "";
         Result kw = judgeKeywords(text);
