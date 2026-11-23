@@ -8,6 +8,8 @@
 
 为什么：要买东西时购物软件全被黑名单拦住、没法用；判定改走内容，名单不再一刀切。
 
+发布提交：`58a48a9`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.93.0...v1.94.0 比较](https://github.com/gty3310/knowdo/compare/v1.93.0...v1.94.0)
+
 ### 移除
 
 - 通用兜底黑名单（AppLists.FALLBACK，14 个包名）整表清空：fallback() 返回空表、isFallbackBlack 恒 false、无名单时 tierFor 返回 null
