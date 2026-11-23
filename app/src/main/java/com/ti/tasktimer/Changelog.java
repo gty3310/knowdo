@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1940 = new Entry("v1.94.0", "2026-11-23");
+        e1940.add(new Group(s("移除", "Removed"),
+                s("去掉全部黑名单：通用兜底黑名单、各任务名单里的黑档、按软件类别（购物/短视频）直接判定、按购物/短视频关键词直接判定，一并取消；原来判黑的软件现在按灰档处理，不再一打开就弹问询",
+                  "All blacklists are gone: the built-in generic blacklist, the black tier in every per-task list, conviction by app category (shopping / short video), and conviction by shopping / short-video keywords are all removed. Apps that used to be black are treated as grey now and no longer raise an inquiry the moment they open"),
+                s("名单只剩白、灰两档：「软件名单」页也只剩这两组；手机里已存的旧名单不用等重新生成，装上这一版就按新口径生效",
+                  "Lists keep only the white and grey tiers, and the App list page shows just those two groups. Lists already stored on the phone follow the new rule as soon as this version is installed — no need to wait for a regenerated list"),
+                s("守卫改看内容：是不是分神，改由屏幕内容（黄图检测、与任务的相关性）和语义判定来定，不再凭名单、类别、关键词一刀切",
+                  "The guard judges content instead: whether something is a distraction is decided by the screen content (the adult-content check, relevance to the task) and the semantic judge — no longer by lists, categories or keywords")));
+        e1940.why = s("要买东西时，购物软件全在黑名单里，计时中一打开就被拦，根本没法用。判定改走内容，名单不再一刀切。本版未经模拟器/真机验证，有问题回滚 v1.93.0",
+                "When you needed to buy something, every shopping app sat on a blacklist and was blocked the moment it opened during a timed task — the phone was unusable for buying. Verdicts move to content instead of one-cut lists. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.93.0");
+        e1940.tryIt = s("开始任意任务计时，打开京东或淘宝买东西，应不再一打开就弹问询；再打开任务的「软件名单」页，看是不是只剩白、灰两组",
+                "Start timing any task, then open JD or Taobao to buy something — no inquiry should pop the moment the app opens. Then open the task's App list page and check it shows only the white and grey groups");
+        out.add(e1940);
+
         Entry e1930 = new Entry("v1.93.0", "2026-11-21");
         e1930.add(new Group(s("新增", "New"),
                 s("排超提醒：今天未完成任务还剩的时间超过今天还剩的时间时，在你切换任务、给任务加时、确认分神宽限这三个时刻，会自动打开「安排今日任务」页请你重新安排",
