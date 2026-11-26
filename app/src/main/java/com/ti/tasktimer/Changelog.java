@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1951 = new Entry("v1.95.1", "2026-11-26");
+        e1951.add(new Group(s("修复", "Fixed"),
+                s("加时点一次到位：结束检查页和过半页点一个加时时长，第一次点先过「动机至善，私心了无」自问——原先答完还要在同一个时长上再点一次才生效；现在答完直接按你点的那个时长加时，不用点第二次（自问本身不变，同一页里仍只问一次）",
+                  "One tap to extend: on the end-check and half-way pages, the first tap on an extension duration still passes the 'pure motive' self-check — but previously you had to tap the same duration a second time after answering. Now the tapped duration is applied as soon as you answer (the self-check itself is unchanged and is still asked only once per page)")));
+        e1951.why = s("你反馈每次加时都要在同一个分钟数上点两遍，太绕。门保留，只去掉多余的那一次点。本版未经模拟器/真机验证，有问题回滚 v1.95.0",
+                "You reported that every extension took two taps on the same number of minutes. The gate stays; only the redundant second tap is gone. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.95.0");
+        e1951.tryIt = s("等一个任务时间到，在结束页点「+10 分钟」，答完自问应直接加时并关页；或在过半页点一个加时按钮，答完自问累计立刻更新",
+                "Let a task run out, tap '+10 min' on the end page and answer the self-check — the extension should apply and the page close. Or tap an extension button on the half-way page and watch the added total update right after you answer");
+        out.add(e1951);
+
         Entry e1950 = new Entry("v1.95.0", "2026-11-26");
         e1950.add(new Group(s("修复", "Fixed"),
                 s("守卫云端判定加保险：云端语义判定说「与任务不相关」但置信低于 0.70 时，不再直接当成分神终判，改按放行处理；只有把握够大的判定才会弹问询",
