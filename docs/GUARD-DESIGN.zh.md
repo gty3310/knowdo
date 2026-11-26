@@ -69,6 +69,10 @@ glm-judge 云函数侧：判定 prompt 换五条口径——任务按子项拆�
 
 问询页大窗化（迭代 7 收尾）：GuardActivity 是普通 Activity、没覆写 onBackPressed，返回手势/Home 可把问询页划走——内容检测事件已落账躲不掉，但处置与分神记录都没发生，等于冷却内一次免费放行、可无限重复。本版新增 GuardOverlay 把问询搬进 BigOverlay 大窗（PRI_GUARD=30 与盖屏/叫回同级），内容与记账点从原页逐项原样搬（含 v1.96.0 暂停期分支）；锁屏/无悬浮权限回落原页（保留）。申诉要打字（medium/hard）照 BlockOverlay 先例转回原页完成；呼吸门仍是 Activity、衔接不变。配套 GuardPending：未决问询落 prefs，进程被杀后服务重启在 120 秒内、状态与前台仍相符时重出。判定与分神计数口径零改动，红线六文件零 diff。本版另含暂停卡闪烁修复（与守卫无关，不展开）。
 
+## 迭代 13 · v1.98.1（2026-11-26，已发布）
+
+问询大窗的线程修复＋未决重出熔断：迭代 12 的大窗化在真机连环崩溃——判定触发在无障碍后台线程，requestGuard 在该线程上同步重建了整个悬浮窗视图层级，主线程每秒 refresh 的 setText 跨线程必抛 CalledFromWrongThreadException；且 GuardPending 每次重出都刷新 fired_at，120 秒窗被无限续命。本版：requestGuard 的接管整段切回主线程（前置判断仍在调用线程先行）；GuardOverlay 按钮表自防御（createView 开头 clear＋样式循环取 min，堵复出重建的越界潜伏点）；refire 不再刷新 fired_at 并加 2 次上限。判定与分神计数口径零改动，红线六文件零 diff。同版另加测试者模式崩溃上报（诊断工具、非守卫口径，不展开；ANR watchdog 列为后续候选）。
+
 ## 待办（本文件相关）
 
 - 迭代 11（活动流水＋真假分神＋宽松四档）已随 v1.98.0 发布（客户端全量）；其服务端半边（判定 prompt 输出 summary/leniency）并入迭代 10 的未部署稿，一并等部署。

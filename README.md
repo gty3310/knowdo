@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.98.0)
+## Features (Android, v1.98.1)
 
-Current version: **v1.98.0**.
+Current version: **v1.98.1**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.98.1 — 2026-11-26
+
+**Why:** The v1.97.0 overlay migration crashed in a loop on a real device (the user hit Android's 'keeps stopping' dialog): the guard's verdict chain runs on an accessibility background thread and rebuilt the whole floating-window view hierarchy on that thread, so the main thread's per-second refresh threw CalledFromWrongThreadException the moment it touched the page — and the unanswered-inquiry re-show kept renewing its own 120-second window, so the loop never expired. This release applies the investigation's three fixes and, as the user specified the same day, adds crash reporting under the existing tester mode so the next fault of this kind arrives with a stack trace instead of a screenshot. Build commit `63beefc` · [compare v1.98.0...v1.98.1](https://github.com/gty3310/knowdo/compare/v1.98.0...v1.98.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Inquiry overlay crash loop.** BigOverlay.requestGuard now runs its two thread-safe pre-checks on the calling thread and posts the takeover to the main thread when called from elsewhere (presentation unchanged); GuardOverlay clears its grace-mode button list at the top of createView and bounds the style loop, closing a latent ArrayIndexOutOfBoundsException on rebuild; GuardPending's re-show no longer refreshes fired_at and is capped at two rounds, so even a different crash in the show path can no longer renew the loop forever.
+
+**New**
+- **Crash reporting under tester mode.** With the existing 'Tester mode' switch (diag_mode) on, internal errors reported through ErrorReporter and process-level crashes are recorded on-device: an uncaught-exception handler writes synchronously and chains to the previous handler. Records are deduplicated by a line-number-free fingerprint (exception class + top in-app frames as class.method, with an fp_v algorithm version); one detail per fingerprint per day, repeats only raise a counter. Each record carries a UUID (idempotent server merge), kind (fatal/non-fatal), app and Android versions, device model, crash thread, foreground flag and current page; exception messages are truncated and passed through the existing SemanticJudge redaction before they are stored. A 16-entry in-process breadcrumb ring (timestamps + event names only) rides along. Upload piggybacks on the normal sync into an idle user_state JSON column the app never reads back; details are kept 90 days, daily counters permanently. With the switch off, nothing is recorded or sent. An ANR watchdog is deliberately deferred to a later release.
+
+Not verified on a device or emulator (this release contains bug fixes; the repo rule asks for an emulator run, but this VM's emulator cannot boot — recorded honestly in the release report); if anything is wrong, roll back to v1.98.0. Data changes: one new local file (crash_reports.json); the crash node lands in the previously idle user_state.reschedule_request column.
+
 ### v1.98.0 — 2026-11-26
 
 **Why:** The guard used to judge a single frame: anything off-task raised an inquiry, so the user explained themselves many times a day — while the sneakier pattern, a main task chopped up by side errands that each look 'important', slipped through. Now each verdict carries the last 3 hours of activity, so the judge can tell real distraction from a fake one and answer with a leniency tier. Build commit `d663add` · [compare v1.97.0...v1.98.0](https://github.com/gty3310/knowdo/compare/v1.97.0...v1.98.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,16 +100,6 @@ Not verified on a device or emulator; if anything is wrong, roll back to v1.97.0
 - **Pause card flicker.** The "legitimately open" exemption moved from a private flag in FloatingWindow (set by only two of the card's entry points) into the card itself as a source registration; the per-second auto-close, the pause mask's own setup, and window rebuilds now only close unregistered cards. The card opened from the pause mask stays until the user finishes or cancels.
 
 Not verified on a device or emulator (this release contains a bug fix; the repo rule asks for an emulator run, but this VM's emulator cannot boot — recorded honestly in the release report); if anything is wrong, roll back to v1.96.0. Data changes: none (one new local SharedPreferences file for the pending inquiry).
-
-### v1.96.0 — 2026-11-26
-
-**Why:** Pausing a task to do something else used to dismiss the guard entirely — during a pause it watched nothing at all. Now you state what the pause is for, in your own words and in enough detail to judge by, and the guard keeps watching against that statement: doing that thing passes, drifting off still gets caught. Build commit `90f0cf3` · [compare v1.95.1...v1.96.0](https://github.com/gty3310/knowdo/compare/v1.95.1...v1.96.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **The guard stays on during a pause.** While a task is paused, screen sampling continues and the content guard judges against the pause purpose instead of the task; the list-based focus guard stays off during pauses. Being caught drifting raises the inquiry page addressed to the purpose, with a "back to what you were doing" button — and it is only logged as a guard event: it never writes a self-check and never counts toward the Zhixing index.
-- **The pause purpose is required, and written out.** The pause card no longer lets you pause without a purpose: pick a preset and keep writing how you will do it, or write your own — what is stored is the full description, and that full text is what the guard judges by. In the seconds between tapping pause and finishing the card, only the adult-content floor watches; the full guard takes over the moment the purpose is saved.
-
-Not verified on a device or emulator; if anything is wrong, roll back to v1.95.1. Data changes: none.
 
 ## Build
 
