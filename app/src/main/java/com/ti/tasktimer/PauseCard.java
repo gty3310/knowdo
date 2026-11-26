@@ -398,10 +398,30 @@ public final class PauseCard {
     private static WindowManager owm;
     private static View overlayView;
 
+    /**
+     * 「正当开启」来源登记（v1.97.0）：这张卡是谁开的、为什么开，是卡自身
+     * 的状态，随开卡登记、随关卡清除。FloatingWindow 的自动关卡（refresh
+     * 每秒收尾、showLock 升起遮罩）只关无登记的卡；登记在案的卡由它所属
+     * 流程自己关（确认/取消走 buildCard 的回调）。此前豁免靠调用方在
+     * FloatingWindow 里各自记私有标记，PauseLock 遮罩这条路漏记，卡一开
+     * 就被每秒节拍关掉（闪烁 bug）——登记收回卡自身后，新入口不再漏。
+     */
+    public static final String SRC_REPURPOSE = "repurpose";   // 悬浮窗「换个目的」/无目的补目的
+    public static final String SRC_PAUSE_LOCK = "pause_lock"; // PauseLock 遮罩「先休息一会儿…」
+    private static String openSource;
+
     public static boolean overlayOpen() { return overlayView != null; }
+
+    /** 当前开着的卡的来源登记；没开卡或开卡时未登记时为 null。 */
+    public static String openSource() { return overlayView != null ? openSource : null; }
 
     public static void showOverlay(final Context c, String taskTitle, String confirmLabel,
                                    final OnPick onPick) {
+        showOverlay(c, taskTitle, confirmLabel, null, onPick);
+    }
+
+    public static void showOverlay(final Context c, String taskTitle, String confirmLabel,
+                                   final String source, final OnPick onPick) {
         closeOverlay();
         owm = (WindowManager) c.getSystemService(Context.WINDOW_SERVICE);
         if (owm == null) return;
@@ -421,8 +441,10 @@ public final class PauseCard {
         try {
             owm.addView(card, lp);
             overlayView = card;
+            openSource = source;
         } catch (Exception e) {
             overlayView = null;
+            openSource = null;
         }
     }
 
@@ -431,5 +453,6 @@ public final class PauseCard {
             try { owm.removeView(overlayView); } catch (Exception ignored) { }
         }
         overlayView = null;
+        openSource = null;
     }
 }

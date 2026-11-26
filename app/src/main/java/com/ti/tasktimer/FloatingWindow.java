@@ -93,7 +93,9 @@ public class FloatingWindow {
     private static LinearLayout subFormBox;
     private static String subSignature = "";
     private static boolean subEditing = false;
-    private static boolean pauseCardForRepurpose = false;
+    // 暂停卡「正当开启」的豁免自 v1.97.0 起由 PauseCard.openSource() 登记
+    // 承载（卡自身状态），不再在本类记私有标记——旧标记只有悬浮窗两个入口
+    // 会置位，PauseLock 遮罩入口漏置导致卡被每秒节拍关掉（闪烁 bug）
     private static EditText noteEdit;
     private static boolean editing = false;
     private static boolean settingText = false;
@@ -312,9 +314,12 @@ public class FloatingWindow {
 
     public static void refresh(Context c) {
         if (rootView == null) return;
-        // 暂停卡 overlay 的收尾：不是为「换个目的」开的卡、且已不在计时中时，状态已变就关掉它
-        if (!PauseCard.overlayOpen()) pauseCardForRepurpose = false;
-        else if (!TimerState.isRunning(c) && !pauseCardForRepurpose) PauseCard.closeOverlay();
+        // 暂停卡 overlay 的收尾：没有「正当开启」登记（PauseCard.openSource）
+        // 的卡、且已不在计时中时，状态已变就关掉它。有登记的卡（悬浮窗「换个
+        // 目的」、PauseLock 遮罩「先休息一会儿」）由其所属流程自己关——v1.97.0
+        // 前登记只存在本类的私有标记里、遮罩入口漏置，卡被这里每秒关掉（闪烁）
+        if (PauseCard.overlayOpen() && !TimerState.isRunning(c)
+                && PauseCard.openSource() == null) PauseCard.closeOverlay();
         Display d = resolveDisplay(c);
         displayTaskId = d.task != null ? d.task.id : null;
         String timeText;
@@ -528,10 +533,10 @@ public class FloatingWindow {
     }
 
     private static void hideInternal() {
-        PauseCard.closeOverlay();
+        // 有「正当开启」登记的暂停卡归其所属流程管，悬浮窗拆建不顺手关它
+        if (PauseCard.openSource() == null) PauseCard.closeOverlay();
         subSignature = "";
         subEditing = false;
-        pauseCardForRepurpose = false;
         if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
         if (storeListener != null) {
             TaskStore.removeChangeListener(storeListener);
@@ -882,10 +887,8 @@ public class FloatingWindow {
             // 没有目的的暂停不能靠 +5 分钟继续挂着，先补目的
             if (TimerState.pauseReason(c) == null) {
                 android.widget.Toast.makeText(c, Strings.pauseNeedPurposeFirst(), android.widget.Toast.LENGTH_SHORT).show();
-                pauseCardForRepurpose = true;
                 Display dd = resolveDisplay(c);
-                PauseCard.showOverlay(c, dd.title, Strings.pauseSaveBtn(), ch -> {
-                    pauseCardForRepurpose = false;
+                PauseCard.showOverlay(c, dd.title, Strings.pauseSaveBtn(), PauseCard.SRC_REPURPOSE, ch -> {
                     TimerState.setPauseMeta(c, ch.reason, ch.emoji, ch.silent);
                     ResumeReminder.schedule(c, TimerState.pausedTaskId(c), ch.delayMs);
                     SbTimerSync.onLocalTimerChanged(c);
@@ -904,9 +907,7 @@ public class FloatingWindow {
         changeBtn.setOnClickListener(v -> {
             Display dd = resolveDisplay(c);
             if (dd.state != ST_PAUSED) return;
-            pauseCardForRepurpose = true;
-            PauseCard.showOverlay(c, dd.title, Strings.pauseSaveBtn(), ch -> {
-                pauseCardForRepurpose = false;
+            PauseCard.showOverlay(c, dd.title, Strings.pauseSaveBtn(), PauseCard.SRC_REPURPOSE, ch -> {
                 TimerState.setPauseMeta(c, ch.reason, ch.emoji, ch.silent);
                 ResumeReminder.schedule(c, TimerState.pausedTaskId(c), ch.delayMs);
                 SbTimerSync.onLocalTimerChanged(c);
@@ -1258,7 +1259,9 @@ public class FloatingWindow {
         if (suppressed) return; // 守卫/封禁页在前：等让位后再盖
         if (!AlertHelper.canDrawOverlays(c)) return;
         endEditFocus(c);
-        PauseCard.closeOverlay();
+        // 有「正当开启」登记的暂停卡不关（v1.97.0）：遮罩自己的「先休息一会儿」
+        // 开的卡就活在遮罩在岗期间，此前这里无条件关卡是闪烁的杀手之一
+        if (PauseCard.openSource() == null) PauseCard.closeOverlay();
         if (rootView == null) {
             ensureShown(c);
             if (rootView == null) return;

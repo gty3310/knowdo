@@ -264,7 +264,9 @@ public final class PauseLock {
     public static void chooseTimedBreak(Context c) {
         if (!TimerState.isPaused(c) || TimerState.isRunning(c)) return;
         String title = TimerState.pausedTitle(c);
-        PauseCard.showOverlay(c, title, Strings.pauseStartBtn(), ch -> {
+        // 带来源登记开卡（v1.97.0）：卡活在遮罩在岗期间，FloatingWindow 的
+        // 每秒收尾与 showLock 不再误关它（闪烁 bug 的修法，见 PauseCard 登记）
+        PauseCard.showOverlay(c, title, Strings.pauseStartBtn(), PauseCard.SRC_PAUSE_LOCK, ch -> {
             TimerState.setPauseMeta(c, ch.reason, ch.emoji, ch.silent);
             ResumeReminder.schedule(c, TimerState.pausedTaskId(c), ch.delayMs);
             SbTimerSync.onLocalTimerChanged(c);
