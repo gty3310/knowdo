@@ -31,6 +31,8 @@ public interface ContentAnalyzer {
         public String semanticSource;
         /** 语义层本地预筛的余弦分数（未跑预筛时 NaN），供测试窗读数与记录对账。 */
         public float semanticScore = Float.NaN;
+        /** 云端 verdict 来自 5 分钟缓存复用时为 true（SemanticJudge 填写）。 */
+        public boolean semanticFromCache;
 
         public Result(String category, float confidence, String detail) {
             this.category = category;

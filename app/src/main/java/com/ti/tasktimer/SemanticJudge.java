@@ -175,7 +175,14 @@ public final class SemanticJudge {
             lastNote = "云端终判（判相关）" + tail;
             trace(c, task, SRC_CLOUD, sim, "ok", "cloud-relevant" + (fromCache ? "-cache" : ""),
                     "语义判定（云端）：与任务相关，放行" + tail);
-            return annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim);
+            return annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache);
+        }
+        if (confidence < 0.70f) {
+            // 保险（用户亲批）：云端判不相关但置信不足 0.70，不当终判，按中间带从宽放行
+            lastNote = "云端判不相关但置信 " + fmt(confidence) + " 低于 0.70，按保险放行" + tail;
+            trace(c, task, SRC_CLOUD, sim, "ok", "cloud-unrelated-lowconf" + (fromCache ? "-cache" : ""),
+                    "语义判定（云端）：判不相关但置信 " + fmt(confidence) + " 低于 0.70，按保险放行" + tail);
+            return annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache);
         }
         lastNote = "云端终判（判不相关）" + tail;
         trace(c, task, SRC_CLOUD, sim, "ok", "cloud-unrelated" + (fromCache ? "-cache" : ""),
@@ -183,7 +190,7 @@ public final class SemanticJudge {
         ContentAnalyzer.Result r = new ContentAnalyzer.Result(
                 ContentAnalyzer.CAT_UNRELATED, confidence,
                 "语义判定（云端）：" + (reason == null || reason.isEmpty() ? "与任务不相关" : reason));
-        return annotated(r, SRC_CLOUD, sim);
+        return annotated(r, SRC_CLOUD, sim, fromCache);
     }
 
     /**
@@ -305,6 +312,14 @@ public final class SemanticJudge {
     private static ContentAnalyzer.Result annotated(ContentAnalyzer.Result r, String src, Float sim) {
         r.semanticSource = src;
         if (sim != null) r.semanticScore = sim;
+        return r;
+    }
+
+    /** 云端 verdict 专用：多带一个「是否来自 5 分钟缓存复用」标记，供 VerdictEngine 不重复计确认。 */
+    private static ContentAnalyzer.Result annotated(ContentAnalyzer.Result r, String src, Float sim,
+                                                    boolean fromCache) {
+        annotated(r, src, sim);
+        r.semanticFromCache = fromCache;
         return r;
     }
 

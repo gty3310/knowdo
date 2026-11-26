@@ -91,6 +91,17 @@ public final class VerdictEngine {
 
         if (now < p.getLong("cooldown_until", 0)) return;
 
+        // 缓存复用保险（用户亲批）：云端 verdict 来自 5 分钟缓存时不是一次新的独立
+        // 判定，不增不减连续命中计数、直接不触发；节流记一条日志说明原因
+        if (r.semanticFromCache) {
+            long lastSkipLog = p.getLong("last_cache_skip_log", 0);
+            if (now - lastSkipLog >= 60_000L) {
+                p.edit().putLong("last_cache_skip_log", now).apply();
+                TimerState.logEvent(c, "屏幕内容守卫：缓存判定复用，不重复计确认");
+            }
+            return;
+        }
+
         boolean oneShot = ContentAnalyzer.CAT_NSFW.equals(cat) && ScreenGuardPrefs.nsfwOneShot(c);
         if (!oneShot) {
             String lastCat = p.getString("last_cat", null);
