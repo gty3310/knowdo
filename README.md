@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.95.0)
+## Features (Android, v1.95.1)
 
-Current version: **v1.95.0**.
+Current version: **v1.95.1**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.95.1 — 2026-11-26
+
+**Why:** Extending a task took two taps on the same number of minutes — the first tap only summoned the motive gate and was discarded, so after answering you landed back on the duration choices and had to tap again. The gate stays; the redundant second tap is gone. Build commit `2181309` · [compare v1.95.0...v1.95.1](https://github.com/gty3310/knowdo/compare/v1.95.0...v1.95.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **One tap to extend.** On the end-check and half-way pages (both the full-screen page and the big-overlay form), the duration you tap is applied as soon as you answer the motive self-check — the tapped value is carried through the gate instead of discarded. The self-check itself is unchanged: what it asks, when it asks, the event it records, and the once-per-page rule all stay as they were.
+
+Not verified on a device or emulator; if anything is wrong, roll back to v1.95.0. Data changes: none.
+
 ### v1.95.0 — 2026-11-26
 
 **Why:** The cloud judge once contradicted itself — reading the classics in the classics app was judged "unrelated to the classics in the task". Cloud verdicts now have to pass a confidence check and an independence check before they count as a distraction. Build commit `aeb799d` · [compare v1.94.0...v1.95.0](https://github.com/gty3310/knowdo/compare/v1.94.0...v1.95.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -84,16 +93,6 @@ Not verified on a device or emulator; if anything is wrong, roll back to v1.94.0
 - **List-based conviction.** The guard no longer raises an inquiry because an app is on a list; whether something is a distraction is decided by the screen content (adult-content check, relevance to the task) and the semantic judge.
 
 Not verified on a device or emulator; if anything is wrong, roll back to v1.93.0. Data changes: stored black tiers are read and filed as grey; no other data changes.
-
-### v1.93.0 — 2026-11-21
-
-**Why:** Being over-planned usually only surfaces in the evening; switching tasks, adding time, and confirming a distraction grace are the moments where there is still time to adjust on the spot. Build commit `9812470` · [compare v1.92.0...v1.93.0](https://github.com/gty3310/knowdo/compare/v1.92.0...v1.93.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Over-plan reminder.** When the time left on today's unfinished tasks exceeds the time left today (the same two figures as the Plan Today header), the Plan Today page opens by itself at three moments: when you switch tasks, when you add time to a task, and when you confirm a distraction grace on the guard inquiry page.
-- **Grace starts after you leave.** A grace confirmed while over-planned only starts counting once you leave the Plan Today page, so the page cannot eat into it. After a pop, it stays quiet for 30 minutes (unless the overage grows by another 15 minutes or more), and it never pops when less than 15 minutes are left today.
-
-Not verified on a device or emulator; if anything is wrong, roll back to v1.92.0. Data changes: none.
 
 ## Build
 
