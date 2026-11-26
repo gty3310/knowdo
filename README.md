@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.98.1)
+## Features (Android, v1.99.0)
 
-Current version: **v1.98.1**.
+Current version: **v1.99.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,19 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.99.0 — 2026-11-26
+
+**Why:** Adding tasks in Chat used to mean one single-item proposal card per message — naming several errands meant sending them one by one and tapping Apply again and again. Under the user's 2026-11-26 ruling, one message should build the whole batch in one go, while keeping the standing rule that the AI never changes anything silently: the batch still arrives as a card for review, but one card now holds the whole list and one tap creates it all. Build commit `04c9714` · [compare v1.98.1...v1.99.0](https://github.com/gty3310/knowdo/compare/v1.98.1...v1.99.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Batch-create from Chat.** The knowdo-proposal protocol gains action=create_batch: one proposal whose tasks array carries several new tasks. ChatPanel renders one numbered summary card — per item: title, length or subtask split, priority, repeat, deadline, and an 'AI does it' mark — and one tap on Create all builds every item through the exact single-create path (TaskItem.create + the shared field applier + TaskStore.add; local-first, existing sync channel).
+- **Gaps are defaulted and marked, never blocking.** A field the user did not state is filled with the single-create defaults (30 minutes, secondary priority) and the item records which fields were defaulted; its card line says so ('defaulted: length, priority'). Items that cannot be created (no title, or beyond the 30-per-batch cap) are listed at the foot of the card with the reason, and the rest are still created. Per-item storage failures mark only that item failed on its own numbered line — nothing rolls back.
+- **Per-item assignee and repeat.** An item may carry assignee 'ai' (only when the user says that one is for the AI), landing as assignee=ai + ai_state='queued' — the same convention as the Today page's batch add — and repeat daily/weekly with ISO weekdays; a weekly item without valid weekdays is created without the repeat and marked. Both fields apply on create only; the update path is untouched.
+- **Numbering stays referenceable.** On apply, each item's createdId (or failed flag) is written back into the persisted proposal JSON, and the latest applied batch's number → title/taskId map is injected into later system prompts, so 'change #2 to must-do' resolves to the real task. Numbering follows the card order, including items that failed, so numbers never drift.
+- **No server change.** chat-proxy only forwards messages; the structured protocol is defined by the client's system prompt and parsed client-side, so batch add works with the currently deployed proxy — no deployment debt. Single-item create/update/delete, schedule and setting proposals are byte-for-byte the old behaviour; must-do items join today's scheduling candidates and the time account through the existing mechanisms, exactly like a hand-created task.
+
+Not verified on a device or emulator; if anything is wrong, roll back to v1.98.1. Data changes: none — no new files, no schema changes; createdId annotations live inside the existing chat-history records.
+
 ### v1.98.1 — 2026-11-26
 
 **Why:** The v1.97.0 overlay migration crashed in a loop on a real device (the user hit Android's 'keeps stopping' dialog): the guard's verdict chain runs on an accessibility background thread and rebuilt the whole floating-window view hierarchy on that thread, so the main thread's per-second refresh threw CalledFromWrongThreadException the moment it touched the page — and the unanswered-inquiry re-show kept renewing its own 120-second window, so the loop never expired. This release applies the investigation's three fixes and, as the user specified the same day, adds crash reporting under the existing tester mode so the next fault of this kind arrives with a stack trace instead of a screenshot. Build commit `63beefc` · [compare v1.98.0...v1.98.1](https://github.com/gty3310/knowdo/compare/v1.98.0...v1.98.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,18 +101,6 @@ Not verified on a device or emulator (this release contains bug fixes; the repo 
 - **Server side drafted, not yet deployed.** The glm-judge prompt upgrade (real/fake criteria, summary + leniency outputs) is written and waiting on a fresh Supabase access token; until it deploys, verdicts carry no leniency and every inquiry follows the standard flow, identical to v1.97.0.
 
 Not verified on a device or emulator; if anything is wrong, roll back to v1.97.0. Data changes: one new local file (activity_stream.json) and local preference keys for the leniency guardrail; nothing synced, no schema changes.
-
-### v1.97.0 — 2026-11-26
-
-**Why:** The guard inquiry was a plain activity with no back-press handling — one back gesture or a press of Home swept it away, which inside the re-trigger cooldown amounted to a free pass, repeatable forever. The report recommended the root fix: move the inquiry into the 99% big-overlay shell like every other full-screen page. The same release fixes the pause-card flicker: frame analysis of a screen recording showed the card opened from the pause mask survived only 0.7–1.0 seconds before the floating window's per-second cleanup closed it. Build commit `21c41e3` · [compare v1.96.0...v1.97.0](https://github.com/gty3310/knowdo/compare/v1.96.0...v1.97.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **The inquiry page is now a big overlay.** Its content moved item-for-item from GuardActivity — both guard modes, the inquiry texts, the aspiration line, the four grace buttons with the breathing-gate hand-off, the three-way enforcement choice, switch-task, misjudgement appeal, AI chat, the difficulty tiers and GuardLedger accounting, the drift-recording point, and the v1.96.0 pause-guard branch. On a bright, unlocked screen with overlay permission it shows as an overlay (priority 30, level with block/resume); otherwise GuardActivity remains as the fallback page. Appeals that need typing (medium/hard) hand back to the original page, following the block overlay's precedent; an unanswered inquiry is persisted and re-shown after a process kill while it is still fresh.
-
-**Fixed**
-- **Pause card flicker.** The "legitimately open" exemption moved from a private flag in FloatingWindow (set by only two of the card's entry points) into the card itself as a source registration; the per-second auto-close, the pause mask's own setup, and window rebuilds now only close unregistered cards. The card opened from the pause mask stays until the user finishes or cancels.
-
-Not verified on a device or emulator (this release contains a bug fix; the repo rule asks for an emulator run, but this VM's emulator cannot boot — recorded honestly in the release report); if anything is wrong, roll back to v1.96.0. Data changes: none (one new local SharedPreferences file for the pending inquiry).
 
 ## Build
 
