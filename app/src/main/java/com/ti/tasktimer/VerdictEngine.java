@@ -58,6 +58,11 @@ public final class VerdictEngine {
         return prefs(c).getBoolean("inquiry_semantic_degraded", false);
     }
 
+    /** 最近一次问询触发时捕获的前台包名（GuardPending 进程重启重出时核对前台用）。 */
+    public static String inquiryPkg(Context c) {
+        return prefs(c).getString("inquiry_pkg", null);
+    }
+
     public static void onResult(Context c, ContentAnalyzer.Result r, TaskItem task, Bitmap frame) {
         // 深呼吸门进行中（v1.83.0）：呼吸页在前台，采样一律不触发新问询，
         // 免得呼吸页与问询页互拉（名单模式那侧靠本包豁免，本侧靠这道标记）

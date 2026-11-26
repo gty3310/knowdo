@@ -85,6 +85,7 @@ public class FloatService extends Service {
         try { MorningGate.ensureScheduled(this); } catch (Exception ignored) { }
         try { FindNextTimer.ensureScheduled(this); } catch (Exception ignored) { }
         try { PauseLock.ensureScheduled(this); } catch (Exception ignored) { }
+        try { GuardPending.maybeRefire(this); } catch (Exception ignored) { }
         handler.post(loop);
     }
 

@@ -33,6 +33,8 @@ public class GuardActivity extends Activity {
     public static final String EXTRA_DETAIL = "detail";
     /** 名单黑问询的理由（v1.26.0）：一句完整的话，点明该软件在当前任务黑名单里；缺省走原文案。 */
     public static final String EXTRA_REASON = "reason";
+    /** 经大窗转回本页（v1.97.0，申诉要打字时）：问询计数已由大窗 onShown 记过，本页不再重复记。 */
+    public static final String EXTRA_FROM_OVERLAY = "from_overlay";
 
     private String fgPkg;
     private boolean contentMode;
@@ -82,7 +84,9 @@ public class GuardActivity extends Activity {
         String tid0 = TimerState.taskId(this);
         taskId = tid0 == null ? "" : tid0;
         difficulty = ScreenGuardPrefs.guardDifficulty(this);
-        if (savedInstanceState == null) GuardLedger.noteInquiry(this, taskId);
+        if (savedInstanceState == null && !getIntent().getBooleanExtra(EXTRA_FROM_OVERLAY, false)) {
+            GuardLedger.noteInquiry(this, taskId);
+        }
         hardQuotaExhausted = ScreenGuardPrefs.DIFF_HARD.equals(difficulty)
                 && GuardLedger.hardGraceUsed(this) >= ScreenGuardPrefs.hardGraceQuota(this);
         AlertHelper.cancelGuard(this);
@@ -400,6 +404,9 @@ public class GuardActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // 问询在本页了结（用户点了某个出口正常 finish）：未决落盘清除（v1.97.0）；
+        // 系统回收/配置变更等非 finish 销毁不清，留给 GuardPending 重出
+        if (isFinishing()) GuardPending.clear(this);
         FloatingWindow.unsuppressAndShow(this);
         super.onDestroy();
     }

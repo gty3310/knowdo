@@ -437,11 +437,19 @@ public final class AlertHelper {
      */
     public static void fireGuard(Context c, String fgPkg, String reason) {
         createChannels(c);
+        // 未决问询落盘（v1.97.0）：进程被杀后由 GuardPending 在服务重启时重出
+        GuardPending.save(c, false, fgPkg, "", "", reason, false);
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = kg != null && kg.isKeyguardLocked();
         if (interactive && !locked && canDrawOverlays(c)) {
+            // 大窗收尾（Issue #6）：优先 99% 大窗（划不走）；大窗没接管（悬浮窗
+            // 关着或本应用页面在前台）才直拉原页；锁屏/无权限保持全屏通知＋原页
+            if (BigOverlay.requestGuard(c, false, fgPkg, null, null, reason)) {
+                TimerState.logEvent(c, "已弹出专注守卫问询（99% 大窗路径）");
+                return;
+            }
             try {
                 Intent direct = new Intent(c, GuardActivity.class);
                 direct.putExtra(GuardActivity.EXTRA_PKG, fgPkg);
@@ -528,12 +536,20 @@ public final class AlertHelper {
     /** 屏幕内容守卫问询页的统一出口：复用 GuardActivity（content 模式），策略与应用级守卫一致。 */
     public static void fireGuardContent(Context c, String category, String detail) {
         createChannels(c);
+        // 未决问询落盘（v1.97.0）：暂停期标记与 GuardActivity 的判定同表达式
+        GuardPending.save(c, true, "", category, detail, "",
+                TimerState.isPaused(c) && !TimerState.isRunning(c));
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         boolean interactive = pm != null && pm.isInteractive();
         boolean locked = kg != null && kg.isKeyguardLocked();
         String label = ContentAnalyzer.label(category);
         if (interactive && !locked && canDrawOverlays(c)) {
+            // 大窗收尾（Issue #6）：优先 99% 大窗（划不走）；没接管才直拉原页
+            if (BigOverlay.requestGuard(c, true, null, category, detail, null)) {
+                TimerState.logEvent(c, "已弹出屏幕内容守卫问询（99% 大窗路径）");
+                return;
+            }
             try {
                 Intent direct = new Intent(c, GuardActivity.class);
                 direct.putExtra(GuardActivity.EXTRA_SOURCE, "content");

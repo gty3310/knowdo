@@ -34,9 +34,14 @@ public final class BigOverlay {
     public static final String KEY_RESUME = "resume";
     public static final String KEY_START = "start";
     public static final String KEY_THANKS = "thanks";
+    public static final String KEY_GUARD = "guard";
 
     public static final int PRI_CHECK = 40;
     public static final int PRI_ALARM = 35;
+    // 守卫问询（v1.97.0）：与盖屏/叫回同级 30——问询是守卫处置链上「必须先答」
+    // 的一环，与盖屏同属一个量级；同级不互相抢占（壳只让更高优先级抢占），
+    // 先到先显、后到排队，当前一环被用户处理完即递补，不会出现两页互抢闪烁
+    public static final int PRI_GUARD = 30;
     public static final int PRI_RESUME = 30;
     public static final int PRI_START = 25;
     public static final int PRI_THANKS = 10;
@@ -236,6 +241,36 @@ public final class BigOverlay {
 
     public static void dismissThanks(Context c) {
         if (isWanted(KEY_THANKS)) dismiss(c, KEY_THANKS);
+    }
+
+    private static GuardOverlay sGuard;
+
+    /**
+     * 守卫问询大窗（AlertHelper.fireGuard / fireGuardContent 在亮屏未锁＋有
+     * 悬浮权限时调）：返回 true＝已由大窗接管（已出窗或已排队）；false＝
+     * 调用方走原 GuardActivity 路径（悬浮窗关着，或本应用页面正在前台——
+     * 自家页面在前台时引擎本就豁免，偶发触发保持原页行为）。内容对象单例
+     * 复用：同一时刻只可能有一张问询页，新触发先 prepare 换判定上下文
+     * （等价原页新开一个实例）。
+     *
+     * 触发侧（VerdictEngine.trigger / FocusGuard.tick）在弹问询前刚调了
+     * FloatingWindow.setSuppressed(true) 给原页让位；大窗接管时窗口层就是
+     * 大窗本身，抑制不解除壳永远出不了窗——故接管路径在这里解除抑制。
+     * 未接管（返回 false）时抑制原样保留，原页 onResume 会再置一次。
+     */
+    public static boolean requestGuard(Context c, boolean contentMode, String pkg,
+                                       String category, String detail, String reason) {
+        if (!FloatingWindow.enabled(c)) return false;
+        if (KnowDoApp.ownActivityVisible()) return false;
+        if (sGuard == null) sGuard = new GuardOverlay();
+        sGuard.prepare(contentMode, pkg, category, detail, reason);
+        FloatingWindow.setSuppressed(false);
+        request(c, KEY_GUARD, PRI_GUARD, sGuard);
+        return true;
+    }
+
+    public static void dismissGuard(Context c) {
+        if (isWanted(KEY_GUARD)) dismiss(c, KEY_GUARD);
     }
 
     // ---------------- 每秒节拍（FloatService 调） ----------------
