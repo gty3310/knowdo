@@ -37,6 +37,8 @@ public class GuardActivity extends Activity {
     private String fgPkg;
     private boolean contentMode;
     private String category = "";
+    /** 暂停期问询（v1.96.0）：暂停中被内容守卫按暂停目的抓到——文案对着目的、不记分神。 */
+    private boolean pauseGuardMode;
 
     // 守卫难度三档（v1.83.0）：本次问询的任务与难度
     private String taskId = "";
@@ -72,6 +74,8 @@ public class GuardActivity extends Activity {
             String cat = getIntent().getStringExtra(EXTRA_CATEGORY);
             category = cat == null ? "" : cat;
         }
+        // 暂停期判定（v1.96.0）：内容问询且当前正处暂停（有暂停槽、没在计时）
+        pauseGuardMode = contentMode && TimerState.isPaused(this) && !TimerState.isRunning(this);
         // 难度与计数快照（v1.83.0）：问询计数在「新开一页」时记一次——
         // 同一页被重拉回前台走 onResume/onNewIntent、不再过 onCreate，不重复计。
         // 逻辑日口径在 GuardLedger 内。误判钮每次都显示，不再用开页前次数做中等档显隐。
@@ -111,10 +115,19 @@ public class GuardActivity extends Activity {
         TextView sub = new TextView(this);
         if (contentMode) {
             String detail = getIntent().getStringExtra(EXTRA_DETAIL);
-            sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n屏幕内容守卫检测到「"
-                    + ContentAnalyzer.label(category) + "」："
-                    + (detail == null ? "" : detail)
-                    + "\n截图只在本机分析、已经销毁，不会保存或上传。");
+            if (pauseGuardMode) {
+                // 暂停期（v1.96.0）：参照是暂停目的，不是被暂停的任务
+                String reason = TimerState.pauseReason(this);
+                sub.setText("暂停去做：「" + (reason == null ? "" : reason) + "」\n屏幕内容守卫检测到「"
+                        + ContentAnalyzer.label(category) + "」："
+                        + (detail == null ? "" : detail)
+                        + "\n截图只在本机分析、已经销毁，不会保存或上传");
+            } else {
+                sub.setText("当前任务：「" + TimerState.taskTitle(this) + "」\n屏幕内容守卫检测到「"
+                        + ContentAnalyzer.label(category) + "」："
+                        + (detail == null ? "" : detail)
+                        + "\n截图只在本机分析、已经销毁，不会保存或上传。");
+            }
         } else {
             String reason = getIntent().getStringExtra(EXTRA_REASON);
             if (reason != null && !reason.isEmpty()) {
@@ -144,8 +157,10 @@ public class GuardActivity extends Activity {
         actionsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(actionsBox);
 
-        Button now = bigButton("立即回到任务", Color.rgb(46, 125, 50));
+        Button now = bigButton(pauseGuardMode ? "回到要做的事" : "立即回到任务", Color.rgb(46, 125, 50));
         now.setOnClickListener(v -> {
+            // 暂停期（v1.96.0）：没有「正在做的任务」可跳回，关页回当前屏幕即可
+            if (pauseGuardMode) { finish(); return; }
             if (contentMode) VerdictEngine.contentImmediate(this);
             else FocusGuard.chooseImmediate(this);
             finish();
@@ -287,6 +302,9 @@ public class GuardActivity extends Activity {
      * 一次；再按所选时长安排宽限。「立即回到任务」「误判放行」不记分神。
      */
     private void recordDriftOnce() {
+        // 暂停期（v1.96.0 定案）：被抓只记 guard_events 留痕，不写 self_checks、
+        // 不计入知行指数分神数——在这里直接跳过，SelfChecks 口径本身不动
+        if (pauseGuardMode) return;
         if (driftRecorded) return;
         driftRecorded = true;
         String id = SelfChecks.begin(this, "drift", TimerState.taskId(this));

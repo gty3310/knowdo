@@ -158,7 +158,7 @@ public final class Strings {
                 "睡午觉", "换换脑子", "去上课", "自定义"};
     }
     public static String pausePurposeCustomDefault() { return s("自定义", "Custom"); }
-    public static String pausePurposeHint() { return s("写下暂停要去做的事", "What are you pausing for?"); }
+    public static String pausePurposeHint() { return s("写清去做什么、怎么做，守卫按这段话判", "Say what you're doing and how — the guard judges by this"); }
     public static String pauseDurationLabel() { return s("去多久", "For how long"); }
     public static String pauseSilent() { return s("静音", "Silent"); }
     public static String pauseSilentSub() {

@@ -241,7 +241,9 @@ public class TimerService extends Service {
             SessionLog.close(this);
             TimerState.stop(this);
             SbTimerSync.onLocalTimerChanged(this);
-            KnowDoAccessibilityService.onTimerStopped(this);
+            // 暂停期守卫（v1.96.0）：采样不停，转按暂停目的判定；恢复/开始新任务
+            // 时由 onTimerStarted 接回计时口径，暂停槽被清且无新计时时采样自收
+            KnowDoAccessibilityService.onTimerPaused(this);
             cancelAlarms();
             AlertHelper.cancelAlert(this);
             // ACTION_PAUSE（无目的无叫回）与叫回没排上的暂停：30 秒后盖屏，禁止静默挂着

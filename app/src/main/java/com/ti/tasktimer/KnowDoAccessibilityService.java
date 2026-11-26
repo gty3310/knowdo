@@ -89,8 +89,9 @@ public class KnowDoAccessibilityService extends AccessibilityService {
         handler = new Handler(thread.getLooper());
         handlerExecutor = r -> handler.post(r);
         // 绑定时若守卫开着且正在计时（进程被杀后系统重绑、或计时中途刚开启无障碍），
-        // 无缝续上采样
-        if (ScreenGuardPrefs.enabled(this) && TimerState.isRunning(this)) {
+        // 无缝续上采样；暂停中同理（v1.96.0 暂停期守卫继续采样）
+        if (ScreenGuardPrefs.enabled(this)
+                && (TimerState.isRunning(this) || TimerState.isPaused(this))) {
             startGuardSampling();
         }
         // 测试模式开关还开着的话，把测试采样也续上
@@ -323,6 +324,18 @@ public class KnowDoAccessibilityService extends AccessibilityService {
         stopGuardSampling();
     }
 
+    /**
+     * 计时暂停时调（v1.96.0）：暂停期守卫不下班——采样循环不停（已在跑就是
+     * 无-op），转由 sampleOnce/currentTask 按暂停目的合成哨兵任务判定；
+     * 恢复/开始新任务时 onTimerStarted 照旧接回。无障碍没就绪时静默跳过。
+     */
+    public static void onTimerPaused(Context c) {
+        if (!ScreenGuardPrefs.enabled(c)) return;
+        if (isReady()) {
+            startGuardSampling();
+        }
+    }
+
     private void startLoop() {
         if (handler == null || guardActive) return;
         guardActive = true;
@@ -363,7 +376,8 @@ public class KnowDoAccessibilityService extends AccessibilityService {
     };
 
     private void sampleOnce(boolean isRetry) {
-        if (!TimerState.isRunning(this)) { stopLoop(); return; }
+        // 计时中或暂停中都采样（v1.96.0 暂停期守卫）；两者皆非才收循环
+        if (!TimerState.isRunning(this) && !TimerState.isPaused(this)) { stopLoop(); return; }
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         KeyguardManager kg = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
         if (pm == null || !pm.isInteractive()) return;         // 熄屏不截
@@ -428,6 +442,17 @@ public class KnowDoAccessibilityService extends AccessibilityService {
     }
 
     private TaskItem currentTask() {
+        if (!TimerState.isRunning(this) && TimerState.isPaused(this)) {
+            // 暂停期（v1.96.0）：合成哨兵任务当判定参照——标题＝暂停目的完整
+            // 描述；目的还没填（按下暂停到填完目的卡的空窗）时标题为空，
+            // PipelineAnalyzer 按底线模式短路、只让黄图出结论
+            TaskItem t = new TaskItem();
+            t.id = TaskItem.PAUSE_GUARD_ID;
+            String reason = TimerState.pauseReason(this);
+            t.title = reason == null ? "" : reason;
+            t.pauseGuard = true;
+            return t;
+        }
         String id = TimerState.taskId(this);
         if (id == null || id.isEmpty()) return null;
         return new TaskStore(this).byId(id);

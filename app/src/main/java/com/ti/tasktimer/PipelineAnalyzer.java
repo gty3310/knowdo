@@ -17,6 +17,9 @@ import android.provider.Settings;
  *    不表态、相关放行、0.55 低置信「无关」；明确结论（NudeNet）在前面
  *    已经返回，不经过语义层。语义层无从判定时维持粗判。
  * v1.94.0：删第 1 步旧「包名类别终局」——不再凭前台应用是购物/视频类直接定罪。
+ * v1.96.0：暂停空窗底线模式——哨兵任务（暂停守卫）且目的文本为空时，在豁免
+ * 之后直接短路到第 2 步 NudeNet 并返回：只有黄图能出结论，相关性/语义层不判；
+ * 目的填完后哨兵任务带上目的文本，走下面全套管线按目的判。
  */
 public class PipelineAnalyzer implements ContentAnalyzer {
     private final NudeNetAnalyzer nudeNet = new NudeNetAnalyzer();
@@ -37,6 +40,12 @@ public class PipelineAnalyzer implements ContentAnalyzer {
         // 把任务说明拼进 note 再交给后续规则与 SemanticJudge，不改红线文件本身
         if (task != null) task = task.forJudging();
         if (fgPkg != null && isExempt(c, fgPkg, task)) return Result.none();
+
+        // 暂停空窗底线模式（v1.96.0）：目的还没填时只守黄图底线，其余不表态
+        if (task != null && task.pauseGuard
+                && (task.title == null || task.title.trim().isEmpty())) {
+            return nudeNet.analyze(c, bmp, task, fgPkg);
+        }
 
         boolean haveNodeText = nodeText != null && !nodeText.trim().isEmpty();
         boolean relevant = false;

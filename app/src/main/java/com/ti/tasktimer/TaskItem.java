@@ -98,6 +98,11 @@ public class TaskItem {
     public boolean deleted = false;
     public long createdAtMs;
     public long updatedAtMs;
+    // 暂停守卫哨兵（v1.96.0）：仅内存标记，不进 toJson/不同步——暂停期采样合成的
+    // 「任务」带此标记：id＝PAUSE_GUARD_ID、title＝暂停目的文本，守卫管线拿它当
+    // 判定参照；title 为空（目的还没填的空窗）时管线按底线模式只让黄图出结论
+    public boolean pauseGuard;
+    public static final String PAUSE_GUARD_ID = "pause-guard";
 
     public static String nowIso() {
         return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date());

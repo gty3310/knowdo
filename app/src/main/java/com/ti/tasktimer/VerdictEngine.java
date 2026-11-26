@@ -152,7 +152,11 @@ public final class VerdictEngine {
         // 主动陪聊（v1.24.0）：分神确认的落账点就在这里——确认一次分神，AI 就往
         // 聊天主线发一条陪聊消息（同一计时会话最多一条，冷却在 ChatHooks 里把关）。
         // 只加落账，不改任何判定/触发行为。
-        ChatHooks.onDistractionConfirmed(c, task);
+        // 暂停期例外（v1.96.0）：哨兵任务触发不算计时中的分神确认，不惊动陪聊；
+        // GuardEvents 留痕与问询照常（暂停期口径：只留痕、不写 self_checks）。
+        if (task == null || !task.pauseGuard) {
+            ChatHooks.onDistractionConfirmed(c, task);
+        }
         TimerState.logEvent(c, "屏幕内容守卫：判定分神「" + ContentAnalyzer.label(r.category)
                 + "」（置信 " + String.format(java.util.Locale.US, "%.2f", r.confidence) + "）" + r.detail);
         FloatingWindow.setSuppressed(true);

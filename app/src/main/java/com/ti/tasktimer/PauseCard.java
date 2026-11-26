@@ -29,6 +29,9 @@ import java.util.Locale;
  * 全部暂停入口统一：Activity 上下文走 PauseFlow 的 AlertDialog、悬浮窗走本类的 overlay，
  * 两边共用同一张卡（buildCard）。确认只回传 Choice，真正的暂停由调用方走既有原语
  * TimerService.pauseWithReminder（「换个目的」则只写暂停槽＋重设叫回，不重复暂停）。
+ * v1.96.0：目的必填且要写清「怎么做」——任一目的选中后描述框出现，选预设时
+ * 把预设名带进框里续写；选了自定义却没写字＝没填，确认钮不放行。存入
+ * p_reason 的是描述框里的完整描述，暂停期守卫按这段话判。
  */
 public final class PauseCard {
     public static final String[] PURPOSE_EMOJIS = {
@@ -259,10 +262,12 @@ public final class PauseCard {
         final Runnable refresh = () -> {
             for (int i = 0; i < tiles.length; i++) styleTile(tiles[i], i == selPurpose[0], d);
             for (int i = 0; i < chips.length; i++) styleChip(chips[i], i == selDur[0], d);
-            customPurpose.setVisibility(selPurpose[0] == PURPOSE_CUSTOM ? View.VISIBLE : View.GONE);
+            customPurpose.setVisibility(selPurpose[0] >= 0 ? View.VISIBLE : View.GONE);
             customDur.setVisibility(selDur[0] == ResumeReminder.LABELS.length ? View.VISIBLE : View.GONE);
             long ms = chosenMs(selDur[0], hourIn, minIn);
-            boolean ready = selPurpose[0] >= 0 && ms > 0;
+            // 目的必填（v1.96.0）：选了目的且描述框里有字（预设名或补的「怎么做」）才算填完
+            boolean ready = selPurpose[0] >= 0
+                    && !purposeName(selPurpose[0], customPurpose, names).isEmpty() && ms > 0;
             go.setEnabled(ready);
             go.setAlpha(ready ? 1f : 0.45f);
             if (!ready) {
@@ -278,8 +283,22 @@ public final class PauseCard {
         for (int i = 0; i < tiles.length; i++) {
             final int idx = i;
             tiles[i].setOnClickListener(v -> {
+                int prev = selPurpose[0];
                 selPurpose[0] = idx;
                 if (idx == PURPOSE_CLASS) silentSwitch.setChecked(true); // 去上课：静音自动打开
+                // 选预设（v1.96.0）：把预设名带进描述框，光标落到末尾接着写「怎么做」；
+                // 重复点同一个预设不覆盖已补的文字
+                if (idx != PURPOSE_CUSTOM && idx != prev) {
+                    customPurpose.setText(names[idx]);
+                    customPurpose.setSelection(customPurpose.getText().length());
+                }
+                // 切到自定义：框里若还只是某个预设名，清掉让他从空白写自己的
+                if (idx == PURPOSE_CUSTOM && idx != prev) {
+                    String cur = customPurpose.getText().toString().trim();
+                    for (String n : names) {
+                        if (n.equals(cur)) { customPurpose.setText(""); break; }
+                    }
+                }
                 refresh.run();
             });
         }
@@ -299,9 +318,11 @@ public final class PauseCard {
         go.setOnClickListener(v -> {
             long ms = chosenMs(selDur[0], hourIn, minIn);
             if (selPurpose[0] < 0 || ms <= 0) return;
+            String reason = purposeName(selPurpose[0], customPurpose, names);
+            if (reason.isEmpty()) return; // 目的没填完不放行（v1.96.0 必填）
             Choice ch = new Choice();
             ch.delayMs = ms;
-            ch.reason = purposeName(selPurpose[0], customPurpose, names);
+            ch.reason = reason;
             ch.emoji = PURPOSE_EMOJIS[selPurpose[0]];
             ch.silent = silentSwitch.isChecked();
             onPick.onPick(ch);
@@ -313,12 +334,16 @@ public final class PauseCard {
         return scroll;
     }
 
+    /**
+     * 存入 p_reason 的目的描述（v1.96.0）：描述框里的完整文本优先（预设名＋
+     * 补写的「怎么做」）；框为空时预设回退预设名，自定义则返回空串＝没填，
+     * 不再给默认名蒙混过关。
+     */
     private static String purposeName(int sel, EditText customPurpose, String[] names) {
-        if (sel == PURPOSE_CUSTOM) {
-            String t = customPurpose.getText().toString().trim();
-            return t.isEmpty() ? Strings.pausePurposeCustomDefault() : t;
-        }
-        return names[sel];
+        String t = customPurpose.getText().toString().trim();
+        if (!t.isEmpty()) return t;
+        if (sel == PURPOSE_CUSTOM) return "";
+        return sel >= 0 ? names[sel] : "";
     }
 
     private static long chosenMs(int selDur, EditText hourIn, EditText minIn) {
