@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.96.0)
+## Features (Android, v1.97.0)
 
-Current version: **v1.96.0**.
+Current version: **v1.97.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.97.0 — 2026-11-26
+
+**Why:** The guard inquiry was a plain activity with no back-press handling — one back gesture or a press of Home swept it away, which inside the re-trigger cooldown amounted to a free pass, repeatable forever. The report recommended the root fix: move the inquiry into the 99% big-overlay shell like every other full-screen page. The same release fixes the pause-card flicker: frame analysis of a screen recording showed the card opened from the pause mask survived only 0.7–1.0 seconds before the floating window's per-second cleanup closed it. Build commit `21c41e3` · [compare v1.96.0...v1.97.0](https://github.com/gty3310/knowdo/compare/v1.96.0...v1.97.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **The inquiry page is now a big overlay.** Its content moved item-for-item from GuardActivity — both guard modes, the inquiry texts, the aspiration line, the four grace buttons with the breathing-gate hand-off, the three-way enforcement choice, switch-task, misjudgement appeal, AI chat, the difficulty tiers and GuardLedger accounting, the drift-recording point, and the v1.96.0 pause-guard branch. On a bright, unlocked screen with overlay permission it shows as an overlay (priority 30, level with block/resume); otherwise GuardActivity remains as the fallback page. Appeals that need typing (medium/hard) hand back to the original page, following the block overlay's precedent; an unanswered inquiry is persisted and re-shown after a process kill while it is still fresh.
+
+**Fixed**
+- **Pause card flicker.** The "legitimately open" exemption moved from a private flag in FloatingWindow (set by only two of the card's entry points) into the card itself as a source registration; the per-second auto-close, the pause mask's own setup, and window rebuilds now only close unregistered cards. The card opened from the pause mask stays until the user finishes or cancels.
+
+Not verified on a device or emulator (this release contains a bug fix; the repo rule asks for an emulator run, but this VM's emulator cannot boot — recorded honestly in the release report); if anything is wrong, roll back to v1.96.0. Data changes: none (one new local SharedPreferences file for the pending inquiry).
+
 ### v1.96.0 — 2026-11-26
 
 **Why:** Pausing a task to do something else used to dismiss the guard entirely — during a pause it watched nothing at all. Now you state what the pause is for, in your own words and in enough detail to judge by, and the guard keeps watching against that statement: doing that thing passes, drifting off still gets caught. Build commit `90f0cf3` · [compare v1.95.1...v1.96.0](https://github.com/gty3310/knowdo/compare/v1.95.1...v1.96.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -83,16 +95,6 @@ Not verified on a device or emulator; if anything is wrong, roll back to v1.95.1
 - **One tap to extend.** On the end-check and half-way pages (both the full-screen page and the big-overlay form), the duration you tap is applied as soon as you answer the motive self-check — the tapped value is carried through the gate instead of discarded. The self-check itself is unchanged: what it asks, when it asks, the event it records, and the once-per-page rule all stay as they were.
 
 Not verified on a device or emulator; if anything is wrong, roll back to v1.95.0. Data changes: none.
-
-### v1.95.0 — 2026-11-26
-
-**Why:** The cloud judge once contradicted itself — reading the classics in the classics app was judged "unrelated to the classics in the task". Cloud verdicts now have to pass a confidence check and an independence check before they count as a distraction. Build commit `aeb799d` · [compare v1.94.0...v1.95.0](https://github.com/gty3310/knowdo/compare/v1.94.0...v1.95.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Low-confidence cloud verdicts no longer convict.** When the cloud semantic judge says "unrelated" with confidence below 0.70, the frame is released instead of treated as a final verdict; only verdicts the judge is sure about can raise an inquiry.
-- **Cached verdicts count once.** The same cloud verdict reused from the 5-minute cache no longer counts as the second independent hit — an inquiry still needs two independent hits.
-
-Not verified on a device or emulator; if anything is wrong, roll back to v1.94.0. Data changes: none.
 
 ## Build
 
