@@ -36,6 +36,22 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1980 = new Entry("v1.98.0", "2026-11-26");
+        e1980.add(new Group(s("新功能", "New"),
+                s("守卫开始看「这段时间在干什么」：判定不再只看当前一帧——本地攒起最近 3 小时的活动流水（只存文字、只存本机），判定带上它，学着分清真分神和假分神",
+                  "The guard now looks at what you have been doing: verdicts no longer see just the current frame — a local activity stream of the last 3 hours (text only, on-device only) goes with each verdict, so it can learn to tell real distraction from a brief errand"),
+                s("假分神快速放行：专注中短暂岔去处理一件要事（回重要消息这类），判定明确时不弹窗、只留一条记录；大概是时只弹一个大按钮「在忙正事」，点一下就过，不用写解释、不用记分神",
+                  "Fake distractions pass fast: a brief errand during focused work (replying to an important message) raises no popup at all when the verdict is clear, and only a minimal one-big-button inquiry ('Busy with real work') when it is likely — one tap, no explanation, no distraction record"),
+                s("真分神全额停稳：判定明确是真分神时，问询先让你跟着呼吸一会儿、再点一下「刚才是什么把你带走的」，都做完宽限按钮才解开——不是罚时，是把自动驾驶的状态打断",
+                  "Real distractions stop fully: when the verdict is clearly a real distraction, the inquiry first walks you through a short breathing pause and a one-tap reflection ('what pulled you away?'); grace buttons unlock only after both — not a punishment, a way to break autopilot"),
+                s("宽松有本地把关：你清醒时定的难度档是地板，真分神的停稳时长不缩水；近 1 小时主线占比太低、或一小时内已两次真分神时，宽松自动封顶回标准问询，AI 绕不过",
+                  "Leniency has local guardrails: the difficulty tier you set while clear-headed is the floor, and a real-distraction stop never shrinks. If your main-task share in the last hour drops too low, or you already had two real distractions in an hour, leniency is capped back to the standard inquiry — the AI cannot override this")));
+        e1980.why = s("原先的守卫只看单帧：做任务以外的事就弹，一天要解释很多遍；可主线被反复打断、每件单看都是「正事」的那种分神反而抓不住。现在它看最近 3 小时的模式再定宽严。注意：AI 真正开始给宽松档要等服务端判定升级部署（还差一步授权），在那之前所有判定照旧走标准问询，不会乱放行。本版未经模拟器/真机验证，有问题回滚 v1.97.0",
+                "The guard used to judge a single frame: anything off-task raised an inquiry, so you explained yourself many times a day — while the sneakier pattern, a main task chopped up by 'important' side errands, slipped through. Now it reads the last 3 hours before deciding how strict to be. Note: the AI only starts returning leniency tiers once the server-side judge upgrade is deployed (one authorization step away); until then every verdict follows the standard inquiry, nothing is waved through. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.97.0");
+        e1980.tryIt = s("先照常用几天：守卫判定请求里会带上你的活动流水（设置里开诊断可看判定留痕多了 leniency 字段的位置）。等服务端升级部署后：专注做任务时短暂去回一条重要消息，应直接放行或只弹「在忙正事」大按钮；反复跳去刷别的，应弹全额停稳（先呼吸、再点反思标签）",
+                "Just use it as usual for a few days: verdict requests now carry your activity stream. Once the server upgrade is deployed: a brief reply to an important message during focused work should pass silently or with the single 'Busy with real work' button; repeated drifting should raise the full stop (breathing first, then a reflection tag)");
+        out.add(e1980);
+
         Entry e1970 = new Entry("v1.97.0", "2026-11-26");
         e1970.add(new Group(s("新功能", "New"),
                 s("守卫问询页搬进大窗：问询不再是能划走的普通页面——返回手势、Home 键都退不掉，必须正面回答（回到任务、宽限、申诉选一个）才消失；悬浮窗工程至此收尾，全屏页全部大窗化",
