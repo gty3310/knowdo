@@ -8,6 +8,8 @@
 
 为什么：用户 2026-11-26 定案——暂停任务去做事 B 时守卫整个下班，暂停期刷什么都不管；现在暂停前把「去做什么、怎么做」写清，守卫按这段话判，做这件事放行、滑去分神照样抓。
 
+发布提交：`90f0cf3`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.95.1...v1.96.0 比较](https://github.com/gty3310/knowdo/compare/v1.95.1...v1.96.0)
+
 ### 新增
 
 - 暂停期间内容守卫（KnowDoAccessibilityService）：暂停后采样不停，currentTask 在暂停期返回合成哨兵任务（TaskItem.pauseGuard、id=pause-guard、title=暂停目的完整描述），经既有管线按目的判；TimerService 暂停分支改调 onTimerPaused、不再停采样，恢复/开始新任务照旧 onTimerStarted 接回
