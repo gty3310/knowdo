@@ -36,6 +36,23 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1970 = new Entry("v1.97.0", "2026-11-26");
+        e1970.add(new Group(s("新功能", "New"),
+                s("守卫问询页搬进大窗：问询不再是能划走的普通页面——返回手势、Home 键都退不掉，必须正面回答（回到任务、宽限、申诉选一个）才消失；悬浮窗工程至此收尾，全屏页全部大窗化",
+                  "The guard inquiry moves into the big overlay: it is no longer a page you can swipe away — back gestures and Home do nothing; it only leaves when you answer it (return, grace, or appeal). This completes the overlay migration of all full-screen pages"),
+                s("进程被杀也不丢问询：还没回答的问询会记下来，进程重启后在两分钟内、且你还停在触发它的应用上时，会重新弹出来",
+                  "An unanswered inquiry survives a process kill: it is remembered and reappears after a restart if it is still fresh (within two minutes) and you are still in the app that triggered it"),
+                s("问询内容与口径不变：暂停期的问询照样对着暂停目的、不算分神；要打字写解释的申诉，点「这是误判」会转到原来的问询页写，功能一个不少",
+                  "Nothing about the inquiry itself changes: pause-time inquiries still refer to your pause purpose and are not counted as distractions; appeals that need a written explanation open the original inquiry page, with every option intact")));
+        e1970.add(new Group(s("修复", "Fixed"),
+                s("暂停卡不再闪烁：从暂停遮罩点「先休息一会儿」开的暂停卡，原先一秒内就被悬浮窗的自动收尾关掉、根本没法选；现在卡会稳稳停住，直到你选完或取消",
+                  "The pause card no longer flickers: the card opened from the pause mask ('take a timed break') used to be closed within a second by the floating window's automatic cleanup, making it impossible to use. It now stays put until you finish or cancel")));
+        e1970.why = s("问询页是普通页面时，返回一下就能划走，等于在冷却里白放行一次、还能反复来——守卫最该拦的那一下恰恰拦不住。搬进大窗后它和其它全屏页一样划不走。暂停卡闪烁是录屏查实的：卡每次只活不到一秒。本版未经模拟器/真机验证（本机模拟器跑不起来），有问题回滚 v1.96.0",
+                "As a plain page, the inquiry could be swiped away with one back gesture — a free pass inside the cooldown, repeatable forever; the one moment the guard most needed to hold was the one it could not. In the overlay it stays, like every other full-screen page. The pause-card flicker was confirmed on a screen recording: the card lived less than a second each time. Not verified on an emulator or a real device (the VM emulator cannot boot); if anything is wrong, roll back to v1.96.0");
+        e1970.tryIt = s("计时中打开一个会被守卫拦的应用，等问询弹出后按返回、按 Home——页面应纹丝不动；选「再看 1 分钟」应先过呼吸页再放行。再试暂停：等暂停遮罩出现，点「先休息一会儿」，暂停卡应稳稳停住，能选完目的和时长",
+                "While timing, open an app the guard blocks; when the inquiry appears, press Back and Home — it should not move. Choosing '1 more minute' should pass through the breathing page first. Then try a pause: when the pause mask appears, tap 'take a timed break' — the pause card should stay put so you can pick a purpose and a duration");
+        out.add(e1970);
+
         Entry e1960 = new Entry("v1.96.0", "2026-11-26");
         e1960.add(new Group(s("新功能", "New"),
                 s("暂停时守卫照看：暂停去做别的事，守卫不再下班——按你写下的暂停目的判：做这件事放行，滑去刷短视频照样弹问询",
