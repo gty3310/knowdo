@@ -2,6 +2,35 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [1.98.1] - 2026-11-26（versionCode 139）
+
+修复问询大窗反复崩溃＋测试者模式崩溃上报
+
+为什么：v1.97.0 问询大窗化在真机上连环崩溃（用户实报「屡次停止运行」）——守卫判定链在无障碍后台线程上同步重建了悬浮窗视图层级，主线程每秒 refresh 的 setText 跨线程必崩；未决问询的自动重出又每次刷新 120 秒窗续命，循环停不下来。排查全程见 REPORT-crash-v1970-2026-11-26.md。本版按其第四节修法三处全修；同时按用户 2026-11-26 定稿给「测试者模式」加崩溃上报（指纹去重＋随同步上传），让这类问题以后能远程看到堆栈、不再靠截图口述。设计吸收行业最佳实践调研（REPORT-crash-reporting-best-practice-2026-11-26.md）的适用条目。
+
+发布提交：`R_PENDING`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.98.0...v1.98.1 比较](https://github.com/gty3310/knowdo/compare/v1.98.0...v1.98.1)
+
+### 修复
+
+- BigOverlay.requestGuard 切主线程：两个线程安全的前置判断（悬浮窗开关＝prefs 读、本应用前台＝静态计数）仍在调用线程先行，不成立照旧返回 false 走原页；成立且不在主线程时把接管整段 post 到主线程再执行、照常返回 true。呈现口径零变化，名单/内容两条触发与 GuardPending 重出（本就在主线程）都覆盖
+- GuardOverlay 按钮表自防御：createView 开头 graceModeBtns.clear()（壳复出路径不经 prepare 直接重建、按钮表会累积），refreshGraceModeStyles 循环上界取 min(size, acts.length)——堵住第二次 createView 必 ArrayIndexOutOfBoundsException 的潜伏点；v1.98.0 的 leniency 两形态（L2 简形态/L0 停稳）未动
+- GuardPending 断放大器：maybeRefire 重出后把 fired_at 写回原值（不再续命 120 秒窗），并加 refire 上限 2 次（refire_count，真新问询 save 时归零）——即便呈现路径再有别的崩溃，最多重出两轮自然作废
+
+### 新增
+
+- 崩溃上报 CrashReporter（挂既有「测试者模式」diag_mode，关着彻底空操作）：两路捕获——ErrorReporter 主动上报的错误在原悬浮窗展示之外落一条 non-fatal 记录（展示行为不变）；进程级未捕获异常由 KnowDoApp 安装的 handler 同步写本地文件并链回原 handler，handler 里绝不发网络
+- 指纹去重（行业口径）：异常类名＋顶部 App 帧「类名.方法名」，**剔除行号**防版本漂移换 ID；带指纹算法版本 fp_v=1。每条记录带 UUID（服务端按 uuid 合并幂等防双报）、kind=fatal/non-fatal、versionName/versionCode、设备型号、Android 版本/API、崩溃线程名、是否前台、当时页面；exception message 截断 ≤200 字并复用 SemanticJudge.minimize 打码（只调用、红线文件未动）；堆栈只留 App 帧
+- 极简面包屑：进程内环形缓冲最近 16 条结构化事件（时刻＋事件名，零用户内容），打点在 App 启动、大窗出窗/收回、问询落盘、同步成功四处中枢
+- 存储与同步：本地 crash_reports.json——明细与日计数分开存（明细合并时清 90 天前、计数永久），本地封顶明细 30 条/文件 256KB；当天同指纹只存一份明细、再犯只加计数与最后时间。随 SbSync 节奏批量上传：落点 user_state.reschedule_request 列的 crash_reports 键（v1.26.0 起撤除接线的空闲 JSON 列，两端零引用），读→合并→字段级 PATCH；该列同步移出 USER_STATE_COLS 拉取清单，App 对崩溃数据只写不读；失败等下一同步周期，不单独重试
+
+### 说明
+
+- 红线六文件零 diff（SemanticJudge 只被调用 minimize、未改一字）；分神计数、排程、habit_data 口径未动
+- ANR watchdog 本版不做（未捕获异常抓不到主线程卡死），列为下一版候选；启用 R8 混淆前须先落 mapping 归档的备忘已记入 REPORT-v1981.md
+- 本版为修 bug 版，按规矩应过模拟器验证，但本 VM 模拟器跑不起来——**未实跑**，如实标注；真机验收清单见 REPORT-v1981.md，有问题回滚 v1.98.0
+
+试用：计时中去别的软件触发问询，页面应稳稳停住不再崩；问询不答＋杀进程重开，最多再自动重出两次；设置里开着「测试者模式」时，人为触发一条内部报错后，崩溃记录应随下一次同步出现在云端。
+
 ## [1.98.0] - 2026-11-26（versionCode 138）
 
 活动流水＋真假分神＋宽松四档

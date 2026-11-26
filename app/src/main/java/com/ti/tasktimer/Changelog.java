@@ -36,6 +36,19 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1981 = new Entry("v1.98.1", "2026-11-26");
+        e1981.add(new Group(s("修复", "Fixed"),
+                s("问询大窗不再反复崩溃：上一版把问询页搬进大窗后，在别的软件里触发问询时，页面刚出来软件就崩、还一遍遍自己重弹接着崩。本版把出窗切回主线程、堵上另一个重开必崩的点、并给未决问询的自动重出加了次数上限——最多重出两轮就停，不再循环",
+                  "The inquiry overlay no longer crashes in a loop: after the inquiry moved into the big overlay, triggering it from another app crashed the app the moment the page appeared, and it kept re-popping and crashing. This release moves the overlay back onto the main thread, closes a second crash on rebuild, and caps automatic re-showing of an unanswered inquiry at two rounds")));
+        e1981.add(new Group(s("新功能", "New"),
+                s("测试者模式多了崩溃上报：开着这个模式时，软件内部报错和崩溃会自己记下来（同一种毛病一天只记一份详情、再犯只数次数），跟着平时的同步传上来供远程排查；关着时完全不记、不传。设置里照旧是那个「测试者模式」开关",
+                  "Tester mode gains crash reporting: with the mode on, internal errors and crashes are recorded on-device (one detail per kind of fault per day; repeats only add to a counter) and uploaded with the usual sync for remote debugging. With the mode off, nothing is recorded or sent. It is the same 'Tester mode' switch in Settings")));
+        e1981.why = s("问询大窗化是上一版刚落地的，第一次在真机上连环触发就暴露了线程错误——页面在守卫的后台线程里搭起来，主线程每秒刷新一碰就崩；偏偏未决问询的自动重出又不断给它续命，才成了「屡次停止运行」。崩溃上报是配套补的：以前这类问题只能靠你截图口述，以后开着测试者模式，崩溃详情自己会传上来。本版未经模拟器/真机验证（本机模拟器跑不起来），有问题回滚 v1.98.0",
+                "The overlay migration had just landed when real-device use exposed a threading error: the page was built on the guard's background thread, and the main thread's per-second refresh crashed on contact; the unanswered-inquiry re-show then kept renewing it, producing the repeated 'keeps stopping' loop. Crash reporting comes with it: until now this kind of fault could only be reported by screenshot and description; with tester mode on, the crash details now upload themselves. Not verified on an emulator or a real device (the VM emulator cannot boot); if anything is wrong, roll back to v1.98.0");
+        e1981.tryIt = s("装上后照常计时，去别的软件触发一次问询：页面应稳稳停住、能正常选宽限或回到任务，不再弹「屡次停止运行」。再故意让问询不回答、杀掉进程重开，问询最多再自动出现两次。再到设置里确认「测试者模式」开着，用一阵后崩溃记录会随同步传上来",
+                "After updating, time a task as usual and trigger an inquiry from another app: the page should stay put and let you pick a grace option or return — no more 'keeps stopping'. Leave an inquiry unanswered and force-stop the app: it should reappear at most twice more. Check that 'Tester mode' is on in Settings; crash records then upload with the usual sync");
+        out.add(e1981);
+
         Entry e1980 = new Entry("v1.98.0", "2026-11-26");
         e1980.add(new Group(s("新功能", "New"),
                 s("守卫开始看「这段时间在干什么」：判定不再只看当前一帧——本地攒起最近 3 小时的活动流水（只存文字、只存本机），判定带上它，学着分清真分神和假分神",
