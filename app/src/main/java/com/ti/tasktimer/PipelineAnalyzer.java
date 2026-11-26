@@ -39,31 +39,50 @@ public class PipelineAnalyzer implements ContentAnalyzer {
         SemanticJudge.beginFrame();
         // 把任务说明拼进 note 再交给后续规则与 SemanticJudge，不改红线文件本身
         if (task != null) task = task.forJudging();
-        if (fgPkg != null && isExempt(c, fgPkg, task)) return Result.none();
+        if (fgPkg != null && isExempt(c, fgPkg, task)) {
+            // 活动流水（v1.98.0）：任务主软件/允许名单的豁免帧是主线本身，
+            // 记一帧主线段，否则主线占比会被系统性低估；其余豁免（本包/桌面/
+            // 输入法等）不入流水
+            if (task != null && (fgPkg.equals(task.primaryApp)
+                    || ("allow".equals(task.focusMode) && task.allowedApps.contains(fgPkg)))) {
+                ActivityStream.noteMainlineFrame(c, fgPkg);
+            }
+            return Result.none();
+        }
 
         // 暂停空窗底线模式（v1.96.0）：目的还没填时只守黄图底线，其余不表态
         if (task != null && task.pauseGuard
                 && (task.title == null || task.title.trim().isEmpty())) {
-            return nudeNet.analyze(c, bmp, task, fgPkg);
+            Result nn = nudeNet.analyze(c, bmp, task, fgPkg);
+            ActivityStream.noteFrame(c, task, fgPkg, lastText, nn);
+            return nn;
         }
 
         boolean haveNodeText = nodeText != null && !nodeText.trim().isEmpty();
         boolean relevant = false;
         if (haveNodeText) {
             Result kw = ocr.judgeKeywords(nodeText);
-            if (kw.category != null) return kw;
+            if (kw.category != null) {
+                ActivityStream.noteFrame(c, task, fgPkg, lastText, kw);
+                return kw;
+            }
             relevant = ocr.relevantToTask(nodeText, task);
         }
 
         // nsfw 优先级不动：前面没给出结论的帧必须过 NudeNet；
         // 「与任务相关」的放行只在 NudeNet 之后生效，否则带任务词的页面里的黄图会被放行漏掉
         Result nude = nudeNet.analyze(c, bmp, task, fgPkg);
-        if (nude.category != null) return nude;
+        if (nude.category != null) {
+            ActivityStream.noteFrame(c, task, fgPkg, lastText, nude);
+            return nude;
+        }
 
         if (relevant) {
             // 关键词放行属于「置信不足的放行」：语义层复核，可能维持放行、也可能判不相关
             Result s = SemanticJudge.refine(c, task, fgPkg, lastText, Result.none());
-            return s != null ? s : Result.none();
+            Result out = s != null ? s : Result.none();
+            ActivityStream.noteFrame(c, task, fgPkg, lastText, out);
+            return out;
         }
         Result coarse;
         if (haveNodeText && nodeText.replaceAll("\\s+", "").length() >= 30) {
@@ -76,8 +95,12 @@ public class PipelineAnalyzer implements ContentAnalyzer {
         // 语义层复核（语义层可能推翻「无关」为放行）；其余明确结论原样返回
         if (coarse.category == null || CAT_UNRELATED.equals(coarse.category)) {
             Result s = SemanticJudge.refine(c, task, fgPkg, lastText, coarse);
-            if (s != null) return s;
+            if (s != null) {
+                ActivityStream.noteFrame(c, task, fgPkg, lastText, s);
+                return s;
+            }
         }
+        ActivityStream.noteFrame(c, task, fgPkg, lastText, coarse);
         return coarse;
     }
 

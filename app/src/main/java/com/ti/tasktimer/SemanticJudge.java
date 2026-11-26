@@ -71,6 +71,9 @@ public final class SemanticJudge {
         boolean relevant;
         float confidence;
         String reason = "";
+        // v1.98.0（用户亲批的增字段）：云端顺带产出的一句话总结与宽松档，随 verdict 一起缓存
+        String summary = "";
+        int leniency = -1;
         long at;
     }
 
@@ -146,7 +149,8 @@ public final class SemanticJudge {
         CachedVerdict hit = verdictCacheGet(key);
         if (hit != null) {
             lastCloud = "ok";
-            return applyCloudVerdict(c, task, hit.relevant, hit.confidence, hit.reason, sim, true);
+            return applyCloudVerdict(c, task, hit.relevant, hit.confidence, hit.reason, sim, true,
+                    hit.summary, hit.leniency);
         }
         long now = System.currentTimeMillis();
         if (now < ScreenGuardPrefs.semanticBackoffUntil(c)) {
@@ -159,7 +163,7 @@ public final class SemanticJudge {
             verdictCachePut(key, att.verdict);
             lastCloud = "ok";
             return applyCloudVerdict(c, task, att.verdict.relevant, att.verdict.confidence,
-                    att.verdict.reason, sim, false);
+                    att.verdict.reason, sim, false, att.verdict.summary, att.verdict.leniency);
         }
         ScreenGuardPrefs.noteSemanticCloudFailure(c);
         lastCloud = att.cloudLabel;
@@ -169,20 +173,23 @@ public final class SemanticJudge {
     /** 云端结论落地（缓存命中与新判共用）：判相关放行、判不相关出「无关」结论；两种都留痕。 */
     private static ContentAnalyzer.Result applyCloudVerdict(Context c, TaskItem task, boolean relevant,
                                                             float confidence, String reason,
-                                                            Float sim, boolean fromCache) {
+                                                            Float sim, boolean fromCache,
+                                                            String summary, int leniency) {
         String tail = fromCache ? "（缓存复用）" : "";
         if (relevant) {
             lastNote = "云端终判（判相关）" + tail;
             trace(c, task, SRC_CLOUD, sim, "ok", "cloud-relevant" + (fromCache ? "-cache" : ""),
                     "语义判定（云端）：与任务相关，放行" + tail);
-            return annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache);
+            return withJudge(annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache),
+                    summary, leniency);
         }
         if (confidence < 0.70f) {
             // 保险（用户亲批）：云端判不相关但置信不足 0.70，不当终判，按中间带从宽放行
             lastNote = "云端判不相关但置信 " + fmt(confidence) + " 低于 0.70，按保险放行" + tail;
             trace(c, task, SRC_CLOUD, sim, "ok", "cloud-unrelated-lowconf" + (fromCache ? "-cache" : ""),
                     "语义判定（云端）：判不相关但置信 " + fmt(confidence) + " 低于 0.70，按保险放行" + tail);
-            return annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache);
+            return withJudge(annotated(ContentAnalyzer.Result.none(), SRC_CLOUD, sim, fromCache),
+                    summary, leniency);
         }
         lastNote = "云端终判（判不相关）" + tail;
         trace(c, task, SRC_CLOUD, sim, "ok", "cloud-unrelated" + (fromCache ? "-cache" : ""),
@@ -190,7 +197,14 @@ public final class SemanticJudge {
         ContentAnalyzer.Result r = new ContentAnalyzer.Result(
                 ContentAnalyzer.CAT_UNRELATED, confidence,
                 "语义判定（云端）：" + (reason == null || reason.isEmpty() ? "与任务不相关" : reason));
-        return annotated(r, SRC_CLOUD, sim, fromCache);
+        return withJudge(annotated(r, SRC_CLOUD, sim, fromCache), summary, leniency);
+    }
+
+    /** v1.98.0（用户亲批的增字段）：把云端顺带的 summary/leniency 写到 Result 的新字段上，不参与本类任何阈值/升级判定。 */
+    private static ContentAnalyzer.Result withJudge(ContentAnalyzer.Result r, String summary, int leniency) {
+        if (summary != null && !summary.isEmpty()) r.judgeSummary = summary;
+        r.judgeLeniency = leniency;
+        return r;
     }
 
     /**
@@ -305,6 +319,8 @@ public final class SemanticJudge {
         cv.relevant = v.relevant;
         cv.confidence = v.confidence;
         cv.reason = v.reason;
+        cv.summary = v.summary;
+        cv.leniency = v.leniency;
         cv.at = System.currentTimeMillis();
         VERDICTS.put(key, cv);
     }
@@ -343,6 +359,9 @@ public final class SemanticJudge {
         boolean relevant;
         float confidence;
         String reason = "";
+        // v1.98.0（用户亲批的增字段）：服务端未部署新 prompt 时两字段恒为缺省，客户端行为与旧版一致
+        String summary = "";
+        int leniency = -1;
     }
 
     /** 一次云端尝试的结果：verdict 非 null 为成功；失败带兜底来源与云端结果标签。 */
@@ -391,6 +410,12 @@ public final class SemanticJudge {
             // 纪律是用户亲手写下、就是要发给判定模型的指令本身，故不走 minimize
             // 打码（打码会改掉纪律里的数字等原意）；长度已在输入端卡死 ≤20 字。
             body.put("rules", GuardRules.rulesJson(c));
+            // 活动流水（v1.98.0，用户亲批的增字段）：最近 3 小时的本地活动轨迹
+            // （纯文字、本地确定性算法浓缩，硬顶约 500 token），供云端分清真/假
+            // 分神并给出宽松档。服务端现行 prompt 不认此字段、忽略即可；部署新
+            // prompt 后才真正参与判定。流水内容是用户本机活动文字，与 screen_text
+            // 同源同级，不走 minimize 打码（打码会改掉占比/时长等数字原意）。
+            body.put("activity_stream", ActivityStream.renderForJudge(c));
 
             con = (HttpURLConnection) new URL(Supa.BASE + "/functions/v1/glm-judge").openConnection();
             con.setRequestMethod("POST");
@@ -425,6 +450,10 @@ public final class SemanticJudge {
             v.relevant = r.optBoolean("relevant", false);
             v.confidence = (float) r.optDouble("confidence", 0.6);
             v.reason = r.optString("reason", "");
+            // v1.98.0（用户亲批的增字段）：缺字段/类型不对即缺省，绝不报错、不影响主结论
+            v.summary = r.optString("summary", "");
+            int len = r.optInt("leniency", -1);
+            v.leniency = (len >= 0 && len <= 3) ? len : -1;
             CloudAttempt ok = new CloudAttempt();
             ok.verdict = v;
             return ok;

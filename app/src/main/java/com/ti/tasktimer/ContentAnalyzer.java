@@ -33,6 +33,10 @@ public interface ContentAnalyzer {
         public float semanticScore = Float.NaN;
         /** 云端 verdict 来自 5 分钟缓存复用时为 true（SemanticJudge 填写）。 */
         public boolean semanticFromCache;
+        /** 云端判定顺带产出的一句话活动总结（v1.98.0，SemanticJudge 填写）：≤20 字说清这一帧在干什么，供活动流水升级当前段；无云端结论时为 null。 */
+        public String judgeSummary;
+        /** 云端判定的宽松程度（v1.98.0，SemanticJudge 填写）：0–3（L0 真分神·明确 … L3 假分神·明确）；-1＝无此字段（服务端未部署/本地兜底/解析失败），消费侧一律按现行标准流程。 */
+        public int judgeLeniency = -1;
 
         public Result(String category, float confidence, String detail) {
             this.category = category;
