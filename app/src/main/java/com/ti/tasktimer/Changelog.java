@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1990 = new Entry("v1.99.0", "2026-11-26");
+        e1990.add(new Group(s("新功能", "New"),
+                s("聊聊里能一口气加好几个任务了：一次把几件事说给它，它会整理成一张编号汇总卡——每件的标题、时长、优先级、截止、重复都列清楚，哪件是给 AI 做的也标出来；你点一次「全部建好」，整批一次建完，不用再一件一件分开发",
+                  "Chat can now add several tasks in one go: name a few things in one message and it lays them out on one numbered summary card — title, length, priority, deadline and repeat for each, with AI-bound ones marked. One tap on Create all builds the whole batch; no more sending them one by one"),
+                s("没说清的地方不卡住整批：哪件的时长或优先级没说，它按默认补上（30 分钟、次要），并在卡上那件的行尾标明「按默认补：时长、优先级」，你回头一眼能挑出来改；实在没看懂的件会单独注明没建，其余照建",
+                  "Gaps no longer stall the batch: an item whose length or priority you did not state is filled with the usual defaults (30 minutes, secondary) and marked on its card line as defaulted, so you can spot and fix it later. An item it cannot make sense of is noted as skipped — the rest are still created"),
+                s("建完能接着按编号改：回它一句「第 2 个改成必做」它就知道是哪件（编号就是卡上的顺序，对应关系它记着）；每件还能带重复（每天/每周）和「给 AI 做」，在话里点明即可",
+                  "You can keep editing by number afterwards: reply 'make #2 a must-do' and it knows which task that is — the numbering is the card order and the mapping is remembered. Each item can also carry a repeat (daily/weekly) and an 'AI does it' flag, just say so in your message")));
+        e1990.why = s("原先在聊聊里加任务，一次只能出一张单件卡，攒了好几件事就得反复说、反复点。这次把「一次说清、一次建完」补上：还是先出卡给你核对（它不会自己动你的东西），但一张卡装整批、点一次全落库。本版未经模拟器/真机验证（本机模拟器跑不起来），有问题回滚 v1.98.1",
+                "Adding tasks in Chat used to mean one single-item card per message — several errands meant repeating yourself again and again. This release adds say-it-once, build-it-all: still a card for your review first (it never changes anything on its own), but one card holds the whole batch and one tap creates it all. Not verified on an emulator or a real device (the VM emulator cannot boot); if anything is wrong, roll back to v1.98.1");
+        e1990.tryIt = s("去「聊聊」一口气说三件事，比如「明天回老师消息，10 分钟，必做；把笔记整理完；给姐姐的微信拟个草稿，这件给 AI 做」：应出一张编号卡列着三件，点「全部建好」后回任务列表看三件都在；再回聊聊说「第 2 个改成必做」，它应认出是整理笔记那件",
+                "In Chat, name three things in one message — e.g. 'reply to my teacher tomorrow, 10 minutes, must-do; finish organising my notes; draft a WeChat message to my cousin — that one is for the AI'. You should get one numbered card with all three; tap Create all and check the task list. Then say 'make #2 a must-do' and it should pick the notes task");
+        out.add(e1990);
+
         Entry e1981 = new Entry("v1.98.1", "2026-11-26");
         e1981.add(new Group(s("修复", "Fixed"),
                 s("问询大窗不再反复崩溃：上一版把问询页搬进大窗后，在别的软件里触发问询时，页面刚出来软件就崩、还一遍遍自己重弹接着崩。本版把出窗切回主线程、堵上另一个重开必崩的点、并给未决问询的自动重出加了次数上限——最多重出两轮就停，不再循环",
