@@ -8,6 +8,8 @@
 
 为什么：出现过自相矛盾的误判（在弦歌里读经典被判与经典无关）；云端判定先过置信与独立性两道保险，才算分神。
 
+发布提交：`aeb799d`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v1.94.0...v1.95.0 比较](https://github.com/gty3310/knowdo/compare/v1.94.0...v1.95.0)
+
 ### 修复
 
 - 云端语义判定判「不相关」但置信低于 0.70 时不再当终判：SemanticJudge.applyCloudVerdict 改按放行处理并留痕（cloud-unrelated-lowconf）；置信 ≥0.70 的无关照旧
