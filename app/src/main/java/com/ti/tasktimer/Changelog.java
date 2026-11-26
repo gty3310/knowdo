@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1960 = new Entry("v1.96.0", "2026-11-26");
+        e1960.add(new Group(s("新功能", "New"),
+                s("暂停时守卫照看：暂停去做别的事，守卫不再下班——按你写下的暂停目的判：做这件事放行，滑去刷短视频照样弹问询",
+                  "The guard stays on during a pause: it judges by the pause purpose you wrote — doing that thing is fine, drifting off to short videos still raises an inquiry"),
+                s("暂停目的必填、要写清怎么做：不选目的（或选了自定义却没写字）不能开始暂停；选预设后可以接着补一句具体做法，写得越具体判得越准",
+                  "The pause purpose is now required, and should say how: no purpose (or Custom with nothing written) means no pause. Picking a preset lets you continue writing the specifics — the more concrete, the better the judging"),
+                s("暂停期被抓不算分神：只留一条守卫记录，不写分神记录、不扣知行指数；问询页对着暂停目的，主按钮是「回到要做的事」",
+                  "Getting caught during a pause is not counted as a distraction: it only leaves a guard record — no distraction entry, no score deduction. The inquiry page refers to your pause purpose and its main button is 'Back to what you were doing'")));
+        e1960.why = s("暂停去洗手间、回消息时，守卫原来整个下班，暂停多久都没人管。现在你把要做的事说清，它就照这句话看着你。本版未经模拟器/真机验证，有问题回滚 v1.95.1",
+                "Pausing for the restroom or a reply used to switch the guard off entirely — nobody watched for as long as the pause lasted. Now you state what you are doing and it watches against exactly that. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.95.1");
+        e1960.tryIt = s("开始一个任务，点暂停，目的选「回电话」再补一句具体做法（如「用微信回王老师床单的事，回完就回来」），开始暂停后打开微信回消息——应不弹问询；再去刷一会儿短视频——应弹问询、上面写的是暂停目的；被抓后看知行指数，分神数不变",
+                "Start a task, tap pause, pick a purpose and add how you will do it, then reply to a message in WeChat — no inquiry should appear. Then watch short videos for a while — an inquiry should appear, referring to the pause purpose. Afterwards check the score: the distraction count must not have moved");
+        out.add(e1960);
+
         Entry e1951 = new Entry("v1.95.1", "2026-11-26");
         e1951.add(new Group(s("修复", "Fixed"),
                 s("加时点一次到位：结束检查页和过半页点一个加时时长，第一次点先过「动机至善，私心了无」自问——原先答完还要在同一个时长上再点一次才生效；现在答完直接按你点的那个时长加时，不用点第二次（自问本身不变，同一页里仍只问一次）",
