@@ -2,6 +2,8 @@ package com.ti.tasktimer;
 
 import android.app.KeyguardManager;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.view.View;
 
@@ -262,6 +264,18 @@ public final class BigOverlay {
                                        String category, String detail, String reason) {
         if (!FloatingWindow.enabled(c)) return false;
         if (KnowDoApp.ownActivityVisible()) return false;
+        // 线程纪律（v1.98.1 修复）：触发侧在无障碍后台线程上，接管动作会同步
+        // 重建整个悬浮窗视图层级——视图层级只能归属主线程，否则主线程下一拍
+        // refresh 的 setText 必抛 CalledFromWrongThreadException（v1.97.0
+        // 反复崩溃主因）。上面两个前置判断都是线程安全的轻读（prefs／静态
+        // 计数），在调用线程先行；不成立照旧返回 false 走原页。成立且不在
+        // 主线程时，把接管整段 post 到主线程再执行、照常返回 true（已接管）。
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            final Context app = c.getApplicationContext();
+            new Handler(Looper.getMainLooper()).post(
+                    () -> requestGuard(app, contentMode, pkg, category, detail, reason));
+            return true;
+        }
         if (sGuard == null) sGuard = new GuardOverlay();
         sGuard.prepare(contentMode, pkg, category, detail, reason);
         FloatingWindow.setSuppressed(false);

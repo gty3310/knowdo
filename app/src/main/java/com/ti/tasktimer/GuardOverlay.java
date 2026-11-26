@@ -91,6 +91,10 @@ public final class GuardOverlay implements BigOverlay.Content {
     @Override
     public View createView(final Context c) {
         ctx = c;
+        // 自防御（v1.98.1）：壳的复出路径不经 prepare 直接 createView，按钮
+        // 表会在每次重建时累积——开头先清，防 refreshGraceModeStyles 索引
+        // 定长 acts 表越界（v1.97.0 潜伏必崩点）
+        graceModeBtns.clear();
         Strings.init(c);
         // 难度与计数快照（与原页 onCreate 同点位）：暂停期判定与原页同表达式
         pauseGuardMode = contentMode && TimerState.isPaused(c) && !TimerState.isRunning(c);
@@ -503,7 +507,8 @@ public final class GuardOverlay implements BigOverlay.Content {
     private void refreshGraceModeStyles() {
         String[] acts = {ScreenGuardPrefs.ACTION_QUIT, ScreenGuardPrefs.ACTION_BACKGROUND,
                 ScreenGuardPrefs.ACTION_BLOCK};
-        for (int i = 0; i < graceModeBtns.size(); i++) {
+        int n = Math.min(graceModeBtns.size(), acts.length);
+        for (int i = 0; i < n; i++) {
             styleScButton(graceModeBtns.get(i), acts[i].equals(graceAction));
         }
     }

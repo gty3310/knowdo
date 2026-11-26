@@ -23,6 +23,9 @@ public final class GuardPending {
     private static final String PREF = "guard_pending";
     /** 冷却合理窗：进程被杀到服务重启通常在数秒级，120 秒足够覆盖且不至太陈旧。 */
     static final long REFIRE_WINDOW_MS = 120_000L;
+    /** 重出次数上限（v1.98.1）：重出不再刷新 fired_at（见 maybeRefire），且
+     * 最多重出这么多次——防「崩溃→重启→重出→再崩」把 120 秒窗无限续命。 */
+    static final int MAX_REFIRE = 2;
 
     private GuardPending() {}
 
@@ -35,6 +38,7 @@ public final class GuardPending {
         public String reason = "";
         public boolean pauseGuard;
         public long firedAt;
+        public int refireCount;
     }
 
     private static SharedPreferences prefs(Context c) {
@@ -52,6 +56,7 @@ public final class GuardPending {
                 .putString("reason", reason == null ? "" : reason)
                 .putBoolean("pause_guard", pauseGuard)
                 .putLong("fired_at", System.currentTimeMillis())
+                .putInt("refire_count", 0)
                 .apply();
     }
 
@@ -66,6 +71,7 @@ public final class GuardPending {
         q.reason = p.getString("reason", "");
         q.pauseGuard = p.getBoolean("pause_guard", false);
         q.firedAt = p.getLong("fired_at", 0);
+        q.refireCount = p.getInt("refire_count", 0);
         return q;
     }
 
@@ -79,14 +85,20 @@ public final class GuardPending {
 
     /**
      * FloatService 启动时调（进程被杀重启的落点）：有未决问询且仍成立时，
-     * 经 AlertHelper 原入口重新触发一次（内部会重新落盘、刷新触发时刻）。
-     * 不成立的顺手清掉。返回是否重出了（供日志/测试观察，调用方不依赖）。
+     * 经 AlertHelper 原入口重新触发一次。不成立的顺手清掉。返回是否重出了
+     * （供日志/测试观察，调用方不依赖）。
+     *
+     * v1.98.1 断放大器：重出不再续命——fire 内部的 save 会把 fired_at 刷成
+     * 当前时刻，重出后立刻写回原 fired_at；且重出次数达 {@link #MAX_REFIRE}
+     * 即清掉不再重出。这样即便问询呈现路径再有别的崩溃，最多重出两轮，
+     * 120 秒窗到期自然作废，不会无限循环弹崩溃（v1.97.0 现场教训）。
      */
     public static boolean maybeRefire(Context c) {
         Inquiry q = load(c);
         if (q == null) return false;
         long now = System.currentTimeMillis();
         if (now - q.firedAt > REFIRE_WINDOW_MS) { clear(c); return false; }
+        if (q.refireCount >= MAX_REFIRE) { clear(c); return false; }
         if (BigOverlay.isWanted(BigOverlay.KEY_GUARD)) return false; // 已在出窗/排队
         // 状态仍须与问询模式相符：普通问询要还在计时；暂停期问询要还在暂停
         if (q.pauseGuard) {
@@ -104,6 +116,12 @@ public final class GuardPending {
                 + (q.contentMode ? "内容·" + ContentAnalyzer.label(q.category) : "名单·" + q.pkg) + "）");
         if (q.contentMode) AlertHelper.fireGuardContent(c, q.category, q.detail);
         else AlertHelper.fireGuard(c, q.pkg, q.reason.isEmpty() ? null : q.reason);
+        // fire 内的 save 刚把 fired_at 刷新、refire_count 归零——写回原值并
+        // 记上这一次重出（has 若已被终局动作清掉，load 不再认这两键，无害）
+        prefs(c).edit()
+                .putLong("fired_at", q.firedAt)
+                .putInt("refire_count", q.refireCount + 1)
+                .apply();
         return true;
     }
 }
