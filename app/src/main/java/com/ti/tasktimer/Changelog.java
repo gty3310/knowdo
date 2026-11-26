@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e1950 = new Entry("v1.95.0", "2026-11-26");
+        e1950.add(new Group(s("修复", "Fixed"),
+                s("守卫云端判定加保险：云端语义判定说「与任务不相关」但置信低于 0.70 时，不再直接当成分神终判，改按放行处理；只有把握够大的判定才会弹问询",
+                  "A safety net for cloud verdicts: when the cloud semantic judge says 'unrelated' with confidence below 0.70, the frame is released instead of treated as a final distraction verdict — only verdicts the judge is sure about can raise an inquiry"),
+                s("同一份云端判定在 5 分钟缓存里被重复采样到时，不再算作第二次独立命中；问询仍需要两次相互独立的命中才会弹",
+                  "The same cloud verdict reused from the 5-minute cache no longer counts as the second independent hit; an inquiry still needs two independent hits")));
+        e1950.why = s("出现过自相矛盾的误判——在弦歌里读经典，云端却判「与任务中的经典无关」。先给云端判定加一道保险，宁可慢一点确认，也不冤枉正在做的事。本版未经模拟器/真机验证，有问题回滚 v1.94.0",
+                "The cloud judge once contradicted itself: reading the classics in the classics app was judged 'unrelated to the classics in the task'. Cloud verdicts get a safety net first — slower to confirm, but no more false convictions. Not verified on an emulator or a real device; if anything is wrong, roll back to v1.94.0");
+        e1950.tryIt = s("正常开始任务计时使用即可；真正分神且云端高置信的新判定，仍会照常弹问询页",
+                "Just start timing tasks as usual; a genuine distraction with a fresh, high-confidence cloud verdict still raises the inquiry page as before");
+        out.add(e1950);
+
         Entry e1940 = new Entry("v1.94.0", "2026-11-23");
         e1940.add(new Group(s("移除", "Removed"),
                 s("去掉全部黑名单：通用兜底黑名单、各任务名单里的黑档、按软件类别（购物/短视频）直接判定、按购物/短视频关键词直接判定，一并取消；原来判黑的软件现在按灰档处理，不再一打开就弹问询",
