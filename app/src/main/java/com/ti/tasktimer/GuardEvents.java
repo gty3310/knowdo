@@ -30,7 +30,7 @@ public final class GuardEvents {
     private static File file(Context c) { return new File(c.getFilesDir(), FILE); }
 
     public static synchronized void add(Context c, TaskItem task, String category, float confidence, String detail) {
-        addInternal(c, task, category, confidence, detail, false, null, null, null);
+        addInternal(c, task, category, confidence, detail, false, null, null, null, null);
     }
 
     /**
@@ -39,7 +39,7 @@ public final class GuardEvents {
      * 备注绝不当成一次分神扣分。
      */
     public static synchronized void addNote(Context c, TaskItem task, String category, float confidence, String detail) {
-        addInternal(c, task, category, confidence, detail, true, null, null, null);
+        addInternal(c, task, category, confidence, detail, true, null, null, null, null);
     }
 
     /**
@@ -51,18 +51,39 @@ public final class GuardEvents {
      */
     public static synchronized void addTraced(Context c, TaskItem task, String category, float confidence,
                                               String detail, String src, Float score, String cloud) {
-        addInternal(c, task, category, confidence, detail, false, src, score, cloud);
+        addInternal(c, task, category, confidence, detail, false, src, score, cloud, null);
     }
 
     /** 带判定留痕的备注事件（v1.69.0）：同 addNote，只多 src/score/cloud 三个可选字段。 */
     public static synchronized void addNoteTraced(Context c, TaskItem task, String category, float confidence,
                                                   String detail, String src, Float score, String cloud) {
-        addInternal(c, task, category, confidence, detail, true, src, score, cloud);
+        addInternal(c, task, category, confidence, detail, true, src, score, cloud, null);
+    }
+
+    /**
+     * 带宽松档的触发事件（v1.98.0）：同 addTraced，只多一个可选字段 leniency
+     * （0–3，云端判定的宽松程度）；为 null 时整条事件与旧版逐字节一致。
+     * 既有字段（category/detail/src/score/cloud）的取值与语义一律不动。
+     */
+    public static synchronized void addTraced(Context c, TaskItem task, String category, float confidence,
+                                              String detail, String src, Float score, String cloud,
+                                              Integer leniency) {
+        addInternal(c, task, category, confidence, detail, false, src, score, cloud, leniency);
+    }
+
+    /**
+     * 带宽松档的备注事件（v1.98.0）：L2/L3 假分神放行与 L0 反思留痕用——
+     * 备注事件不计分神（ZhixingCalc 既有口径），正合「假分神不记分神」。
+     */
+    public static synchronized void addNoteTraced(Context c, TaskItem task, String category, float confidence,
+                                                  String detail, String src, Float score, String cloud,
+                                                  Integer leniency) {
+        addInternal(c, task, category, confidence, detail, true, src, score, cloud, leniency);
     }
 
     private static synchronized long addInternal(Context c, TaskItem task, String category,
                                                    float confidence, String detail, boolean note,
-                                                   String src, Float score, String cloud) {
+                                                   String src, Float score, String cloud, Integer leniency) {
         long now = System.currentTimeMillis();
         try {
             JSONArray arr = loadArray(c);
@@ -78,6 +99,7 @@ public final class GuardEvents {
             if (src != null) e.put("src", src);
             if (score != null) e.put("score", Math.round(score * 100.0) / 100.0);
             if (cloud != null) e.put("cloud", cloud);
+            if (leniency != null) e.put("leniency", leniency.intValue());
             arr.put(e);
             saveArray(c, trim(arr));
         } catch (Exception ignored) { }

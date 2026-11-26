@@ -55,6 +55,36 @@ public class GuardActivity extends Activity {
     private String graceAction = ScreenGuardPrefs.ACTION_BLOCK;
     private final List<Button> graceModeBtns = new ArrayList<>();
 
+    // 宽松四档形态（v1.98.0，与大窗版 GuardOverlay 同口径）：2＝极简问询、
+    // 0＝全额停稳（先呼吸＋反思一问，宽限钮后置解禁）；其余走标准形态
+    private int leniency = -1;
+    private boolean l0Mode;
+    private boolean breathDone;
+    private boolean reflectDone;
+    private long breathEndMs;
+    private int breathTotalSec;
+    private TextView breathText;
+    private final List<Button> l0GateBtns = new ArrayList<>();
+    private final List<Button> chipBtns = new ArrayList<>();
+    private final android.os.Handler breathHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable breathTick = new Runnable() {
+        @Override public void run() {
+            if (isFinishing() || breathDone || breathEndMs <= 0 || breathText == null) return;
+            long remainMs = breathEndMs - System.currentTimeMillis();
+            if (remainMs <= 0) {
+                breathDone = true;
+                breathText.setText("呼吸完成");
+                refreshL0Gates();
+                return;
+            }
+            long elapsed = breathTotalSec - (remainMs + 999) / 1000;
+            boolean inhale = (elapsed / 4) % 2 == 0;
+            breathText.setText("呼吸：" + (inhale ? "吸气" : "呼气")
+                    + " · 还剩 " + (remainMs + 999) / 1000 + " 秒");
+            breathHandler.postDelayed(this, 250);
+        }
+    };
+
     private ScrollView scrollView;
     private LinearLayout actionsBox;
 
@@ -89,6 +119,9 @@ public class GuardActivity extends Activity {
         }
         hardQuotaExhausted = ScreenGuardPrefs.DIFF_HARD.equals(difficulty)
                 && GuardLedger.hardGraceUsed(this) >= ScreenGuardPrefs.hardGraceQuota(this);
+        // 宽松档（v1.98.0）：只对内容模式生效；名单模式恒标准形态
+        leniency = contentMode ? VerdictEngine.lastInquiryLeniency(this) : -1;
+        l0Mode = contentMode && leniency == LeniencyGate.L0;
         AlertHelper.cancelGuard(this);
         Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vib != null) vib.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE));
@@ -160,6 +193,31 @@ public class GuardActivity extends Activity {
         actionsBox = new LinearLayout(this);
         actionsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(actionsBox);
+
+        // 极简问询（v1.98.0，宽松 L2 假分神·大概）：一个大按钮一键放行——
+        // 不用写解释、不过呼吸门、不记分神；放行即把当前流水段标成临时
+        // 任务段。下面另留一个「回到任务」出口（同样不记分神）。
+        if (contentMode && leniency == LeniencyGate.L2) {
+            Button busy = bigButton("在忙正事", Color.rgb(46, 125, 50));
+            busy.setOnClickListener(v -> {
+                ActivityStream.markCurrentTempTask(this);
+                finish();
+            });
+            actionsBox.addView(busy);
+            spacer(actionsBox, 16);
+            Button back = bigButton(pauseGuardMode ? "回到要做的事" : "立即回到任务", Color.rgb(31, 47, 42));
+            back.setOnClickListener(v -> {
+                if (pauseGuardMode) { finish(); return; }
+                VerdictEngine.contentImmediate(this);
+                finish();
+            });
+            actionsBox.addView(back);
+            return;
+        }
+
+        // 全额停稳（v1.98.0，宽松 L0 真分神·明确）：先呼吸、再反思一问，
+        // 两样都做完宽限钮才解禁（收紧）；回到任务/马上封/切换/申诉不受门控
+        if (l0Mode) buildL0Block(actionsBox);
 
         Button now = bigButton(pauseGuardMode ? "回到要做的事" : "立即回到任务", Color.rgb(46, 125, 50));
         now.setOnClickListener(v -> {
@@ -340,6 +398,8 @@ public class GuardActivity extends Activity {
             int n = GuardLedger.graceCount(this, taskId);
             int breath = Math.min(120, 15 << Math.min(n, 3));
             GuardBreath.start(this, breath * 1000L);
+            // 注：L0 形态下宽限钮另有呼吸＋反思前置门（见 buildL0Block），
+            // 走到这里说明两道前置都已完成，本处呼吸门是难度档原有口径、不变
             android.content.Intent i = new android.content.Intent(this, BreathingActivity.class);
             i.putExtra(BreathingActivity.EXTRA_MODE, contentMode ? "content" : "list");
             i.putExtra(BreathingActivity.EXTRA_PKG, fgPkg);
@@ -350,7 +410,87 @@ public class GuardActivity extends Activity {
             try { startActivity(i); } catch (Exception ignored) { }
             finish();
         });
+        // L0 全额停稳：宽限时长钮先上锁，呼吸＋反思都做完才解禁（收紧口径）；
+        // 「马上封」是立即处置不是宽限，不上锁
+        if (l0Mode && seconds > 0) {
+            l0GateBtns.add(b);
+            b.setEnabled(false);
+            b.setAlpha(0.45f);
+        }
         return b;
+    }
+
+    // ---------------- L0 全额停稳：呼吸＋反思（v1.98.0，与大窗版同口径） ----------------
+
+    /**
+     * 呼吸块＋反思一问：呼吸时长按难度档 15/30/45 秒（地板口径，不因任何
+     * 返回缩水）；反思一问「刚才是什么把你带走的」点标签即可、不强制打字，
+     * 选择只记一条备注留痕。两样都完成才解禁宽限钮；目的不是罚时，是
+     * 打断自动驾驶状态。
+     */
+    private void buildL0Block(LinearLayout box) {
+        breathTotalSec = ScreenGuardPrefs.DIFF_HARD.equals(difficulty) ? 45
+                : ScreenGuardPrefs.DIFF_EASY.equals(difficulty) ? 15 : 30;
+        breathText = new TextView(this);
+        breathText.setText("先停下来，跟着呼吸一会儿");
+        breathText.setTextSize(17);
+        breathText.setTextColor(Color.rgb(31, 47, 42));
+        box.addView(breathText);
+        Button breathBtn = bigButton("先呼吸（" + breathTotalSec + " 秒）", Color.rgb(90, 90, 90));
+        breathBtn.setOnClickListener(v -> {
+            if (breathEndMs > 0) return;
+            breathEndMs = System.currentTimeMillis() + breathTotalSec * 1000L;
+            v.setEnabled(false);
+            ((Button) v).setText("呼吸中");
+            breathHandler.post(breathTick);
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        blp.setMargins(0, dp(10), 0, dp(20));
+        box.addView(breathBtn, blp);
+
+        TextView q = new TextView(this);
+        q.setText("刚才是什么把你带走的？");
+        q.setTextSize(17);
+        q.setTextColor(Color.rgb(31, 47, 42));
+        box.addView(q);
+        String[] tags = {"手痒点开", "消息牵走", "停不下来", "累了想歇", "其实是正事"};
+        for (int i = 0; i < tags.length; i += 3) {
+            LinearLayout row = scRow(box);
+            for (int j = i; j < Math.min(i + 3, tags.length); j++) {
+                final String tag = tags[j];
+                Button chip = scButton(tag);
+                chip.setOnClickListener(v -> {
+                    if (reflectDone) return;
+                    reflectDone = true;
+                    recordReflection(tag);
+                    for (Button b : chipBtns) styleScButton(b, b == v);
+                    refreshL0Gates();
+                });
+                chipBtns.add(chip);
+                row.addView(chip);
+            }
+        }
+        spacer(box, 20);
+    }
+
+    /** 反思选择留痕：一条备注事件（不计分神），只增记录、不动既有事件取值。 */
+    private void recordReflection(String tag) {
+        try {
+            TaskItem t = new TaskItem();
+            t.id = taskId;
+            t.title = TimerState.taskTitle(this);
+            GuardEvents.addNoteTraced(this, t, category, 0f,
+                    "真分神反思：" + tag, null, null, null, LeniencyGate.L0);
+        } catch (Exception ignored) { }
+    }
+
+    private void refreshL0Gates() {
+        boolean open = breathDone && reflectDone;
+        for (Button b : l0GateBtns) {
+            b.setEnabled(open);
+            b.setAlpha(open ? 1f : 0.45f);
+        }
     }
 
     private LinearLayout scRow(LinearLayout root) {
@@ -404,6 +544,7 @@ public class GuardActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        breathHandler.removeCallbacks(breathTick);
         // 问询在本页了结（用户点了某个出口正常 finish）：未决落盘清除（v1.97.0）；
         // 系统回收/配置变更等非 finish 销毁不清，留给 GuardPending 重出
         if (isFinishing()) GuardPending.clear(this);

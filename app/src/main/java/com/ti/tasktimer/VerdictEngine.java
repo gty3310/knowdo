@@ -35,6 +35,7 @@ public final class VerdictEngine {
                 .remove("last_cat").remove("streak")
                 .remove("grace_cat").remove("grace_until").remove("grace_pkg")
                 .remove("inquiry_pkg").remove("inquiry_event_ts")
+                .remove("inquiry_leniency")
                 .remove("cooldown_until")
                 .remove("session_allow_cats")
                 .remove("noauth_logged")
@@ -56,6 +57,15 @@ public final class VerdictEngine {
     /** 最近一次问询是否由语义判定在降级状态下触发（GuardActivity 诊断行用）。 */
     public static boolean lastInquirySemanticDegraded(Context c) {
         return prefs(c).getBoolean("inquiry_semantic_degraded", false);
+    }
+
+    /**
+     * 最近一次问询的生效宽松档（v1.98.0）：trigger 时经 LeniencyGate 把关后
+     * 落 prefs，问询页（大窗/原页）据此选形态——2＝极简、0＝全额停稳、
+     * 1/-1＝现行标准形态。名单模式不写此值（恒 -1，标准形态）。
+     */
+    public static int lastInquiryLeniency(Context c) {
+        return prefs(c).getInt("inquiry_leniency", -1);
     }
 
     /** 最近一次问询触发时捕获的前台包名（GuardPending 进程重启重出时核对前台用）。 */
@@ -125,14 +135,53 @@ public final class VerdictEngine {
         // 记下触发这一问询时的前台包名：用户若选宽限，宽限状态连它一起存，
         // 到点复查「是不是还停在当时那个分神应用」就靠它比对
         String fg = currentForeground(c);
+        // 宽松四档（v1.98.0）：云端原始 leniency 先过本地硬护栏（LeniencyGate，
+        // 只封顶不加严）；原始 L0 记入本地历史供护栏数「近 1 小时已判 L0」。
+        // 无 leniency（-1：服务端未部署/本地兜底）时 effLen=-1，走下面标准
+        // 路径，行为与 v1.97.0 逐字节一致。
+        int rawLen = r.judgeLeniency;
+        int effLen = LeniencyGate.effective(c, rawLen);
+        if (rawLen == LeniencyGate.L0) ActivityStream.noteL0(c);
+        Float score = Float.isNaN(r.semanticScore) ? null : r.semanticScore;
+        String cloud = SemanticJudge.lastCloud.isEmpty() ? null : SemanticJudge.lastCloud;
+
+        if (effLen == LeniencyGate.L3 || effLen == LeniencyGate.L2) {
+            // 假分神：不记分神——留痕走备注事件（备注不计分神是 ZhixingCalc
+            // 既有口径），不写 self_checks、不惊动陪聊。L3 不弹窗直接放行；
+            // L2 弹极简问询（一个大按钮放行）。两档都把当前流水段标成
+            // 临时任务段（假分神＝临时换了一个任务）。
+            GuardEvents.addNoteTraced(c, task, r.category, r.confidence,
+                    r.detail + "（宽松 L" + effLen + "：判假分神，"
+                            + (effLen == LeniencyGate.L3 ? "不弹窗放行" : "极简问询") + "）",
+                    r.semanticSource, score, cloud, effLen);
+            ActivityStream.markCurrentTempTask(c);
+            SharedPreferences.Editor e = prefs(c).edit().remove("last_cat").remove("streak")
+                    .putLong("cooldown_until", now + cooldownMs(c));
+            if (effLen == LeniencyGate.L2) e.putInt("inquiry_leniency", effLen);
+            else e.remove("inquiry_leniency");
+            if (fg != null) e.putString("inquiry_pkg", fg); else e.remove("inquiry_pkg");
+            e.apply();
+            TimerState.logEvent(c, "屏幕内容守卫：宽松 L" + effLen + " 判假分神「"
+                    + ContentAnalyzer.label(r.category) + "」，" + r.detail);
+            if (effLen == LeniencyGate.L2) {
+                FloatingWindow.setSuppressed(true);
+                AlertHelper.fireGuardContent(c, r.category, r.detail);
+            }
+            return;
+        }
+
         // 判定留痕（v1.69.0）：语义层出过结论的事件带 src/score/cloud；纯粗判
         // （包名/关键词硬规则）标 src=rules；黄色类由看图模型定、照旧不带 src。
-        // 既有字段（category/confidence/detail）取值一律不动。
+        // 既有字段（category/confidence/detail）取值一律不动。v1.98.0 起云端
+        // 判定带 leniency 时只增一个 leniency 字段（记生效档），其余不变。
         if (r.semanticSource != null) {
-            GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
-                    r.semanticSource,
-                    Float.isNaN(r.semanticScore) ? null : r.semanticScore,
-                    SemanticJudge.lastCloud.isEmpty() ? null : SemanticJudge.lastCloud);
+            if (effLen >= 0) {
+                GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
+                        r.semanticSource, score, cloud, effLen);
+            } else {
+                GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
+                        r.semanticSource, score, cloud);
+            }
         } else if (!ContentAnalyzer.CAT_NSFW.equals(r.category)) {
             GuardEvents.addTraced(c, task, r.category, r.confidence, r.detail,
                     "rules", null, null);
@@ -152,6 +201,9 @@ public final class VerdictEngine {
                 // 本次问询是否「语义判定触发且当时在降级」（v1.21.4）：只供
                 // diag_mode 开启时问询页底部显示诊断行，普通用户永远看不到
                 .putBoolean("inquiry_semantic_degraded", "degraded".equals(r.semanticSource));
+        // 本次问询的生效宽松档（v1.98.0）：0＝全额停稳形态、1＝标准形态；
+        // 无 leniency 时清掉旧值，问询页按标准形态走
+        if (effLen >= 0) e.putInt("inquiry_leniency", effLen); else e.remove("inquiry_leniency");
         if (fg != null) e.putString("inquiry_pkg", fg); else e.remove("inquiry_pkg");
         e.apply();
         // 主动陪聊（v1.24.0）：分神确认的落账点就在这里——确认一次分神，AI 就往

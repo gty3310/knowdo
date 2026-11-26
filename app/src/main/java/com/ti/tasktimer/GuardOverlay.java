@@ -57,6 +57,17 @@ public final class GuardOverlay implements BigOverlay.Content {
     private String graceAction = ScreenGuardPrefs.ACTION_BLOCK;
     private final List<Button> graceModeBtns = new ArrayList<>();
 
+    // 宽松四档形态（v1.98.0）：2＝极简问询、0＝全额停稳；其余走标准形态
+    private int leniency = -1;
+    private boolean l0Mode;
+    private boolean breathDone;
+    private boolean reflectDone;
+    private long breathEndMs;
+    private int breathTotalSec;
+    private TextView breathText;
+    private final List<Button> l0GateBtns = new ArrayList<>();
+    private final List<Button> chipBtns = new ArrayList<>();
+
     /** 新一次触发先重置（等价原页新开实例）：判定上下文与本页状态全量换新。 */
     void prepare(boolean content, String pkg, String cat, String det, String rsn) {
         contentMode = content;
@@ -67,6 +78,14 @@ public final class GuardOverlay implements BigOverlay.Content {
         driftRecorded = false;
         inquiryCounted = false;
         graceModeBtns.clear();
+        leniency = -1;
+        l0Mode = false;
+        breathDone = false;
+        reflectDone = false;
+        breathEndMs = 0;
+        breathText = null;
+        l0GateBtns.clear();
+        chipBtns.clear();
     }
 
     @Override
@@ -81,6 +100,9 @@ public final class GuardOverlay implements BigOverlay.Content {
         hardQuotaExhausted = ScreenGuardPrefs.DIFF_HARD.equals(difficulty)
                 && GuardLedger.hardGraceUsed(c) >= ScreenGuardPrefs.hardGraceQuota(c);
         graceAction = ScreenGuardPrefs.graceAction(c);
+        // 宽松档（v1.98.0）：只对内容模式生效；名单模式恒标准形态
+        leniency = contentMode ? VerdictEngine.lastInquiryLeniency(c) : -1;
+        l0Mode = contentMode && leniency == LeniencyGate.L0;
 
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -136,6 +158,36 @@ public final class GuardOverlay implements BigOverlay.Content {
             root.addView(asp, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         }
+
+        // 极简问询（v1.98.0，宽松 L2 假分神·大概）：一个大按钮一键放行——
+        // 不用写解释、不过呼吸门、不记分神；放行即把当前流水段标成临时
+        // 任务段。下面另留一个「回到任务」出口（同样不记分神）。
+        if (contentMode && leniency == LeniencyGate.L2) {
+            LinearLayout simple = new LinearLayout(c);
+            simple.setOrientation(LinearLayout.VERTICAL);
+            root.addView(simple);
+            Button busy = bigButton("在忙正事", Color.rgb(46, 125, 50));
+            busy.setOnClickListener(v -> {
+                resolve();
+                ActivityStream.markCurrentTempTask(ctx);
+                finish();
+            });
+            simple.addView(busy);
+            spacer(simple, 16);
+            Button back = bigButton(pauseGuardMode ? "回到要做的事" : "立即回到任务", Color.rgb(31, 47, 42));
+            back.setOnClickListener(v -> {
+                resolve();
+                if (pauseGuardMode) { finish(); return; }
+                VerdictEngine.contentImmediate(ctx);
+                finish();
+            });
+            simple.addView(back);
+            return page;
+        }
+
+        // 全额停稳（v1.98.0，宽松 L0 真分神·明确）：先呼吸、再反思一问，
+        // 两样都做完宽限钮才解禁（收紧）；回到任务/马上封/切换/申诉不受门控
+        if (l0Mode) buildL0Block(root);
 
         LinearLayout actionsBox = new LinearLayout(c);
         actionsBox.setOrientation(LinearLayout.VERTICAL);
@@ -251,6 +303,7 @@ public final class GuardOverlay implements BigOverlay.Content {
 
     @Override
     public boolean tick(Context c) {
+        tickBreath();
         // 问询成立的前提没了（计时停了／暂停结束了）就自动收回，等价原页
         // 随 Activity 生命周期的自然消失；失效收回时未决问询一并作废
         boolean valid = pauseGuardMode
@@ -305,6 +358,8 @@ public final class GuardOverlay implements BigOverlay.Content {
             // medium / hard：先过深呼吸门——收窗后拉起 BreathingActivity，
             // extras 与原页逐项相同；呼吸完成才执行宽限并记账（原页口径）
             int n = GuardLedger.graceCount(ctx, taskId);
+            // 注：L0 形态下宽限钮另有呼吸＋反思前置门（见 buildL0Block），
+            // 走到这里说明两道前置都已完成，本处呼吸门是难度档原有口径、不变
             int breath = Math.min(120, 15 << Math.min(n, 3));
             GuardBreath.start(ctx, breath * 1000L);
             resolve(); // 问询已交接给呼吸门（见类注释 3）
@@ -319,7 +374,102 @@ public final class GuardOverlay implements BigOverlay.Content {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try { ctx.startActivity(i); } catch (Exception ignored) { }
         });
+        // L0 全额停稳：宽限时长钮先上锁，呼吸＋反思都做完才解禁（收紧口径）；
+        // 「马上封」是立即处置不是宽限，不上锁
+        if (l0Mode && seconds > 0) {
+            l0GateBtns.add(b);
+            b.setEnabled(false);
+            b.setAlpha(0.45f);
+        }
         return b;
+    }
+
+    // ---------------- L0 全额停稳：呼吸＋反思（v1.98.0） ----------------
+
+    /**
+     * 呼吸块＋反思一问：呼吸用大窗自身的每秒 tick 计时（15/30/45 秒按难度
+     * 档，地板口径——不因任何返回缩水）；反思一问「刚才是什么把你带走的」
+     * 点标签即可、不强制打字，选择只记一条备注留痕（不改既有事件字段）。
+     * 两样都完成才解禁宽限钮；目的不是罚时，是打断自动驾驶状态。
+     */
+    private void buildL0Block(LinearLayout root) {
+        breathTotalSec = ScreenGuardPrefs.DIFF_HARD.equals(difficulty) ? 45
+                : ScreenGuardPrefs.DIFF_EASY.equals(difficulty) ? 15 : 30;
+        breathText = new TextView(ctx);
+        breathText.setText("先停下来，跟着呼吸一会儿");
+        breathText.setTextSize(17);
+        breathText.setTextColor(Color.rgb(31, 47, 42));
+        root.addView(breathText);
+        Button breathBtn = bigButton("先呼吸（" + breathTotalSec + " 秒）", Color.rgb(90, 90, 90));
+        breathBtn.setOnClickListener(v -> {
+            if (breathEndMs > 0) return;
+            breathEndMs = System.currentTimeMillis() + breathTotalSec * 1000L;
+            v.setEnabled(false);
+            ((Button) v).setText("呼吸中");
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        blp.setMargins(0, dp(10), 0, dp(20));
+        root.addView(breathBtn, blp);
+
+        TextView q = new TextView(ctx);
+        q.setText("刚才是什么把你带走的？");
+        q.setTextSize(17);
+        q.setTextColor(Color.rgb(31, 47, 42));
+        root.addView(q);
+        String[] tags = {"手痒点开", "消息牵走", "停不下来", "累了想歇", "其实是正事"};
+        for (int i = 0; i < tags.length; i += 3) {
+            LinearLayout row = scRow(root);
+            for (int j = i; j < Math.min(i + 3, tags.length); j++) {
+                final String tag = tags[j];
+                Button chip = scButton(tag);
+                chip.setOnClickListener(v -> {
+                    if (reflectDone) return;
+                    reflectDone = true;
+                    recordReflection(tag);
+                    for (Button b : chipBtns) styleScButton(b, b == v);
+                    refreshL0Gates();
+                });
+                chipBtns.add(chip);
+                row.addView(chip);
+            }
+        }
+        spacer(root, 20);
+    }
+
+    /** 反思选择留痕：一条备注事件（不计分神），只增记录、不动既有事件取值。 */
+    private void recordReflection(String tag) {
+        try {
+            TaskItem t = new TaskItem();
+            t.id = taskId;
+            t.title = TimerState.taskTitle(ctx);
+            GuardEvents.addNoteTraced(ctx, t, category, 0f,
+                    "真分神反思：" + tag, null, null, null, LeniencyGate.L0);
+        } catch (Exception ignored) { }
+    }
+
+    private void refreshL0Gates() {
+        boolean open = breathDone && reflectDone;
+        for (Button b : l0GateBtns) {
+            b.setEnabled(open);
+            b.setAlpha(open ? 1f : 0.45f);
+        }
+    }
+
+    /** L0 呼吸计时（大窗每秒 tick 驱动）：4 秒吸/4 秒呼交替，到点解禁一半。 */
+    private void tickBreath() {
+        if (!l0Mode || breathDone || breathEndMs <= 0 || breathText == null) return;
+        long remainMs = breathEndMs - System.currentTimeMillis();
+        if (remainMs <= 0) {
+            breathDone = true;
+            breathText.setText("呼吸完成");
+            refreshL0Gates();
+            return;
+        }
+        long elapsed = breathTotalSec - (remainMs + 999) / 1000;
+        boolean inhale = (elapsed / 4) % 2 == 0;
+        breathText.setText("呼吸：" + (inhale ? "吸气" : "呼气")
+                + " · 还剩 " + (remainMs + 999) / 1000 + " 秒");
     }
 
     // ---------------- 宽限到点处理方式（仅内容模式，与原页同） ----------------
