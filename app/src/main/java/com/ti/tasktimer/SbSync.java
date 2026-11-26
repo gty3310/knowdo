@@ -201,6 +201,11 @@ public final class SbSync {
         // 5) user_state：schedule/gcal 缓存、guard_events 合并、timer_state 对账与补写
         syncUserState(c, uid);
 
+        // 5.5) 崩溃上报（v1.98.1）：随本轮同步节奏顺带上传（测试者模式才有
+        // 数据、无新数据时零请求；失败留本地等下一轮，内部全兜底不抛）
+        CrashReporter.flushUpload(c, uid);
+        CrashReporter.crumb("sync_ok");
+
         prefs(c).edit().putLong("last_sync_at", System.currentTimeMillis()).apply();
         StartReminder.reschedule(c, store);
         AlarmScheduler.rescheduleAll(c, store);
@@ -263,12 +268,15 @@ public final class SbSync {
      * 所有 user_state 拉取一律走这份清单（app_list_request 在清单内，供信箱
      * 取件）。列增减时同步改这里。
      * v1.85.0：加 today_advice（AI 建议，云端写、App 只读），共 24 列。
+     * v1.98.1：移出 reschedule_request，共 23 列——该列自 v1.26.0 起 App 已
+     * 撤除接线，现改作崩溃上报落点（CrashReporter 只写不读），留在拉取清单
+     * 里会把崩溃明细每轮同步整包拉回、白烧出流量，故移出。
      */
     private static final String USER_STATE_COLS =
             "user_id,updated_at,schedule,gcal,guard_events,timer_state,aspiration,"
             + "self_checks,idle_nag,habit_data,guard_rules,app_list_request,app_rulings,"
             + "prompt_repop,update_prefs,habit_display,accountability,day_avail,"
-            + "weekly_data,cloud_patch,diary_titles,diary_importance,reschedule_request,"
+            + "weekly_data,cloud_patch,diary_titles,diary_importance,"
             + "today_advice";
 
     private static String userStateUrl() { return "user_state?select=" + USER_STATE_COLS; }
@@ -298,7 +306,9 @@ public final class SbSync {
         boolean hasPatch = probeUserStateCol(c, "cloud_patch"); // v1.52.0：云端补丁（云端协助整理的数据改动落地用），列未就绪不读、行为与旧版一字不差
         boolean hasAdvice = probeUserStateCol(c, "today_advice"); // v1.85.0：AI 建议（云端写、App 只读），列未就绪不碰此键
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
-        // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本类不再碰该列。
+        // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本方法不再碰
+        // 该列；v1.98.1 起该列改作崩溃上报落点，由 CrashReporter 在 doSync 里
+        // 只写不读（已移出拉取清单）。
 
         if (urow != null) {
             JSONObject sch = urow.isNull("schedule") ? null : urow.optJSONObject("schedule");

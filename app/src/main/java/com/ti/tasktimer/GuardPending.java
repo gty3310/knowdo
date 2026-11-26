@@ -47,6 +47,7 @@ public final class GuardPending {
 
     public static void save(Context c, boolean contentMode, String pkg, String category,
                             String detail, String reason, boolean pauseGuard) {
+        CrashReporter.crumb("guard_inquiry");
         prefs(c).edit()
                 .putBoolean("has", true)
                 .putBoolean("content", contentMode)

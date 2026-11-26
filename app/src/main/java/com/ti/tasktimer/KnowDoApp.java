@@ -25,6 +25,10 @@ public class KnowDoApp extends Application {
 
     @Override public void onCreate() {
         super.onCreate();
+        // 崩溃上报（v1.98.1）：装未捕获异常 handler（内部链回原 handler）＋
+        // 面包屑起点；测试者模式关着时记录侧全程空操作
+        CrashReporter.install(this);
+        CrashReporter.crumb("app_start");
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override public void onActivityStarted(Activity a) { startedCount++; }
             @Override public void onActivityStopped(Activity a) {

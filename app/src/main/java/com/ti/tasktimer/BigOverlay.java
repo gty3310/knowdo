@@ -78,6 +78,7 @@ public final class BigOverlay {
     /** 请求出窗：能立刻出就立刻出，否则排队（同 key 重复请求＝换新内容）。 */
     public static void request(Context c, String key, int pri, Content content) {
         if (c == null || key == null || content == null) return;
+        CrashReporter.crumb("overlay:" + key);
         boolean reshowing = key.equals(showingKey) && FloatingWindow.isOverlayShowing();
         PENDING.put(key, new Entry(pri, content));
         if (reshowing) {
@@ -109,6 +110,7 @@ public final class BigOverlay {
 
     private static void dismissInternal(Context c, String key, boolean promote) {
         if (key == null) return;
+        CrashReporter.crumb("overlay_dismiss:" + key);
         Entry e = PENDING.remove(key);
         if (key.equals(showingKey)) {
             showingKey = null;

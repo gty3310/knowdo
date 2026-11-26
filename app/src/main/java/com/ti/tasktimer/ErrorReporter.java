@@ -61,6 +61,9 @@ public final class ErrorReporter {
             if (ctx == null) return;
             final Context app = ctx.getApplicationContext();
             if (!ScreenGuardPrefs.diagMode(app)) return;
+            // 崩溃上报（v1.98.1）：展示之外再落一条本地记录供远程 debug；
+            // CrashReporter 内部全兜底，失败不影响展示
+            CrashReporter.recordReported(app, source, httpStatus, detail);
             final String title = buildTitle(source, httpStatus);
             final String body = truncate(detail);
             ui.post(() -> show(app, title, body));
