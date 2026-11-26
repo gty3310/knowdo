@@ -36,11 +36,10 @@ public class CheckActivity extends Activity {
     private Runnable primaryAction; // 回车触发的主按钮动作（当前阶段的主按钮）
     private Runnable keyQ, keyW, keyE; // 结束页前三个加时选项
     private ChatPanel endChatPanel; // 结束页内嵌聊天区（v1.24.0，只在 showEnd 里建）
-    // 加时动机门（v1.72.0）：本页本次是否已过门、门后要回去的选时长步、过半页加时区状态
+    // 加时动机门（v1.72.0）：本页本次是否已过门、过半页加时区状态
     private boolean motivePassed;
-    private Runnable extendBack;
     // 原则陪跑问询（v1.75.0，F3）：本页（本次完成）是否已答、答了什么——
-    // 答过就只显已记态，同一次完成不重复问；页重建（加时回选时长步）也记得。
+    // 答过就只显已记态，同一次完成不重复问；页重建也记得。
     private boolean principleAnswered;
     private String principleAnswerValue = "";
     private LinearLayout halfAddBox;
@@ -187,7 +186,8 @@ public class CheckActivity extends Activity {
         // 加时间（v1.39.0）：与结束页同一套 extendTimer 机制；点完不关页、可连点
         // 累加，累计分钟显示在本区下方；不加也能照常点「想好了，继续」。
         // v1.72.0：加时区独立装进 halfAddBox——第一次点加时先过动机门，门只换
-        // 这一块，上面写办法的输入框原样不动；过门后加时区重画，照常点按钮累计。
+        // 这一块，上面写办法的输入框原样不动；v1.95.1 起过门后直接把刚才点的
+        // 时长累计上（重画加时区后就地执行），不用再点一次。
         halfAddedMin = 0;
         halfAddBox = new LinearLayout(this);
         halfAddBox.setOrientation(LinearLayout.VERTICAL);
@@ -244,7 +244,7 @@ public class CheckActivity extends Activity {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
                 if (min > 0) {
-                    if (!motivePassed) { gateHalf(); return; }
+                    if (!motivePassed) { gateHalf(min * 60); return; }
                     doHalfAdd(min * 60);
                     custom.setText("");
                 }
@@ -271,12 +271,17 @@ public class CheckActivity extends Activity {
         return v;
     }
 
-    /** 过半页的动机门（v1.72.0）：只换加时区这一块，不动写办法的输入框。 */
-    private void gateHalf() {
+    /**
+     * 过半页的动机门（v1.72.0）：只换加时区这一块，不动写办法的输入框。
+     * v1.95.1：过门后先重建加时区（累计行在里面重建），随即把用户刚才点的
+     * addSec 直接累计上——点一次到位，不用过门后再点一次。
+     */
+    private void gateHalf(final int addSec) {
         halfAddBox.removeAllViews();
         MotiveGate.buildInto(this, halfAddBox, () -> {
             motivePassed = true;
             buildHalfAddArea();
+            doHalfAdd(addSec);
         });
     }
 
@@ -296,7 +301,7 @@ public class CheckActivity extends Activity {
         lp.setMargins(dp(3), 0, dp(3), 0);
         b.setLayoutParams(lp);
         b.setOnClickListener(v -> {
-            if (!motivePassed) { gateHalf(); return; }
+            if (!motivePassed) { gateHalf(addSec); return; }
             doHalfAdd(addSec);
         });
         return b;
@@ -376,7 +381,6 @@ public class CheckActivity extends Activity {
         clear();
         primaryAction = null;
         keyQ = keyW = keyE = null;
-        extendBack = this::showSubExtend;
         title(Strings.subExtend());
         subtitle(Strings.subCheckSub(taskName(), TimerState.subIndex(this) + 1,
                 TimerState.subCount(this), TimerState.subTitle(this)));
@@ -434,7 +438,6 @@ public class CheckActivity extends Activity {
     private void showEnd() {
         clear();
         keyQ = keyW = keyE = null;
-        extendBack = this::showEnd;
         // 结束页催促（v1.21.1）：页面真展示出来了——经响铃页转入的结束在此武装
         // 升级链（锚点＝展示时刻）；直达路径在 fire 时已武装，这里只续排无-op
         EndNag.noteEndPageShown(this);
@@ -601,24 +604,26 @@ public class CheckActivity extends Activity {
 
     /**
      * 加时动机门（v1.72.0）：未过门时把本页换成自问层（MotiveGate 同一层组件）——
-     * 点「有/没有」先记一条动机事件（本地先行、立即放行），随后回到原来的
-     * 选时长步（extendBack 指向的阶段）重新选时长，这次点选本身不执行。
-     * 门内没有关闭/跳过入口；键盘 Q/W/E 在门层同样不生效（keyQ 等已清空）。
+     * 点「有/没有」先记一条动机事件（本地先行、立即放行），随后执行 afterGate：
+     * 点了具体时长来过门的，afterGate 就是执行那个时长（v1.95.1 起点一次到位，
+     * 不再回选时长步重选）；只是导航来过门的（子任务页「加时」按钮），
+     * afterGate 是进入选时长步。门内没有关闭/跳过入口；键盘 Q/W/E 在门层
+     * 同样不生效（keyQ 等已清空）。
      */
-    private void gateThen(final Runnable backToChoices) {
+    private void gateThen(final Runnable afterGate) {
         clear();
         primaryAction = null;
         keyQ = keyW = keyE = null;
         MotiveGate.buildInto(this, root, () -> {
             motivePassed = true;
-            backToChoices.run();
+            afterGate.run();
         });
     }
 
-    /** 选了时长先过门：已过门直接执行原加时；没过门先过门、回选时长步重选。 */
-    private void gatedExtend(int addSec) {
+    /** 选了时长先过门：已过门直接执行原加时；没过门先过门，过门后直接执行所点时长。 */
+    private void gatedExtend(final int addSec) {
         if (motivePassed) { doExtend(addSec); return; }
-        gateThen(extendBack);
+        gateThen(() -> doExtend(addSec));
     }
 
     private void doExtend(int addSec) {

@@ -48,7 +48,6 @@ public final class CheckOverlay implements BigOverlay.Content {
     private LinearLayout footer;
     private ChatPanel endChatPanel;
     private boolean motivePassed;
-    private Runnable extendBack;
     private boolean principleAnswered;
     private String principleAnswerValue = "";
     private LinearLayout halfAddBox;
@@ -73,7 +72,6 @@ public final class CheckOverlay implements BigOverlay.Content {
     void prepare(int newType) {
         type = newType;
         motivePassed = false;
-        extendBack = null;
         principleAnswered = false;
         principleAnswerValue = "";
         halfAddedMin = 0;
@@ -246,7 +244,7 @@ public final class CheckOverlay implements BigOverlay.Content {
             try {
                 int min = Integer.parseInt(custom.getText().toString().trim());
                 if (min > 0) {
-                    if (!motivePassed) { gateHalf(); return; }
+                    if (!motivePassed) { gateHalf(min * 60); return; }
                     doHalfAdd(min * 60);
                     custom.setText("");
                 }
@@ -273,12 +271,16 @@ public final class CheckOverlay implements BigOverlay.Content {
         return v;
     }
 
-    /** 过半页的动机门：只换加时区这一块，不动写办法的输入框（与原页同）。 */
-    private void gateHalf() {
+    /**
+     * 过半页的动机门：只换加时区这一块，不动写办法的输入框（与原页同）。
+     * v1.95.1：过门后先重建加时区，随即把用户刚才点的 addSec 直接累计上。
+     */
+    private void gateHalf(final int addSec) {
         halfAddBox.removeAllViews();
         MotiveGate.buildInto(ctx, halfAddBox, () -> {
             motivePassed = true;
             buildHalfAddArea();
+            doHalfAdd(addSec);
         });
     }
 
@@ -297,7 +299,7 @@ public final class CheckOverlay implements BigOverlay.Content {
         lp.setMargins(dp(3), 0, dp(3), 0);
         b.setLayoutParams(lp);
         b.setOnClickListener(v -> {
-            if (!motivePassed) { gateHalf(); return; }
+            if (!motivePassed) { gateHalf(addSec); return; }
             doHalfAdd(addSec);
         });
         return b;
@@ -370,7 +372,6 @@ public final class CheckOverlay implements BigOverlay.Content {
     private void showSubExtend() {
         stage = this::showSubExtend;
         clear();
-        extendBack = this::showSubExtend;
         title(Strings.subExtend());
         subtitle(Strings.subCheckSub(taskName(), TimerState.subIndex(ctx) + 1,
                 TimerState.subCount(ctx), TimerState.subTitle(ctx)));
@@ -426,7 +427,6 @@ public final class CheckOverlay implements BigOverlay.Content {
     private void showEnd() {
         stage = this::showEnd;
         clear();
-        extendBack = this::showEnd;
         // 与原页 showEnd 同两步：展示即武装结束催促、落超时陪聊开场
         EndNag.noteEndPageShown(ctx);
         ChatHooks.onTaskEndPageShown(ctx);
@@ -577,20 +577,24 @@ public final class CheckOverlay implements BigOverlay.Content {
         return b;
     }
 
-    /** 加时动机门（与原页 gateThen 同）：整页换成自问层，答完记事件再回选时长步重选。 */
-    private void gateThen(final Runnable backToChoices) {
-        stage = () -> gateThen(backToChoices);
+    /**
+     * 加时动机门（与原页 gateThen 同）：整页换成自问层，答完记事件再执行
+     * afterGate——点了具体时长来过门的直接执行那个时长（v1.95.1 起点一次
+     * 到位，不再回选时长步重选）；导航来过门的进入选时长步。
+     */
+    private void gateThen(final Runnable afterGate) {
+        stage = () -> gateThen(afterGate);
         clear();
         MotiveGate.buildInto(ctx, root, () -> {
             motivePassed = true;
-            backToChoices.run();
+            afterGate.run();
         });
     }
 
-    /** 选了时长先过门：已过门直接执行原加时；没过门先过门、回选时长步重选。 */
-    private void gatedExtend(int addSec) {
+    /** 选了时长先过门：已过门直接执行原加时；没过门先过门，过门后直接执行所点时长。 */
+    private void gatedExtend(final int addSec) {
         if (motivePassed) { doExtend(addSec); return; }
-        gateThen(extendBack);
+        gateThen(() -> doExtend(addSec));
     }
 
     private void doExtend(int addSec) {
