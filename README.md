@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v1.97.0)
+## Features (Android, v1.98.0)
 
-Current version: **v1.97.0**.
+Current version: **v1.98.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v1.98.0 — 2026-11-26
+
+**Why:** The guard used to judge a single frame: anything off-task raised an inquiry, so the user explained themselves many times a day — while the sneakier pattern, a main task chopped up by side errands that each look 'important', slipped through. Now each verdict carries the last 3 hours of activity, so the judge can tell real distraction from a fake one and answer with a leniency tier. Build commit `d663add` · [compare v1.97.0...v1.98.0](https://github.com/gty3310/knowdo/compare/v1.97.0...v1.98.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Activity stream.** The guard's sampling pipeline now keeps a local, text-only trail of the last 3 hours (app label + first screen line per frame; frames the cloud judged get their line upgraded by the model's own one-line summary; adjacent similar segments merge with durations). It is rendered on the spot for each cloud verdict — layered by age, with a 'but' structure (the norm first, the last 10 minutes after 'but') plus a locally computed stats line — under a hard 500-token cap, all condensing done by local deterministic code, never by extra model calls. The stream lives only in a local file: never synced, no screenshots, no full screen text.
+- **Real vs fake distraction, four leniency tiers.** L3 (clearly a brief errand during focused work): no popup, just a note-form trace, and the segment is filed as a temporary task switch. L2 (probably an errand): a minimal inquiry with one big 'Busy with real work' button — no explanation, no breathing gate, no drift record. L1 (unsure or mild): the standard inquiry, exactly as before. L0 (clearly real distraction): the full stop — breathe first (15/30/45s by difficulty tier), answer a one-tap reflection tag, and only then do grace buttons unlock.
+- **Local guardrails the AI cannot override.** The difficulty tier set while clear-headed is the floor: an L0 stop never shrinks. And if the main-task share of the last hour falls below 50%, or two L0 verdicts already landed within the hour, leniency is capped back to L1 — computed locally, at zero model cost.
+- **Server side drafted, not yet deployed.** The glm-judge prompt upgrade (real/fake criteria, summary + leniency outputs) is written and waiting on a fresh Supabase access token; until it deploys, verdicts carry no leniency and every inquiry follows the standard flow, identical to v1.97.0.
+
+Not verified on a device or emulator; if anything is wrong, roll back to v1.97.0. Data changes: one new local file (activity_stream.json) and local preference keys for the leniency guardrail; nothing synced, no schema changes.
+
 ### v1.97.0 — 2026-11-26
 
 **Why:** The guard inquiry was a plain activity with no back-press handling — one back gesture or a press of Home swept it away, which inside the re-trigger cooldown amounted to a free pass, repeatable forever. The report recommended the root fix: move the inquiry into the 99% big-overlay shell like every other full-screen page. The same release fixes the pause-card flicker: frame analysis of a screen recording showed the card opened from the pause mask survived only 0.7–1.0 seconds before the floating window's per-second cleanup closed it. Build commit `21c41e3` · [compare v1.96.0...v1.97.0](https://github.com/gty3310/knowdo/compare/v1.96.0...v1.97.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -86,15 +98,6 @@ Not verified on a device or emulator (this release contains a bug fix; the repo 
 - **The pause purpose is required, and written out.** The pause card no longer lets you pause without a purpose: pick a preset and keep writing how you will do it, or write your own — what is stored is the full description, and that full text is what the guard judges by. In the seconds between tapping pause and finishing the card, only the adult-content floor watches; the full guard takes over the moment the purpose is saved.
 
 Not verified on a device or emulator; if anything is wrong, roll back to v1.95.1. Data changes: none.
-
-### v1.95.1 — 2026-11-26
-
-**Why:** Extending a task took two taps on the same number of minutes — the first tap only summoned the motive gate and was discarded, so after answering you landed back on the duration choices and had to tap again. The gate stays; the redundant second tap is gone. Build commit `2181309` · [compare v1.95.0...v1.95.1](https://github.com/gty3310/knowdo/compare/v1.95.0...v1.95.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **One tap to extend.** On the end-check and half-way pages (both the full-screen page and the big-overlay form), the duration you tap is applied as soon as you answer the motive self-check — the tapped value is carried through the gate instead of discarded. The self-check itself is unchanged: what it asks, when it asks, the event it records, and the once-per-page rule all stay as they were.
-
-Not verified on a device or emulator; if anything is wrong, roll back to v1.95.0. Data changes: none.
 
 ## Build
 
