@@ -45,10 +45,12 @@ public class SettingsActivity extends Activity {
     private int page = PAGE_TOP;
 
     /** 健康数据授权（v2.0.0）：从设置页拉起 Health Connect 系统授权页时用；
-     *  外部（如今天页未连接引导）可带 extra 直接落到健康页。 */
+     *  外部（如今天页未连接引导）可带 extra 直接落到健康页。
+     *  本仓 Activity 都是原生 android.app.Activity（没有 ComponentActivity 的
+     *  registerForActivityResult），故走契约 createIntent＋startActivityForResult。 */
     public static final String EXTRA_PAGE = "settings_page";
     public static final String PAGE_NAME_HEALTH = "health";
-    private androidx.activity.result.ActivityResultLauncher<java.util.Set<String>> healthPermLauncher;
+    private static final int REQ_HEALTH_PERM = 4201;
 
     // 软件更新状态回调（v1.27.0）：下载进度/状态变化时重画本页，让更新行的小字跟上
     private final AppUpdate.Listener updateListener = () -> {
@@ -60,10 +62,6 @@ public class SettingsActivity extends Activity {
         Strings.init(this);
         store = new TaskStore(this);
         AppUpdate.setListener(updateListener);
-        // 健康授权回调（v2.0.0）：授权页回来后立刻读一次，连接状态当场刷新
-        healthPermLauncher = registerForActivityResult(
-                HealthConnectBridge.permissionContract(),
-                granted -> HealthStore.refresh(this, () -> runOnUiThread(this::buildUi)));
         if (getIntent() != null && PAGE_NAME_HEALTH.equals(getIntent().getStringExtra(EXTRA_PAGE))) {
             page = PAGE_HEALTH;
         }
@@ -372,14 +370,25 @@ public class SettingsActivity extends Activity {
     }
 
     private void launchHealthPerms() {
-        if (healthPermLauncher == null) return;
         try {
             java.util.Set<String> want = new java.util.HashSet<>(
                     java.util.Arrays.asList(HealthConnectBridge.readPermissions()));
-            healthPermLauncher.launch(want);
+            android.content.Intent intent =
+                    HealthConnectBridge.permissionContract().createIntent(this, want);
+            startActivityForResult(intent, REQ_HEALTH_PERM);
         } catch (Exception e) {
             toast(Strings.en() ? "Health Connect is not available on this device"
                     : "这台设备用不了健康数据共享（Health Connect）");
+        }
+    }
+
+    /** 健康授权页回来（v2.0.0）：不管授没授全，立刻读一次——refresh 自己会
+     *  复查实际授予集并更新连接状态，页面当场重画。 */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_HEALTH_PERM) {
+            HealthStore.refresh(this, () -> runOnUiThread(this::buildUi));
         }
     }
 
