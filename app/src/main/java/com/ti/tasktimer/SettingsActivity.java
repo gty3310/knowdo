@@ -41,7 +41,14 @@ public class SettingsActivity extends Activity {
     private static final int PAGE_ACC = 5;
     private static final int PAGE_UPDATE = 6;
     private static final int PAGE_MORE = 7;
+    private static final int PAGE_HEALTH = 8;
     private int page = PAGE_TOP;
+
+    /** 健康数据授权（v2.0.0）：从设置页拉起 Health Connect 系统授权页时用；
+     *  外部（如今天页未连接引导）可带 extra 直接落到健康页。 */
+    public static final String EXTRA_PAGE = "settings_page";
+    public static final String PAGE_NAME_HEALTH = "health";
+    private androidx.activity.result.ActivityResultLauncher<java.util.Set<String>> healthPermLauncher;
 
     // 软件更新状态回调（v1.27.0）：下载进度/状态变化时重画本页，让更新行的小字跟上
     private final AppUpdate.Listener updateListener = () -> {
@@ -53,6 +60,13 @@ public class SettingsActivity extends Activity {
         Strings.init(this);
         store = new TaskStore(this);
         AppUpdate.setListener(updateListener);
+        // 健康授权回调（v2.0.0）：授权页回来后立刻读一次，连接状态当场刷新
+        healthPermLauncher = registerForActivityResult(
+                HealthConnectBridge.permissionContract(),
+                granted -> HealthStore.refresh(this, () -> runOnUiThread(this::buildUi)));
+        if (getIntent() != null && PAGE_NAME_HEALTH.equals(getIntent().getStringExtra(EXTRA_PAGE))) {
+            page = PAGE_HEALTH;
+        }
         buildUi();
     }
 
@@ -116,6 +130,7 @@ public class SettingsActivity extends Activity {
             case PAGE_GUARD: buildGuardPage(); break;
             case PAGE_JUDGE: buildJudgePage(); break;
             case PAGE_REMIND: buildMorningGroup(); buildRemindRows(); break;
+            case PAGE_HEALTH: buildHealthGroup(); break;
             case PAGE_ACC: buildAccountabilityRows(); break;
             case PAGE_UPDATE: buildUpdateGroup(); buildUpdateExtraRows(); break;
             default: buildMorePage(); break;
@@ -128,6 +143,7 @@ public class SettingsActivity extends Activity {
             case PAGE_GUARD: return Strings.grpGuards();
             case PAGE_JUDGE: return Strings.setGrpJudge();
             case PAGE_REMIND: return Strings.setGrpRemind();
+            case PAGE_HEALTH: return Strings.grpHealth();
             case PAGE_ACC: return Strings.setGrpAcc();
             case PAGE_UPDATE: return Strings.setGrpUpdateAbout();
             default: return Strings.setGrpMore();
@@ -141,6 +157,7 @@ public class SettingsActivity extends Activity {
         catRow(Strings.grpGuards(), difficultyName(ScreenGuardPrefs.guardDifficulty(this)), PAGE_GUARD);
         catRow(Strings.setGrpJudge(), null, PAGE_JUDGE);
         catRow(Strings.setGrpRemind(), onOff(HabitData.morningEnabled(HabitData.load(this))), PAGE_REMIND);
+        catRow(Strings.grpHealth(), healthStateShort(), PAGE_HEALTH);
         catRow(Strings.setGrpAcc(), onOff(Accountability.enabled(this)), PAGE_ACC);
         catRow(Strings.setGrpUpdateAbout(), Strings.versionLine(), PAGE_UPDATE);
         catRow(Strings.setGrpMore(), null, PAGE_MORE);
@@ -269,6 +286,127 @@ public class SettingsActivity extends Activity {
                     org.json.JSONObject r = HabitData.load(this);
                     HabitData.setMorning(r, HabitData.morningEnabled(r), opts[which]);
                     HabitData.save(this, r);
+                    d.dismiss();
+                    buildUi();
+                })
+                .setNegativeButton(Strings.en() ? "Cancel" : "取消", null)
+                .show();
+    }
+
+    // ---------------- 健康组（v2.0.0）：Health Connect 连接＋睡眠目标 ----------------
+    // 连接走 HealthConnectBridge（官方客户端，只读睡眠/静息心率/步数/活动热量）；
+    // 睡眠目标存 HealthStore（本地先行＋health_data 同步），全软件达标判定只读这一份；
+    // DayAvail 的睡眠段是排程时段轴，与这里的睡眠目标是两个口径，不混用。
+
+    private String healthStateShort() {
+        String st = HealthStore.connState(this);
+        if (HealthStore.CONN_OK.equals(st)) return Strings.en() ? "Connected" : "已连接";
+        if (HealthStore.CONN_UNAVAILABLE.equals(st)) return Strings.en() ? "Unavailable" : "不可用";
+        return Strings.en() ? "Not connected" : "未连接";
+    }
+
+    private void buildHealthGroup() {
+        boolean en = Strings.en();
+        groupTitle(en ? "Health data" : "健康数据");
+        String st = HealthStore.connState(this);
+        String sub;
+        if (HealthStore.CONN_OK.equals(st)) {
+            long last = HealthStore.lastRefreshMs(this);
+            String hm = last > 0 ? new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                    .format(new java.util.Date(last)) : "";
+            sub = en ? "Connected" + (hm.isEmpty() ? "" : " · last read " + hm)
+                    : "已连接" + (hm.isEmpty() ? "" : " · 上次读取 " + hm);
+        } else if (HealthStore.CONN_UNAVAILABLE.equals(st)) {
+            sub = en ? "Health Connect is not available on this device"
+                    : "这台设备用不了健康数据共享（Health Connect）";
+        } else if (HealthStore.CONN_NO_PERM.equals(st)) {
+            sub = en ? "Not authorized yet — tap to authorize"
+                    : "还没授权，点这一行去授权";
+        } else {
+            sub = en ? "Reads sleep, resting heart rate, steps and active calories — tap to authorize"
+                    : "读睡眠、静息心率、步数、活动热量，点这一行去授权";
+        }
+        row(en ? "Health Connect" : "健康数据共享", sub,
+                arrowBtn(en ? "Authorize ›" : "去授权 ›"), v -> launchHealthPerms());
+        row(en ? "Read now" : "重新读取",
+                en ? "Pull in the latest sleep, heart rate and steps"
+                        : "把最近的睡眠、静息心率、步数读进来",
+                arrowBtn(en ? "Read ›" : "读取 ›"),
+                v -> HealthStore.refresh(this, () -> runOnUiThread(this::buildUi)));
+        TextView note = new TextView(this);
+        note.setText(en
+                ? "Raw records and sleep stages never leave this phone. Only a small daily "
+                + "summary is synced to your own account. Without authorization everything "
+                + "else keeps working, and sleep can be filled in by hand on the morning page."
+                : "原始记录与睡眠分期永不离开这台手机，上云的只有每日汇总一小行（同步到你自己的账号）。"
+                + "不授权也不影响其他功能，晨间页里可以手填睡眠。");
+        note.setTextSize(12);
+        note.setTextColor(Ui.sub(this));
+        note.setPadding(0, dp(6), 0, dp(2));
+        root.addView(note);
+
+        groupTitle(en ? "Sleep goals" : "睡眠目标");
+        final org.json.JSONObject hroot = HealthStore.load(this);
+        final int bed = HealthStore.bedMin(hroot);
+        final int wake = HealthStore.wakeMin(hroot);
+        final int nap = HealthStore.napGoalMin(hroot);
+        row(en ? "Bedtime goal" : "目标上床时间",
+                en ? "The yardstick for on-time marks and the recovery score"
+                        : "达标判定与恢复分都按这个时间算",
+                arrowBtn(LocalAutoScheduler.hhmm(bed) + " ›"), v -> pickSleepTime(true, bed));
+        row(en ? "Wake-up goal" : "目标起床时间",
+                en ? "Bedtime to wake-up is your goal sleep window"
+                        : "上床到起床就是目标睡眠窗口",
+                arrowBtn(LocalAutoScheduler.hhmm(wake) + " ›"), v -> pickSleepTime(false, wake));
+        row(en ? "Nap goal" : "午睡时长目标", null,
+                arrowBtn(nap + (en ? " min ›" : " 分钟 ›")), v -> pickNapGoal(nap));
+        TextView note2 = new TextView(this);
+        note2.setText(en
+                ? "Changing a goal only counts from now on — days already recorded keep "
+                + "the mark they were given."
+                : "改设置只管以后，已经记下的日子达标结果不重算。");
+        note2.setTextSize(12);
+        note2.setTextColor(Ui.sub(this));
+        note2.setPadding(0, dp(6), 0, dp(2));
+        root.addView(note2);
+    }
+
+    private void launchHealthPerms() {
+        if (healthPermLauncher == null) return;
+        try {
+            java.util.Set<String> want = new java.util.HashSet<>(
+                    java.util.Arrays.asList(HealthConnectBridge.readPermissions()));
+            healthPermLauncher.launch(want);
+        } catch (Exception e) {
+            toast(Strings.en() ? "Health Connect is not available on this device"
+                    : "这台设备用不了健康数据共享（Health Connect）");
+        }
+    }
+
+    private void pickSleepTime(final boolean isBed, int curMin) {
+        new android.app.TimePickerDialog(this, (view, h, m) -> {
+            org.json.JSONObject r = HealthStore.load(this);
+            int bed = HealthStore.bedMin(r), wake = HealthStore.wakeMin(r), nap = HealthStore.napGoalMin(r);
+            if (isBed) bed = h * 60 + m; else wake = h * 60 + m;
+            HealthStore.setSettings(this, bed, wake, nap);
+            buildUi();
+        }, curMin / 60, curMin % 60, true).show();
+    }
+
+    private void pickNapGoal(int cur) {
+        final int[] opts = {15, 20, 30, 45, 60, 90, 120};
+        String[] labels = new String[opts.length];
+        int sel = 4;
+        for (int i = 0; i < opts.length; i++) {
+            labels[i] = opts[i] + (Strings.en() ? " min" : " 分钟");
+            if (opts[i] == cur) sel = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(Strings.en() ? "Nap goal" : "午睡时长目标")
+                .setSingleChoiceItems(labels, sel, (d, which) -> {
+                    org.json.JSONObject r = HealthStore.load(this);
+                    HealthStore.setSettings(this, HealthStore.bedMin(r),
+                            HealthStore.wakeMin(r), opts[which]);
                     d.dismiss();
                     buildUi();
                 })

@@ -434,6 +434,7 @@ public final class Strings {
     public static String zhiMottoWen() { return s("敏而好学，不耻下问", "Eager to learn, unashamed to ask"); }
     public static String zhiMottoRen() { return s("泛爱众，而亲仁", "Love all broadly, draw near to the humane"); }
     public static String grpMorning() { return s("晨间", "Morning"); }
+    public static String grpHealth() { return s("健康", "Health"); }
     public static String rowMorning() { return s("晨间首填（每天先填习惯）", "Morning check-in (fill habits first)"); }
     public static String rowMorningSub() {
         return s("打开知行先过晨间页，填完才开启今天",
