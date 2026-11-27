@@ -25,11 +25,19 @@
     <!-- 软件内自动更新（v1.27.0）：自己下载新版 APK 后拉起系统安装需要此权限；
          每个用户还要在系统设置里为知行开一次「安装未知应用」，App 内有引导。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 健康数据直连（v2.0.0）：Health Connect 读权限，只读四类——睡眠、静息心率、
+         步数、活动热量；授权在系统页里逐项给，拒绝/撤销后 App 其余功能零影响 -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- Health Connect 提供方包可见性（判断可用性/拉起授权需要） -->
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -323,6 +331,25 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- 健康权限说明页（v2.0.0）：Health Connect 的 rationale 入口——系统在
+             授权管理里打开本页说明读哪四类数据、什么永不上传；Android 14+ 走
+             framework 动作名（activity-alias），13 及以下走 androidx 动作名 -->
+        <activity
+            android:name=".HealthRationaleActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name=".HealthRationaleAlias"
+            android:exported="true"
+            android:targetActivity=".HealthRationaleActivity">
+            <intent-filter>
+                <action android:name="android.health.connect.action.SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- 今天安排页（v1.28.0 feature 9）：晨间门「开启今天」后进来排定今天；
              普通页，不进最近任务之外无特殊要求 -->
