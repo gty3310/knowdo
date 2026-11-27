@@ -69,4 +69,6 @@ dependencies {
     implementation 'org.java-websocket:Java-WebSocket:1.5.7'
     // 健康数据直连（v2.0.0）：Health Connect 官方客户端，只读睡眠/静息心率/步数/活动热量
     implementation 'androidx.health.connect:connect-client:1.1.0-alpha07'
+    // connect-client 的 suspend 接口要的协程运行时（它未作为 api 依赖暴露，桥里 runBlocking 直接用）
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }
