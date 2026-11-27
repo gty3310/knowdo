@@ -305,6 +305,7 @@ public final class SbSync {
         boolean hasDiaryTitles = probeUserStateCol(c, "diary_titles"); // v1.61.0：日记标题（日期→标题），列未就绪只用本地、绝不碰此键
         boolean hasPatch = probeUserStateCol(c, "cloud_patch"); // v1.52.0：云端补丁（云端协助整理的数据改动落地用），列未就绪不读、行为与旧版一字不差
         boolean hasAdvice = probeUserStateCol(c, "today_advice"); // v1.85.0：AI 建议（云端写、App 只读），列未就绪不碰此键
+        boolean hasHealth = probeUserStateCol(c, "health_data"); // v2.0.0：健康汇总（设置/今晚/话语/每日汇总），列未就绪只用本地、绝不碰此键；该列暂不进 USER_STATE_COLS——列由发版流程在服务端新建，未就绪时进拉取清单会让整份 user_state 拉取被服务端拒掉，故本列单独探测＋单独拉取（见下方合并段）
         // 注：reschedule_request 的 App 侧接线已于 v1.26.0 撤除（日历页「问 AI 重排」
         // 按钮下线，重排改由用户在对话里直接吩咐＋本地自动排程），本方法不再碰
         // 该列；v1.98.1 起该列改作崩溃上报落点，由 CrashReporter 在 doSync 里
@@ -504,6 +505,32 @@ public final class SbSync {
                     }
                 }
             }
+            if (hasHealth) {
+                // 健康数据合并（v2.0.0，与 weekly_data 同一套探测纪律，只动 health_data 一个键）：
+                // 单独拉这一列（不在 USER_STATE_COLS 里，理由见上方探测处注释）；
+                // 本机从未存过且云端有值→整份采用；本机有值→HealthStore.merge 键级
+                // 并集（本机优先），合并结果变了先落本地、与云端不同才回写。
+                JSONObject remoteHealth = null;
+                try {
+                    JSONArray hArr = Supa.restGet(c, "user_state?select=health_data");
+                    if (hArr.length() > 0 && !hArr.getJSONObject(0).isNull("health_data")) {
+                        remoteHealth = hArr.getJSONObject(0).optJSONObject("health_data");
+                    }
+                } catch (Exception ignored) { }
+                if (!HealthStore.hasLocal(c) && remoteHealth != null) {
+                    HealthStore.adopt(c, remoteHealth);
+                } else if (HealthStore.hasLocal(c)) {
+                    JSONObject localHealth = HealthStore.load(c);
+                    JSONObject mergedHealth = HealthStore.merge(localHealth, remoteHealth);
+                    if (!HabitData.contentEquals(mergedHealth, localHealth)) {
+                        HealthStore.saveQuiet(c, mergedHealth);
+                    }
+                    if (!HabitData.contentEquals(mergedHealth, remoteHealth)) {
+                        write.put("health_data", mergedHealth);
+                        needWrite = true;
+                    }
+                }
+            }
             if (!urow.isNull("timer_state")) {
                 SbTimerSync.onRemoteState(c, urow.optJSONObject("timer_state"));
             }
@@ -568,6 +595,10 @@ public final class SbSync {
             }
             if (hasDiaryTitles && DiaryTitles.hasLocal(c)) {
                 write.put("diary_titles", DiaryTitles.load(c));
+                needWrite = true;
+            }
+            if (hasHealth && HealthStore.hasLocal(c)) {
+                write.put("health_data", HealthStore.load(c));
                 needWrite = true;
             }
         }
