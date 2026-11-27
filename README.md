@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v2.0.1)
+## Features (Android, v2.0.2)
 
-Current version: **v2.0.1**.
+Current version: **v2.0.2**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,15 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v2.0.2 — 2026-11-27
+
+**Why:** v2.0.1 repaired how authorization is requested, but on the user's Pixel 10 the grant page still never opened, KnowDo still did not appear in Health Connect's app-permissions list, and there was no system-side entry to grant from either. Verified against the shipped v2.0.1 APK (aapt2 manifest dump): the manifest lacks the Android 14+ platform Health Connect declaration — an intent-filter with action `android.intent.action.VIEW_PERMISSION_USAGE` and category `android.intent.category.HEALTH_PERMISSIONS` (both count 0 in the package; the four health read permissions and both rationale declarations were present). The system uses that declaration to decide which apps exist inside Health Connect at all, so the repaired requestPermissions path still had nowhere to land. This release adds exactly that one declaration and changes nothing else. Build commit `e18ab6b` · [compare v2.0.1...v2.0.2](https://github.com/gty3310/knowdo/compare/v2.0.1...v2.0.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Health Connect permission-usage registration.** AndroidManifest gains one activity-alias (targeting the existing HealthRationaleActivity) whose intent-filter carries `android.intent.action.VIEW_PERMISSION_USAGE` and `android.intent.category.HEALTH_PERMISSIONS`. KnowDo now appears in Health Connect's app list, and tapping Authorize can open the system grant page. The existing rationale activity/alias and the four health read permissions are untouched.
+
+Not verified on a real device; the emulator attempt is recorded in the release report (REPORT-v2002-dev.md). If anything is wrong, roll back to v2.0.1. Data changes: none.
+
 ### v2.0.1 — 2026-11-27
 
 **Why:** On the day v2.0.0 shipped, the user hit this on a Pixel 10: the Health row said 'not authorized', yet tapping Authorize popped up 'this device cannot use Health Connect', and KnowDo did not exist in Health Connect's app-permissions list at all. The root cause, verified against both the library sources and the shipped APK: on Android 14+, connect-client 1.1.0-alpha07 delegates its permission contract to androidx.activity's RequestMultiplePermissions, whose intent carries an internal action that only a ComponentActivity registry can launch; KnowDo is plain Activities launching it directly, so no component could receive it — the request never reached the system, and the swallowed exception surfaced as a false 'unsupported' message. Build commit `802ec2d` · [compare v2.0.0...v2.0.1](https://github.com/gty3310/knowdo/compare/v2.0.0...v2.0.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -88,19 +97,6 @@ Not verified on a device or emulator (bug-fix release; the VM emulator could not
 - **Today health overview + recovery score.** Last night's sleep, a recovery ring, and bars for sleep / steps / nap share the Today page with today's tasks; not connected shows a connect guide instead of a hole. The score (out of 100: duration 35, bedtime 25, deep-sleep share 15 with a 15–25% full band, resting heart rate 10 vs the 7-day baseline, HRV 10 vs baseline, yesterday's activity 5 vs 80% of the 7-day step median) shows its full formula and per-part points on a detail page; missing parts redistribute their weight and are named, and under 7 days of history it says the baseline is still building. The score never feeds the KnowDo index. A weekly rollup (goal-met nights, average bedtime, average duration) is computed from the daily summaries for the user's weekly letter — data only, no chart image.
 
 Not verified on a device or emulator — the Health Connect authorization flow and live readings need real hardware (checklist in the release report); if anything is wrong, roll back to v1.99.0. Data changes: one new local file (health_data.json) plus a local-only raw cache (health_raw.json, never synced); cloud gains the probe-guarded user_state.health_data column.
-
-### v1.99.0 — 2026-11-26
-
-**Why:** Adding tasks in Chat used to mean one single-item proposal card per message — naming several errands meant sending them one by one and tapping Apply again and again. Under the user's 2026-11-26 ruling, one message should build the whole batch in one go, while keeping the standing rule that the AI never changes anything silently: the batch still arrives as a card for review, but one card now holds the whole list and one tap creates it all. Build commit `04c9714` · [compare v1.98.1...v1.99.0](https://github.com/gty3310/knowdo/compare/v1.98.1...v1.99.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**New**
-- **Batch-create from Chat.** The knowdo-proposal protocol gains action=create_batch: one proposal whose tasks array carries several new tasks. ChatPanel renders one numbered summary card — per item: title, length or subtask split, priority, repeat, deadline, and an 'AI does it' mark — and one tap on Create all builds every item through the exact single-create path (TaskItem.create + the shared field applier + TaskStore.add; local-first, existing sync channel).
-- **Gaps are defaulted and marked, never blocking.** A field the user did not state is filled with the single-create defaults (30 minutes, secondary priority) and the item records which fields were defaulted; its card line says so ('defaulted: length, priority'). Items that cannot be created (no title, or beyond the 30-per-batch cap) are listed at the foot of the card with the reason, and the rest are still created. Per-item storage failures mark only that item failed on its own numbered line — nothing rolls back.
-- **Per-item assignee and repeat.** An item may carry assignee 'ai' (only when the user says that one is for the AI), landing as assignee=ai + ai_state='queued' — the same convention as the Today page's batch add — and repeat daily/weekly with ISO weekdays; a weekly item without valid weekdays is created without the repeat and marked. Both fields apply on create only; the update path is untouched.
-- **Numbering stays referenceable.** On apply, each item's createdId (or failed flag) is written back into the persisted proposal JSON, and the latest applied batch's number → title/taskId map is injected into later system prompts, so 'change #2 to must-do' resolves to the real task. Numbering follows the card order, including items that failed, so numbers never drift.
-- **No server change.** chat-proxy only forwards messages; the structured protocol is defined by the client's system prompt and parsed client-side, so batch add works with the currently deployed proxy — no deployment debt. Single-item create/update/delete, schedule and setting proposals are byte-for-byte the old behaviour; must-do items join today's scheduling candidates and the time account through the existing mechanisms, exactly like a hand-created task.
-
-Not verified on a device or emulator; if anything is wrong, roll back to v1.98.1. Data changes: none — no new files, no schema changes; createdId annotations live inside the existing chat-history records.
 
 ## Build
 

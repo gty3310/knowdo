@@ -2,6 +2,25 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范维护：每版一个标题（版本＋ISO 日期），条目按 新增／改进／修复／移除 分类，每版附「为什么」一行与发布提交短号＋版本比较链接（自 v1.13.0 起严格执行，v1.9.0–v1.12.0 于 v1.13.0 发布时回补分类与追溯行，v1.8.0 及更早保留原始条目顺序、仅统一标题并补「为什么」）。新版本 append 在最上方；每个发布提交打同名标注标签（如 v1.13.0），App 内版本行带构建提交短号，与此处所记一致。（v1.6.0 及更早版本的记录见 git 提交历史。）
 
+## [2.0.2] - 2026-11-27（versionCode 143）
+
+健康授权二修：补上安卓 14 以上健康数据共享要求的权限用途登记，知行回到系统应用列表、「去授权」弹得出授权页
+
+为什么：v2.0.1 装上后用户在 Pixel 10 真机复测——点「去授权」仍不弹出系统授权页，系统「健康数据共享 → 应用权限」列表里依然没有知行，系统设置里也没有可手动授权的入口。查实：v2.0.1 发布包的 AndroidManifest 缺安卓 14 以上平台 Health Connect 必需的声明（aapt2 回读发布包：VIEW_PERMISSION_USAGE 计数 0、HEALTH_PERMISSIONS 计数 0；四个 health 读权限都在、只有两个 rationale 声明）。系统靠这处登记决定一个应用算不算「用健康数据」的应用——缺了它，应用不进健康数据共享的列表，v2.0.1 修好的 requestPermissions 授权路径也递不到系统。本版只补这一处登记，其余代码一字不动。
+
+发布提交：`e18ab6b`（本版 APK 的构建提交，应用内版本行短号与之一致）· [v2.0.1...v2.0.2 比较](https://github.com/gty3310/knowdo/compare/v2.0.1...v2.0.2)
+
+### 修复
+
+- AndroidManifest 新增一段 activity-alias（指向既有 HealthRationaleActivity）：intent-filter 带 action `android.intent.action.VIEW_PERMISSION_USAGE` 与 category `android.intent.category.HEALTH_PERMISSIONS`——安卓 14 以上系统据此把知行列入「健康数据共享」的权限管理，点「去授权」也能正常弹出系统授权页
+
+### 说明
+
+- 只动 AndroidManifest.xml 一处声明＋升版（外加 App 内更新日志条目，与升版同在发布提交里）；既有 HealthRationaleActivity 与 HealthRationaleAlias 两段原样保留，四个 health 读权限不变，红线六文件零 diff
+- 本版为修 bug 版：模拟器尝试结果见发版报告（REPORT-v2002-dev.md）；真机验收点：Pixel 10 装上后，设置 → 健康 → 点「去授权」应弹出系统授权页，四项打开后回设置页点「重新读取」状态变「已连接」，晨间/今天页读到昨晚睡眠；系统「健康数据共享 → 应用权限」列表里应能看到知行；有问题回滚 v2.0.1
+
+试用：设置 → 健康 → 点「去授权」，在系统页把睡眠、静息心率、步数、活动热量打开，回来点「重新读取」，状态变成已连接就通了。
+
 ## [2.0.1] - 2026-11-27（versionCode 142）
 
 健康授权修复：安卓 14 以上点「去授权」真正拉得起系统授权页，错误不再被吞掉报假消息
