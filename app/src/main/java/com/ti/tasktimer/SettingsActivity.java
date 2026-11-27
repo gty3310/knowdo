@@ -44,10 +44,13 @@ public class SettingsActivity extends Activity {
     private static final int PAGE_HEALTH = 8;
     private int page = PAGE_TOP;
 
-    /** 健康数据授权（v2.0.0）：从设置页拉起 Health Connect 系统授权页时用；
+    /** 健康数据授权：从设置页拉起 Health Connect 系统授权页时用；
      *  外部（如今天页未连接引导）可带 extra 直接落到健康页。
-     *  本仓 Activity 都是原生 android.app.Activity（没有 ComponentActivity 的
-     *  registerForActivityResult），故走契约 createIntent＋startActivityForResult。 */
+     *  v2.0.1 起 Android 14+ 走 Activity.requestPermissions 直连（框架把健康
+     *  权限路由到健康数据共享授权 UI）；契约 Intent 的 action 是 androidx.activity
+     *  内部动作、只能经 ComponentActivity 注册表拉起，本仓原生 Activity 直接
+     *  startActivityForResult 必抛 ActivityNotFoundException（v2.0.0 的真机故障）。
+     *  Android 13 及以下仍走契约 Intent 路径（真实指向健康数据共享应用）。 */
     public static final String EXTRA_PAGE = "settings_page";
     public static final String PAGE_NAME_HEALTH = "health";
     private static final int REQ_HEALTH_PERM = 4201;
@@ -331,6 +334,11 @@ public class SettingsActivity extends Activity {
                         : "把最近的睡眠、静息心率、步数读进来",
                 arrowBtn(en ? "Read ›" : "读取 ›"),
                 v -> HealthStore.refresh(this, () -> runOnUiThread(this::buildUi)));
+        row(en ? "Health Connect settings" : "打开健康数据共享设置",
+                en ? "View or manage access on the system side"
+                        : "在系统那边查看或管理授权",
+                arrowBtn(en ? "Open ›" : "打开 ›"),
+                v -> openHealthSettings());
         TextView note = new TextView(this);
         note.setText(en
                 ? "Raw records and sleep stages never leave this phone. Only a small daily "
@@ -367,18 +375,93 @@ public class SettingsActivity extends Activity {
         note2.setTextColor(Ui.sub(this));
         note2.setPadding(0, dp(6), 0, dp(2));
         root.addView(note2);
+
+        // 诊断行（v2.0.1）：SDK 状态码＋最近一次健康链路错误，本机留痕、页面可见
+        int sdk = HealthStore.lastSdkStatus(this);
+        try {
+            sdk = HealthConnectBridge.sdkStatus(this);
+            HealthStore.recordSdkStatus(this, sdk);
+        } catch (Exception e) {
+            HealthStore.recordHealthError(this, e);
+        }
+        String err = HealthStore.lastHealthError(this);
+        String diag;
+        if (err == null || err.isEmpty()) {
+            diag = en ? "SDK status " + sdk + " · no errors recorded"
+                    : "状态码 " + sdk + " · 无错误记录";
+        } else {
+            long at = HealthStore.lastHealthErrorAt(this);
+            String hm = at > 0 ? new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                    .format(new java.util.Date(at)) : "";
+            diag = en ? "SDK status " + sdk + " · last error " + err
+                            + (hm.isEmpty() ? "" : " (" + hm + ")")
+                    : "状态码 " + sdk + " · 最近错误 " + err
+                            + (hm.isEmpty() ? "" : "（" + hm + "）");
+        }
+        TextView diagView = new TextView(this);
+        diagView.setText(diag);
+        diagView.setTextSize(12);
+        diagView.setTextColor(Ui.sub(this));
+        diagView.setPadding(0, dp(6), 0, dp(2));
+        root.addView(diagView);
     }
 
+    /** 拉起健康授权（v2.0.1 按 SDK 状态分流重做）：
+     *  状态 3（可用）：Android 14+ 直接 requestPermissions（框架路由到健康
+     *  数据共享授权 UI）；13 及以下走契约 Intent（真实指向提供方应用）。
+     *  状态 2（提供方需更新）：不再误报「用不了」，引导更新并打开健康设置页。
+     *  状态 1（真不可用）：才显示「这台设备用不了」。
+     *  任何异常走 HealthStore 诊断留痕，toast 只显示简短真实原因，不许吞。 */
     private void launchHealthPerms() {
+        boolean en = Strings.en();
+        int status;
         try {
-            java.util.Set<String> want = new java.util.HashSet<>(
-                    java.util.Arrays.asList(HealthConnectBridge.readPermissions()));
-            android.content.Intent intent =
-                    HealthConnectBridge.permissionContract().createIntent(this, want);
-            startActivityForResult(intent, REQ_HEALTH_PERM);
+            status = HealthConnectBridge.sdkStatus(this);
         } catch (Exception e) {
-            toast(Strings.en() ? "Health Connect is not available on this device"
+            HealthStore.recordHealthError(this, e);
+            toast(en ? "Could not check Health Connect: " + e.getClass().getSimpleName()
+                    : "健康数据共享状态查不到：" + e.getClass().getSimpleName());
+            return;
+        }
+        HealthStore.recordSdkStatus(this, status);
+        if (status == HealthConnectBridge.statusUpdateRequired()) {
+            toast(en ? "Health Connect needs an update before authorizing"
+                    : "健康数据共享需要更新后才能授权");
+            openHealthSettings();
+            return;
+        }
+        if (status != HealthConnectBridge.statusAvailable()) {
+            toast(en ? "Health Connect is not available on this device"
                     : "这台设备用不了健康数据共享（Health Connect）");
+            return;
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                requestPermissions(HealthConnectBridge.readPermissions(), REQ_HEALTH_PERM);
+            } else {
+                java.util.Set<String> want = new java.util.HashSet<>(
+                        java.util.Arrays.asList(HealthConnectBridge.readPermissions()));
+                android.content.Intent intent =
+                        HealthConnectBridge.permissionContract().createIntent(this, want);
+                startActivityForResult(intent, REQ_HEALTH_PERM);
+            }
+        } catch (Exception e) {
+            HealthStore.recordHealthError(this, e);
+            toast(en ? "Could not open the authorization page: " + e.getClass().getSimpleName()
+                    : "授权页打不开：" + e.getClass().getSimpleName());
+        }
+    }
+
+    /** 打开系统侧健康数据共享设置页（v2.0.1）：用户可在那边查看/管理授权；
+     *  打不开走诊断留痕＋真实原因 toast，不许吞异常。 */
+    private void openHealthSettings() {
+        try {
+            startActivity(HealthConnectBridge.healthSettingsIntent());
+        } catch (Exception e) {
+            HealthStore.recordHealthError(this, e);
+            toast(Strings.en() ? "Could not open Health Connect settings: "
+                            + e.getClass().getSimpleName()
+                    : "健康数据共享设置打不开：" + e.getClass().getSimpleName());
         }
     }
 
@@ -387,6 +470,17 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_HEALTH_PERM) {
+            HealthStore.refresh(this, () -> runOnUiThread(this::buildUi));
+        }
+    }
+
+    /** 系统权限直连路径回来（v2.0.1，Android 14+）：收尾与 onActivityResult
+     *  的契约路径一致——立刻读一次并重画，授没授全由 refresh 复查实际授予集。 */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_HEALTH_PERM) {
             HealthStore.refresh(this, () -> runOnUiThread(this::buildUi));
         }

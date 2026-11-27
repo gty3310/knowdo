@@ -122,6 +122,35 @@ public final class HealthStore {
         return prefs(c).getLong("last_refresh_at", 0);
     }
 
+    // ---------------- 诊断留痕（v2.0.1）：只存本机 prefs，永不上传 ----------------
+    // v2.0.0 的授权故障被 catch 吞掉、无从查起，本版起把 SDK 状态码与最近
+    // 一次健康链路异常（类名＋message＋时刻）留下来，设置页健康组底部可见。
+
+    public static void recordSdkStatus(Context c, int status) {
+        prefs(c).edit().putInt("last_sdk_status", status).apply();
+    }
+
+    /** 最近一次记录的 SDK 状态码；从未记录过返回 -1。 */
+    public static int lastSdkStatus(Context c) {
+        return prefs(c).getInt("last_sdk_status", -1);
+    }
+
+    public static void recordHealthError(Context c, Throwable t) {
+        if (t == null) return;
+        String msg = t.getMessage();
+        String s = t.getClass().getSimpleName() + (msg == null || msg.isEmpty() ? "" : ": " + msg);
+        prefs(c).edit().putString("last_health_error", s)
+                .putLong("last_health_error_at", System.currentTimeMillis()).apply();
+    }
+
+    public static String lastHealthError(Context c) {
+        return prefs(c).getString("last_health_error", "");
+    }
+
+    public static long lastHealthErrorAt(Context c) {
+        return prefs(c).getLong("last_health_error_at", 0);
+    }
+
     // ---------------- F2 睡眠目标设置 ----------------
 
     private static JSONObject settingsObj(JSONObject root, boolean create) {
@@ -447,6 +476,7 @@ public final class HealthStore {
         final Context app = c.getApplicationContext();
         new Thread(() -> {
             try {
+                recordSdkStatus(app, HealthConnectBridge.sdkStatus(app));
                 if (!HealthConnectBridge.isAvailable(app)) {
                     setConnState(app, CONN_UNAVAILABLE);
                     return;
@@ -462,8 +492,10 @@ public final class HealthStore {
                 writeRaw(app, raw);
                 applyRaw(app, new JSONObject(raw));
                 prefs(app).edit().putLong("last_refresh_at", System.currentTimeMillis()).apply();
-            } catch (Exception ignored) {
-                // 读不到不崩、不清数据：已有汇总照常显示，下次打开再试
+            } catch (Exception e) {
+                // 读不到不崩、不清数据：已有汇总照常显示，下次打开再试；
+                // 但异常必须留痕（v2.0.1），不许再静默吞掉
+                recordHealthError(app, e);
             } finally {
                 if (done != null) done.run();
             }

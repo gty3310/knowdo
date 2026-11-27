@@ -1,6 +1,8 @@
 package com.ti.tasktimer
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
@@ -33,6 +35,32 @@ object HealthConnectBridge {
     @JvmStatic
     fun isAvailable(context: Context): Boolean =
         sdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+
+    /** 状态码常量（Java 侧分流用，与 HealthConnectClient 的常量同值）。 */
+    @JvmStatic
+    fun statusAvailable(): Int = HealthConnectClient.SDK_AVAILABLE
+
+    @JvmStatic
+    fun statusUpdateRequired(): Int =
+        HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
+
+    @JvmStatic
+    fun statusUnavailable(): Int = HealthConnectClient.SDK_UNAVAILABLE
+
+    /**
+     * 健康数据共享设置页 Intent（v2.0.1）：Android 14+ 走系统框架动作，
+     * 低版本走 androidx 动作（由健康数据共享应用处理）。只造 Intent，
+     * 拉起与失败处理在 Java 侧（SettingsActivity）。
+     */
+    @JvmStatic
+    fun healthSettingsIntent(): Intent {
+        val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            "android.health.connect.action.HEALTH_HOME_SETTINGS"
+        } else {
+            "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+        }
+        return Intent(action)
+    }
 
     /** 本版申请的全部读权限（不多要一类）。 */
     @JvmStatic
