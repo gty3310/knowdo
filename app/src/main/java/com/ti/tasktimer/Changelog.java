@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2001 = new Entry("v2.0.1", "2026-11-27");
+        e2001.add(new Group(s("修复", "Fixed"),
+                s("修复健康数据共享授权点不开的问题：安卓 14 以上点『去授权』没反应、还误报这台设备用不了；设置页健康组新增『打开健康数据共享设置』一行，底部多了一行诊断信息（状态码与最近错误）",
+                  "Fixed Health Connect authorization never opening: on Android 14 and above, tapping Authorize did nothing and wrongly claimed this device cannot use Health Connect. The Health section in Settings gains an 'Open Health Connect settings' row, and a diagnostics line at the bottom showing the status code and the most recent error")));
+        e2001.why = s("旧版拉起授权的方式与知行的页面不兼容，请求根本没递到系统，错误又被吞掉报了假消息；这版改走系统直连，错误也留在明处方便查",
+                "The old way of opening the authorization screen did not fit how KnowDo's pages are built, so the request never reached the system at all, and the error was swallowed and turned into a false 'device unsupported' message. This release goes through the system directly, and errors stay visible so problems can be diagnosed");
+        e2001.tryIt = s("设置 → 健康 → 点『去授权』，在系统页把睡眠、静息心率、步数、活动热量打开，回来点『重新读取』，状态变成已连接就通了",
+                "Settings → Health → tap Authorize, switch on sleep, resting heart rate, steps and active calories on the system page, then come back and tap Read now — when the status turns to Connected, it works");
+        out.add(e2001);
+
         Entry e2000 = new Entry("v2.0.0", "2026-11-27");
         e2000.add(new Group(s("新功能", "New"),
                 s("知行能自己读健康数据了：在设置 → 健康里授权一次，它就直接读手机里「健康数据共享」的睡眠、静息心率、步数和活动热量，不再绕 Muse 中转。原始记录和睡眠分期永不离开手机，上云的只有每天一小行汇总（几点睡、睡多久、达没达标）。不授权也完全不影响其他功能",
