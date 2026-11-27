@@ -36,6 +36,24 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2000 = new Entry("v2.0.0", "2026-11-27");
+        e2000.add(new Group(s("新功能", "New"),
+                s("知行能自己读健康数据了：在设置 → 健康里授权一次，它就直接读手机里「健康数据共享」的睡眠、静息心率、步数和活动热量，不再绕 Muse 中转。原始记录和睡眠分期永不离开手机，上云的只有每天一小行汇总（几点睡、睡多久、达没达标）。不授权也完全不影响其他功能",
+                  "KnowDo now reads health data itself: authorize once under Settings → Health and it reads sleep, resting heart rate, steps and active calories straight from Health Connect, no more relaying through Muse. Raw records and sleep stages never leave the phone; only a one-line daily summary (bedtime, duration, goal met or not) syncs to your own account. Declining changes nothing else in the app"),
+                s("晨间页换了顺序，先意义、后数据：第一眼是你的志和「给今晚的话」（今晚的小计划，比如 22:30 还在刷就去洗漱，每周一会轻轻提醒你重写），往下才是昨晚几点睡、睡了多久、达没达标，再确认今晚几点上床（只改今晚，不动设置），最后填一个 HRV。晨间倒计时也补上了：第一次打开自动倒数 10 分钟，能加时，退出页面也不会停",
+                  "The morning page is reordered — meaning first, numbers after: your aspiration and a 'line for tonight' (tonight's if-then plan, with a gentle rewrite nudge on Mondays) come first, then last night's sleep (in bed when, how long, goal met), then tonight's bedtime to confirm (tonight only, settings untouched), then one HRV field. The morning countdown is finally in, too: 10 minutes from first open, extendable, and it keeps running when you leave the page"),
+                s("睡眠目标你自己设：目标上床、起床、午睡时长都在设置 → 健康里，全软件的达标判定都按这一份算；改了只管以后，已经记下的日子不重算。没有手表或没授权时，晨间页里手填入睡和起床时间也照样记账",
+                  "Sleep goals are yours to set: bedtime, wake-up and nap length under Settings → Health, and every goal judgement in the app reads that one setting. Changes count from now on — recorded days are never re-scored. With no watch or no permission, filling in bed and wake times by hand on the morning page still books the night"),
+                s("今天页多了健康总览和恢复分：昨晚睡眠、恢复分圆环、今日步数、午睡和今天的任务在同一页，进度条为主、数字为辅。恢复分是知行版的算法——睡眠时长、入睡时间点、深睡占比、静息心率、HRV、昨日活动六项加权，点圆环能看到完整公式和每一项的得分；缺哪项就按缺项折算并注明，不糊弄",
+                  "The Today page gains a health overview and a recovery score: last night's sleep, a recovery ring, today's steps and the nap sit on the same page as today's tasks, bars first and numbers second. The score is KnowDo's own — sleep duration, bedtime, deep-sleep share, resting heart rate, HRV and yesterday's activity, weighted; tap the ring for the full formula and each part's points. A missing part is redistributed and named, never faked"),
+                s("HRV 这一版先手填：佳明不把 HRV 传给健康数据共享，晨间页留了一格，在佳明 App 里看一眼昨晚平均值抄进来就行；不填恢复分就按缺项算。佳明个人 API 自动拉取是下一步",
+                  "HRV is hand-filled for now: Garmin does not pass HRV to Health Connect, so the morning page has one field for last night's average from the Garmin app. Leave it blank and the score counts it as missing. Automatic pull via Garmin's personal API comes later")));
+        e2000.why = s("这一版是你定的方向：通过意义改变行为——晨间第一眼先让你看见自己的志和给今晚的话，数据退后；睡眠数据也不再绕 Muse 中转，知行自己直连，这样记账、提醒、周报都在软件里闭环。恢复分不照搬手表厂商的黑箱，做知行版、公式全公开。本版未经真机验证（健康授权流程必须真机走），有问题回滚 v1.99.0",
+                "This release follows your ruling: change behaviour through meaning — the morning page opens on your aspiration and your line for tonight, with numbers after; and sleep data no longer relays through Muse, KnowDo connects directly so booking, reminders and weekly reviews close the loop inside the app. The recovery score is KnowDo's own with its formula fully shown, not a vendor black box. Not verified on a real device (the health permission flow needs hardware); if anything is wrong, roll back to v1.99.0");
+        e2000.tryIt = s("先去设置 → 健康点「去授权」，在系统页里把四项都打开；再打开晨间页：第一眼应是你的志和给今晚的话，往下昨晚的入睡时间和时长已经自动填好；回今天页点恢复分圆环，看公式和本周汇总",
+                "Go to Settings → Health and tap Authorize, allow all four in the system page; then open the morning page: your aspiration and tonight's line should come first, with last night's bedtime and duration already filled in below. Back on Today, tap the recovery ring for the formula and this week's rollup");
+        out.add(e2000);
+
         Entry e1990 = new Entry("v1.99.0", "2026-11-26");
         e1990.add(new Group(s("新功能", "New"),
                 s("聊聊里能一口气加好几个任务了：一次把几件事说给它，它会整理成一张编号汇总卡——每件的标题、时长、优先级、截止、重复都列清楚，哪件是给 AI 做的也标出来；你点一次「全部建好」，整批一次建完，不用再一件一件分开发",
