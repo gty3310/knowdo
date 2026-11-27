@@ -550,6 +550,18 @@ public final class HealthStore {
                     if (s.steps < 0 && old != null) s.steps = old.optLong("steps", -1);
                     if (s.kcal < 0 && old != null) s.kcal = old.optDouble("kcal", -1);
                     putSummary(root, date, s, false);
+                    // 不翻旧账（F2）：已记过账的日期，达标判定（met/lateMin）冻结在
+                    // 当日算定的值——之后改睡眠设置、或表数据回补重算，都不许把
+                    // 历史日期的达标翻过来；原始数字（时长等）仍可随表数据更新
+                    if (old != null && old.optLong("startMs", 0) > 0) {
+                        JSONObject nd = daySummary(root, date);
+                        if (nd != null) {
+                            try {
+                                nd.put("met", old.optBoolean("met", false));
+                                nd.put("lateMin", old.optInt("lateMin", 0));
+                            } catch (Exception ignored) { }
+                        }
+                    }
                 } else if (!oldManual) {
                     // 没读到睡眠：只更新步数/心率/热量（有才写），不动已有睡眠账
                     if (old != null || s.rhr >= 0 || s.steps >= 0 || s.kcal >= 0) {
