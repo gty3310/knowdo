@@ -207,6 +207,7 @@ public final class HealthStore {
         return w == null ? "" : w.optString(date, "").trim();
     }
 
+    /** 写「给今晚的话」：逐字输入走静默存（不逐键触发同步），同步由 kickSync 收口。 */
     public static void setWords(Context c, String date, String text) {
         JSONObject root = load(c);
         try {
@@ -214,7 +215,12 @@ public final class HealthStore {
             String t = text == null ? "" : text.trim();
             if (t.isEmpty()) w.remove(date); else w.put(date, t);
         } catch (Exception ignored) { }
-        save(c, root);
+        saveQuiet(c, root);
+    }
+
+    /** 把已静默落盘的本地数据推一次同步（页面收尾时调，收口逐字输入的补传）。 */
+    public static void kickSync(Context c) {
+        if (hasLocal(c)) save(c, load(c));
     }
 
     // ---------------- 每日汇总 ----------------
@@ -277,7 +283,8 @@ public final class HealthStore {
         } catch (Exception ignored) { }
     }
 
-    /** HRV 手填（晨间页）：填了重算恢复分；清空则删键、恢复分按缺项折算。 */
+    /** HRV 手填（晨间页）：填了重算恢复分；清空则删键、恢复分按缺项折算。
+     *  逐字输入走静默存，同步由 kickSync 收口（同 setWords）。 */
     public static void setHrv(Context c, String date, Integer value) {
         JSONObject root = load(c);
         try {
@@ -287,7 +294,7 @@ public final class HealthStore {
             if (value == null || value <= 0) d.remove("hrv"); else d.put("hrv", value.intValue());
         } catch (Exception ignored) { }
         recomputeRecovery(root, date);
-        save(c, root);
+        saveQuiet(c, root);
     }
 
     public static Integer hrv(JSONObject root, String date) {

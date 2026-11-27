@@ -77,6 +77,19 @@ public class MorningActivity extends Activity {
     private TextView pauseBtn;
     private final List<View> dots = new ArrayList<>();
 
+    // 健康区（v2.0.0）：意义→昨晚→今晚确认→HRV，整区可单独重画（读数回来时）
+    private LinearLayout healthZone;
+    private TextView countdownText;
+    private int manualStartMin = HealthStore.DEFAULT_BED_MIN;
+    private int manualWakeMin = HealthStore.DEFAULT_WAKE_MIN;
+    private final android.os.Handler tick = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable tickRun = new Runnable() {
+        @Override public void run() {
+            paintCountdown();
+            tick.postDelayed(this, 1000);
+        }
+    };
+
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
     private static String s(String zh, String en) { return Strings.en() ? en : zh; }
 
@@ -104,27 +117,39 @@ public class MorningActivity extends Activity {
             // 门模式自此进入 5 分钟重弹循环（v1.26.0）：未提交、未选推迟就每 5 分钟
             // 弹回，直到提交或选了推迟时长；测试页只是验收工具，不进循环
             if (!testMode) MorningGate.engageNag(this, session);
+            // 晨间倒计时（2026-11-14 定案，v2.0.0 补实现）：首次打开自动起表
+            // 10 分钟，截止时刻落盘在 MorningGate，退页不停、到点靠重弹拉回
+            if (!testMode) MorningGate.engageCountdown(this, session);
         }
         logDate = HabitData.logDateFor(session);
         habits = HabitData.habits(root);
         buildUi();
+        // F1 读取时机①：晨间页打开时拉昨晚（后台读 Health Connect，
+        // 回来只重画健康区，不动正在填的 A/C 输入）
+        HealthStore.refresh(this, () -> runOnUiThread(() -> {
+            if (!isFinishing()) buildHealthSections();
+        }));
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         TopPages.morningShown = true;
+        tick.removeCallbacks(tickRun);
+        tick.post(tickRun);
     }
 
     @Override
     protected void onPause() {
         TopPages.morningShown = false;
+        tick.removeCallbacks(tickRun);
         // 兜底落盘：输入已边填边存，这里再整份保存一次（含同步），防任何漏网
         try {
             if (root != null) {
                 flushDraft();
                 HabitData.save(this, root);
             }
+            HealthStore.kickSync(this); // 健康区逐字输入（话语/HRV）的同步收口
         } catch (Exception ignored) { }
         super.onPause();
     }
@@ -197,6 +222,12 @@ public class MorningActivity extends Activity {
         col.addView(date);
 
         if (editMode) col.addView(buildDateSwitcher());
+
+        // 健康区（v2.0.0，F4 排序定案：先意义、后数据，在既有晨间项之前）
+        healthZone = new LinearLayout(this);
+        healthZone.setOrientation(LinearLayout.VERTICAL);
+        col.addView(healthZone);
+        buildHealthSections();
 
         if (!editMode) {
             // 进度点（门/测试模式）
@@ -297,6 +328,235 @@ public class MorningActivity extends Activity {
         root = HabitData.load(this);
         habits = HabitData.habits(root);
         buildUi();
+    }
+
+    // ---------------- 健康区（v2.0.0 F4）：意义 → 昨晚 → 今晚确认 → HRV ----------------
+    // 顺序是定案，不许调换：第一眼先是「我的志＋给今晚的话」，数据随后。
+    // 整区可单独重画（Health Connect 读数回来时），重画不碰 A/C 的输入框；
+    // 区内输入（话语、HRV）逐字静默落盘，同步在 onPause 由 kickSync 收口。
+
+    private void buildHealthSections() {
+        if (healthZone == null) return;
+        healthZone.removeAllViews();
+        countdownText = null;
+        if (!editMode) healthZone.addView(buildCountdownRow());
+        healthZone.addView(buildSectionMeaning());
+        healthZone.addView(buildSectionSleep());
+        healthZone.addView(buildSectionTonight());
+        healthZone.addView(buildSectionHrv());
+    }
+
+    /** 倒计时一行（门/测试模式）：剩余时间＋「+5 分钟」；pass 走底部既有「暂停一会儿」。 */
+    private View buildCountdownRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(10), 0, 0);
+        countdownText = small("", 12.5f);
+        row.addView(countdownText, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView add = ynButton(s("+5 分钟", "+5 min"));
+        add.setOnClickListener(v -> {
+            MorningGate.addCountdownTime(this, session, 5);
+            paintCountdown();
+        });
+        row.addView(add, new LinearLayout.LayoutParams(
+                dp(92), LinearLayout.LayoutParams.WRAP_CONTENT));
+        paintCountdown();
+        return row;
+    }
+
+    private void paintCountdown() {
+        if (countdownText == null) return;
+        long left = MorningGate.countdownRemainingMs(this, session);
+        if (left < 0) {
+            countdownText.setText("");
+            return;
+        }
+        if (left == 0) {
+            countdownText.setText(s("晨间时间到，填完这一页开启今天", "Time is up — finish this page to start the day"));
+            countdownText.setTextColor(Ui.accent(this));
+            return;
+        }
+        long sec = (left + 999) / 1000;
+        countdownText.setText(s("晨间倒计时 ", "Morning countdown ")
+                + String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60));
+        countdownText.setTextColor(Ui.sub(this));
+    }
+
+    /** 意义区：我的志（Aspiration 既有展示）＋一句可编辑的「给今晚的话」。 */
+    private View buildSectionMeaning() {
+        LinearLayout sec = section(s("给今晚的自己", "For tonight's self"),
+                s("先看意义，再看数据", "Meaning first, numbers after"));
+        View asp = Aspiration.makeView(this, false);
+        if (asp != null) {
+            asp.setPadding(0, dp(2), 0, dp(6));
+            sec.addView(asp);
+        }
+        TextView lab = small(s("给今晚的话（今晚的小计划）", "A line for tonight (tonight's if-then plan)"), 12);
+        sec.addView(lab);
+        final EditText in = new EditText(this);
+        in.setText(HealthStore.words(HealthStore.load(this), session));
+        in.setHint(s("如：22:30 还在刷，就去洗漱", "e.g. Still scrolling at 22:30 — go wash up"));
+        in.setTextSize(14.5f);
+        in.setTextColor(Ui.text(this));
+        in.setHintTextColor(Ui.sub(this));
+        in.setMinLines(1);
+        in.setGravity(Gravity.TOP);
+        in.setPadding(0, dp(4), 0, 0);
+        in.addTextChangedListener(new TextWatcher() {
+            @Override public void afterTextChanged(Editable e) {
+                HealthStore.setWords(MorningActivity.this, session, e.toString());
+            }
+            @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
+        });
+        sec.addView(in);
+        // 每周一轻提示重写（只提示、不拦截）：session 是周一即 mondayOf(session)==session
+        if (session.equals(DayUtil.mondayOf(session))) {
+            TextView hint = small(s("新的一周，这句要不要重写", "A new week — rewrite this line?"), 11.5f);
+            hint.setTextColor(Ui.accent(this));
+            hint.setPadding(0, dp(6), 0, 0);
+            sec.addView(hint);
+        }
+        return sec;
+    }
+
+    /** 昨晚数据：表测自动带入（入睡/起床/时长/达标/深睡/静息心率）；没有就手填兜底。 */
+    private View buildSectionSleep() {
+        LinearLayout sec = section(s("昨晚睡眠", "Last night's sleep"),
+                s("表测自动带入，不用手填", "From your watch — nothing to fill in"));
+        JSONObject hroot = HealthStore.load(this);
+        JSONObject day = HealthStore.daySummary(hroot, session);
+        boolean has = day != null && day.optLong("startMs", 0) > 0;
+        if (has) {
+            String start = hmOf(day.optLong("startMs"));
+            String wake = hmOf(day.optLong("wakeMs"));
+            int total = day.optInt("totalMin", 0);
+            TextView l1 = new TextView(this);
+            l1.setText(s("入睡 ", "In bed ") + start + s(" · 起床 ", " · up ") + wake
+                    + s(" · 睡了 ", " · slept ") + durText(total));
+            l1.setTextSize(15);
+            l1.setTextColor(Ui.text(this));
+            l1.setPadding(0, dp(2), 0, 0);
+            sec.addView(l1);
+            boolean met = day.optBoolean("met", false);
+            StringBuilder sb = new StringBuilder(met ? s("达标 ✓", "Goal met ✓") : s("未达标", "Goal missed"));
+            int deep = day.optInt("deepMin", -1);
+            if (deep >= 0) sb.append(s(" · 深睡 ", " · deep ")).append(durText(deep));
+            int rhr = day.optInt("rhr", -1);
+            if (rhr > 0) sb.append(s(" · 静息心率 ", " · resting HR ")).append(rhr);
+            if (day.optBoolean("manual", false)) sb.append(s(" · 手填", " · by hand"));
+            TextView l2 = small(sb.toString(), 12.5f);
+            l2.setTextColor(met ? Ui.green(this) : Ui.accent(this));
+            l2.setPadding(0, dp(4), 0, 0);
+            sec.addView(l2);
+            return sec;
+        }
+        String state = HealthStore.connState(this);
+        TextView none = small(HealthStore.CONN_OK.equals(state)
+                ? s("还没读到昨晚的睡眠（打开这一页时已自动读一次，手表同步后重开可见）",
+                    "No sleep read yet (this page reads on open — sync the watch and reopen)")
+                : s("还没连上健康数据，先手填也行，填了照样记账",
+                    "Health data not connected — fill in by hand, it still counts"), 12.5f);
+        none.setPadding(0, dp(2), 0, dp(4));
+        sec.addView(none);
+        JSONObject sroot = HealthStore.load(this);
+        manualStartMin = HealthStore.bedMin(sroot);
+        manualWakeMin = HealthStore.wakeMin(sroot);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        final TextView bStart = ynButton(s("入睡 ", "In bed ") + LocalAutoScheduler.hhmm(manualStartMin));
+        final TextView bWake = ynButton(s("起床 ", "Up ") + LocalAutoScheduler.hhmm(manualWakeMin));
+        bStart.setOnClickListener(v -> new android.app.TimePickerDialog(this,
+                (view, h, m) -> {
+                    manualStartMin = h * 60 + m;
+                    bStart.setText(s("入睡 ", "In bed ") + LocalAutoScheduler.hhmm(manualStartMin));
+                    saveManualSleep();
+                }, manualStartMin / 60, manualStartMin % 60, true).show());
+        bWake.setOnClickListener(v -> new android.app.TimePickerDialog(this,
+                (view, h, m) -> {
+                    manualWakeMin = h * 60 + m;
+                    bWake.setText(s("起床 ", "Up ") + LocalAutoScheduler.hhmm(manualWakeMin));
+                    saveManualSleep();
+                }, manualWakeMin / 60, manualWakeMin % 60, true).show());
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(bStart, lp1);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lp2.leftMargin = dp(6);
+        row.addView(bWake, lp2);
+        sec.addView(row);
+        return sec;
+    }
+
+    private void saveManualSleep() {
+        HealthStore.setManualSleep(this, session, manualStartMin, manualWakeMin);
+        buildHealthSections();
+    }
+
+    /** 今晚确认：显示今晚目标上床时间，可就地改——只改今晚，不动设置。 */
+    private View buildSectionTonight() {
+        JSONObject hroot = HealthStore.load(this);
+        final int tonight = HealthStore.tonightBedMin(hroot, session);
+        LinearLayout sec = section(s("今晚", "Tonight"),
+                s("默认按设置，改这里只改今晚", "From your settings — changing here changes tonight only"));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView t = new TextView(this);
+        t.setText(s("今晚上床 ", "In bed tonight ") + LocalAutoScheduler.hhmm(tonight));
+        t.setTextSize(15);
+        t.setTextColor(Ui.text(this));
+        row.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView change = ynButton(s("改", "Change"));
+        change.setOnClickListener(v -> new android.app.TimePickerDialog(this,
+                (view, h, m) -> {
+                    HealthStore.setTonightBedMin(this, session, h * 60 + m);
+                    buildHealthSections();
+                }, tonight / 60, tonight % 60, true).show());
+        row.addView(change, new LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT));
+        sec.addView(row);
+        return sec;
+    }
+
+    /** HRV 手填格：佳明不外传 HRV，看一眼佳明 App 抄昨晚平均值；不填恢复分按缺项折算。 */
+    private View buildSectionHrv() {
+        LinearLayout sec = section(s("昨晚 HRV", "Last night's HRV"),
+                s("佳明不外传这个数，在佳明 App 里看一眼抄进来；不填也行",
+                        "Garmin doesn't share this — copy last night's average from the Garmin app, or leave it blank"));
+        final EditText in = new EditText(this);
+        in.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        in.setTextSize(15);
+        in.setTextColor(Ui.text(this));
+        in.setHint(s("如 42", "e.g. 42"));
+        in.setHintTextColor(Ui.sub(this));
+        Integer cur = HealthStore.hrv(HealthStore.load(this), session);
+        if (cur != null) in.setText(String.valueOf(cur));
+        in.addTextChangedListener(new TextWatcher() {
+            @Override public void afterTextChanged(Editable e) {
+                String t = e.toString().trim();
+                Integer v = null;
+                try {
+                    if (!t.isEmpty()) v = Integer.parseInt(t);
+                } catch (Exception ignored) { }
+                HealthStore.setHrv(MorningActivity.this, session, v);
+            }
+            @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence cs, int a, int b, int c) { }
+        });
+        sec.addView(in);
+        return sec;
+    }
+
+    private static String hmOf(long ms) {
+        return new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                .format(new java.util.Date(ms));
+    }
+
+    private static String durText(int minutes) {
+        int h = minutes / 60, m = minutes % 60;
+        if (Strings.en()) return h + "h " + m + "m";
+        return h + " 小时 " + m + " 分";
     }
 
     // ---------------- A：昨日习惯 ----------------

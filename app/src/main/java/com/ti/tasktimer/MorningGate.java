@@ -235,7 +235,51 @@ public final class MorningGate {
     public static void onCompleted(Context c) {
         clearSnooze(c);
         stopNag(c);
+        clearCountdown(c);
         AlertHelper.cancelMorning(c);
+    }
+
+    // ---------------- 晨间倒计时（2026-11-14 定案，v2.0.0 补实现） ----------------
+    // 规矩：每天早上首次打开晨间页即自动开始倒计时（10 分钟），可加时、
+    // 可 pass（pass 就是既有的「暂停一会儿」），退出页面计时不能停——
+    // 截止时刻落盘在本类 prefs 里，页面不在时它照样流逝；晨间未完成时
+    // 既有重弹循环会把页面拉回来，剩余时间按落盘截止时刻如实显示，
+    // 直到打卡了结（onCompleted 清除）。本类只存截止时刻，不存内容。
+
+    private static final String KEY_CD_SESSION = "cd_session";
+    private static final String KEY_CD_DEADLINE = "cd_deadline";
+    /** 倒计时总长：10 分钟（2026-11-14 定案时在 10/15 之间未最终选定，先按 10）。 */
+    public static final long COUNTDOWN_MS = 10 * 60_000L;
+
+    /** 晨间页以门模式展示时调用：本 session 第一次展示才起表，重复展示续用原截止时刻。 */
+    public static void engageCountdown(Context c, String session) {
+        if (session == null || session.isEmpty()) return;
+        SharedPreferences p = sp(c);
+        if (!session.equals(p.getString(KEY_CD_SESSION, ""))) {
+            p.edit().putString(KEY_CD_SESSION, session)
+                    .putLong(KEY_CD_DEADLINE, System.currentTimeMillis() + COUNTDOWN_MS)
+                    .apply();
+        }
+    }
+
+    /** 剩余毫秒；本 session 没起过表返回 -1；已到点返回 0。 */
+    public static long countdownRemainingMs(Context c, String session) {
+        SharedPreferences p = sp(c);
+        if (session == null || !session.equals(p.getString(KEY_CD_SESSION, ""))) return -1;
+        long left = p.getLong(KEY_CD_DEADLINE, 0) - System.currentTimeMillis();
+        return Math.max(0, left);
+    }
+
+    /** 加时：截止时刻后延 minutes 分钟（已到点则从现在起算）。 */
+    public static void addCountdownTime(Context c, String session, long minutes) {
+        SharedPreferences p = sp(c);
+        if (session == null || !session.equals(p.getString(KEY_CD_SESSION, ""))) return;
+        long base = Math.max(p.getLong(KEY_CD_DEADLINE, 0), System.currentTimeMillis());
+        p.edit().putLong(KEY_CD_DEADLINE, base + minutes * 60_000L).apply();
+    }
+
+    public static void clearCountdown(Context c) {
+        sp(c).edit().remove(KEY_CD_SESSION).remove(KEY_CD_DEADLINE).apply();
     }
 
     /** 设置页「测试晨间页」：不看 dayStart、不看当日是否已完成，直接以门模式打开正式页。 */
