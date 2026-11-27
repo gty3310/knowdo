@@ -28,9 +28,9 @@ In priority order:
 
 Later: real phone calls for task transitions, monetary fines for going off-plan, an all-day conversational body-doubling companion, and Motion-style automatic rescheduling.
 
-## Features (Android, v2.0.0)
+## Features (Android, v2.0.1)
 
-Current version: **v2.0.0**.
+Current version: **v2.0.1**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -65,6 +65,17 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v2.0.1 — 2026-11-27
+
+**Why:** On the day v2.0.0 shipped, the user hit this on a Pixel 10: the Health row said 'not authorized', yet tapping Authorize popped up 'this device cannot use Health Connect', and KnowDo did not exist in Health Connect's app-permissions list at all. The root cause, verified against both the library sources and the shipped APK: on Android 14+, connect-client 1.1.0-alpha07 delegates its permission contract to androidx.activity's RequestMultiplePermissions, whose intent carries an internal action that only a ComponentActivity registry can launch; KnowDo is plain Activities launching it directly, so no component could receive it — the request never reached the system, and the swallowed exception surfaced as a false 'unsupported' message. Build commit `802ec2d` · [compare v2.0.0...v2.0.1](https://github.com/gty3310/knowdo/compare/v2.0.0...v2.0.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**Fixed**
+- **Authorization goes through the system.** Settings → Health now branches on the Health Connect status code: available on Android 14+ requests the four health permissions directly via Activity.requestPermissions (the framework routes them to the Health Connect grant UI) with a new onRequestPermissionsResult path that re-reads and repaints on return; available on Android 13 and below keeps the original contract intent; 'provider update required' no longer claims the device is unsupported — it says an update is needed and tries to open the Health Connect settings page; only a genuinely unavailable SDK shows 'unsupported'.
+- **Errors stay visible.** HealthStore records the last status code and the last error (class, message, time) in local preferences — refresh no longer swallows its exception — and the Health section shows a small diagnostics line; failures now toast a short real reason instead of one false message for everything.
+- **Open Health Connect settings.** A new row in Settings → Health opens the system Health Connect home (framework action on Android 14+, androidx action below), so grants can also be reviewed and managed on the system side.
+
+Not verified on a device or emulator (bug-fix release; the VM emulator could not boot in three recorded attempts — see the release report); if anything is wrong, roll back to v2.0.0. Data changes: none in the cloud; diagnostics live only in local preferences.
+
 ### v2.0.0 — 2026-11-27
 
 **Why:** Under the user's 2026-11-27 ruling, behaviour changes through meaning first: the morning page now opens on the aspiration and a self-written 'line for tonight' before any numbers. Sleep data stops relaying through the author's assistant — KnowDo connects to Health Connect directly, so booking, reminders and weekly reviews close the loop inside the app; and the recovery score is KnowDo's own, formula fully public, instead of a watch vendor's black box. Build commit `3c0c5c4` · [compare v1.99.0...v2.0.0](https://github.com/gty3310/knowdo/compare/v1.99.0...v2.0.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -90,18 +101,6 @@ Not verified on a device or emulator — the Health Connect authorization flow a
 - **No server change.** chat-proxy only forwards messages; the structured protocol is defined by the client's system prompt and parsed client-side, so batch add works with the currently deployed proxy — no deployment debt. Single-item create/update/delete, schedule and setting proposals are byte-for-byte the old behaviour; must-do items join today's scheduling candidates and the time account through the existing mechanisms, exactly like a hand-created task.
 
 Not verified on a device or emulator; if anything is wrong, roll back to v1.98.1. Data changes: none — no new files, no schema changes; createdId annotations live inside the existing chat-history records.
-
-### v1.98.1 — 2026-11-26
-
-**Why:** The v1.97.0 overlay migration crashed in a loop on a real device (the user hit Android's 'keeps stopping' dialog): the guard's verdict chain runs on an accessibility background thread and rebuilt the whole floating-window view hierarchy on that thread, so the main thread's per-second refresh threw CalledFromWrongThreadException the moment it touched the page — and the unanswered-inquiry re-show kept renewing its own 120-second window, so the loop never expired. This release applies the investigation's three fixes and, as the user specified the same day, adds crash reporting under the existing tester mode so the next fault of this kind arrives with a stack trace instead of a screenshot. Build commit `63beefc` · [compare v1.98.0...v1.98.1](https://github.com/gty3310/knowdo/compare/v1.98.0...v1.98.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Inquiry overlay crash loop.** BigOverlay.requestGuard now runs its two thread-safe pre-checks on the calling thread and posts the takeover to the main thread when called from elsewhere (presentation unchanged); GuardOverlay clears its grace-mode button list at the top of createView and bounds the style loop, closing a latent ArrayIndexOutOfBoundsException on rebuild; GuardPending's re-show no longer refreshes fired_at and is capped at two rounds, so even a different crash in the show path can no longer renew the loop forever.
-
-**New**
-- **Crash reporting under tester mode.** With the existing 'Tester mode' switch (diag_mode) on, internal errors reported through ErrorReporter and process-level crashes are recorded on-device: an uncaught-exception handler writes synchronously and chains to the previous handler. Records are deduplicated by a line-number-free fingerprint (exception class + top in-app frames as class.method, with an fp_v algorithm version); one detail per fingerprint per day, repeats only raise a counter. Each record carries a UUID (idempotent server merge), kind (fatal/non-fatal), app and Android versions, device model, crash thread, foreground flag and current page; exception messages are truncated and passed through the existing SemanticJudge redaction before they are stored. A 16-entry in-process breadcrumb ring (timestamps + event names only) rides along. Upload piggybacks on the normal sync into an idle user_state JSON column the app never reads back; details are kept 90 days, daily counters permanently. With the switch off, nothing is recorded or sent. An ANR watchdog is deliberately deferred to a later release.
-
-Not verified on a device or emulator (this release contains bug fixes; the repo rule asks for an emulator run, but this VM's emulator cannot boot — recorded honestly in the release report); if anything is wrong, roll back to v1.98.0. Data changes: one new local file (crash_reports.json); the crash node lands in the previously idle user_state.reschedule_request column.
 
 ## Build
 
