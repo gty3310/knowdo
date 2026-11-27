@@ -358,6 +358,11 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 恢复分详情（v2.0.0）：公式公开页＋本周汇总，今天页健康总览卡点入 -->
+        <activity
+            android:name=".RecoveryDetailActivity"
+            android:exported="false" />
+
         <!-- 每周目标反思详情页（v1.47.0）：改本周/下周目标、写今日反省、看过去各周 -->
         <activity
             android:name=".WeeklyHabitActivity"

@@ -46,6 +46,9 @@ public class TodayPage {
     private boolean replyOpen;
     private String replyDraft = "";
 
+    // 健康总览（v2.0.0）：每个 session 最多自动读一次，读完重画一次
+    private String healthTriedFor = "";
+
     public TodayPage(MainActivity act, ViewGroup container) {
         this.act = act;
         this.container = container;
@@ -110,6 +113,8 @@ public class TodayPage {
         col.addView(headRow);
 
         col.addView(morningCard(habitRoot, session));
+        col.addView(healthCard(logicToday));
+        maybeRefreshHealth(session);
         View advice = adviceCard(logicToday);
         if (advice != null) col.addView(advice);
         col.addView(diaryCard(habitRoot, logicToday));
@@ -177,6 +182,193 @@ public class TodayPage {
             act.startActivity(i);
         });
         return card;
+    }
+
+    // ---------------- 1.5 健康总览卡（v2.0.0 F5） ----------------
+
+    /** F1 读取时机②：今天页进入时拉当日与近 7 天（同一 session 只自动拉一次防重画循环）。 */
+    private void maybeRefreshHealth(final String session) {
+        if (session.equals(healthTriedFor)) return;
+        healthTriedFor = session;
+        HealthStore.refresh(act, () -> act.runOnUiThread(this::render));
+    }
+
+    private View healthCard(final String logicToday) {
+        JSONObject hroot = HealthStore.load(act);
+        JSONObject day = HealthStore.daySummary(hroot, logicToday);
+        boolean hasSleep = day != null && day.optLong("startMs", 0) > 0;
+        LinearLayout card = cardBox();
+        if (!hasSleep) {
+            // 未连接/没读到：给连接引导，不留空白坑
+            card.addView(label(s("健康", "Health")));
+            TextView t = new TextView(act);
+            boolean ok = HealthStore.CONN_OK.equals(HealthStore.connState(act));
+            t.setText(ok ? s("还没读到昨晚的睡眠", "No sleep read for last night yet")
+                    : s("还没连上健康数据", "Health data not connected yet"));
+            t.setTextSize(17);
+            t.setTypeface(Typeface.SERIF);
+            t.setTextColor(inkC());
+            t.setPadding(0, dp(5), 0, 0);
+            card.addView(t);
+            TextView sub = tv(ok ? s("手表同步后，在设置里点「重新读取」",
+                            "After the watch syncs, tap Read now in Settings")
+                            : s("点开去连接，睡眠会自动进来",
+                            "Tap to connect — sleep flows in on its own"),
+                    12.5f, subC());
+            sub.setPadding(0, dp(4), 0, 0);
+            card.addView(sub);
+            card.setOnClickListener(v -> openHealthSettings());
+            return card;
+        }
+        // 头行：左标题＋睡眠行，右恢复分圆环（点开详情，公式在详情页公开）
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout left = new LinearLayout(act);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.addView(label(s("健康总览", "Health overview")));
+        int total = day.optInt("totalMin", 0);
+        TextView t = new TextView(act);
+        t.setText(s("昨晚 ", "Last night ") + hmOf(day.optLong("startMs"))
+                + s(" 入睡 · ", " in bed · ") + durText(total));
+        t.setTextSize(15.5f);
+        t.setTextColor(inkC());
+        t.setPadding(0, dp(5), 0, 0);
+        left.addView(t);
+        boolean met = day.optBoolean("met", false);
+        TextView m = tv(met ? s("达标 ✓", "Goal met ✓") : s("未达标", "Goal missed"),
+                12.5f, met ? Ui.green(act) : redC());
+        m.setPadding(0, dp(3), 0, 0);
+        left.addView(m);
+        row.addView(left, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        if (day.has("recovery")) {
+            int rec = day.optInt("recovery", 0);
+            FrameLayout ringBox = new FrameLayout(act);
+            ringBox.addView(new ZhixingPage.RingView(act, rec),
+                    new FrameLayout.LayoutParams(dp(62), dp(62)));
+            TextView rn = new TextView(act);
+            rn.setText(String.valueOf(rec));
+            rn.setTextSize(19);
+            rn.setTypeface(Typeface.SERIF, Typeface.BOLD);
+            rn.setTextColor(inkC());
+            rn.setGravity(Gravity.CENTER);
+            ringBox.addView(rn, new FrameLayout.LayoutParams(dp(62), dp(62)));
+            row.addView(ringBox);
+        }
+        card.addView(row);
+        // 睡眠时长进度条（对目标窗口）
+        int win = HealthMath.windowMin(HealthStore.bedMin(hroot), HealthStore.wakeMin(hroot));
+        card.addView(barRow(s("睡眠", "Sleep"), total + " / " + win + s(" 分钟", " min"),
+                win > 0 ? (double) total / win : 0));
+        // 今日步数（有近 7 天中位数作参照才画条，否则只给数）
+        long steps = day.optLong("steps", -1);
+        if (steps >= 0) {
+            Double med = stepsMedian(hroot, logicToday);
+            card.addView(barRow(s("今日步数", "Steps today"), String.valueOf(steps),
+                    med != null && med > 0 ? steps / med : -1));
+        }
+        // 午睡（对午睡目标）
+        int nap = day.optInt("napMin", 0);
+        int napGoal = HealthStore.napGoalMin(hroot);
+        card.addView(barRow(s("午睡", "Nap"), nap + " / " + napGoal + s(" 分钟", " min"),
+                napGoal > 0 ? (double) nap / napGoal : 0));
+        // 恢复分缺项/基线小注
+        org.json.JSONArray miss = day.optJSONArray("recMissing");
+        if (day.has("recovery") && miss != null && miss.length() > 0) {
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; i < miss.length(); i++) {
+                if (i > 0) names.append("、");
+                names.append(missingName(miss.optString(i)));
+            }
+            TextView note = tv(s("恢复分缺 ", "Score missing ") + names
+                    + s("，按缺项折算", " — counted without it"), 11.5f, subC());
+            note.setPadding(0, dp(8), 0, 0);
+            card.addView(note);
+        }
+        if (day.has("recovery") && day.optInt("recBase", 0) < 7) {
+            TextView note = tv(s("基线建立中", "Baseline still building"), 11.5f, subC());
+            note.setPadding(0, dp(3), 0, 0);
+            card.addView(note);
+        }
+        card.setOnClickListener(v -> act.startActivity(
+                new Intent(act, RecoveryDetailActivity.class)));
+        return card;
+    }
+
+    private void openHealthSettings() {
+        Intent i = new Intent(act, SettingsActivity.class);
+        i.putExtra(SettingsActivity.EXTRA_PAGE, SettingsActivity.PAGE_NAME_HEALTH);
+        act.startActivity(i);
+    }
+
+    /** 一行进度：左小标签＋右数值，下方一条细进度条（ratio<0 只给数不画条）。 */
+    private View barRow(String lab, String value, double ratio) {
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(9), 0, 0);
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        TextView l = tv(lab, 12, subC());
+        head.addView(l, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        head.addView(tv(value, 12, subC()));
+        box.addView(head);
+        if (ratio >= 0) {
+            double r = Math.max(0, Math.min(1, ratio));
+            LinearLayout bar = new LinearLayout(act);
+            bar.setOrientation(LinearLayout.HORIZONTAL);
+            bar.setBackground(roundBg(Ui.line(act), Ui.line(act), 3));
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(6));
+            blp.topMargin = dp(4);
+            bar.setLayoutParams(blp);
+            View fill = new View(act);
+            GradientDrawable fg = new GradientDrawable();
+            fg.setColor(redC());
+            fg.setCornerRadius(dp(3));
+            fill.setBackground(fg);
+            bar.addView(fill, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.MATCH_PARENT, (float) Math.max(0.001, r)));
+            View rest = new View(act);
+            bar.addView(rest, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.MATCH_PARENT, (float) Math.max(0.001, 1 - r)));
+            box.addView(bar);
+        }
+        return box;
+    }
+
+    private Double stepsMedian(JSONObject hroot, String logicToday) {
+        java.util.List<Long> xs = new java.util.ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            JSONObject pd = HealthStore.daySummary(hroot, DayUtil.addDays(logicToday, -i));
+            if (pd != null && pd.optLong("steps", -1) >= 0) xs.add(pd.optLong("steps"));
+        }
+        if (xs.isEmpty()) return null;
+        java.util.Collections.sort(xs);
+        int n = xs.size();
+        return n % 2 == 1 ? (double) xs.get(n / 2)
+                : (xs.get(n / 2 - 1) + xs.get(n / 2)) / 2.0;
+    }
+
+    private static String missingName(String key) {
+        switch (key) {
+            case "deep": return s("深睡", "deep sleep");
+            case "rhr": return s("静息心率", "resting heart rate");
+            case "hrv": return "HRV";
+            case "activity": return s("昨日活动", "yesterday's activity");
+            default: return key;
+        }
+    }
+
+    private static String hmOf(long ms) {
+        return new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                .format(new java.util.Date(ms));
+    }
+
+    private static String durText(int minutes) {
+        int h = minutes / 60, m = minutes % 60;
+        return Strings.en() ? h + "h " + m + "m" : h + " 小时 " + m + " 分";
     }
 
     // ---------------- 2. AI 建议卡 ----------------
