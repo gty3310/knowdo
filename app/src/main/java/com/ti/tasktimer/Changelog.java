@@ -36,6 +36,16 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2002 = new Entry("v2.0.2", "2026-11-27");
+        e2002.add(new Group(s("修复", "Fixed"),
+                s("补上系统要求的健康授权登记：知行现在会出现在『健康数据共享』的应用列表里，点『去授权』能正常弹出系统授权页",
+                  "Added the system-required Health Connect registration: KnowDo now appears in Health Connect's app list, and tapping Authorize opens the system authorization page as expected")));
+        e2002.why = s("上一版把授权的打开方式修好了，却少了系统要求的一处登记——没登记的应用在健康数据共享里根本不出现，授权页也弹不出来；这版把登记补上",
+                "The previous release fixed how authorization is opened but missed a registration the system requires — without it the app never appears in Health Connect at all and the grant page cannot open. This release adds that registration");
+        e2002.tryIt = s("设置 → 健康 → 点『去授权』，应弹出系统授权页，把睡眠、静息心率、步数、活动热量打开，回来点『重新读取』，状态变成已连接就通了；也能在系统『健康数据共享 → 应用权限』里找到知行",
+                "Settings → Health → tap Authorize: the system page should open — switch on sleep, resting heart rate, steps and active calories, come back and tap Read now; Connected means it works. You can also find KnowDo under the system's Health Connect app permissions");
+        out.add(e2002);
+
         Entry e2001 = new Entry("v2.0.1", "2026-11-27");
         e2001.add(new Group(s("修复", "Fixed"),
                 s("修复健康数据共享授权点不开的问题：安卓 14 以上点『去授权』没反应、还误报这台设备用不了；设置页健康组新增『打开健康数据共享设置』一行，底部多了一行诊断信息（状态码与最近错误）",

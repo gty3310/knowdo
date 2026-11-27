@@ -351,6 +351,20 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- 健康权限用途登记（v2.0.2 补）：安卓 14 以上平台 Health Connect 要求应用
+             声明 VIEW_PERMISSION_USAGE＋HEALTH_PERMISSIONS，系统才把应用列进
+             「健康数据共享」的权限管理、授权请求才弹得出授权页；v2.0.0–v2.0.1
+             缺这一段，知行在系统列表里根本不出现。指向既有说明页即可 -->
+        <activity-alias
+            android:name=".HealthPermissionUsageAlias"
+            android:exported="true"
+            android:targetActivity=".HealthRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- 今天安排页（v1.28.0 feature 9）：晨间门「开启今天」后进来排定今天；
              普通页，不进最近任务之外无特殊要求 -->
         <activity
