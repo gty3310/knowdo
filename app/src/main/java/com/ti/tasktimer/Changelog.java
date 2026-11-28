@@ -36,6 +36,25 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2300 = new Entry("v2.3.0", "2026-11-29");
+        e2300.add(new Group(s("新功能", "New"),
+                s("聊天里建好的任务变成活卡片：每件任务一张卡，嵌在对话里，不再只剩一张静态的「已建好」清单",
+                  "Tasks created in chat are now live cards — each created task becomes a card right inside the conversation instead of a static \"created\" summary"),
+                s("卡上点「改」就在原地展开小表单（标题、时长、截止、重要性都是点选），保存后改的就是任务列表里的同一件任务",
+                  "Tap Edit on a card to open a small form in place (title, length, deadline, priority — all taps, no typing except the title); saving changes the same task you see in the task list"),
+                s("卡上点「开始」直接开始计时",
+                  "Tap Start on a card to start its timer")));
+        e2300.add(new Group(s("改进", "Improved"),
+                s("任务在列表里被改掉或删掉，聊天里那张卡会跟着变，不会留着旧样子",
+                  "If a task is edited or deleted in the list, its card in chat follows — no stale copies"),
+                s("关掉聊天再打开、滚回上面，那组卡还是原来那组，显示最新值，可以接着改",
+                  "Close and reopen the chat, or scroll back up: the same card group is still there, showing the latest values, ready to edit again")));
+        e2300.why = s("以前聊天建完任务只剩一行字，想改只能去列表里翻；现在对话里生成的东西就留在对话里、随时能接着改，对话和列表管的是同一份任务",
+                "Chat-created work used to collapse into one line of text; now what the conversation creates stays in the conversation and stays editable, while chat and list keep editing one shared set of tasks");
+        e2300.tryIt = s("悬浮窗点「聊一聊」，说一件要做的事（如「明天下午三点前写完周报，大概 45 分钟」），点「都加上」，再在卡上点「改」试着改时长，然后去任务列表看同一件任务",
+                "Open Chat from the floating window, describe a task, tap Add all, then tap Edit on its card and change the length; check the same task in the list");
+        out.add(e2300);
+
         Entry e2200 = new Entry("v2.2.0", "2026-11-28");
         e2200.add(new Group(s("新功能", "New"),
                 s("小悬浮窗上多了一个红色的「聊一聊」钮，点开就是一个能浮在任何 App 上面的聊天窗；窗的大小和位置可以自己拖着改，下次打开照旧",
