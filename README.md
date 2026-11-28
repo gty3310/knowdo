@@ -47,9 +47,9 @@ In priority order:
 2. **Deepen the conscience layer** — the looking-back that connects many gaps to the one piece of knowing that is not yet real; design first, no date promised.
 3. **A compact Today dashboard** — today's completion, focus time and remaining time at a glance, merged into the existing Today page rather than a new one.
 
-## Features (Android, v2.2.0)
+## Features (Android, v2.3.0)
 
-Current version: **v2.2.0**.
+Current version: **v2.3.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -127,6 +127,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v2.3.0 — 2026-11-29
+
+**Why:** Under the author's 2026-11-28 ruling, generated UI inside chat must be rare and alive: essentially only task creation produces cards (one task, one card; two tasks, one group), and scrolling back must find the same card — carrying the latest values and still editable — never a freshly regenerated snapshot. The official AndroidX A2UI Compose renderer was spiked first and rejected for this release: its AARs require AGP 9.1+ and compileSdk 37 against this repo's AGP 8.5.2 / compileSdk 34 toolchain, so per the author's fallback ruling the A2UI protocol shape is kept and the rendering layer is a small hand-written one — three decoupled layers (protocol messages, data binding, component catalog) that later surfaces (guard inquiry, next-task picker, morning/evening cards) can reuse. Build commit `940c2c3` · [compare v2.2.0...v2.3.0](https://github.com/gty3310/knowdo/compare/v2.2.0...v2.3.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Live task cards in chat.** After a batch proposal is applied with Add all, every created task appears in the conversation as a live card (one group per batch; dropped or failed items never enter the group); a single applied create/update proposal produces one card the same way. Cards bind to the real task store by id — there is one shared set of tasks, never a second copy.
+- **Edit and start in place.** A card offers exactly two actions: Edit opens a small form in place (title, length, deadline, priority — taps, no typing except the title) whose save goes through the same field-writing path as proposal application; Start begins the timer through the existing smart-start path.
+- **Cards stay current.** Edits made in the task list flow back into the card in place; a deleted task turns its card into a deleted state; closing and reopening the chat, or scrolling back up, restores the same card group from the task store's current values, still editable. Pending or dismissed proposals keep the v2.2.0 rendering as fallback.
+- **A reusable dynamic-UI foundation.** The new dynui package implements the A2UI message shapes (createSurface / updateComponents / updateDataModel / deleteSurface), path-based two-way data binding that refreshes only the bound subtree, and a whitelisted component catalog (TaskCard, TaskEditForm, Text; unknown types degrade to Text). Zero new runtime dependencies.
+
+Not verified on a real device: that scrolling back really edits the same card, that list and card edits land on the same task, that cards restore editable after a chat session is reopened, and card scrolling/tapping inside the chat overlay all need a device pass. The Image catalog component is not implemented yet — it heads the catalog extension list for the future custom-reminder-page scenario. If anything is wrong, roll back to v2.2.0. Data changes: none beyond the tasks you create or edit yourself.
+
 ### v2.2.0 — 2026-11-28
 
 **Why:** Under the author's 2026-11-28 ruling, the main pages stay exactly as they are and chat moves into the floating window: a freely resizable large window for plain chat that never blocks the app underneath, while the 99% locked windows stay reserved for doing business (guard inquiry, choosing the next task). Chat is really needed in just two moments — creating tasks and explaining a false distraction verdict — so it now lives one tap away on the small floating window instead of behind a trip back into the app's tabs. Build commit `15405b6` · [compare v2.1.0...v2.2.0](https://github.com/gty3310/knowdo/compare/v2.1.0...v2.2.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -148,15 +160,6 @@ Not verified on a real device: overlay focus toggling, touch pass-through, resiz
 - **README rewritten.** New plain-language opening with the four-depth audience and a quick start; Vision reframed as two ledgers + three layers with the app's four identity changes; new How it works (five mechanism groups), Design principles (all 11), Built with multiple AI agents, two For experts sections, and a short not-yet-built What's next; Features gains Health unity, the activity stream / leniency tiers and Chat batch-adding; the Roadmap now lists current priorities (server-side judging deployment, the conscience layer, the Today dashboard), and the old fines / phone-call / Mac-guard items are gone.
 
 Documentation only: no functional code changed, the six red-line files are untouched. Built and package-verified (versionCode 144 / versionName 2.1.0); not verified on a real device — the new Help's on-device layout is to be eyeballed after release. If anything is wrong, roll back to v2.0.2. Data changes: none.
-
-### v2.0.2 — 2026-11-27
-
-**Why:** v2.0.1 repaired how authorization is requested, but on the user's Pixel 10 the grant page still never opened, KnowDo still did not appear in Health Connect's app-permissions list, and there was no system-side entry to grant from either. Verified against the shipped v2.0.1 APK (aapt2 manifest dump): the manifest lacks the Android 14+ platform Health Connect declaration — an intent-filter with action `android.intent.action.VIEW_PERMISSION_USAGE` and category `android.intent.category.HEALTH_PERMISSIONS` (both count 0 in the package; the four health read permissions and both rationale declarations were present). The system uses that declaration to decide which apps exist inside Health Connect at all, so the repaired requestPermissions path still had nowhere to land. This release adds exactly that one declaration and changes nothing else. Build commit `e18ab6b` · [compare v2.0.1...v2.0.2](https://github.com/gty3310/knowdo/compare/v2.0.1...v2.0.2) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Health Connect permission-usage registration.** AndroidManifest gains one activity-alias (targeting the existing HealthRationaleActivity) whose intent-filter carries `android.intent.action.VIEW_PERMISSION_USAGE` and `android.intent.category.HEALTH_PERMISSIONS`. KnowDo now appears in Health Connect's app list, and tapping Authorize can open the system grant page. The existing rationale activity/alias and the four health read permissions are untouched.
-
-Not verified on a real device; the emulator attempt is recorded in the release report (REPORT-v2002-dev.md). If anything is wrong, roll back to v2.0.1. Data changes: none.
 
 ## Build
 
