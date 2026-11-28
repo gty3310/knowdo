@@ -47,9 +47,9 @@ In priority order:
 2. **Deepen the conscience layer** — the looking-back that connects many gaps to the one piece of knowing that is not yet real; design first, no date promised.
 3. **A compact Today dashboard** — today's completion, focus time and remaining time at a glance, merged into the existing Today page rather than a new one.
 
-## Features (Android, v2.1.0)
+## Features (Android, v2.2.0)
 
-Current version: **v2.1.0**.
+Current version: **v2.2.0**.
 
 - **Excel-like task table** — columns you can show or hide, resize, and edit in place: task name, context tags (multi-select, custom tags allowed), deadline (date picker, or daily repeat), planned duration, priority, planned start time, time used / remaining. Tap a row to expand it in place and act on it; a checkbox marks it done; the row currently being timed is highlighted.
 - **Focus timer with full-screen check-ins** — a countdown per task, driven by a foreground service that stores an absolute end time, so the countdown does not drift if the process is killed; exact alarms back up the half-time and end points. At half-time and at the deadline, a full-screen page takes over — via full-screen intent from the lock screen, or an overlay path on an unlocked screen — asking whether you can still finish and whether you did. Not done? Add +50% / +5 / +10 / +15 minutes or a custom extension, or write down your plan for finishing.
@@ -127,6 +127,18 @@ KnowDo's AI comes in two parts, and the difference matters:
 
 The full history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format; every release commit is tagged, and the version shown in the app carries the build commit's short hash). Latest release:
 
+### v2.2.0 — 2026-11-28
+
+**Why:** Under the author's 2026-11-28 ruling, the main pages stay exactly as they are and chat moves into the floating window: a freely resizable large window for plain chat that never blocks the app underneath, while the 99% locked windows stay reserved for doing business (guard inquiry, choosing the next task). Chat is really needed in just two moments — creating tasks and explaining a false distraction verdict — so it now lives one tap away on the small floating window instead of behind a trip back into the app's tabs. Build commit `15405b6` · [compare v2.1.0...v2.2.0](https://github.com/gty3310/knowdo/compare/v2.1.0...v2.2.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**New**
+- **Chat in the floating window.** The small floating window gains a vermilion Chat pill opening ChatOverlay, a standalone overlay window (default 85% × 60% of the screen): drag its corner to resize and its title bar to move it — size and place persist locally. It is NOT_TOUCH_MODAL, so touches outside pass through to the app below, and it takes keyboard focus only when the input is tapped (the same flag pattern as the mini window's note editing). It hosts the existing ChatPanel — same MAIN thread, same proposal cards — and opens with the currently running or paused task as context.
+- **Change the running task from chat.** Update proposal cards are now before → after comparisons (title, duration, priority, deadline, start time); nothing is written until you confirm, and applying goes through the existing field-level update path.
+- **Batch create, item by item.** Batch-create cards let you drop single items before applying (dropped items keep their numbered row and are skipped, not counted as failures); the apply button now reads Add all.
+- **Faster model route, client-ready.** Chat requests carry model/provider routing fields (default openai/gpt-oss-120b with provider order Cerebras then Groq and data_collection=deny; task-parsing turns use qwen/qwen3-32b). The legacy send path is byte-identical for its existing callers.
+
+Not verified on a real device: overlay focus toggling, touch pass-through, resize dragging, and the stacking order between the chat window and the 99% inquiry window all need a device pass. The model route is not live server-side yet — whether chat-proxy forwards the fields is unverified (its source is outside this repo and deployment waits on a PAT); until then chat behaves exactly as before. If anything is wrong, roll back to v2.1.0. Data changes: none beyond the tasks you create or edit yourself.
+
 ### v2.1.0 — 2026-11-28
 
 **Why:** The in-app Help was still, in its body, the manual of over a year ago: most features from the hundred-plus releases since were missing from it, its page structure predated the five tabs, and it still carried claims already retired (a focus-rule blacklist mode, gone since v1.94.0). The README's feature list had kept up, but its Vision was still the earliest framing — without the two ledgers and three layers that later became the product's core — its Roadmap still promised monetary fines and phone calls, and the health release had never entered the feature list. Under the author's 2026-11-28 ruling, both documents are rewritten for a reader who has never seen the app: the opening must say what it is, who it is for, what it solves and how to start, in the shortest possible space; the writing is layered — plain language for everyday users, expert material in its own labelled sections (for programmers, for behaviour-change experts, for Confucian/Buddhist/Daoist practitioners); and what's next keeps only one short directional paragraph in public documents. No app behaviour changes. Build commit `e3f3681` · [compare v2.0.2...v2.1.0](https://github.com/gty3310/knowdo/compare/v2.0.2...v2.1.0) · full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -145,17 +157,6 @@ Documentation only: no functional code changed, the six red-line files are untou
 - **Health Connect permission-usage registration.** AndroidManifest gains one activity-alias (targeting the existing HealthRationaleActivity) whose intent-filter carries `android.intent.action.VIEW_PERMISSION_USAGE` and `android.intent.category.HEALTH_PERMISSIONS`. KnowDo now appears in Health Connect's app list, and tapping Authorize can open the system grant page. The existing rationale activity/alias and the four health read permissions are untouched.
 
 Not verified on a real device; the emulator attempt is recorded in the release report (REPORT-v2002-dev.md). If anything is wrong, roll back to v2.0.1. Data changes: none.
-
-### v2.0.1 — 2026-11-27
-
-**Why:** On the day v2.0.0 shipped, the user hit this on a Pixel 10: the Health row said 'not authorized', yet tapping Authorize popped up 'this device cannot use Health Connect', and KnowDo did not exist in Health Connect's app-permissions list at all. The root cause, verified against both the library sources and the shipped APK: on Android 14+, connect-client 1.1.0-alpha07 delegates its permission contract to androidx.activity's RequestMultiplePermissions, whose intent carries an internal action that only a ComponentActivity registry can launch; KnowDo is plain Activities launching it directly, so no component could receive it — the request never reached the system, and the swallowed exception surfaced as a false 'unsupported' message. Build commit `802ec2d` · [compare v2.0.0...v2.0.1](https://github.com/gty3310/knowdo/compare/v2.0.0...v2.0.1) · full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**Fixed**
-- **Authorization goes through the system.** Settings → Health now branches on the Health Connect status code: available on Android 14+ requests the four health permissions directly via Activity.requestPermissions (the framework routes them to the Health Connect grant UI) with a new onRequestPermissionsResult path that re-reads and repaints on return; available on Android 13 and below keeps the original contract intent; 'provider update required' no longer claims the device is unsupported — it says an update is needed and tries to open the Health Connect settings page; only a genuinely unavailable SDK shows 'unsupported'.
-- **Errors stay visible.** HealthStore records the last status code and the last error (class, message, time) in local preferences — refresh no longer swallows its exception — and the Health section shows a small diagnostics line; failures now toast a short real reason instead of one false message for everything.
-- **Open Health Connect settings.** A new row in Settings → Health opens the system Health Connect home (framework action on Android 14+, androidx action below), so grants can also be reviewed and managed on the system side.
-
-Not verified on a device or emulator (bug-fix release; the VM emulator could not boot in three recorded attempts — see the release report); if anything is wrong, roll back to v2.0.0. Data changes: none in the cloud; diagnostics live only in local preferences.
 
 ## Build
 
