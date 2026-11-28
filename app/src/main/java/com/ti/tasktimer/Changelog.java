@@ -36,6 +36,18 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2100 = new Entry("v2.1.0", "2026-11-28");
+        e2100.add(new Group(s("改进", "Improved"),
+                s("说明书大修：软件内的帮助页整体重写成 30 节——第一节用最白的话讲清知行是什么、第一天五步就能上手；中间是按五个页签排的操作说明，全部校订到现行版本（守卫的难度、宽松与申诉，健康与恢复分，知页六组，聊聊批量加任务都补齐了）；最后四节标明「给专家看」，分别讲行为改变的设计、阳明心学与知行的对应、设计原则、给程序员的架构与数据设计。旧帮助里已经作废的说法（专注规则的黑名单模式、旧页签位置）都已删改",
+                  "The manual release: the in-app Help is rewritten end to end as 30 sections — the first section explains in the plainest words what KnowDo is and gets you started in five steps on day one; the middle is the operating reference arranged by the five tabs, all corrected to the current version (guard difficulty, leniency and appeals, health and the recovery score, the six Know groups, batch-adding in Chat are all covered now); the last four sections are labelled for experts — the behaviour-change design, the Yangming mapping, the design principles, and a for-programmers section on architecture and data design. Outdated claims in the old help (a focus-rule blacklist mode, old tab positions) are removed"),
+                s("GitHub 上的 README 同步重写：开头先让完全没见过这个软件的人看懂它是什么、为谁、解决什么；新增「它如何工作」的五组机制、11 条设计原则、多 Agent 协作开发一节，以及给专家的两节（行为改变、阳明心学）；下一步方向只留一小段并明确标注还没有做出来。软件功能本身没有任何变化",
+                  "The GitHub README is rewritten alongside: its opening now lets someone who has never seen the app understand what it is, who it is for, and what it solves; new sections cover the five mechanism groups under How it works, the 11 design principles, how the app is built with multiple AI agents, and two expert sections (behaviour change, the Yangming mapping); what's next is one short paragraph, explicitly marked not yet built. No app behaviour changes in this release")));
+        e2100.why = s("帮助页的主体还停在一年多以前的版本：后面一百多个版本的功能大多没写进去，还留着已经作废的旧说法；README 的愿景也还是最早的框架，没写后来定型的两本账与三层。这一版把两个说明书按现行软件整体重写一遍，并按你的要求分层——普通用户看前面，专家内容单独成节标明",
+                "The Help's body was still the version from over a year ago: most features from the hundred-plus releases since were missing, and claims already retired were still in it; the README's vision was likewise still the earliest framing, without the two ledgers and three layers that later became the product's core. This release rewrites both documents against the current app, layered as ruled — everyday users read the front, expert material stands in its own labelled sections");
+        e2100.tryIt = s("打开设置或抽屉里的「帮助」：先读第一节，五步就能开始用；往下翻到第二十七节起是给专家看的四节。软件里没有任何功能变化，不用重新学任何操作",
+                "Open Help from Settings or the drawer: read section 1 first — five steps and you are started; sections 27 onwards are the four expert sections. Nothing about how the app works has changed, so there is nothing new to learn operationally");
+        out.add(e2100);
+
         Entry e2002 = new Entry("v2.0.2", "2026-11-27");
         e2002.add(new Group(s("修复", "Fixed"),
                 s("补上系统要求的健康授权登记：知行现在会出现在『健康数据共享』的应用列表里，点『去授权』能正常弹出系统授权页",
