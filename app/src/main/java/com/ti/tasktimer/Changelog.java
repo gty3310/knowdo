@@ -36,6 +36,20 @@ public final class Changelog {
     public static List<Entry> entries() {
         List<Entry> out = new ArrayList<>();
 
+        Entry e2200 = new Entry("v2.2.0", "2026-11-28");
+        e2200.add(new Group(s("新功能", "New"),
+                s("小悬浮窗上多了一个红色的「聊一聊」钮，点开就是一个能浮在任何 App 上面的聊天窗；窗的大小和位置可以自己拖着改，下次打开照旧",
+                  "The small floating window gains a vermilion Chat button that opens a chat window floating above any app; drag its corner to resize it and its title bar to move it — size and place are remembered"),
+                s("在窗里跟 AI 说话就能改正在做的任务：改之前先出对照卡（旧值 → 新值），你点确认才改；也能一次建好几个新任务，批量卡上每件都能先去掉再点「都加上」",
+                  "From inside the chat window you can change the running task — a before/after card shows old and new values and nothing changes until you confirm — and create several tasks at once, dropping single items from the batch card before tapping Add all"),
+                s("聊天请求已带上更快的模型线（快聊 GPT-OSS 120B、解析任务 Qwen3-32B 分工），服务端通道切换完成后生效；回复边写边显示",
+                  "Chat requests now carry a faster model route (GPT-OSS 120B for chat, Qwen3-32B for task parsing), which takes effect once the server-side channel switch is deployed; replies stream in as they are written")));
+        e2200.why = s("你真正需要聊天的只有两处——建任务、被判分神时解释；把聊天收进随叫随到的悬浮窗，就不用为了说一句话先切回 App 翻页签。问询和选下一个仍是原来的 99% 大窗，不受影响",
+                "Chat is really needed in just two moments — creating tasks and explaining a false distraction verdict; keeping it in an always-at-hand floating window removes the trip back into the app, while inquiry and next-task flows keep their existing full-attention windows");
+        e2200.tryIt = s("开始一个任务计时，点小悬浮窗上的「聊一聊」，拖右下角把窗改小一点，再在窗里说「把这个任务改成 45 分钟」，看对照卡点确认；再说一句「帮我加上买菜和回邮件两件事」，在批量卡上去掉一件，点「都加上」",
+                "Start a timer, tap Chat on the small window, resize it, say \"make this task 45 minutes\" and confirm the before/after card; then name two new tasks, drop one on the batch card and tap Add all");
+        out.add(e2200);
+
         Entry e2100 = new Entry("v2.1.0", "2026-11-28");
         e2100.add(new Group(s("改进", "Improved"),
                 s("说明书大修：软件内的帮助页整体重写成 30 节——第一节用最白的话讲清知行是什么、第一天五步就能上手；中间是按五个页签排的操作说明，全部校订到现行版本（守卫的难度、宽松与申诉，健康与恢复分，知页六组，聊聊批量加任务都补齐了）；最后四节标明「给专家看」，分别讲行为改变的设计、阳明心学与知行的对应、设计原则、给程序员的架构与数据设计。旧帮助里已经作废的说法（专注规则的黑名单模式、旧页签位置）都已删改",
