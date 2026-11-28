@@ -192,6 +192,32 @@ public final class Strings {
     public static String chatTalkBtn() { return s("聊一聊", "Chat"); }
     public static String chatOverlayTitle() { return s("和 AI 聊聊", "Chat with AI"); }
     public static String chatOverlayClose() { return s("收起", "Close"); }
+
+    // ---------- v2.3.0 活卡片（dynui 目录组件共用文案） ----------
+
+    public static String dynEdit() { return s("改", "Edit"); }
+    public static String dynStart() { return s("开始", "Start"); }
+    public static String dynSave() { return s("保存", "Save"); }
+    public static String dynCancel() { return s("取消", "Cancel"); }
+    public static String dynTaskGone() { return s("这件任务已经不在列表里了", "This task is no longer in the list"); }
+    public static String dynMinUnit() { return s(" 分钟", " min"); }
+    public static String dynDuePrefix() { return s("截止 ", "Due "); }
+    public static String dynTitleHint() { return s("任务名", "Task title"); }
+    public static String dynDurationLabel() { return s("时长", "Length"); }
+    public static String dynDeadlineLabel() { return s("截止", "Deadline"); }
+    public static String dynPriorityTitle() { return s("重要性", "Priority"); }
+    public static String dynDeadlineNone() { return s("不设截止", "No deadline"); }
+    public static String dynToday() { return s("今天", "Today"); }
+    public static String dynTomorrow() { return s("明天", "Tomorrow"); }
+    public static String dynSat() { return s("周六", "Sat"); }
+    public static String dynNextMon() { return s("下周一", "Next Mon"); }
+    public static String dynStarted() { return s("开始计时了", "Timer started"); }
+    public static String dynPriorityLabel(String p) {
+        if ("must".equals(p)) return s("必做", "Must do");
+        if ("important".equals(p)) return s("重要", "Important");
+        if ("leisure".equals(p)) return s("休息", "Rest");
+        return s("次要", "Minor");
+    }
     public static String chatResizeHint() { return s("拖动右下角可以改大小", "Drag the corner to resize"); }
 
     // ---------- 暂停 30 秒无下一步遮罩 ----------

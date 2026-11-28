@@ -71,4 +71,7 @@ dependencies {
     implementation 'androidx.health.connect:connect-client:1.1.0-alpha07'
     // connect-client 的 suspend 接口要的协程运行时（它未作为 api 依赖暴露，桥里 runBlocking 直接用）
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    // v2.3.0：dynui 地基 JVM 单元测试；org.json 取真实实现，Android 运行时仍用系统自带
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20230618'
 }

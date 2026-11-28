@@ -421,6 +421,26 @@ public class ChatPanel {
     private View buildProposalCard(final ChatStore.Msg m) {
         String action = proposalAction(m.proposal);
         if ("create_batch".equals(action)) return buildBatchCard(m);
+        // v2.3.0：已应用的 create/update 提案改渲染活卡片——绑定真实任务，
+        // 滚回来还是同一张卡、可继续改；绑定缺失时落回下面的静态渲染兜底
+        if (m.propState == ChatStore.PROP_APPLIED
+                && ("create".equals(action) || "update".equals(action))) {
+            String liveId = null;
+            if ("create".equals(action)) {
+                try {
+                    String cid = new JSONObject(m.proposal).optString("createdId", "");
+                    if (!cid.isEmpty()) liveId = cid;
+                } catch (Exception ignored) { }
+            } else {
+                TaskItem tg = proposalTarget(m.proposal);
+                if (tg != null) liveId = tg.id;
+            }
+            if (liveId != null) {
+                View live = ChatDynUi.buildGroup(act, store,
+                        java.util.Collections.singletonList(liveId));
+                if (live != null) return live;
+            }
+        }
         final LinearLayout card = newCard();
         if ("delete".equals(action)) {
             card.addView(cardHead(en() ? "Suggested deletion" : "它建议删掉这个任务", DANGER));
@@ -463,6 +483,26 @@ public class ChatPanel {
      * 逐件落库（applyBatchProposal），应用后整卡重画：建成/失败都留在原编号行上。
      */
     private View buildBatchCard(final ChatStore.Msg m) {
+        // v2.3.0：已应用的批量提案改渲染一组活卡片（每件按 createdId 绑定真实任务，
+        // dropped/failed 件不入组）；待决态与无绑定时走下面 v2.2.0 的原渲染
+        if (m.propState == ChatStore.PROP_APPLIED) {
+            List<String> liveIds = new ArrayList<>();
+            try {
+                JSONArray arr0 = new JSONObject(m.proposal).optJSONArray("tasks");
+                if (arr0 != null) {
+                    for (int i = 0; i < arr0.length(); i++) {
+                        JSONObject o = arr0.optJSONObject(i);
+                        if (o == null || o.optBoolean("dropped") || o.optBoolean("failed")) continue;
+                        String cid = o.optString("createdId", "");
+                        if (!cid.isEmpty()) liveIds.add(cid);
+                    }
+                }
+            } catch (Exception ignored) { }
+            if (!liveIds.isEmpty()) {
+                View live = ChatDynUi.buildGroup(act, store, liveIds);
+                if (live != null) return live;
+            }
+        }
         final LinearLayout card = newCard();
         JSONObject batchP = null;
         JSONArray arr = null;
@@ -860,6 +900,12 @@ public class ChatPanel {
             TaskItem t = TaskItem.create(title);
             applyFieldsTo(t, p, true);
             store.add(t);
+            // v2.3.0：把新建任务 id 写回提案 JSON——已应用态渲染活卡片时按它绑定，
+            // 聊天记录重开后仍能找回同一件任务（surface 存档即提案本身，不另存一份）
+            try {
+                p.put("createdId", t.id);
+                m.proposal = p.toString();
+            } catch (Exception ignored) { }
             StartReminder.reschedule(act, store);
             toast(en() ? "Created — find it in the task list" : "已建好，回任务列表就能看到");
             return true;
@@ -883,8 +929,9 @@ public class ChatPanel {
         return true;
     }
 
-    /** 提案字段往任务上落（create 与 update 共用；与 v1.22.0 的字段口径一致）。 */
-    private void applyFieldsTo(TaskItem t, JSONObject p, boolean creating) {
+    /** 提案字段往任务上落（create 与 update 共用；与 v1.22.0 的字段口径一致）。
+     *  v2.3.0 起改为包内静态：活卡片编辑保存（ChatDynUi）与提案应用共用这一条写回路径。 */
+    static void applyFieldsTo(TaskItem t, JSONObject p, boolean creating) {
         if (!creating && p.has("title") && !p.optString("title").trim().isEmpty()) {
             t.title = p.optString("title").trim();
         }
