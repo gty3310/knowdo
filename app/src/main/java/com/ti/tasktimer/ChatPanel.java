@@ -33,7 +33,7 @@ import java.util.Set;
  * 「删除」钮）；新增 knowdo-setting 设置提案（白名单见 SettingProposal）；
  * system 提示注入《知行使用手册》摘要，能回答软件用法问题。
  * v1.99.0 扩展：knowdo-proposal 加 action=create_batch——一次说多件事，一张
- * 编号汇总卡、一次点「全部建好」逐件落库；每件可带 assignee（给 AI 做）与
+ * 编号汇总卡、一次点「都加上」逐件落库；每件可带 assignee（给 AI 做）与
  * repeat/repeatWeekdays；缺项按单件默认补齐并在卡上标注；应用后编号↔taskId
  * 映射注入后续 system 提示，「第 X 个」可被引用。
  *
@@ -138,8 +138,8 @@ public class ChatPanel {
         refreshCtxLine();
 
         modelLine = new TextView(act);
-        modelLine.setText(en() ? "The model is picked automatically — the strongest free one right now"
-                : "模型由系统自动挑选当时最强的免费模型");
+        modelLine.setText(en() ? "Replies appear as they are written"
+                : "回复会边写边显示");
         modelLine.setTextSize(11);
         modelLine.setTextColor(Ui.sub(act));
         modelLine.setPadding(dp(20), dp(3), dp(20), dp(8));
@@ -459,28 +459,68 @@ public class ChatPanel {
 
     /**
      * 批量新建卡（v1.99.0）：卡面就是编号汇总——逐件编号＋标题＋关键字段，
-     * 缺项按默认补的在行尾标明补了哪几项，没收的件在卡尾单列原因。点「全部建好」
+     * 缺项按默认补的在行尾标明补了哪几项，没收的件在卡尾单列原因。点「都加上」
      * 逐件落库（applyBatchProposal），应用后整卡重画：建成/失败都留在原编号行上。
      */
     private View buildBatchCard(final ChatStore.Msg m) {
         final LinearLayout card = newCard();
+        JSONObject batchP = null;
         JSONArray arr = null;
         JSONArray skipped = null;
         try {
-            JSONObject p = new JSONObject(m.proposal);
-            arr = p.optJSONArray("tasks");
-            skipped = p.optJSONArray("skipped");
+            batchP = new JSONObject(m.proposal);
+            arr = batchP.optJSONArray("tasks");
+            skipped = batchP.optJSONArray("skipped");
         } catch (Exception ignored) { }
+        final JSONObject fBatchP = batchP;
         boolean applied = m.propState == ChatStore.PROP_APPLIED;
         card.addView(cardHead(applied
                 ? (en() ? "New tasks created" : "已建好的任务")
                 : (en() ? "Suggested new tasks" : "它建议一次新建这些任务"), Ui.accent(act)));
         if (arr != null) {
             for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
+                final JSONObject o = arr.optJSONObject(i);
                 if (o == null) continue;
-                cardLine(card, (i + 1) + "、" + o.optString("title", ""), true);
-                cardLine(card, "　　" + batchItemDetail(o), false);
+                // v2.2.0：待决态逐件可「去掉」——标 dropped 留在原编号行（编号不
+                // 漂移），应用时跳过；去掉是用户自己的删减，不是失败，不标 failed
+                boolean dropped = o.optBoolean("dropped", false);
+                LinearLayout row = new LinearLayout(act);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.TOP);
+                LinearLayout texts = new LinearLayout(act);
+                texts.setOrientation(LinearLayout.VERTICAL);
+                texts.setLayoutParams(new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                TextView titleTv = new TextView(act);
+                titleTv.setText((i + 1) + "、" + o.optString("title", ""));
+                titleTv.setTextSize(15);
+                titleTv.setTypeface(titleTv.getTypeface(), Typeface.BOLD);
+                titleTv.setTextColor(dropped ? Ui.sub(act) : Ui.text(act));
+                titleTv.setPadding(0, dp(3), 0, 0);
+                texts.addView(titleTv);
+                TextView detailTv = new TextView(act);
+                detailTv.setText("　　" + batchItemDetail(o));
+                detailTv.setTextSize(15);
+                detailTv.setTextColor(dropped ? Ui.sub(act) : Ui.text(act));
+                detailTv.setPadding(0, dp(3), 0, 0);
+                texts.addView(detailTv);
+                row.addView(texts);
+                if (m.propState == ChatStore.PROP_PENDING) {
+                    if (dropped) {
+                        row.addView(stateText(en() ? "Removed" : "已去掉"));
+                    } else {
+                        TextView drop = cardBtn(en() ? "Remove" : "去掉", false);
+                        drop.setTextSize(12.5f);
+                        drop.setOnClickListener(v -> {
+                            try { o.put("dropped", true); } catch (Exception ignored) { }
+                            if (fBatchP != null) m.proposal = fBatchP.toString();
+                            ChatStore.saveMain(act, msgs);
+                            renderAll();
+                        });
+                        row.addView(drop);
+                    }
+                }
+                card.addView(row);
             }
         }
         if (skipped != null) {
@@ -526,18 +566,33 @@ public class ChatPanel {
             } else if (m.propState == ChatStore.PROP_DISMISSED) {
                 btnRow.addView(stateText(en() ? "Not created" : "没建，什么也没动"));
             } else {
-                TextView apply = cardBtn(en() ? "Create all" : "全部建好", true);
-                apply.setOnClickListener(v -> {
-                    if (applyBatchProposal(m)) {
-                        m.propState = ChatStore.PROP_APPLIED;
-                        ChatStore.saveMain(act, msgs);
-                        renderAll(); // 整卡重画：失败件要在原编号行上标出来
-                    } else {
-                        toast(en() ? "None of them could be created" : "一件也没建成");
-                        renderState[0].run();
+                int remaining = 0;
+                try {
+                    JSONArray a2 = new JSONObject(m.proposal).optJSONArray("tasks");
+                    if (a2 != null) {
+                        for (int i = 0; i < a2.length(); i++) {
+                            JSONObject o = a2.optJSONObject(i);
+                            if (o != null && !o.optBoolean("dropped", false)
+                                    && !o.optString("title", "").trim().isEmpty()) remaining++;
+                        }
                     }
-                });
-                btnRow.addView(apply);
+                } catch (Exception ignored) { }
+                if (remaining == 0) {
+                    btnRow.addView(stateText(en() ? "All removed — nothing to create" : "都去掉了，没建"));
+                } else {
+                    TextView apply = cardBtn(en() ? "Add all" : "都加上", true);
+                    apply.setOnClickListener(v -> {
+                        if (applyBatchProposal(m)) {
+                            m.propState = ChatStore.PROP_APPLIED;
+                            ChatStore.saveMain(act, msgs);
+                            renderAll(); // 整卡重画：失败件要在原编号行上标出来
+                        } else {
+                            toast(en() ? "None of them could be created" : "一件也没建成");
+                            renderState[0].run();
+                        }
+                    });
+                    btnRow.addView(apply);
+                }
                 TextView dismiss = cardBtn(en() ? "No, thanks" : "不用", false);
                 dismiss.setOnClickListener(v -> {
                     m.propState = ChatStore.PROP_DISMISSED;
@@ -639,6 +694,7 @@ public class ChatPanel {
         for (int i = 0; i < arr.length(); i++) {
             JSONObject o = arr.optJSONObject(i);
             if (o == null) continue;
+            if (o.optBoolean("dropped", false)) continue; // 用户在卡上去掉的件，不建也不算失败
             String title = o.optString("title", "").trim();
             if (title.isEmpty()) {
                 try { o.put("failed", true); } catch (Exception ignored) { }
@@ -687,11 +743,64 @@ public class ChatPanel {
         return store.byId(tid);
     }
 
-    /** 把提案 JSON 读成人话概要（标题／时长／子任务／开始／截止／优先级，只列真要改的项）。 */
+    /**
+     * 把提案 JSON 读成人话概要（标题／时长／子任务／开始／截止／优先级，只列真要改的项）。
+     * v2.2.0：update 且目标任务还在时改对照式——每项写清「旧值 → 新值」，
+     * 用户点应用前一眼看清到底改了什么；目标已删则退回只列新值的旧画法。
+     */
     private List<String> proposalSummary(String proposalJson, boolean creating) {
         List<String> lines = new ArrayList<>();
         try {
             JSONObject p = new JSONObject(proposalJson);
+            TaskItem target = creating ? null : proposalTarget(proposalJson);
+            if (target != null) {
+                if (p.has("title") && !p.optString("title").trim().isEmpty()) {
+                    lines.add((en() ? "Title: \"" : "标题：「") + target.title
+                            + (en() ? "\" → \"" : "」→「") + p.optString("title").trim()
+                            + (en() ? "\"" : "」"));
+                }
+                if (p.has("priority") && !p.optString("priority").trim().isEmpty()) {
+                    lines.add((en() ? "Priority: " : "优先级：")
+                            + TaskItem.priorityLabel(target.priority, en())
+                            + " → " + TaskItem.priorityLabel(p.optString("priority").trim(), en()));
+                }
+                JSONArray subs = p.optJSONArray("subtasks");
+                if (subs != null && subs.length() > 0) {
+                    int total = 0;
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < subs.length(); i++) {
+                        JSONObject s = subs.optJSONObject(i);
+                        if (s == null) continue;
+                        int min = Math.max(1, s.optInt("minutes", 5));
+                        total += min;
+                        if (sb.length() > 0) sb.append(en() ? "; " : "；");
+                        sb.append(s.optString("title", "")).append(" ").append(min)
+                                .append(en() ? " min" : " 分钟");
+                    }
+                    lines.add((en() ? "Split into subtasks (" : "拆成子任务（共 ") + total
+                            + (en() ? " min): " : " 分钟）：") + sb);
+                } else if (p.has("durationMinutes")) {
+                    lines.add((en() ? "Length: " : "时长：") + target.durationMinutes
+                            + (en() ? " min → " : " 分钟 → ") + Math.max(1, p.optInt("durationMinutes", 0))
+                            + (en() ? " min" : " 分钟"));
+                }
+                if (p.has("nextStartAt") && !p.optString("nextStartAt").isEmpty()) {
+                    String old = target.nextStartAt == null || target.nextStartAt.isEmpty()
+                            ? (en() ? "not set" : "没定")
+                            : target.nextStartAt.replace('T', ' ');
+                    lines.add((en() ? "Start: " : "开始时间：") + old + " → "
+                            + p.optString("nextStartAt").replace('T', ' '));
+                }
+                if (p.has("deadline")) {
+                    String nd = p.optString("deadline", "");
+                    String old = target.deadline == null || target.deadline.isEmpty()
+                            ? (en() ? "not set" : "没定") : target.deadline;
+                    lines.add((en() ? "Deadline: " : "截止：") + old + " → "
+                            + (nd.isEmpty() ? (en() ? "none" : "不设") : nd));
+                }
+                if (lines.isEmpty()) lines.add(en() ? "A small change to this task" : "对这个任务做一点调整");
+                return lines;
+            }
             if (p.has("title") && !p.optString("title").trim().isEmpty()) {
                 lines.add(creating
                         ? (en() ? "Title: \"" : "标题：「") + p.optString("title").trim() + (en() ? "\"" : "」")
@@ -1042,7 +1151,7 @@ public class ChatPanel {
                     : "消息没拼好，再试一次");
             return;
         }
-        ChatClient.send(act, payload, new ChatClient.Callback() {
+        ChatClient.sendRouted(act, payload, new ChatClient.Callback() {
             @Override public void onModel(String modelId) {
                 modelLine.setText((en() ? "Current model: " : "当前模型：") + modelId);
             }
@@ -1064,7 +1173,24 @@ public class ChatPanel {
             @Override public void onError(String friendlyMsg) {
                 finishStreamError(live, friendlyMsg);
             }
-        });
+        }, looksLikeTaskWork(text));
+    }
+
+    /**
+     * 这一句像不像在让 AI 动任务（v2.2.0 模型路由的客户端判据）：命中建/改/
+     * 删/排程类说法时，发送走解析任务的 qwen 线（中文解析更稳）；其余闲聊
+     * 走默认极速线。只是关键词启发式，判错了也只是模型选得不最优，不影响
+     * 提案卡「点确认才生效」的纪律。
+     */
+    private static boolean looksLikeTaskWork(String text) {
+        if (text == null) return false;
+        String t = text.toLowerCase();
+        String[] zh = {"新建", "创建", "加上", "加一", "添加", "建个", "建一",
+                "删掉", "删除", "改成", "改到", "改名", "排程", "重排", "排一下", "排进"};
+        for (String k : zh) if (t.contains(k)) return true;
+        String[] en = {"create", "add a", "add the", "delete", "rename", "reschedule", "schedule"};
+        for (String k : en) if (t.contains(k)) return true;
+        return false;
     }
 
     private void finishStreamError(TextView live, String friendlyMsg) {
@@ -1530,9 +1656,9 @@ public class ChatPanel {
 
     private static final String MANUAL_ZH =
             "《知行使用手册》摘要（用户问软件怎么用时以此为准，不要编造不存在的功能）：\n"
-            + "知行是任务计时应用。日程页是 Excel 式任务表（任务/情景标签/截止日期或每日重复/计划时长/优先级），点行展开编辑，点行首 ▶ 开始计时；计时中可暂停，暂停要选目的和时长；有子任务的任务按子任务逐个倒数，总时长等于子任务之和。计时过半和结束时有全屏检查页：结束页可选「做完了」、加时（+50%、+5/+10/+15 分钟或自定义），加时前可以记一下当前状态。任务结束还没开始下一个时，会弹「接下来，做点什么」页，选下一个任务或休息一会。底部页签：日程、习惯、知行、聊聊（就是这里）。日程页右上「日历」展开日历面板：任务行能拖进日历排时间；必做任务和昨天滚进来的未完成任务，App 会自动填进今天的空档，排不下会在时间账下方点名。今日时间账在日程页最上方：今天还剩多少小时、必干的活占多少（按计划时长×1.5 算）、空余多少。习惯：每天早上有晨间页，填昨天的习惯记录和日记；习惯页看长年累月的账。知行页看知行指数＝习惯达成×50%＋任务完成×35%＋分神控制×15%。屏幕内容守卫：在设置里开总开关；计时中会采样屏幕内容，判和当前任务合不合，不合就弹问询页（立即回到任务／给我 30 或 60 秒宽限／这是误判本次放行），截图只在本机分析、随即销毁、不保存不上传。语义判定是守卫的一层（设置里有独立开关）：本地拿不准时，把打码后的屏幕文字发云端大模型终判，只发文字不发图；关掉语义判定就全部本地判。模型下载在设置里：黄色识别模型和语义小模型按需下载，谁用谁下，装机包里不带。跟我聊天时，我给的改任务、排日程、改设置建议都会先出提案卡，你点应用才生效；在聊天里一次说好几件要做的事，我会整理成一张批量卡，点一次「全部建好」就一次建完，哪件是给 AI 做的在话里点明就行；在聊天里能改的设置只有四个：语义判定、测试者模式、屏幕内容守卫总开关、空档催促档位（温和/标准/严格），其余设置要去设置页。设置里还有：更新日志、清除聊天记录、账号与同步。";
+            + "知行是任务计时应用。日程页是 Excel 式任务表（任务/情景标签/截止日期或每日重复/计划时长/优先级），点行展开编辑，点行首 ▶ 开始计时；计时中可暂停，暂停要选目的和时长；有子任务的任务按子任务逐个倒数，总时长等于子任务之和。计时过半和结束时有全屏检查页：结束页可选「做完了」、加时（+50%、+5/+10/+15 分钟或自定义），加时前可以记一下当前状态。任务结束还没开始下一个时，会弹「接下来，做点什么」页，选下一个任务或休息一会。底部页签：日程、习惯、知行、聊聊（就是这里）。日程页右上「日历」展开日历面板：任务行能拖进日历排时间；必做任务和昨天滚进来的未完成任务，App 会自动填进今天的空档，排不下会在时间账下方点名。今日时间账在日程页最上方：今天还剩多少小时、必干的活占多少（按计划时长×1.5 算）、空余多少。习惯：每天早上有晨间页，填昨天的习惯记录和日记；习惯页看长年累月的账。知行页看知行指数＝习惯达成×50%＋任务完成×35%＋分神控制×15%。屏幕内容守卫：在设置里开总开关；计时中会采样屏幕内容，判和当前任务合不合，不合就弹问询页（立即回到任务／给我 30 或 60 秒宽限／这是误判本次放行），截图只在本机分析、随即销毁、不保存不上传。语义判定是守卫的一层（设置里有独立开关）：本地拿不准时，把打码后的屏幕文字发云端大模型终判，只发文字不发图；关掉语义判定就全部本地判。模型下载在设置里：黄色识别模型和语义小模型按需下载，谁用谁下，装机包里不带。跟我聊天时，我给的改任务、排日程、改设置建议都会先出提案卡，你点应用才生效；在聊天里一次说好几件要做的事，我会整理成一张批量卡，点一次「都加上」就一次建完，哪件是给 AI 做的在话里点明就行；在聊天里能改的设置只有四个：语义判定、测试者模式、屏幕内容守卫总开关、空档催促档位（温和/标准/严格），其余设置要去设置页。设置里还有：更新日志、清除聊天记录、账号与同步。";
 
     private static final String MANUAL_EN =
             "KnowDo manual digest (when the user asks how the app works, go by this — never invent features):\n"
-            + "KnowDo is a task timer. The Schedule page is an Excel-like task table (task / context tags / deadline or daily repeat / planned length / priority): tap a row to expand and edit it, tap the ▶ at the row start to begin timing. You can pause mid-timer (a pause asks for a purpose and a length). Tasks with subtasks count down subtask by subtask, and the total length is the sum of the subtasks. At half-time and at the end a full-screen check page appears: on the end page choose Done, or extend (+50%, +5/+10/+15 minutes, or custom); before extending you can note how you feel. When a task ends and the next hasn't started, a \"What's next\" page asks you to pick the next task or rest a while. Bottom tabs: Schedule, Habits, Zhixing, and Chat (this page). The Calendar button at the top right of the Schedule page opens the calendar panel: drag task rows into the calendar to plan them; must-do tasks and yesterday's rolled-over unfinished tasks are slotted into today's gaps automatically, and anything that doesn't fit is named under the time account. The time account sits at the top of the Schedule page: hours left today, hours the must-do work takes (planned length × 1.5), and hours still free. Habits: a morning page each day collects yesterday's habit records and diary; the Habits tab keeps the long-term ledger. The Zhixing tab shows the Zhixing index = habits 50% + task completion 35% + distraction control 15%. The screen-content guard is switched on in Settings: while a timer runs it samples the screen and judges whether the content matches the current task; a mismatch raises an inquiry page (return to the task now / 30 or 60 seconds of grace / a false alarm, allowed for this session). Screenshots are analysed on-device only and destroyed immediately — never saved, never uploaded. Semantic verdicts are one layer of the guard (own switch in Settings): when the on-device checks can't decide, masked screen text — never an image — goes to a cloud model for the final call; turn the switch off and everything is judged locally. Model downloads live in Settings: the image model and the semantic mini-model download on demand, only for whoever uses them. In chat, my suggestions for tasks, schedules and settings always arrive as proposal cards and take effect only when you tap Apply. Name several things to do in one chat message and I will lay them out on one batch card — one tap on Create all builds them all; just say in your message which ones are for the AI. Only four settings can be changed from chat: semantic verdicts, tester mode, the screen-content guard master switch, and the idle-nudging level (gentle / standard / strict); everything else lives in Settings, which also holds the changelog, clearing chat history, and account & sync.";
+            + "KnowDo is a task timer. The Schedule page is an Excel-like task table (task / context tags / deadline or daily repeat / planned length / priority): tap a row to expand and edit it, tap the ▶ at the row start to begin timing. You can pause mid-timer (a pause asks for a purpose and a length). Tasks with subtasks count down subtask by subtask, and the total length is the sum of the subtasks. At half-time and at the end a full-screen check page appears: on the end page choose Done, or extend (+50%, +5/+10/+15 minutes, or custom); before extending you can note how you feel. When a task ends and the next hasn't started, a \"What's next\" page asks you to pick the next task or rest a while. Bottom tabs: Schedule, Habits, Zhixing, and Chat (this page). The Calendar button at the top right of the Schedule page opens the calendar panel: drag task rows into the calendar to plan them; must-do tasks and yesterday's rolled-over unfinished tasks are slotted into today's gaps automatically, and anything that doesn't fit is named under the time account. The time account sits at the top of the Schedule page: hours left today, hours the must-do work takes (planned length × 1.5), and hours still free. Habits: a morning page each day collects yesterday's habit records and diary; the Habits tab keeps the long-term ledger. The Zhixing tab shows the Zhixing index = habits 50% + task completion 35% + distraction control 15%. The screen-content guard is switched on in Settings: while a timer runs it samples the screen and judges whether the content matches the current task; a mismatch raises an inquiry page (return to the task now / 30 or 60 seconds of grace / a false alarm, allowed for this session). Screenshots are analysed on-device only and destroyed immediately — never saved, never uploaded. Semantic verdicts are one layer of the guard (own switch in Settings): when the on-device checks can't decide, masked screen text — never an image — goes to a cloud model for the final call; turn the switch off and everything is judged locally. Model downloads live in Settings: the image model and the semantic mini-model download on demand, only for whoever uses them. In chat, my suggestions for tasks, schedules and settings always arrive as proposal cards and take effect only when you tap Apply. Name several things to do in one chat message and I will lay them out on one batch card — one tap on Add all builds them all; just say in your message which ones are for the AI. Only four settings can be changed from chat: semantic verdicts, tester mode, the screen-content guard master switch, and the idle-nudging level (gentle / standard / strict); everything else lives in Settings, which also holds the changelog, clearing chat history, and account & sync.";
 }

@@ -188,6 +188,12 @@ public final class Strings {
     public static String pauseMore5() { return s("再加 5 分钟", "+5 min"); }
     public static String pauseChangePurpose() { return s("换个目的", "Change purpose"); }
 
+    // ---------- 悬浮窗聊天（v2.2.0） ----------
+    public static String chatTalkBtn() { return s("聊一聊", "Chat"); }
+    public static String chatOverlayTitle() { return s("和 AI 聊聊", "Chat with AI"); }
+    public static String chatOverlayClose() { return s("收起", "Close"); }
+    public static String chatResizeHint() { return s("拖动右下角可以改大小", "Drag the corner to resize"); }
+
     // ---------- 暂停 30 秒无下一步遮罩 ----------
     public static String pauseLockBanner() {
         return s("已暂停，请选下一步", "Still paused — choose a next step");

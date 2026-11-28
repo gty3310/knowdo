@@ -48,6 +48,40 @@ public final class ChatClient {
 
     /** messages 是 [{role, content}] 的 JSONArray（system 在最前）。 */
     public static void send(Context ctx, JSONArray messages, Callback cb) {
+        sendInternal(ctx, messages, cb, null);
+    }
+
+    /**
+     * 带模型路由的发送（v2.2.0，悬浮窗聊天/聊聊主线用）：在请求体里多带
+     * model 与 provider 两个字段——默认线 openai/gpt-oss-120b＋供应商顺序
+     * Cerebras→Groq＋data_collection=deny；解析任务的一线（taskParsing）
+     * 换 qwen/qwen3-32b（该模型在 OpenRouter 上没有 Cerebras/Groq 节点，
+     * 只带 data_collection=deny，不带 order）。
+     * 注意：chat-proxy 服务端是否透传这两个字段由服务端决定，客户端只是
+     * 向前兼容地带上；服务端不认时它仍按自己的口径挑模型，meta 事件回的
+     * 才是本轮实际模型。其余四个旧调用方走 send()，请求体一字不变。
+     */
+    public static void sendRouted(Context ctx, JSONArray messages, Callback cb,
+                                  boolean taskParsing) {
+        JSONObject route = new JSONObject();
+        try {
+            route.put("model", taskParsing ? "qwen/qwen3-32b" : "openai/gpt-oss-120b");
+            JSONObject provider = new JSONObject();
+            if (!taskParsing) {
+                JSONArray order = new JSONArray();
+                order.put("Cerebras");
+                order.put("Groq");
+                provider.put("order", order);
+            }
+            provider.put("data_collection", "deny");
+            route.put("provider", provider);
+        } catch (Exception ignored) { }
+        sendInternal(ctx, messages, cb, route);
+    }
+
+    /** route 非 null 时把 model/provider 并入请求体（见 sendRouted 的说明）。 */
+    private static void sendInternal(Context ctx, JSONArray messages, Callback cb,
+                                     JSONObject route) {
         final Handler main = new Handler(Looper.getMainLooper());
         final Context app = ctx.getApplicationContext();
         new Thread(() -> {
@@ -55,6 +89,10 @@ public final class ChatClient {
             try {
                 JSONObject body = new JSONObject();
                 body.put("messages", messages);
+                if (route != null) {
+                    if (route.has("model")) body.put("model", route.optString("model"));
+                    if (route.has("provider")) body.put("provider", route.optJSONObject("provider"));
+                }
 
                 con = (HttpURLConnection) new URL(Supa.BASE + "/functions/v1/chat-proxy").openConnection();
                 con.setRequestMethod("POST");

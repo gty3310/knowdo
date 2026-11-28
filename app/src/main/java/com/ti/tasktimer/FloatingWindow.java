@@ -535,6 +535,7 @@ public class FloatingWindow {
     private static void hideInternal() {
         // 有「正当开启」登记的暂停卡归其所属流程管，悬浮窗拆建不顺手关它
         if (PauseCard.openSource() == null) PauseCard.closeOverlay();
+        ChatOverlay.hide(); // 聊天窗是小窗的附属窗，小窗拆了它不独存（v2.2.0）
         subSignature = "";
         subEditing = false;
         if (pendingSave != null) { ui.removeCallbacks(pendingSave); pendingSave = null; }
@@ -633,6 +634,23 @@ public class FloatingWindow {
         bang.setPadding(dp(c, 6), dp(c, 2), dp(c, 4), dp(c, 2));
         bang.setOnClickListener(v -> openEdit(c));
         miniRow.addView(bang);
+        // 「聊一聊」钮（v2.2.0）：朱砂红小 pill，在小窗上一眼找得到；点它开/收
+        // 悬浮窗聊天（ChatOverlay），聊天窗是独立窗口，不占小窗自己的形态
+        TextView chatBtn = new TextView(c);
+        chatBtn.setText(Strings.chatTalkBtn());
+        chatBtn.setTextColor(Color.WHITE);
+        chatBtn.setTextSize(11.5f);
+        GradientDrawable chatBg = new GradientDrawable();
+        chatBg.setColor(Color.rgb(217, 75, 58)); // 朱砂红 #D94B3A
+        chatBg.setCornerRadius(dp(c, 9));
+        chatBtn.setBackground(chatBg);
+        chatBtn.setPadding(dp(c, 8), dp(c, 3), dp(c, 8), dp(c, 3));
+        LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        chatLp.leftMargin = dp(c, 6);
+        chatBtn.setLayoutParams(chatLp);
+        chatBtn.setOnClickListener(v -> ChatOverlay.toggle(c));
+        miniRow.addView(chatBtn);
         // 次行小字：计时中＝任务名（主行让给当前子任务时）；暂停时＝目的＋还剩；平时隐藏
         miniSub = new TextView(c);
         miniSub.setTextColor(Color.rgb(190, 200, 195));
